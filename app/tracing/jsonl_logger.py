@@ -1,0 +1,19 @@
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+class JsonlLogger:
+    def __init__(self, path: str = "traces.jsonl") -> None:
+        self._path = Path(path)
+
+    def log(self, call_id: str, turn: int, event: dict[str, Any]) -> None:
+        record = {
+            "call_id": call_id,
+            "turn": turn,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            **event,
+        }
+        with self._path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")

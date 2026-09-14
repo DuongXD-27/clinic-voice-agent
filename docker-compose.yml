@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      CLINIC_MOCK_BASE_URL: http://clinic-mock:8080
+    depends_on:
+      - clinic-mock
+
+  # TODO: thay bằng image clinic-mock thật lấy từ starter kit của chương trình.
+  clinic-mock:
+    image: clinic-mock:latest
+    ports:
+      - "8080:8080"

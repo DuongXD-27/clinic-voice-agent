@@ -1,0 +1,9 @@
+temp/
+
+__pycache__/
+*.pyc
+.venv/
+.env
+*.egg-info/
+.pytest_cache/
+traces.jsonl
