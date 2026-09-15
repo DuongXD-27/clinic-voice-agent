@@ -12,6 +12,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+speech = [
+    "numpy>=1.26",
+    "google-genai>=1.0",
+]
+speech-local = [
+    "numpy>=1.26",
+    "transformers>=4.44",
+    "torch>=2.3",
+]
+llm = [
+    "google-genai>=1.0",
+]
 dev = [
     "pytest>=8.0",
 ]
@@ -21,4 +33,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["app", "src/callbot"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

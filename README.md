@@ -19,7 +19,23 @@ app/
   core/guardrails.py    # kiểm tra các lỗi nghiêm trọng SF-01..SF-05
   clients/clinic_mock.py # HTTP client gọi clinic mock (Idempotency-Key, If-Match)
   tracing/jsonl_logger.py # ghi log từng lượt hội thoại ra JSONL
-tests/                   # test cho các endpoint trên
+src/callbot/               # core dùng chung cho HTTP harness và phone leg (§1.3.2)
+  speech/                  # Realtime STT pipeline + TTS
+    audio/                 # codec wav/G.711, chuẩn hoá về PCM 8 kHz băng hẹp, tải audio_url
+    vad/                   # FrameClassifier (energy baseline) + StreamingVAD
+    asr/                   # ASRProvider: gemini.py, phowhisper.py
+    tts/                   # TTSProvider + AudioArtifactStore (sinh audio_url)
+    transcript.py          # gộp partial/final
+    pipeline.py            # STTPipeline: Audio -> VAD -> ASR -> Transcript
+  engine/                  # AI Callbot Engine
+    session/               # Session Manager: CallContext, FSM, repository
+    nlu/                   # Information Extraction: intent, entity, normalizer
+    policy/                # PolicyEngine + guardrails SF-01..SF-05
+    verification/          # Verifier: xác minh tên + ngày sinh
+    dialogue/              # Dialogue Manager, templates, prompts, llm/
+    tools/                 # ClinicGateway: gọi clinic mock kèm If-Match, Idempotency-Key
+    orchestrator.py        # CallOrchestrator: điều phối 1 lượt
+tests/                   # test cho các endpoint trên; tests/engine/ test core với fake clinic
 ```
 
 ## Yêu cầu môi trường
@@ -34,6 +50,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
+pip install -e ".[speech,llm]"      # tuỳ chọn: numpy + Gemini (ASR/LLM)
+pip install -e ".[speech-local]"    # tuỳ chọn: PhoWhisper self-hosted
 
 cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL nếu cần
 
