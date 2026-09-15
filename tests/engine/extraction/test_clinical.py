@@ -1,0 +1,62 @@
+"""Bộ bẫy §9: EMERGENCY / ADVICE_REQUEST đo recall; MENTION đo tỉ lệ bị chuyển máy nhầm."""
+
+import pytest
+
+from callbot.engine.extraction.clinical import extract_clinical
+from callbot.engine.extraction.schema import ClinicalLevel
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tôi bị đau ngực",
+        "bố tôi đang khó thở",
+        "con tôi vừa co giật",
+        "mẹ tôi bị ngất",
+        "chảy máu nhiều quá",
+        "Tôi bị đau ngực có sao không?",
+        "đau ngực nhưng muốn đặt lịch khám",  # recall: vẫn EMERGENCY dù có ngữ cảnh đặt lịch
+        "không khó thở lắm",                   # recall: không xét phủ định
+    ],
+)
+def test_emergency(text: str) -> None:
+    assert extract_clinical(text).value is ClinicalLevel.EMERGENCY
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "đau bụng thế này có sao không",
+        "tôi nên uống thuốc gì",
+        "uống thuốc gì cho đỡ ho",
+        "bị ho thì nên khám khoa nào",
+        "có cần đi khám gấp không",
+        "tôi bị sốt ba ngày rồi thì sao",
+        "đau đầu hoài là bị bệnh gì vậy em",
+        "huyết áp 150 có nguy hiểm không",
+    ],
+)
+def test_advice_request_needs_asking(text: str) -> None:
+    assert extract_clinical(text).value is ClinicalLevel.ADVICE_REQUEST
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hay đau bụng nên muốn đặt lịch",
+        "tái khám dạ dày",
+        "tôi bị đau lưng, muốn đặt lịch khám được không",  # câu hỏi đuôi về lịch, không phải về triệu chứng
+        "đổi lịch tái khám huyết áp sang chiều được không",
+        "tôi đang bị sốt nên không đi được",
+        "tôi muốn đặt lịch khám bệnh",
+        "bệnh viện ở đâu vậy",
+    ],
+)
+def test_mention_is_not_transferred(text: str) -> None:
+    assert extract_clinical(text).value not in (ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST)
+
+
+def test_mention_and_none() -> None:
+    assert extract_clinical("hay đau bụng nên muốn đặt lịch").value is ClinicalLevel.MENTION
+    assert extract_clinical("tôi muốn hủy lịch").value is ClinicalLevel.NONE
+    assert extract_clinical("tôi muốn đặt lịch khám bệnh").value is ClinicalLevel.NONE
