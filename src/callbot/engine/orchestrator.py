@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Tracer(Protocol):
-    """app.tracing.jsonl_logger.JsonlLogger thoả mãn Protocol này."""
+    """callbot.tracing.JsonlLogger thoả mãn Protocol này."""
 
     def log(self, call_id: str, turn: int, event: dict[str, Any]) -> None: ...
 

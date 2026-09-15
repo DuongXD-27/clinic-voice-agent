@@ -33,7 +33,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "src/callbot"]
+packages = ["src/callbot"]
+
+[tool.hatch.build]
+# Cài -e: đưa src/ (không phải gốc repo) vào sys.path, để `import callbot` chạy được ngoài pytest
+dev-mode-dirs = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+# Không thêm src/ vào sys.path: test chạy trên package đã cài (`pip install -e ".[dev]"`), giống Docker
+testpaths = ["tests"]

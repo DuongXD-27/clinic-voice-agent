@@ -1,4 +1,4 @@
-"""Cổng tới clinic mock (§4.2). app.clients.clinic_mock.ClinicMockClient thoả mãn Protocol này."""
+"""Cổng tới clinic mock (§4.2). clinic_mock_client.ClinicMockClient thoả mãn Protocol này."""
 
 from typing import Any, Optional, Protocol
 

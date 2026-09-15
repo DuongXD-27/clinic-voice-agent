@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 
-from app.core.state_machine import handle_call_start, handle_turn
-from app.schemas.calls import (
+from callbot.transports.http.schemas import (
     StartCallRequest,
     StartCallResponse,
     TurnRequest,
     TurnResponse,
 )
+# TODO(Bước 1, docs/core-logic-plan.md): thay stub bằng CallOrchestrator
+from callbot.transports.http.stub_handlers import handle_call_start, handle_turn
 
 router = APIRouter(prefix="/v1/calls", tags=["calls"])
 
