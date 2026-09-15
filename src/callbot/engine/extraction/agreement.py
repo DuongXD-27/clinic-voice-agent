@@ -1,0 +1,187 @@
+"""Câu trả lời có / không — thiết kế v1.1 §5.6.
+
+Ngưỡng AGREE đặt theo HÀNH ĐỘNG mà câu trả lời mở khóa, không theo module:
+
+| question_id       | ghi                 | "vâng/dạ/ừ" một mình | "có/được/đúng" một mình | cần để AGREE            |
+|-------------------|---------------------|----------------------|--------------------------|-------------------------|
+| ASK_ATTENDANCE    | (không ghi)         | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
+| CONFIRM_READBACK  | CONFIRMED           | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
+| SLOT_READBACK     | RESCHEDULED/BOOKED  | UNCLEAR              | AGREE                    | "được", "đồng ý", ...   |
+| CANCEL_RECONFIRM  | CANCELLED           | UNCLEAR              | UNCLEAR                  | động từ hủy tường minh  |
+
+CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): "dạ" đáp lễ phép không bao giờ được hủy lịch.
+Tín hiệu mâu thuẫn ("thôi hủy đi", "không, hủy đi") -> UNCLEAR, Dialogue hỏi lại bằng câu A/B.
+
+Transcript không dấu lệch thêm về UNCLEAR: bỏ các từ đáp lễ và từ khẳng định có bản không dấu trùng
+nghĩa khác ("da" = dạ/đã, "co" = có/cô, "dung" = đúng/đừng/dùng). "dung" đứng một mình -> UNCLEAR,
+vì "dung huy" có thể là "đúng, hủy" hoặc "đừng hủy" — hai nghĩa ngược nhau.
+"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+from callbot.engine.extraction.schema import Agreement, Field, Provenance, QuestionId
+from callbot.engine.extraction.text import (
+    PhraseSet,
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    remove_spans,
+    strip_diacritics,
+)
+
+_AGREE_IDIOMS = compile_phrases(["không sao", "không vấn đề gì", "không có gì", "không sao đâu", "không vấn đề"])
+_REFUSE = compile_phrases(
+    [
+        "không", "thôi", "để sau", "chưa", "không hủy", "không hủy nữa", "đừng hủy", "giữ lịch", "giữ nguyên",
+        "không đồng ý", "sai", "sai rồi", "không phải", "không được", "không đúng", "đừng", "khoan", "từ từ",
+        "để tôi nghĩ", "suy nghĩ lại", "không muốn", "nhầm", "chưa được", "để khi khác", "thôi khỏi",
+    ],
+    unaccented_exclude=["đừng hủy", "đừng", "không đúng"],  # "dung" mơ hồ -> luật riêng bên dưới
+)
+_POLITE = compile_phrases(
+    ["vâng", "dạ", "ừ", "ờ", "ừm", "ạ", "à", "vâng ạ", "dạ vâng", "ừ ừ"],
+    unaccented_exclude=["dạ", "ừ", "ờ", "ừm", "ạ", "à", "ừ ừ"],  # "da" = đã; "a", "u", "o" quá ngắn
+)
+_AFFIRM = compile_phrases(
+    [
+        "có", "được", "đúng", "đúng rồi", "đúng vậy", "chính xác", "đồng ý", "ok", "oke", "okay", "ô kê",
+        "chuẩn", "phải", "chắc chắn", "chắc chắn rồi", "tất nhiên", "được rồi",
+    ],
+    unaccented_exclude=["có", "đúng"],  # "co" = cô/cỏ/cơ; "dung" = đừng/dùng
+)
+_SLOT_ACTION = compile_phrases(
+    ["đổi đi", "đặt đi", "chốt", "chốt đi", "lấy khung đó", "lấy giờ đó", "lấy luôn"],
+    unaccented_exclude=["đổi đi"],  # "doi di" = đợi đi
+)
+_CANCEL_VERB = compile_phrases(["hủy"])
+_CONTRAST = compile_phrases(["nhưng", "nhưng mà", "có điều", "tuy nhiên", "mà khoan"], unaccented_exclude=["nhưng"])
+_QUESTION_WORDS = compile_phrases(["gì", "bao giờ", "mấy giờ", "thế nào", "sao", "bao nhiêu", "ở đâu", "ai"])
+
+# Không có "chứ": "được chứ" là khẳng định, không phải hỏi lại
+_TAG_FINALS = frozenset({"không", "chưa", "à", "hả", "nhỉ"})
+_TRAILING_PARTICLES = frozenset({"ạ", "vậy", "thế", "nhé", "em", "chị", "anh"})
+_POLITE_WORDS = frozenset({"vâng", "dạ", "ừ", "ờ", "ừm", "ạ", "à"})
+_REFUSE_WORDS = frozenset({"không", "thôi", "chưa", "đừng", "khoan", "sai"})
+# "dung roi", "dung vay" chỉ có thể là "đúng rồi", "đúng vậy"
+_UNAMBIGUOUS_DUNG_FOLLOWERS = frozenset({"roi", "vay"})
+
+
+@dataclass(frozen=True)
+class _WordSets:
+    tag_finals: frozenset[str]
+    trailing: frozenset[str]
+    polite: frozenset[str]
+    refuse: frozenset[str]
+
+    def unaccented(self) -> "_WordSets":
+        stripped = _WordSets(*(frozenset(strip_diacritics(w) for w in words) for words in vars(self).values()))
+        # "a" cuối câu là "ạ" (lễ phép) hoặc "à" (hỏi lại): "huy a" = "hủy ạ" hay "hủy à?" -> coi là câu hỏi
+        return _WordSets(stripped.tag_finals, stripped.trailing - {"a"}, stripped.polite, stripped.refuse)
+
+
+_ACCENTED_WORDS = _WordSets(_TAG_FINALS, _TRAILING_PARTICLES, _POLITE_WORDS, _REFUSE_WORDS)
+_UNACCENTED_WORDS = _ACCENTED_WORDS.unaccented()
+
+
+@dataclass(frozen=True)
+class _Cues:
+    refuse: Optional[str]
+    idiom: Optional[str]
+    affirm: Optional[str]
+    polite: Optional[str]
+    cancel_verb: Optional[str]
+    slot_action: Optional[str]
+
+
+def extract_agreement(transcript: str, question_id: QuestionId) -> Field[Agreement]:
+    """Chỉ gọi khi `question_id` thuộc CONFIRMATION_QUESTIONS; kết quả không mang sang lượt sau."""
+    text = clean(transcript)
+    if not text:
+        return Field.nothing(Agreement.UNCLEAR)
+    unaccented = is_unaccented(text)
+    matched = Provenance.NORMALIZED if unaccented else Provenance.EXACT
+
+    if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
+        # "... được không?" là hỏi lại, không phải từ chối
+        return Field(Agreement.UNCLEAR, matched, span=text)
+    if unaccented and _has_ambiguous_dung(text):
+        return Field(Agreement.UNCLEAR, matched, span="dung")
+    idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
+    question = find_phrase(remove_spans(text, [idiom] if idiom else []), _QUESTION_WORDS, unaccented=unaccented)
+    if question is not None:
+        return Field(Agreement.UNCLEAR, matched, span=question.group(0))
+    contrast = find_phrase(text, _CONTRAST, unaccented=unaccented)
+    if contrast is not None:
+        # "vâng, nhưng mà tôi muốn đổi giờ" — phần sau "nhưng" mới là ý chính
+        return Field(Agreement.UNCLEAR, matched, span=contrast.group(0))
+
+    cues = _find_cues(text, unaccented)
+    positive = cues.idiom or cues.affirm or cues.cancel_verb or cues.slot_action
+    if cues.refuse and positive:
+        return Field(Agreement.UNCLEAR, matched, span=text)
+    if cues.refuse:
+        return Field(Agreement.REFUSE, matched, span=cues.refuse)
+
+    span = _agree_span(question_id, cues)
+    if span is not None:
+        return Field(Agreement.AGREE, matched, span=span)
+    if cues.polite or positive:
+        # Có tín hiệu nhưng dưới ngưỡng của hành động -> UNCLEAR có chủ đích, không gọi tuyến sau
+        return Field(Agreement.UNCLEAR, matched, span=cues.polite or positive)
+    return Field.nothing(Agreement.UNCLEAR)
+
+
+def _find_cues(text: str, unaccented: bool) -> _Cues:
+    idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
+    rest = remove_spans(text, [idiom] if idiom else [])
+    refuse = find_phrase(rest, _REFUSE, unaccented=unaccented)
+    rest_positive = remove_spans(rest, [refuse] if refuse else [])
+
+    def positive(phrases: PhraseSet, allow_negated: bool = False) -> Optional[str]:
+        return _group(find_phrase(rest_positive, phrases, allow_negated=allow_negated, unaccented=unaccented))
+
+    return _Cues(
+        refuse=_group(refuse),
+        idiom=_group(idiom),
+        affirm=positive(_AFFIRM),
+        polite=positive(_POLITE, allow_negated=True),
+        cancel_verb=positive(_CANCEL_VERB),
+        slot_action=positive(_SLOT_ACTION),
+    )
+
+
+def _agree_span(question_id: QuestionId, cues: _Cues) -> Optional[str]:
+    """Tín hiệu đủ ngưỡng AGREE cho hành động của câu hỏi, hoặc None."""
+    if question_id is QuestionId.CANCEL_RECONFIRM:
+        # SF-05: chỉ động từ hủy tường minh. "vâng", "có", "đúng", "không sao" một mình đều chưa đủ.
+        return cues.cancel_verb
+    if question_id is QuestionId.SLOT_READBACK:
+        return cues.affirm or cues.slot_action or cues.idiom
+    if question_id in (QuestionId.CONFIRM_READBACK, QuestionId.ASK_ATTENDANCE):
+        return cues.affirm or cues.idiom or cues.polite
+    return None
+
+
+def _is_tag_question(text: str, words_of: _WordSets) -> bool:
+    words = text.split()
+    while len(words) > 1 and words[-1] in words_of.trailing:
+        words.pop()
+    if len(words) < 2 or words[-1] not in words_of.tag_finals:
+        return False
+    # "dạ không", "thôi không" là từ chối; "được không", "hủy luôn không" là hỏi lại
+    head = [w for w in words[:-1] if w not in words_of.polite]
+    return bool(head) and not all(w in words_of.refuse for w in head)
+
+
+def _has_ambiguous_dung(text: str) -> bool:
+    words = text.split()
+    return any(
+        word == "dung" and (i + 1 == len(words) or words[i + 1] not in _UNAMBIGUOUS_DUNG_FOLLOWERS)
+        for i, word in enumerate(words)
+    )
+
+
+def _group(match) -> Optional[str]:
+    return match.group(0) if match else None

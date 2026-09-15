@@ -10,16 +10,24 @@ theo từng lượt, và gọi ngược lại một "clinic mock" (mock backend 
 ## Cấu trúc project
 
 ```
-app/
-  main.py              # FastAPI app: /health, đăng ký router /v1/calls
-  config.py            # đọc biến môi trường (CLINIC_MOCK_BASE_URL, ...)
-  api/calls.py         # 2 endpoint bắt buộc: POST /v1/calls, POST /v1/calls/{id}/turn
-  schemas/calls.py      # Pydantic models cho request/response
-  core/state_machine.py # logic hội thoại theo từng kịch bản (đang là skeleton)
-  core/guardrails.py    # kiểm tra các lỗi nghiêm trọng SF-01..SF-05
-  clients/clinic_mock.py # HTTP client gọi clinic mock (Idempotency-Key, If-Match)
-  tracing/jsonl_logger.py # ghi log từng lượt hội thoại ra JSONL
-src/callbot/               # core dùng chung cho HTTP harness và phone leg (§1.3.2)
+src/callbot/               # một core, hai transport (§1.3.2)
+  transports/              # chỉ đổi request/response sang kiểu của engine, không chứa logic hội thoại
+    http/                  # đường chấm điểm — uvicorn callbot.transports.http.main:app
+      main.py              # FastAPI app: /health, đăng ký router /v1/calls
+      calls.py             # 2 endpoint bắt buộc: POST /v1/calls, POST /v1/calls/{id}/turn
+      schemas.py           # Pydantic models cho request/response (§4.1)
+      config.py            # đọc biến môi trường (CLINIC_MOCK_BASE_URL, ...)
+      stub_handlers.py     # handler giả, luôn chuyển máy — xoá khi nối engine (Bước 1)
+    # phone/               # phone leg tuần 6 (§1.3.1), chưa làm
+  engine/                  # AI Callbot Engine
+    session/               # Session Manager: CallContext, FSM, repository
+    extraction/            # Information Extraction theo docs/information-extraction-design.md
+    nlu/                   # bản cũ, engine đang dùng — thay bằng extraction/ khi nối
+    policy/                # PolicyEngine + guardrails SF-01..SF-05
+    verification/          # Verifier: xác minh tên + ngày sinh
+    dialogue/              # Dialogue Manager, templates, prompts, llm/
+    tools/                 # ClinicGateway (If-Match, Idempotency-Key) + ClinicMockClient (HTTP)
+    orchestrator.py        # CallOrchestrator: điều phối 1 lượt
   speech/                  # Realtime STT pipeline + TTS
     audio/                 # codec wav/G.711, chuẩn hoá về PCM 8 kHz băng hẹp, tải audio_url
     vad/                   # FrameClassifier (energy baseline) + StreamingVAD
@@ -27,15 +35,8 @@ src/callbot/               # core dùng chung cho HTTP harness và phone leg (§
     tts/                   # TTSProvider + AudioArtifactStore (sinh audio_url)
     transcript.py          # gộp partial/final
     pipeline.py            # STTPipeline: Audio -> VAD -> ASR -> Transcript
-  engine/                  # AI Callbot Engine
-    session/               # Session Manager: CallContext, FSM, repository
-    nlu/                   # Information Extraction: intent, entity, normalizer
-    policy/                # PolicyEngine + guardrails SF-01..SF-05
-    verification/          # Verifier: xác minh tên + ngày sinh
-    dialogue/              # Dialogue Manager, templates, prompts, llm/
-    tools/                 # ClinicGateway: gọi clinic mock kèm If-Match, Idempotency-Key
-    orchestrator.py        # CallOrchestrator: điều phối 1 lượt
-tests/                   # test cho các endpoint trên; tests/engine/ test core với fake clinic
+  tracing/                 # JsonlLogger: trace mỗi lượt ra JSONL
+tests/                     # cùng cấu trúc với src/callbot: engine/, speech/, transports/http/
 ```
 
 ## Yêu cầu môi trường
@@ -55,7 +56,7 @@ pip install -e ".[speech-local]"    # tuỳ chọn: PhoWhisper self-hosted
 
 cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL nếu cần
 
-uvicorn app.main:app --reload
+uvicorn callbot.transports.http.main:app --reload
 ```
 
 Server chạy ở `http://localhost:8000`. Kiểm tra nhanh:

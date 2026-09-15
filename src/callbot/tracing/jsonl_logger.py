@@ -1,3 +1,5 @@
+"""Trace mỗi lượt ra JSONL (Appendix B.1) — dùng chung cho mọi transport."""
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path

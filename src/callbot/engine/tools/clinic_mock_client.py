@@ -1,3 +1,5 @@
+"""HTTP client tới clinic mock (§4.2) — cài đặt của `ports.ClinicAPI`, dùng chung cho mọi transport."""
+
 import uuid
 from typing import Any, Optional
 
