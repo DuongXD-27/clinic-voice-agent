@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
 from callbot.transports.http.main import app
 
 client = TestClient(app)
@@ -25,6 +26,9 @@ def test_start_call() -> None:
     body = response.json()
     assert body["call_id"] == "c_test_1"
     assert body["state"] == "AWAITING_IDENTITY"
+    # [R-26] endpoint dùng đúng câu chào công bố AI của engine, không hard-code lại
+    assert AI_DISCLOSURE in body["utterance"]
+    assert body["utterance"] == greeting("outbound")
 
 
 def test_turn_defaults_to_transfer() -> None:

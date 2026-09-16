@@ -6,8 +6,18 @@ from typing import Any
 from callbot.engine.policy import guardrails
 from callbot.engine.session.context import CallContext
 
-GREETING_OUTBOUND = "Xin chào, đây là tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?"
-GREETING_INBOUND = "Vinmec xin nghe. Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
+# [R-26] Cụm công bố trợ lý ảo AI. Nguồn duy nhất: mọi câu chào và test nghiệm thu
+# đều tham chiếu về đây, đổi chữ ở một chỗ này là đổi toàn hệ thống.
+AI_DISCLOSURE = "trợ lý ảo AI"
+
+GREETING_OUTBOUND = (
+    f"Dạ em xin chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
+    "Cho em hỏi em đang nói chuyện với anh chị nào ạ?"
+)
+GREETING_INBOUND = (
+    f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
+    "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
+)
 ASK_NAME_AGAIN = "Dạ, anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
 ASK_DOB = "Dạ, anh chị cho em xin ngày tháng năm sinh ạ."
 ASK_DOB_AGAIN = "Dạ, em chưa nghe rõ. Anh chị nhắc lại giúp em ngày, tháng, năm sinh ạ."
@@ -23,6 +33,14 @@ GOODBYE_UNREACHABLE = "Dạ, em xin phép gọi lại sau ạ. Chào anh chị."
 CLOSED = "Cuộc gọi đã kết thúc."
 
 _PERIOD_WORDS = ((12, "sáng"), (18, "chiều"), (24, "tối"))
+
+
+def greeting(direction: str) -> str:
+    """Câu chào mở đầu dùng chung cho mọi transport.
+
+    [R-26] công bố là trợ lý ảo AI ngay câu đầu + [R-02] hỏi tên bằng câu hỏi mở.
+    """
+    return GREETING_OUTBOUND if direction == "outbound" else GREETING_INBOUND
 
 
 def speak_datetime(iso: str) -> str:
