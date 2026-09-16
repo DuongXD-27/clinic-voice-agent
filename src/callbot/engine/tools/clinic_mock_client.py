@@ -7,8 +7,10 @@ import httpx
 
 
 class ClinicMockClient:
-    def __init__(self, base_url: str, timeout: float = 5.0) -> None:
-        self._client = httpx.Client(base_url=base_url, timeout=timeout)
+    def __init__(self, base_url: str, api_key: str = "", timeout: float = 5.0) -> None:
+        # Mock yêu cầu `Authorization: Bearer sk_...` trên mọi endpoint trừ /health
+        headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._client = httpx.Client(base_url=base_url, headers=headers, timeout=timeout)
 
     def find_patient_by_phone(self, phone: str) -> dict[str, Any]:
         response = self._client.get("/patients", params={"phone": phone})

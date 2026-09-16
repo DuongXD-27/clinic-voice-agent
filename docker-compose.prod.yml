@@ -1,0 +1,25 @@
+# Chạy trên EC2, do workflow CI/CD (.github/workflows/ci-cd.yml) chép lên /opt/callbot cùng .env.
+# Caddy nhận 80/443, tự xin cert Let's Encrypt cho BOT_DOMAIN và chuyển tới bot trong mạng nội bộ.
+services:
+  bot:
+    image: ${IMAGE:?Cần IMAGE trong .env}
+    restart: unless-stopped
+    env_file: .env
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${BOT_DOMAIN:?Cần BOT_DOMAIN trong .env} --to bot:8000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Giữ chứng chỉ qua các lần deploy, tránh chạm rate limit của Let's Encrypt
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - bot
+
+volumes:
+  caddy_data:
+  caddy_config:
