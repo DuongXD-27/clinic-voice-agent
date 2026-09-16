@@ -43,8 +43,7 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
-        greeting = t.GREETING_OUTBOUND if ctx.call.direction == "outbound" else t.GREETING_INBOUND
-        return BotAction(utterance=greeting, state="AWAITING_IDENTITY")
+        return BotAction(utterance=t.greeting(ctx.call.direction), state="AWAITING_IDENTITY")
 
     def reprompt(self, ctx: CallContext, silence: bool = False) -> BotAction:
         if silence:

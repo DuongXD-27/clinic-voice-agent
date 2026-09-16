@@ -3,6 +3,7 @@
 Xoá khi nối endpoint vào CallOrchestrator (Bước 1 của docs/core-logic-plan.md).
 """
 
+from callbot.engine.dialogue import templates as t
 from callbot.transports.http.schemas import StartCallRequest, StartCallResponse, TurnRequest, TurnResponse
 
 _calls: dict[str, dict] = {}
@@ -17,10 +18,7 @@ def handle_call_start(payload: StartCallRequest) -> StartCallResponse:
     }
     return StartCallResponse(
         call_id=payload.call_id,
-        utterance=(
-            "Xin chào, đây là tổng đài Vinmec. "
-            "Cho em hỏi em đang nói chuyện với anh chị nào ạ?"
-        ),
+        utterance=t.greeting(payload.direction),
         audio_url=None,
         state="AWAITING_IDENTITY",
         turn=0,
@@ -32,9 +30,7 @@ def handle_turn(call_id: str, payload: TurnRequest) -> TurnResponse:
     call["turn"] = payload.turn
 
     return TurnResponse(
-        utterance=(
-            "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ anh chị thêm ạ."
-        ),
+        utterance=t.TRANSFER,
         audio_url=None,
         state="CLOSING",
         ended=True,

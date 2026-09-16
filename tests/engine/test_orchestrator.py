@@ -1,6 +1,7 @@
 from datetime import date
 
 from callbot.engine import CallerInput, CallStart, create_orchestrator
+from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.nlu.normalizer import normalize_name, parse_dob
 from callbot.engine.verification import matches
 
@@ -31,6 +32,20 @@ def test_identity_match() -> None:
     assert matches("nguyễn văn a", date(1978, 3, 14), verify)
     assert not matches("nguyễn văn b", date(1978, 3, 14), verify)
     assert not matches("nguyễn văn a", date(1978, 3, 15), verify)
+
+
+def test_opening_discloses_ai_assistant() -> None:
+    """[R-26]: câu chào đầu tiên công bố là trợ lý ảo AI, cả inbound lẫn outbound."""
+    bot = create_orchestrator(FakeClinicAPI())
+    openings = [
+        bot.start_call(_outbound("c_greet_out")),
+        bot.start_call(CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84987654321")),
+    ]
+    for opening in openings:
+        assert AI_DISCLOSURE in opening.utterance
+        assert opening.state == "AWAITING_IDENTITY"
+        # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
+        assert opening.utterance.rstrip().endswith("?")
 
 
 def test_reference_call_reschedule() -> None:
