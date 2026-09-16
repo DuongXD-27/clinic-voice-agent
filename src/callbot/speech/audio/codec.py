@@ -45,7 +45,9 @@ def encode_wav(segment: AudioSegment) -> bytes:
 def to_sample_rate(segment: AudioSegment, target_rate: int) -> AudioSegment:
     if segment.sample_rate == target_rate:
         return segment
-    return AudioSegment(pcm=resample(segment.pcm, segment.sample_rate, target_rate), sample_rate=target_rate)
+    return AudioSegment(
+        pcm=resample(segment.pcm, segment.sample_rate, target_rate), sample_rate=target_rate
+    )
 
 
 def downmix_to_mono(pcm: bytes, channels: int) -> bytes:

@@ -19,13 +19,25 @@ class ClinicAPI(Protocol):
     ) -> dict[str, Any]: ...
 
     def cancel_appointment(
-        self, appointment_id: str, cancel_reason: str, version: int, idempotency_key: Optional[str] = None
+        self,
+        appointment_id: str,
+        cancel_reason: str,
+        version: int,
+        idempotency_key: Optional[str] = None,
     ) -> dict[str, Any]: ...
 
     def transfer_appointment(
-        self, appointment_id: str, transfer_reason: str, version: int, idempotency_key: Optional[str] = None
+        self,
+        appointment_id: str,
+        transfer_reason: str,
+        version: int,
+        idempotency_key: Optional[str] = None,
     ) -> dict[str, Any]: ...
 
     def reschedule_appointment(
-        self, appointment_id: str, new_slot_id: str, version: int, idempotency_key: Optional[str] = None
+        self,
+        appointment_id: str,
+        new_slot_id: str,
+        version: int,
+        idempotency_key: Optional[str] = None,
     ) -> dict[str, Any]: ...

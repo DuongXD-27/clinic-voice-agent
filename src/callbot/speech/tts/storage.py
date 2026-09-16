@@ -13,7 +13,9 @@ class AudioArtifactStore:
     TTS thường trả 16–24 kHz; audio được hạ về băng hẹp để nghe giống hệt trên đường dây.
     """
 
-    def __init__(self, audio_dir: str, public_base_url: str, sample_rate: int = NARROWBAND_RATE) -> None:
+    def __init__(
+        self, audio_dir: str, public_base_url: str, sample_rate: int = NARROWBAND_RATE
+    ) -> None:
         self._dir = Path(audio_dir)
         self._base_url = public_base_url.rstrip("/")
         self._sample_rate = sample_rate

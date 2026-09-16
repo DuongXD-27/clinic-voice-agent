@@ -1,4 +1,10 @@
-from callbot.engine.extraction.text import clean, compile_phrases, find_phrase, is_negated, normalize
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_negated,
+    normalize,
+)
 
 
 def test_normalize_unifies_unicode_and_tone_placement() -> None:

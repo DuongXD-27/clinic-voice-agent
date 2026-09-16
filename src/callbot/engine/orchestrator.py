@@ -56,7 +56,10 @@ class CallOrchestrator:
             nlu, action = self._decide(ctx, caller)
         except SevereFailureBlocked as blocked:
             logger.error("Chặn severe failure %s tại %s", blocked.code, call_id)
-            self._trace(ctx, {"event": "severe_failure_blocked", "code": blocked.code, "detail": str(blocked)})
+            self._trace(
+                ctx,
+                {"event": "severe_failure_blocked", "code": blocked.code, "detail": str(blocked)},
+            )
             action = self._dialogue.transfer(ctx, "SYSTEM_ERROR")
         except Exception as exc:
             logger.exception("Lỗi xử lý lượt %s của %s", caller.turn, call_id)
@@ -98,7 +101,9 @@ class CallOrchestrator:
             action = self._execute(ctx, decision)
         return nlu, action
 
-    def _execute(self, ctx: CallContext, decision: PolicyDecision, silence: bool = False) -> BotAction:
+    def _execute(
+        self, ctx: CallContext, decision: PolicyDecision, silence: bool = False
+    ) -> BotAction:
         if decision.kind == "TRANSFER":
             return self._dialogue.transfer(ctx, decision.transfer_reason or "SYSTEM_ERROR")
         if decision.kind == "UNREACHABLE":

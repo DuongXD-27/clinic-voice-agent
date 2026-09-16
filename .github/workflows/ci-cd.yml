@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12" # khớp Dockerfile
           cache: pip
       - run: pip install -e ".[dev,speech]"
-      - run: pytest -q
+      - run: make check
 
   build:
     needs: test

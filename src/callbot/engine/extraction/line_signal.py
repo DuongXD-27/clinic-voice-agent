@@ -16,26 +16,56 @@ from callbot.engine.extraction.text import clean, compile_phrases, find_phrase, 
 
 _VOICEMAIL = compile_phrases(
     [
-        "để lại lời nhắn", "sau tiếng bíp", "sau tiếng tít", "hộp thư thoại", "lời nhắn thoại", "để lại tin nhắn",
+        "để lại lời nhắn",
+        "sau tiếng bíp",
+        "sau tiếng tít",
+        "hộp thư thoại",
+        "lời nhắn thoại",
+        "để lại tin nhắn",
         # clip lời chào có thể là tiếng Anh
-        "leave a message", "leave your message", "after the tone", "after the beep", "voicemail", "voice mail",
+        "leave a message",
+        "leave your message",
+        "after the tone",
+        "after the beep",
+        "voicemail",
+        "voice mail",
         "record your message",
     ]
 )
 # Chỉ tổng đài mới nói những câu này
 _OPERATOR = compile_phrases(
     [
-        "thuê bao", "số máy quý khách vừa gọi", "quý khách vui lòng gọi lại sau", "ngoài vùng phủ sóng",
-        "không có thực", "tạm thời không liên lạc được",
-        "the number you have dialed", "the number you are calling", "the subscriber", "the person you are calling",
-        "cannot be reached", "is not reachable", "does not exist", "line is busy", "please try again later",
+        "thuê bao",
+        "số máy quý khách vừa gọi",
+        "quý khách vui lòng gọi lại sau",
+        "ngoài vùng phủ sóng",
+        "không có thực",
+        "tạm thời không liên lạc được",
+        "the number you have dialed",
+        "the number you are calling",
+        "the subscriber",
+        "the person you are calling",
+        "cannot be reached",
+        "is not reachable",
+        "does not exist",
+        "line is busy",
+        "please try again later",
     ]
 )
-_BUSY = compile_phrases(["bận", "đang bận", "máy bận", "busy"], unaccented_exclude=["bận"])  # "ban" = bạn
+_BUSY = compile_phrases(
+    ["bận", "đang bận", "máy bận", "busy"], unaccented_exclude=["bận"]
+)  # "ban" = bạn
 _NO_ANSWER = compile_phrases(
     [
-        "không liên lạc được", "tạm thời không liên lạc được", "ngoài vùng phủ sóng", "không có thực",
-        "không trả lời", "cannot be reached", "is not reachable", "not available", "does not exist",
+        "không liên lạc được",
+        "tạm thời không liên lạc được",
+        "ngoài vùng phủ sóng",
+        "không có thực",
+        "không trả lời",
+        "cannot be reached",
+        "is not reachable",
+        "not available",
+        "does not exist",
     ]
 )
 

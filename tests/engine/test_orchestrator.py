@@ -4,14 +4,17 @@ from callbot.engine import CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.nlu.normalizer import normalize_name, parse_dob
 from callbot.engine.verification import matches
-
 from tests.engine.fake_clinic import FakeClinicAPI
 
 
 def _run(orchestrator, call_id: str, lines: list[str | None]):
     action = None
     for turn, line in enumerate(lines, start=1):
-        caller = CallerInput(turn=turn, is_silence=True) if line is None else CallerInput(turn=turn, text=line)
+        caller = (
+            CallerInput(turn=turn, is_silence=True)
+            if line is None
+            else CallerInput(turn=turn, text=line)
+        )
         action = orchestrator.handle_turn(call_id, caller)
     return action
 
@@ -39,7 +42,9 @@ def test_opening_discloses_ai_assistant() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     openings = [
         bot.start_call(_outbound("c_greet_out")),
-        bot.start_call(CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84987654321")),
+        bot.start_call(
+            CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84987654321")
+        ),
     ]
     for opening in openings:
         assert AI_DISCLOSURE in opening.utterance
@@ -57,7 +62,13 @@ def test_reference_call_reschedule() -> None:
     action = _run(
         bot,
         "c_resched",
-        ["Nguyễn Văn A.", "Ngày 14 tháng 3 năm 1978.", "Tôi đổi sang buổi chiều được không?", "khung 1", "Được, đổi giúp tôi."],
+        [
+            "Nguyễn Văn A.",
+            "Ngày 14 tháng 3 năm 1978.",
+            "Tôi đổi sang buổi chiều được không?",
+            "khung 1",
+            "Được, đổi giúp tôi.",
+        ],
     )
     assert action.outcome == "RESCHEDULED"
     assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
@@ -88,7 +99,9 @@ def test_clinical_question_transfers() -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_clinical"))
-    action = _run(bot, "c_clinical", ["Nguyễn Văn A", "14/03/1978", "Tôi bị đau ngực có sao không?"])
+    action = _run(
+        bot, "c_clinical", ["Nguyễn Văn A", "14/03/1978", "Tôi bị đau ngực có sao không?"]
+    )
     assert action.transfer_reason == "CLINICAL_QUESTION"
 
 

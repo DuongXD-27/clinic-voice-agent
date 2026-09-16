@@ -4,7 +4,12 @@ Xoá khi nối endpoint vào CallOrchestrator (Bước 1 của docs/core-logic-p
 """
 
 from callbot.engine.dialogue import templates as t
-from callbot.transports.http.schemas import StartCallRequest, StartCallResponse, TurnRequest, TurnResponse
+from callbot.transports.http.schemas import (
+    StartCallRequest,
+    StartCallResponse,
+    TurnRequest,
+    TurnResponse,
+)
 
 _calls: dict[str, dict] = {}
 

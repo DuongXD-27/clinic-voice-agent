@@ -31,10 +31,15 @@ def test_extracts_normalized_name(text: str, expected: str) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "", "alo", "a lô", "ai đấy", "dạ", "vâng ạ",
-        "Hoa",                                # < 2 từ
-        "Nguyễn Văn A 1978",                  # chứa chữ số
-        "anh cần gì",                          # câu nói, không phải tên
+        "",
+        "alo",
+        "a lô",
+        "ai đấy",
+        "dạ",
+        "vâng ạ",
+        "Hoa",  # < 2 từ
+        "Nguyễn Văn A 1978",  # chứa chữ số
+        "anh cần gì",  # câu nói, không phải tên
         "không phải tôi",
         "tôi muốn hỏi về lịch khám của tôi",  # quá dài và có từ chức năng
     ],

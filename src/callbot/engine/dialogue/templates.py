@@ -26,7 +26,9 @@ ASK_ATTENDANCE = "Anh chị có đến khám được theo lịch này không �
 NOT_UNDERSTOOD = "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
 SILENCE = "Alo, anh chị còn nghe máy không ạ?"
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
-KEEP_APPOINTMENT = "Dạ, em giữ nguyên lịch khám cho anh chị ạ. Anh chị cần em hỗ trợ gì thêm không ạ?"
+KEEP_APPOINTMENT = (
+    "Dạ, em giữ nguyên lịch khám cho anh chị ạ. Anh chị cần em hỗ trợ gì thêm không ạ?"
+)
 NO_SLOTS = "Dạ, hiện chưa có khung giờ phù hợp. Em chuyển máy để nhân viên hỗ trợ anh chị ạ."
 TRANSFER = "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ anh chị thêm ạ."
 GOODBYE_UNREACHABLE = "Dạ, em xin phép gọi lại sau ạ. Chào anh chị."
@@ -70,7 +72,9 @@ def attendance_readback(ctx: CallContext, appointment: dict[str, Any]) -> str:
 
 def offer_slots(ctx: CallContext, slots: list[dict[str, Any]]) -> str:
     guardrails.assert_can_disclose(ctx)
-    options = "; ".join(f"khung {i} là {speak_datetime(s['starts_at'])}" for i, s in enumerate(slots, 1))
+    options = "; ".join(
+        f"khung {i} là {speak_datetime(s['starts_at'])}" for i, s in enumerate(slots, 1)
+    )
     return f"Dạ, hiện còn {options}. Anh chị chọn khung nào ạ?"
 
 

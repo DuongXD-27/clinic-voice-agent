@@ -14,7 +14,13 @@ import re
 from typing import Iterable, Optional
 
 from callbot.engine.extraction.schema import Field, Intent, Provenance
-from callbot.engine.extraction.text import clean, compile_phrases, find_phrase, is_unaccented, strip_diacritics
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    strip_diacritics,
+)
 from callbot.engine.types import Direction
 
 PRIORITY: tuple[Intent, ...] = (
@@ -30,59 +36,146 @@ PRIORITY: tuple[Intent, ...] = (
 
 _DIRECTION_ONLY: dict[Intent, Direction] = {Intent.CONFIRM: "outbound", Intent.BOOK: "inbound"}
 # Nhãn hành động: cụm phủ định đứng trước làm mất nhãn
-_NEGATABLE = frozenset({Intent.REQUEST_HUMAN, Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
+_NEGATABLE = frozenset(
+    {Intent.REQUEST_HUMAN, Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM}
+)
 
 _KEYWORDS: dict[Intent, list[str]] = {
     Intent.REQUEST_HUMAN: [
-        "nhân viên", "gặp nhân viên", "gặp người", "người thật", "tổng đài viên", "chuyển máy", "gặp tư vấn viên",
-        "nói chuyện với người", "gặp lễ tân", "gặp người trực",
+        "nhân viên",
+        "gặp nhân viên",
+        "gặp người",
+        "người thật",
+        "tổng đài viên",
+        "chuyển máy",
+        "gặp tư vấn viên",
+        "nói chuyện với người",
+        "gặp lễ tân",
+        "gặp người trực",
     ],
     Intent.NOT_PATIENT: [
-        "đi vắng", "không có nhà", "không ở nhà", "nhầm số", "gọi nhầm", "người nhà bệnh nhân",
+        "đi vắng",
+        "không có nhà",
+        "không ở nhà",
+        "nhầm số",
+        "gọi nhầm",
+        "người nhà bệnh nhân",
     ],
     Intent.OUT_OF_SCOPE: [
-        "bảo hiểm", "thanh toán", "hóa đơn", "viện phí", "hoàn tiền", "chuyển tuyến", "chuyển viện",
-        "giấy chuyển", "đơn thuốc", "kê đơn", "kết quả xét nghiệm", "trả kết quả",
+        "bảo hiểm",
+        "thanh toán",
+        "hóa đơn",
+        "viện phí",
+        "hoàn tiền",
+        "chuyển tuyến",
+        "chuyển viện",
+        "giấy chuyển",
+        "đơn thuốc",
+        "kê đơn",
+        "kết quả xét nghiệm",
+        "trả kết quả",
     ],
     Intent.RESCHEDULE: [
-        "đổi lịch", "đổi sang", "đổi qua", "đổi giờ", "đổi ngày", "đổi hôm", "dời lịch", "dời sang", "dời qua",
-        "dời", "lùi lịch", "lùi sang", "hoãn sang", "chuyển sang", "chuyển lịch", "đặt lại lịch", "hẹn lại",
-        "lịch khác", "khung khác", "giờ khác", "hôm khác", "ngày khác", "đổi lại",
+        "đổi lịch",
+        "đổi sang",
+        "đổi qua",
+        "đổi giờ",
+        "đổi ngày",
+        "đổi hôm",
+        "dời lịch",
+        "dời sang",
+        "dời qua",
+        "dời",
+        "lùi lịch",
+        "lùi sang",
+        "hoãn sang",
+        "chuyển sang",
+        "chuyển lịch",
+        "đặt lại lịch",
+        "hẹn lại",
+        "lịch khác",
+        "khung khác",
+        "giờ khác",
+        "hôm khác",
+        "ngày khác",
+        "đổi lại",
     ],
     Intent.CANCEL: [
-        "hủy", "không đi được", "không đến được", "đến không được", "đi không được", "không khám nữa",
-        "không đi khám được", "bỏ lịch", "không đi nữa", "không đến nữa", "sẽ không đến", "sẽ không đi",
+        "hủy",
+        "không đi được",
+        "không đến được",
+        "đến không được",
+        "đi không được",
+        "không khám nữa",
+        "không đi khám được",
+        "bỏ lịch",
+        "không đi nữa",
+        "không đến nữa",
+        "sẽ không đến",
+        "sẽ không đi",
         "không cần khám nữa",
     ],
     Intent.BOOK: [
-        "đặt lịch", "đặt hẹn", "đăng ký khám", "muốn khám", "hẹn khám", "lấy lịch", "đặt khám",
+        "đặt lịch",
+        "đặt hẹn",
+        "đăng ký khám",
+        "muốn khám",
+        "hẹn khám",
+        "lấy lịch",
+        "đặt khám",
     ],
     Intent.CONFIRM: [
-        "sẽ đến", "sẽ đi", "tôi đến", "đến được", "đi được", "có đến", "có đi", "vẫn đến", "vẫn đi",
-        "giữ lịch", "giữ nguyên lịch", "vẫn giữ lịch", "đúng lịch", "xác nhận",
+        "sẽ đến",
+        "sẽ đi",
+        "tôi đến",
+        "đến được",
+        "đi được",
+        "có đến",
+        "có đi",
+        "vẫn đến",
+        "vẫn đi",
+        "giữ lịch",
+        "giữ nguyên lịch",
+        "vẫn giữ lịch",
+        "đúng lịch",
+        "xác nhận",
     ],
     Intent.REPEAT_REQUEST: [
-        "gì cơ", "sao cơ", "nói lại", "nhắc lại", "lặp lại", "nghe không rõ", "không nghe rõ",
-        "chưa nghe rõ", "nghe chưa rõ", "nói chậm", "nghe không kịp",
+        "gì cơ",
+        "sao cơ",
+        "nói lại",
+        "nhắc lại",
+        "lặp lại",
+        "nghe không rõ",
+        "không nghe rõ",
+        "chưa nghe rõ",
+        "nghe chưa rõ",
+        "nói chậm",
+        "nghe không kịp",
     ],
 }
 _UNACCENTED_EXCLUDE: dict[Intent, list[str]] = {
-    Intent.RESCHEDULE: ["dời", "đổi lại"],   # "doi" = đợi / đói / đội; "doi lai" = đợi lại
+    Intent.RESCHEDULE: ["dời", "đổi lại"],  # "doi" = đợi / đói / đội; "doi lai" = đợi lại
     Intent.CONFIRM: ["tôi đến", "đúng lịch"],  # "toi den" = tối đến; "dung lich" = dùng lịch
 }
 _COMPILED = {
-    intent: compile_phrases(words, _UNACCENTED_EXCLUDE.get(intent, ())) for intent, words in _KEYWORDS.items()
+    intent: compile_phrases(words, _UNACCENTED_EXCLUDE.get(intent, ()))
+    for intent, words in _KEYWORDS.items()
 }
 
 # "tôi là vợ anh ấy", "em là con của bà ấy", "anh ấy đi làm rồi"
-_RELATIVE = r"(?:vợ|chồng|con|con trai|con gái|mẹ|bố|cha|ba|má|anh|chị|em|cháu|người nhà|bạn|hàng xóm)"
+_RELATIVE = (
+    r"(?:vợ|chồng|con|con trai|con gái|mẹ|bố|cha|ba|má|anh|chị|em|cháu|người nhà|bạn|hàng xóm)"
+)
 _THIRD_PERSON = r"(?:anh|chị|ông|bà|cô|chú|bác|em|cháu|bạn) ấy"
 _NOT_PATIENT_SOURCES = [
     rf"(?<!\w)(?:tôi|em|mình|con|cháu) là {_RELATIVE}(?: của)? (?:{_THIRD_PERSON}|bệnh nhân|người đó)(?!\w)",
     rf"(?<!\w){_THIRD_PERSON} (?:đi làm|ra ngoài|không nghe máy|đang bận|không có ở đây|đi công tác)(?!\w)",
 ]
 _NOT_PATIENT_PATTERNS = [re.compile(source) for source in _NOT_PATIENT_SOURCES]
-_NOT_PATIENT_PATTERNS_UNACCENTED = [re.compile(strip_diacritics(source)) for source in _NOT_PATIENT_SOURCES]
+_NOT_PATIENT_PATTERNS_UNACCENTED = [
+    re.compile(strip_diacritics(source)) for source in _NOT_PATIENT_SOURCES
+]
 # Chỉ tính là xin nhắc lại khi cả câu chỉ có vậy: "hả?", "gì?", "cái gì?"
 # Không có "alo": "alo" là chưa hiểu (tính §1.1.5), không phải xin nhắc lại.
 _REPEAT_WHOLE_UTTERANCE = frozenset({"hả", "gì", "cái gì", "sao", "gì ạ", "sao ạ", "hả em"})
@@ -120,5 +213,7 @@ def _match(intent: Intent, text: str, unaccented: bool) -> Optional[str]:
     whole = _REPEAT_WHOLE_UTTERANCE_UNACCENTED if unaccented else _REPEAT_WHOLE_UTTERANCE
     if intent is Intent.REPEAT_REQUEST and text in whole:
         return text
-    found = find_phrase(text, _COMPILED[intent], allow_negated=intent not in _NEGATABLE, unaccented=unaccented)
+    found = find_phrase(
+        text, _COMPILED[intent], allow_negated=intent not in _NEGATABLE, unaccented=unaccented
+    )
     return found.group(0) if found else None

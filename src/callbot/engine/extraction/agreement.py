@@ -31,12 +31,36 @@ from callbot.engine.extraction.text import (
     strip_diacritics,
 )
 
-_AGREE_IDIOMS = compile_phrases(["không sao", "không vấn đề gì", "không có gì", "không sao đâu", "không vấn đề"])
+_AGREE_IDIOMS = compile_phrases(
+    ["không sao", "không vấn đề gì", "không có gì", "không sao đâu", "không vấn đề"]
+)
 _REFUSE = compile_phrases(
     [
-        "không", "thôi", "để sau", "chưa", "không hủy", "không hủy nữa", "đừng hủy", "giữ lịch", "giữ nguyên",
-        "không đồng ý", "sai", "sai rồi", "không phải", "không được", "không đúng", "đừng", "khoan", "từ từ",
-        "để tôi nghĩ", "suy nghĩ lại", "không muốn", "nhầm", "chưa được", "để khi khác", "thôi khỏi",
+        "không",
+        "thôi",
+        "để sau",
+        "chưa",
+        "không hủy",
+        "không hủy nữa",
+        "đừng hủy",
+        "giữ lịch",
+        "giữ nguyên",
+        "không đồng ý",
+        "sai",
+        "sai rồi",
+        "không phải",
+        "không được",
+        "không đúng",
+        "đừng",
+        "khoan",
+        "từ từ",
+        "để tôi nghĩ",
+        "suy nghĩ lại",
+        "không muốn",
+        "nhầm",
+        "chưa được",
+        "để khi khác",
+        "thôi khỏi",
     ],
     unaccented_exclude=["đừng hủy", "đừng", "không đúng"],  # "dung" mơ hồ -> luật riêng bên dưới
 )
@@ -46,8 +70,23 @@ _POLITE = compile_phrases(
 )
 _AFFIRM = compile_phrases(
     [
-        "có", "được", "đúng", "đúng rồi", "đúng vậy", "chính xác", "đồng ý", "ok", "oke", "okay", "ô kê",
-        "chuẩn", "phải", "chắc chắn", "chắc chắn rồi", "tất nhiên", "được rồi",
+        "có",
+        "được",
+        "đúng",
+        "đúng rồi",
+        "đúng vậy",
+        "chính xác",
+        "đồng ý",
+        "ok",
+        "oke",
+        "okay",
+        "ô kê",
+        "chuẩn",
+        "phải",
+        "chắc chắn",
+        "chắc chắn rồi",
+        "tất nhiên",
+        "được rồi",
     ],
     unaccented_exclude=["có", "đúng"],  # "co" = cô/cỏ/cơ; "dung" = đừng/dùng
 )
@@ -56,8 +95,12 @@ _SLOT_ACTION = compile_phrases(
     unaccented_exclude=["đổi đi"],  # "doi di" = đợi đi
 )
 _CANCEL_VERB = compile_phrases(["hủy"])
-_CONTRAST = compile_phrases(["nhưng", "nhưng mà", "có điều", "tuy nhiên", "mà khoan"], unaccented_exclude=["nhưng"])
-_QUESTION_WORDS = compile_phrases(["gì", "bao giờ", "mấy giờ", "thế nào", "sao", "bao nhiêu", "ở đâu", "ai"])
+_CONTRAST = compile_phrases(
+    ["nhưng", "nhưng mà", "có điều", "tuy nhiên", "mà khoan"], unaccented_exclude=["nhưng"]
+)
+_QUESTION_WORDS = compile_phrases(
+    ["gì", "bao giờ", "mấy giờ", "thế nào", "sao", "bao nhiêu", "ở đâu", "ai"]
+)
 
 # Không có "chứ": "được chứ" là khẳng định, không phải hỏi lại
 _TAG_FINALS = frozenset({"không", "chưa", "à", "hả", "nhỉ"})
@@ -76,9 +119,13 @@ class _WordSets:
     refuse: frozenset[str]
 
     def unaccented(self) -> "_WordSets":
-        stripped = _WordSets(*(frozenset(strip_diacritics(w) for w in words) for words in vars(self).values()))
+        stripped = _WordSets(
+            *(frozenset(strip_diacritics(w) for w in words) for words in vars(self).values())
+        )
         # "a" cuối câu là "ạ" (lễ phép) hoặc "à" (hỏi lại): "huy a" = "hủy ạ" hay "hủy à?" -> coi là câu hỏi
-        return _WordSets(stripped.tag_finals, stripped.trailing - {"a"}, stripped.polite, stripped.refuse)
+        return _WordSets(
+            stripped.tag_finals, stripped.trailing - {"a"}, stripped.polite, stripped.refuse
+        )
 
 
 _ACCENTED_WORDS = _WordSets(_TAG_FINALS, _TRAILING_PARTICLES, _POLITE_WORDS, _REFUSE_WORDS)
@@ -109,7 +156,9 @@ def extract_agreement(transcript: str, question_id: QuestionId) -> Field[Agreeme
     if unaccented and _has_ambiguous_dung(text):
         return Field(Agreement.UNCLEAR, matched, span="dung")
     idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
-    question = find_phrase(remove_spans(text, [idiom] if idiom else []), _QUESTION_WORDS, unaccented=unaccented)
+    question = find_phrase(
+        remove_spans(text, [idiom] if idiom else []), _QUESTION_WORDS, unaccented=unaccented
+    )
     if question is not None:
         return Field(Agreement.UNCLEAR, matched, span=question.group(0))
     contrast = find_phrase(text, _CONTRAST, unaccented=unaccented)
@@ -140,7 +189,9 @@ def _find_cues(text: str, unaccented: bool) -> _Cues:
     rest_positive = remove_spans(rest, [refuse] if refuse else [])
 
     def positive(phrases: PhraseSet, allow_negated: bool = False) -> Optional[str]:
-        return _group(find_phrase(rest_positive, phrases, allow_negated=allow_negated, unaccented=unaccented))
+        return _group(
+            find_phrase(rest_positive, phrases, allow_negated=allow_negated, unaccented=unaccented)
+        )
 
     return _Cues(
         refuse=_group(refuse),

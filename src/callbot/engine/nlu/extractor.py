@@ -42,7 +42,7 @@ def _extract_name_answer(text: str) -> Optional[str]:
     name = normalize_text(text).strip(" .,!?")
     for prefix in _FILLERS:
         if name.startswith(prefix):
-            name = name[len(prefix):].strip(" .,")
+            name = name[len(prefix) :].strip(" .,")
     if not name or name in _GREETINGS or any(c.isdigit() for c in name):
         return None
     if len(name.split()) < 2:

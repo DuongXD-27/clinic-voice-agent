@@ -59,19 +59,25 @@ _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_RE
 _CONSISTENT_INTENTS: dict[QuestionId, frozenset[Intent]] = {
     QuestionId.ASK_ATTENDANCE: frozenset({Intent.NONE, Intent.CONFIRM}),
     QuestionId.CONFIRM_READBACK: frozenset({Intent.NONE, Intent.CONFIRM}),
-    QuestionId.SLOT_READBACK: frozenset({Intent.NONE, Intent.RESCHEDULE, Intent.BOOK, Intent.CONFIRM}),
+    QuestionId.SLOT_READBACK: frozenset(
+        {Intent.NONE, Intent.RESCHEDULE, Intent.BOOK, Intent.CONFIRM}
+    ),
     QuestionId.CANCEL_RECONFIRM: frozenset({Intent.NONE, Intent.CANCEL}),
 }
 _CANCEL_QUESTIONS = frozenset({QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_CANCEL_REASON})
 
 
 class InformationExtractor:
-    def __init__(self, fallback: Optional[FallbackExtractor] = None, name_fallback: bool = False) -> None:
+    def __init__(
+        self, fallback: Optional[FallbackExtractor] = None, name_fallback: bool = False
+    ) -> None:
         self._fallback = fallback
         # NER cho tên chỉ bật từ tuần 3 (thiết kế §8); intent/agreement dùng tuyến sau khi có `fallback`.
         self._name_fallback = name_fallback
 
-    def extract(self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0) -> ExtractionResult:
+    def extract(
+        self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
+    ) -> ExtractionResult:
         """`silence_ms` lấy nguyên từ lượt harness (Listing 2).
 
         Im lặng xác định bằng `silence_ms > 0` (Phụ lục A), không bằng transcript rỗng: người gọi có nói
@@ -87,18 +93,29 @@ class InformationExtractor:
         if ctx.direction == "outbound" and (question is None or question in IDENTITY_QUESTIONS):
             line_signal = extract_line_signal(transcript)
             if line_signal.value is not LineSignal.NONE:
-                return ExtractionResult.only(ctx.turn, question, transcript, line_signal=line_signal)
+                return ExtractionResult.only(
+                    ctx.turn, question, transcript, line_signal=line_signal
+                )
 
         clinical = extract_clinical(transcript)
         intent = self._intent(ctx, transcript)
 
         full_name: Field[str] = skipped
-        if question is QuestionId.ASK_NAME and intent.value is Intent.NONE and clinical.value not in _TRANSFER_CLINICAL:
+        if (
+            question is QuestionId.ASK_NAME
+            and intent.value is Intent.NONE
+            and clinical.value not in _TRANSFER_CLINICAL
+        ):
             full_name = self._full_name(transcript)
 
         dob = extract_dob(transcript, ctx.today) if question is QuestionId.ASK_DOB else skipped
 
-        if question in IDENTITY_QUESTIONS and intent.value is Intent.NONE and not full_name.found and dob.value is None:
+        if (
+            question in IDENTITY_QUESTIONS
+            and intent.value is Intent.NONE
+            and not full_name.found
+            and dob.value is None
+        ):
             out_of_scope = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
             if out_of_scope.found:
                 intent = out_of_scope
@@ -109,7 +126,9 @@ class InformationExtractor:
 
         slot_choice = skipped
         if question is QuestionId.OFFER_SLOTS:
-            slot_choice = extract_slot_choice(transcript, ctx.slots, ctx.presented_slot_ids, ctx.now)
+            slot_choice = extract_slot_choice(
+                transcript, ctx.slots, ctx.presented_slot_ids, ctx.now
+            )
 
         cancel_reason = skipped
         if question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
@@ -138,7 +157,9 @@ class InformationExtractor:
         if result.found or identity_step or self._fallback is None:
             return result
         allowed_here = frozenset(i for i in allowed if allowed_in_direction(i, ctx.direction))
-        guarded = guard_fallback(self._fallback.intent(transcript, allowed_here), transcript, Intent.NONE)
+        guarded = guard_fallback(
+            self._fallback.intent(transcript, allowed_here), transcript, Intent.NONE
+        )
         if guarded.found and guarded.value not in allowed_here:
             return Field.nothing(Intent.NONE)
         return guarded
@@ -154,18 +175,26 @@ class InformationExtractor:
         return guarded
 
     def _agreement(
-        self, question: QuestionId, transcript: str, intent: Field[Intent], clinical: Field[ClinicalLevel]
+        self,
+        question: QuestionId,
+        transcript: str,
+        intent: Field[Intent],
+        clinical: Field[ClinicalLevel],
     ) -> Field[Agreement]:
         result = extract_agreement(transcript, question)
         if not result.found and self._fallback is not None:
             # Tuyến sau chỉ xét câu nói vòng không có tín hiệu nào ("hôm đó tôi bận mất rồi").
-            result = guard_fallback(self._fallback.agreement(transcript, question), transcript, Agreement.UNCLEAR)
+            result = guard_fallback(
+                self._fallback.agreement(transcript, question), transcript, Agreement.UNCLEAR
+            )
             if question is QuestionId.CANCEL_RECONFIRM and result.value is Agreement.AGREE:
                 # SF-05: hủy lịch cần động từ hủy tường minh — luật đã không thấy thì mô hình không được mở khóa
                 result = Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=result.span)
 
-        contradicted = intent.value not in _CONSISTENT_INTENTS[question] or clinical.value in _TRANSFER_CLINICAL
+        contradicted = (
+            intent.value not in _CONSISTENT_INTENTS[question]
+            or clinical.value in _TRANSFER_CLINICAL
+        )
         if result.value is Agreement.AGREE and contradicted:
             return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
         return result
-

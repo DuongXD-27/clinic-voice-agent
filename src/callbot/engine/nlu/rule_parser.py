@@ -9,12 +9,18 @@ from callbot.engine.nlu.schema import Entities, Intent, NLUResult
 # Thứ tự quan trọng: nhóm an toàn (clinical, human) được ưu tiên trước nghiệp vụ.
 # TODO: mở rộng từ khoá từ trace thật; đo precision/recall trên test set của team.
 _INTENT_KEYWORDS: list[tuple[Intent, tuple[str, ...]]] = [
-    (Intent.CLINICAL_QUESTION, ("đau", "sốt", "thuốc", "triệu chứng", "khó thở", "chảy máu", "uống")),
+    (
+        Intent.CLINICAL_QUESTION,
+        ("đau", "sốt", "thuốc", "triệu chứng", "khó thở", "chảy máu", "uống"),
+    ),
     (Intent.REQUEST_HUMAN, ("nhân viên", "gặp người", "chuyển máy", "tổng đài viên")),
     (Intent.ABUSIVE, ("đồ ngu", "im đi", "cút")),
     (Intent.OUT_OF_SCOPE, ("bảo hiểm", "thanh toán", "hóa đơn", "chuyển tuyến", "đơn thuốc")),
     # Phủ định phải đứng trước CANCEL/RESCHEDULE: "không hủy" không phải là hủy (SF-05)
-    (Intent.DENY, ("không hủy", "không huỷ", "đừng hủy", "đừng huỷ", "không đổi", "giữ nguyên", "giữ lịch")),
+    (
+        Intent.DENY,
+        ("không hủy", "không huỷ", "đừng hủy", "đừng huỷ", "không đổi", "giữ nguyên", "giữ lịch"),
+    ),
     (Intent.RESCHEDULE, ("đổi lịch", "đổi sang", "dời", "lùi lịch", "đổi giờ", "đổi ngày")),
     (Intent.CANCEL, ("hủy", "huỷ", "không đi được", "không đến được", "không khám nữa")),
     (Intent.BOOK, ("đặt lịch", "đăng ký khám", "muốn khám", "hẹn khám")),
