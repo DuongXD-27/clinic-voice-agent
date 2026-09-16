@@ -1,0 +1,119 @@
+name: CI/CD
+
+# PR / push mọi nhánh: chạy test.
+# Push lên main (hoặc chạy tay): test → build image lên GHCR → deploy lên EC2.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # khớp Dockerfile
+          cache: pip
+      - run: pip install -e ".[dev,speech]"
+      - run: pytest -q
+
+  build:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # Secrets / variables đặt ở cấp repo (Settings → Secrets and variables → Actions)
+    # Không cho 2 lần deploy chồng nhau; lần mới chờ lần cũ xong
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      REMOTE_DIR: /opt/callbot
+      SSH_TARGET: ${{ vars.EC2_USER || 'ubuntu' }}@${{ secrets.EC2_HOST }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cấu hình SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Tạo .env cho server
+        env:
+          BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
+          CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
+          CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          : "${BOT_DOMAIN:?Thiếu variable BOT_DOMAIN}"
+          : "${CLINIC_MOCK_API_KEY:?Thiếu secret CLINIC_MOCK_API_KEY}"
+          umask 077
+          {
+            echo "IMAGE=$IMAGE:$GITHUB_SHA"
+            echo "BOT_DOMAIN=$BOT_DOMAIN"
+            echo "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
+            echo "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
+            echo "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+            echo "GEMINI_API_KEY=$GEMINI_API_KEY"
+          } > deploy.env
+
+      - name: Deploy
+        run: |
+          ssh "$SSH_TARGET" "mkdir -p $REMOTE_DIR"
+          scp docker-compose.prod.yml "$SSH_TARGET:$REMOTE_DIR/docker-compose.yml"
+          scp deploy.env "$SSH_TARGET:$REMOTE_DIR/.env"
+          echo "${{ secrets.GITHUB_TOKEN }}" | ssh "$SSH_TARGET" \
+            "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+          ssh "$SSH_TARGET" "cd $REMOTE_DIR \
+            && docker compose pull \
+            && docker compose up -d --remove-orphans \
+            && docker logout ghcr.io \
+            && docker image prune -f"
+
+      - name: Smoke test
+        env:
+          BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS "https://$BOT_DOMAIN/health" && break
+            sleep 5
+          done
+          curl -fsS -X POST "https://$BOT_DOMAIN/v1/calls" \
+            -H "Content-Type: application/json" \
+            -d '{"call_id":"ci_smoke","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'

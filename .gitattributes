@@ -1,0 +1,7 @@
+# Chạy trên Linux (EC2 / Docker) — giữ LF kể cả khi checkout trên Windows với core.autocrlf=true
+*.sh text eol=lf
+*.yml text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+Caddyfile text eol=lf
+.env.example text eol=lf

@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 CallState = Literal[
     "AWAITING_IDENTITY",
@@ -44,7 +44,7 @@ class TurnRequest(BaseModel):
     turn: int
     audio_url: Optional[str] = None
     text: Optional[str] = None
-    silence_ms: int = 0
+    silence_ms: int = Field(default=0, ge=0)
 
 
 class TurnResponse(BaseModel):
