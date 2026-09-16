@@ -25,10 +25,17 @@ class FakeClinicAPI:
             {"slot_id": "slot_aa01", "starts_at": "2026-10-14T10:00:00+07:00"},
             {"slot_id": "slot_91d2", "starts_at": "2026-10-14T14:30:00+07:00"},
         ]
+        # Test-only lookup fixture mirroring the patient attached to apt_00417.
+        # Keeping one source record avoids inventing a second patient model.
+        self.patients_by_phone: dict[str, list[dict[str, Any]]] = {
+            "0912345600": [dict(self.appointments["apt_00417"]["patient"])]
+        }
+        self.patient_lookups: list[str] = []
         self.writes: list[tuple[str, str, dict[str, Any]]] = []
 
     def find_patient_by_phone(self, phone: str) -> dict[str, Any]:
-        return {"patients": []}
+        self.patient_lookups.append(phone)
+        return {"patients": [dict(patient) for patient in self.patients_by_phone.get(phone, [])]}
 
     def get_slots(self, clinic_id: str, from_: str, to: str) -> dict[str, Any]:
         return {"slots": list(self.slots)}
