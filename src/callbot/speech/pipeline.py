@@ -10,7 +10,9 @@ from callbot.speech.vad.streaming import StreamingVAD, split_frames
 
 
 class STTPipeline:
-    def __init__(self, asr: ASRProvider, vad: StreamingVAD, sample_rate: int = NARROWBAND_RATE) -> None:
+    def __init__(
+        self, asr: ASRProvider, vad: StreamingVAD, sample_rate: int = NARROWBAND_RATE
+    ) -> None:
         self._asr = asr
         self._vad = vad
         self._sample_rate = sample_rate

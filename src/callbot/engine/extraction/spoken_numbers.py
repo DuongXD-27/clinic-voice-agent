@@ -7,14 +7,20 @@ Chỉ phục vụ ngày sinh và giờ slot. Đầu vào là danh sách token đ
 from typing import Optional, Sequence
 
 DIGIT_WORDS: dict[str, int] = {
-    "không": 0, "linh": 0,
-    "một": 1, "mốt": 1,
+    "không": 0,
+    "linh": 0,
+    "một": 1,
+    "mốt": 1,
     "hai": 2,
     "ba": 3,
-    "bốn": 4, "tư": 4,
-    "năm": 5, "lăm": 5, "nhăm": 5,
+    "bốn": 4,
+    "tư": 4,
+    "năm": 5,
+    "lăm": 5,
+    "nhăm": 5,
     "sáu": 6,
-    "bảy": 7, "bẩy": 7,
+    "bảy": 7,
+    "bẩy": 7,
     "tám": 8,
     "chín": 9,
 }
@@ -30,13 +36,26 @@ NUMBER_WORDS = frozenset(DIGIT_WORDS) | _TENS_WORDS | _ZERO_TENS | {_HUNDRED} | 
 # Transcript không dấu. "muoi", "mot" cần ngữ cảnh; "sau" (sáu/sau), "tu" (tư/từ), "lam" (lăm/làm)
 # trùng từ thường nên chỉ bên gọi (ngày sinh, giờ slot) mới quyết định có khôi phục hay không.
 _UNACCENTED_NUMBER_WORDS = {
-    "khong": "không", "hai": "hai", "ba": "ba", "bon": "bốn", "nam": "năm", "bay": "bảy", "tam": "tám",
-    "chin": "chín", "linh": "linh", "le": "lẻ", "tram": "trăm", "nghin": "nghìn", "ngan": "ngàn",
+    "khong": "không",
+    "hai": "hai",
+    "ba": "ba",
+    "bon": "bốn",
+    "nam": "năm",
+    "bay": "bảy",
+    "tam": "tám",
+    "chin": "chín",
+    "linh": "linh",
+    "le": "lẻ",
+    "tram": "trăm",
+    "nghin": "nghìn",
+    "ngan": "ngàn",
 }
 _UNITS_BEFORE_TENS = frozenset({"hai", "ba", "bốn", "tư", "năm", "sáu", "bảy", "tám", "chín"})
 
 
-def restore_number_words(tokens: Sequence[str], extra: Optional[dict[str, str]] = None) -> list[str]:
+def restore_number_words(
+    tokens: Sequence[str], extra: Optional[dict[str, str]] = None
+) -> list[str]:
     """Khôi phục dấu cho từ số trong transcript không dấu: "hai muoi mot" -> "hai mươi mốt".
 
     `extra`: bảng từ riêng của bên gọi, áp dụng trước bảng số.
@@ -84,7 +103,9 @@ def parse_number(tokens: Sequence[str]) -> Optional[int]:
         return int("".join(tokens))
     if any(t.isdigit() for t in tokens):
         return None
-    if not any(t in _TENS_WORDS or t in _ZERO_TENS or t == _HUNDRED or t in _THOUSAND for t in tokens):
+    if not any(
+        t in _TENS_WORDS or t in _ZERO_TENS or t == _HUNDRED or t in _THOUSAND for t in tokens
+    ):
         # Toàn chữ số đơn: đọc rời ("một chín bảy tám") hoặc nói tắt ("hai mốt" = 21)
         if len(tokens) > 1 and tokens[0] in _TRAILING_ONLY:
             return None
@@ -98,7 +119,11 @@ def _parse_structured(tokens: list[str]) -> Optional[int]:
     if thousand_at is not None:
         head = tokens[:thousand_at]
         high = _below_thousand(head) if head else 1
-        low = _below_thousand(tokens[thousand_at + 1:], after_scale=True) if tokens[thousand_at + 1:] else 0
+        low = (
+            _below_thousand(tokens[thousand_at + 1 :], after_scale=True)
+            if tokens[thousand_at + 1 :]
+            else 0
+        )
         if high is None or low is None or high == 0:
             return None
         return high * 1000 + low

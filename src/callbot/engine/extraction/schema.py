@@ -22,10 +22,10 @@ VN_TZ = timezone(timedelta(hours=7))
 
 
 class Provenance(str, Enum):
-    EXACT = "EXACT"            # luật khớp nguyên văn
+    EXACT = "EXACT"  # luật khớp nguyên văn
     NORMALIZED = "NORMALIZED"  # khớp sau chuẩn hoá (Unicode, tiền tố lễ phép, số đọc)
-    FALLBACK = "FALLBACK"      # NER / LLM tuyến sau — bắt buộc có span
-    NONE = "NONE"              # không trích được
+    FALLBACK = "FALLBACK"  # NER / LLM tuyến sau — bắt buộc có span
+    NONE = "NONE"  # không trích được
 
 
 class QuestionId(str, Enum):
@@ -39,7 +39,7 @@ class QuestionId(str, Enum):
     ASK_ATTENDANCE = "ASK_ATTENDANCE"
     CONFIRM_READBACK = "CONFIRM_READBACK"  # §1.1.3
     OFFER_SLOTS = "OFFER_SLOTS"
-    SLOT_READBACK = "SLOT_READBACK"        # §1.1.6, §1.1.10
+    SLOT_READBACK = "SLOT_READBACK"  # §1.1.6, §1.1.10
     CANCEL_RECONFIRM = "CANCEL_RECONFIRM"  # §1.1.4
     ASK_CANCEL_REASON = "ASK_CANCEL_REASON"
 
@@ -56,15 +56,15 @@ CONFIRMATION_QUESTIONS = frozenset(
 
 
 class Intent(str, Enum):
-    CONFIRM = "CONFIRM"                # chỉ outbound
+    CONFIRM = "CONFIRM"  # chỉ outbound
     CANCEL = "CANCEL"
     RESCHEDULE = "RESCHEDULE"
-    BOOK = "BOOK"                      # chỉ inbound
+    BOOK = "BOOK"  # chỉ inbound
     REQUEST_HUMAN = "REQUEST_HUMAN"
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     REPEAT_REQUEST = "REPEAT_REQUEST"  # không tính vào §1.1.5
     NOT_PATIENT = "NOT_PATIENT"
-    NONE = "NONE"                      # tính vào §1.1.5
+    NONE = "NONE"  # tính vào §1.1.5
 
 
 class ClinicalLevel(str, Enum):
@@ -84,9 +84,9 @@ class LineSignal(str, Enum):
     """Trùng tên với `unreachable_reason` ở Phụ lục A (rev 1.1). `SILENCE` không có ở đây:
     im lặng đến từ `silence_ms` của harness, không phải từ lời nói (xem `ExtractionResult.silent`)."""
 
-    VOICEMAIL = "VOICEMAIL"   # lời chào hộp thư thoại
-    LINE_BUSY = "LINE_BUSY"   # thông báo tổng đài: thuê bao đang bận
-    NO_ANSWER = "NO_ANSWER"   # thông báo tổng đài: không liên lạc được, ngoài vùng phủ sóng, số không có thực
+    VOICEMAIL = "VOICEMAIL"  # lời chào hộp thư thoại
+    LINE_BUSY = "LINE_BUSY"  # thông báo tổng đài: thuê bao đang bận
+    NO_ANSWER = "NO_ANSWER"  # thông báo tổng đài: không liên lạc được, ngoài vùng phủ sóng, số không có thực
     NONE = "NONE"
 
 
@@ -98,14 +98,14 @@ DayPeriod = Literal["MORNING", "NOON", "AFTERNOON", "EVENING"]
 class SlotCriteria:
     """Tiêu chí lọc rút ra từ lời người gọi. Không bao giờ dựng thành mốc thời gian mới (SF-02)."""
 
-    ordinal: Optional[int] = None          # 1-based trên danh sách đã đọc; -1 = "cuối"
+    ordinal: Optional[int] = None  # 1-based trên danh sách đã đọc; -1 = "cuối"
     hours: Optional[frozenset[int]] = None  # giờ 24h ứng viên: "hai giờ rưỡi" -> {2, 14}
     minute: Optional[int] = None
     period: Optional[DayPeriod] = None
-    weekday: Optional[int] = None          # 0 = thứ hai
+    weekday: Optional[int] = None  # 0 = thứ hai
     day: Optional[int] = None
     month: Optional[int] = None
-    date_from: Optional[date] = None       # khoảng ngày, bao gồm hai đầu
+    date_from: Optional[date] = None  # khoảng ngày, bao gồm hai đầu
     date_to: Optional[date] = None
 
     @property
@@ -128,7 +128,9 @@ class SlotChoice:
 class Field(Generic[T]):
     value: Optional[T]
     provenance: Provenance
-    span: Optional[str] = None  # đoạn transcript (đã chuẩn hoá) sinh ra giá trị — bắt buộc với FALLBACK
+    span: Optional[str] = (
+        None  # đoạn transcript (đã chuẩn hoá) sinh ra giá trị — bắt buộc với FALLBACK
+    )
 
     @classmethod
     def skipped(cls) -> "Field[Any]":
@@ -157,9 +159,9 @@ class TurnContext:
     turn: int
     question_id: Optional[QuestionId]
     direction: Direction
-    now: datetime                      # thời điểm cuộc gọi, có múi giờ; dùng cho năm 2 chữ số và ngày tương đối
-    slots: tuple[dict[str, Any], ...] = ()          # toàn bộ GET /slots của cuộc gọi
-    presented_slot_ids: tuple[str, ...] = ()        # thứ tự bot đã đọc, cho "khung thứ hai"
+    now: datetime  # thời điểm cuộc gọi, có múi giờ; dùng cho năm 2 chữ số và ngày tương đối
+    slots: tuple[dict[str, Any], ...] = ()  # toàn bộ GET /slots của cuộc gọi
+    presented_slot_ids: tuple[str, ...] = ()  # thứ tự bot đã đọc, cho "khung thứ hai"
 
     @property
     def today(self) -> date:
@@ -196,13 +198,32 @@ class ExtractionResult:
         """Kết quả mà mọi trường đều skipped, trừ `line_signal` nếu có."""
         skipped = Field.skipped()
         return cls(
-            turn, question_id, transcript, skipped, skipped, skipped, skipped, skipped, skipped, skipped,
-            line_signal or skipped, silent,
+            turn,
+            question_id,
+            transcript,
+            skipped,
+            skipped,
+            skipped,
+            skipped,
+            skipped,
+            skipped,
+            skipped,
+            line_signal or skipped,
+            silent,
         )
 
     def to_trace(self) -> dict[str, Any]:
         """Dạng JSON cho trace JSONL (§9): value, provenance, span của từng trường."""
-        fields = ("full_name", "dob", "intent", "clinical", "agreement", "slot_choice", "cancel_reason", "line_signal")
+        fields = (
+            "full_name",
+            "dob",
+            "intent",
+            "clinical",
+            "agreement",
+            "slot_choice",
+            "cancel_reason",
+            "line_signal",
+        )
         return {
             "turn": self.turn,
             "question_id": self.question_id.value if self.question_id else None,

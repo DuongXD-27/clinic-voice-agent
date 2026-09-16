@@ -5,3 +5,4 @@
 Dockerfile text eol=lf
 Caddyfile text eol=lf
 .env.example text eol=lf
+Makefile text eol=lf

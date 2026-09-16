@@ -36,7 +36,8 @@ class ClinicGateway:
         """Chỉ nguồn slot hợp lệ để đề xuất; ghi lại id vào ctx cho SF-02."""
         now = datetime.now()
         payload = self._api.get_slots(
-            self._clinic_id, now.isoformat(timespec="minutes"),
+            self._clinic_id,
+            now.isoformat(timespec="minutes"),
             (now + timedelta(days=days_ahead)).isoformat(timespec="minutes"),
         )
         slots = payload if isinstance(payload, list) else payload.get("slots", [])
@@ -52,7 +53,9 @@ class ClinicGateway:
     def cancel(self, ctx: CallContext, reason: CancelReason) -> dict[str, Any]:
         guardrails.assert_cancel_reconfirmed(ctx)
         appointment_id, version = self._prepare_write(ctx)
-        return self._api.cancel_appointment(appointment_id, reason, version, self._key(ctx, "cancel"))
+        return self._api.cancel_appointment(
+            appointment_id, reason, version, self._key(ctx, "cancel")
+        )
 
     def reschedule(self, ctx: CallContext, new_slot_id: str) -> dict[str, Any]:
         guardrails.assert_slot_offered(ctx, new_slot_id)
@@ -64,7 +67,9 @@ class ClinicGateway:
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> dict[str, Any]:
         appointment_id, version = self._prepare_write(ctx)
-        return self._api.transfer_appointment(appointment_id, reason, version, self._key(ctx, "transfer"))
+        return self._api.transfer_appointment(
+            appointment_id, reason, version, self._key(ctx, "transfer")
+        )
 
     def book(self, ctx: CallContext, slot_id: str) -> dict[str, Any]:
         """§1.1.10: inbound, tạo đúng MỘT appointment trên slot đã đề xuất."""

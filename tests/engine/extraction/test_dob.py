@@ -26,8 +26,8 @@ TODAY = date(2026, 9, 15)
         ("ngày năm tháng năm năm một chín tám năm", date(1985, 5, 5)),
         ("mùng một tháng một năm 1990", date(1990, 1, 1)),
         ("dạ em sinh ngày 14 tháng 3 năm 1978 ạ", date(1978, 3, 14)),
-        ("ngày 2 tháng 2 năm 10", date(2010, 2, 2)),          # 1910 -> 116 tuổi, chỉ 2010 hợp lệ
-        ("ngày 29 tháng 2 năm 00", date(2000, 2, 29)),        # 1900 không nhuận
+        ("ngày 2 tháng 2 năm 10", date(2010, 2, 2)),  # 1910 -> 116 tuổi, chỉ 2010 hợp lệ
+        ("ngày 29 tháng 2 năm 00", date(2000, 2, 29)),  # 1900 không nhuận
     ],
 )
 def test_valid_dates(text: str, expected: date) -> None:
@@ -37,19 +37,19 @@ def test_valid_dates(text: str, expected: date) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "31/02/1980",                          # ngày không tồn tại — không tự sửa
+        "31/02/1980",  # ngày không tồn tại — không tự sửa
         "ngày 31 tháng 2 năm 1980",
-        "14 tháng 3",                          # thiếu năm — không điền năm hiện tại
+        "14 tháng 3",  # thiếu năm — không điền năm hiện tại
         "14/3",
-        "sinh năm 1978",                       # chỉ có năm
-        "tôi 48 tuổi",                         # nói tuổi thay năm sinh
-        "ngày 14 tháng 3 âm lịch năm 1978",    # âm lịch
-        "ngày 1 tháng 1 năm 20",               # 1920 và 2020 đều hợp lệ
-        "ngày 1 tháng 1 năm 2030",             # tương lai
-        "ngày 1 tháng 1 năm 1900",             # quá 110 tuổi
-        "14 tháng 3 năm 1978 à không 1979",    # tự sửa không đủ thông tin
+        "sinh năm 1978",  # chỉ có năm
+        "tôi 48 tuổi",  # nói tuổi thay năm sinh
+        "ngày 14 tháng 3 âm lịch năm 1978",  # âm lịch
+        "ngày 1 tháng 1 năm 20",  # 1920 và 2020 đều hợp lệ
+        "ngày 1 tháng 1 năm 2030",  # tương lai
+        "ngày 1 tháng 1 năm 1900",  # quá 110 tuổi
+        "14 tháng 3 năm 1978 à không 1979",  # tự sửa không đủ thông tin
         "14 tháng 3 hay 15 tháng 3 năm 1978",  # hai giá trị
-        "một bốn không ba",                    # đọc rời thiếu năm
+        "một bốn không ba",  # đọc rời thiếu năm
     ],
 )
 def test_invalid_is_not_a_date(text: str) -> None:

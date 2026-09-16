@@ -69,11 +69,16 @@ curl -X POST http://localhost:8000/v1/calls \
   -d '{"call_id":"c_demo","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'
 ```
 
-## Chạy test
+## Chạy test & lint
 
 ```bash
-pytest
+make check     # ruff check + ruff format --check + pytest (giống CI)
+make format    # tự sửa lint + format code
+make test      # chỉ pytest
 ```
+
+Không có `make` (Windows): chạy trực tiếp `python -m ruff check src tests`,
+`python -m ruff format --check src tests`, `python -m pytest -q`.
 
 ## Chạy bằng Docker
 
@@ -90,7 +95,7 @@ trong `.env`.
 
 [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml):
 
-- Mọi push / PR: chạy `pytest`.
+- Mọi push / PR: chạy `make check` (ruff lint, ruff format check, pytest).
 - Push lên `main` (hoặc chạy tay *Run workflow*): test → build image lên
   `ghcr.io/<owner>/callbot-vinmec` → SSH vào EC2, chép
   [docker-compose.prod.yml](docker-compose.prod.yml) + `.env` sinh từ secrets vào

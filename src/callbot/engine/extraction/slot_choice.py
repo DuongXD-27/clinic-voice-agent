@@ -18,8 +18,19 @@ import re
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Optional, Sequence
 
-from callbot.engine.extraction.schema import DayPeriod, Field, Provenance, SlotChoice, SlotCriteria, to_local
-from callbot.engine.extraction.spoken_numbers import is_number_token, parse_number, restore_number_words
+from callbot.engine.extraction.schema import (
+    DayPeriod,
+    Field,
+    Provenance,
+    SlotChoice,
+    SlotCriteria,
+    to_local,
+)
+from callbot.engine.extraction.spoken_numbers import (
+    is_number_token,
+    parse_number,
+    restore_number_words,
+)
 from callbot.engine.extraction.text import clean, is_unaccented, normalize
 
 _PERIOD_HOURS: dict[DayPeriod, range] = {
@@ -28,7 +39,12 @@ _PERIOD_HOURS: dict[DayPeriod, range] = {
     "AFTERNOON": range(12, 18),
     "EVENING": range(18, 24),
 }
-_PERIOD_WORDS: dict[str, DayPeriod] = {"sáng": "MORNING", "trưa": "NOON", "chiều": "AFTERNOON", "tối": "EVENING"}
+_PERIOD_WORDS: dict[str, DayPeriod] = {
+    "sáng": "MORNING",
+    "trưa": "NOON",
+    "chiều": "AFTERNOON",
+    "tối": "EVENING",
+}
 
 _ORDINAL_WORDS = {"nhất": 1, "một": 1, "hai": 2, "ba": 3, "tư": 4, "bốn": 4, "năm": 5}
 _ORDINAL = re.compile(
@@ -52,14 +68,38 @@ _NUMERIC_TIME = re.compile(r"(?<!\d)(\d{1,2})\s*(?:h|:|g)\s*(\d{2})?(?!\w)")
 _NUMERIC_DAY = re.compile(r"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)(?!\d)")
 
 _UNACCENTED_PHRASES = {
-    "hom nay": "hôm nay", "ngay mai kia": "ngày mai kia", "ngay mai": "ngày mai", "ngay kia": "ngày kia",
-    "ngay mot": "ngày mốt", "tuan sau": "tuần sau", "tuan toi": "tuần tới", "tuan nay": "tuần này",
-    "chu nhat": "chủ nhật", "cai dau": "cái đầu", "dau tien": "đầu tiên", "khung dau": "khung đầu",
-    "slot dau": "slot đầu", "cai cuoi": "cái cuối", "khung cuoi": "khung cuối", "slot cuoi": "slot cuối",
-    "sau cung": "sau cùng", "cuoi cung": "cuối cùng", "lua chon": "lựa chọn", "phuong an": "phương án",
-    "thu hai": "thứ hai", "thu ba": "thứ ba", "thu tu": "thứ tư", "thu nam": "thứ năm", "thu sau": "thứ sáu",
-    "thu bay": "thứ bảy", "cai thu": "cái thứ", "khung thu": "khung thứ",
-    "sang mai": "sáng mai", "sang nay": "sáng nay", "toi mai": "tối mai", "toi nay": "tối nay",
+    "hom nay": "hôm nay",
+    "ngay mai kia": "ngày mai kia",
+    "ngay mai": "ngày mai",
+    "ngay kia": "ngày kia",
+    "ngay mot": "ngày mốt",
+    "tuan sau": "tuần sau",
+    "tuan toi": "tuần tới",
+    "tuan nay": "tuần này",
+    "chu nhat": "chủ nhật",
+    "cai dau": "cái đầu",
+    "dau tien": "đầu tiên",
+    "khung dau": "khung đầu",
+    "slot dau": "slot đầu",
+    "cai cuoi": "cái cuối",
+    "khung cuoi": "khung cuối",
+    "slot cuoi": "slot cuối",
+    "sau cung": "sau cùng",
+    "cuoi cung": "cuối cùng",
+    "lua chon": "lựa chọn",
+    "phuong an": "phương án",
+    "thu hai": "thứ hai",
+    "thu ba": "thứ ba",
+    "thu tu": "thứ tư",
+    "thu nam": "thứ năm",
+    "thu sau": "thứ sáu",
+    "thu bay": "thứ bảy",
+    "cai thu": "cái thứ",
+    "khung thu": "khung thứ",
+    "sang mai": "sáng mai",
+    "sang nay": "sáng nay",
+    "toi mai": "tối mai",
+    "toi nay": "tối nay",
 }
 _UNACCENTED_PHRASE_RE = [
     (re.compile(r"(?<!\w)" + re.escape(k) + r"(?!\w)"), v)
@@ -67,8 +107,19 @@ _UNACCENTED_PHRASE_RE = [
 ]
 _UNACCENTED_WEEKDAY_DIGIT = re.compile(r"(?<!\w)thu (?=[2-7](?!\w))")
 _UNACCENTED_WORDS = {
-    "gio": "giờ", "ruoi": "rưỡi", "kem": "kém", "phut": "phút", "chieu": "chiều", "trua": "trưa",
-    "buoi": "buổi", "mung": "mùng", "mong": "mồng", "ngay": "ngày", "thang": "tháng", "lam": "lăm", "nhat": "nhất",
+    "gio": "giờ",
+    "ruoi": "rưỡi",
+    "kem": "kém",
+    "phut": "phút",
+    "chieu": "chiều",
+    "trua": "trưa",
+    "buoi": "buổi",
+    "mung": "mùng",
+    "mong": "mồng",
+    "ngay": "ngày",
+    "thang": "tháng",
+    "lam": "lăm",
+    "nhat": "nhất",
 }
 _PERIOD_AFTER = frozenset({"giờ", "rưỡi", "phút", "buổi"})
 
@@ -195,13 +246,13 @@ def _take_day_of_month(text: str, found: dict[str, Any]) -> str:
     for i, token in enumerate(tokens):
         if token not in ("ngày", "mùng", "mồng"):
             continue
-        day, used = _longest_prefix_number(tokens[i + 1:], 1, 31)
+        day, used = _longest_prefix_number(tokens[i + 1 :], 1, 31)
         if day is None:
             continue
         found["day"] = day
         end = i + 1 + used
         if end < len(tokens) and tokens[end] == "tháng":
-            month, month_used = _longest_prefix_number(tokens[end + 1:], 1, 12)
+            month, month_used = _longest_prefix_number(tokens[end + 1 :], 1, 12)
             if month is not None:
                 found["month"] = month
                 end += 1 + month_used
@@ -214,7 +265,7 @@ def _take_period(text: str, found: dict[str, Any]) -> str:
     for i, token in enumerate(tokens):
         if token in _PERIOD_WORDS:
             found["period"] = _PERIOD_WORDS[token]
-            return " ".join(tokens[:i] + tokens[i + 1:])
+            return " ".join(tokens[:i] + tokens[i + 1 :])
     return text
 
 
@@ -227,7 +278,7 @@ def _take_time(text: str, found: dict[str, Any]) -> None:
         if hour is None:
             continue
         minute = 30 if token == "rưỡi" else 0
-        after = tokens[i + 1:]
+        after = tokens[i + 1 :]
         if token != "rưỡi" and after:
             if after[0] == "rưỡi":
                 minute = 30
@@ -292,7 +343,7 @@ def _ordinal_slot_id(ordinal: Optional[int], presented: Sequence[str]) -> Option
 
 
 def _cut(text: str, match: re.Match[str]) -> str:
-    return " ".join((text[: match.start()] + " " + text[match.end():]).split())
+    return " ".join((text[: match.start()] + " " + text[match.end() :]).split())
 
 
 def _longest_prefix_number(tokens: Sequence[str], low: int, high: int) -> tuple[Optional[int], int]:

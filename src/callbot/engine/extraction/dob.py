@@ -24,26 +24,86 @@ from callbot.engine.extraction.spoken_numbers import (
     restore_number_words,
     spoken_digits,
 )
-from callbot.engine.extraction.text import clean, compile_phrases, find_last_phrase, is_unaccented, normalize
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_last_phrase,
+    is_unaccented,
+    normalize,
+)
 
 MAX_AGE = 110
 
 # "14/3/1978", "14-03-78", "14.3" -> "14 tháng 3 năm 1978" để đi chung một ngữ pháp với dạng nói
 _NUMERIC_DATE = re.compile(r"(?<!\d)(\d{1,2})\s*[/\-.]\s*(\d{1,2})(?:\s*[/\-.]\s*(\d{2,4}))?(?!\d)")
 _CORRECTIONS = compile_phrases(
-    ["à không", "à nhầm", "nhầm", "nhầm rồi", "không phải", "à quên", "xin lỗi", "ý là", "ý tôi là",
-     "ý em là", "sửa lại", "à thôi", "à mà không"]
+    [
+        "à không",
+        "à nhầm",
+        "nhầm",
+        "nhầm rồi",
+        "không phải",
+        "à quên",
+        "xin lỗi",
+        "ý là",
+        "ý tôi là",
+        "ý em là",
+        "sửa lại",
+        "à thôi",
+        "à mà không",
+    ]
 )
 _LUNAR = compile_phrases(["âm lịch", "âm", "lịch âm"])
 _AGE = compile_phrases(["tuổi"])
-_FILLERS = frozenset({"dạ", "vâng", "ạ", "à", "ờ", "ừ", "sinh", "ngày", "là", "em", "tôi", "con", "cháu", "mình", "của"})
+_FILLERS = frozenset(
+    {
+        "dạ",
+        "vâng",
+        "ạ",
+        "à",
+        "ờ",
+        "ừ",
+        "sinh",
+        "ngày",
+        "là",
+        "em",
+        "tôi",
+        "con",
+        "cháu",
+        "mình",
+        "của",
+    }
+)
 # Bảng từ đóng cho transcript không dấu. "sau" -> sáu, "tu" -> tư: trong câu trả lời ngày sinh
 # hai từ này gần như chỉ là số.
 _UNACCENTED_WORDS = {
-    "ngay": "ngày", "thang": "tháng", "mung": "mùng", "mong": "mồng", "sau": "sáu", "tu": "tư", "lam": "lăm",
-    "am": "âm", "lich": "lịch", "tuoi": "tuổi", "a": "à", "nham": "nhầm", "phai": "phải", "loi": "lỗi",
-    "quen": "quên", "y": "ý", "la": "là", "toi": "tôi", "sua": "sửa", "lai": "lại", "thoi": "thôi",
-    "da": "dạ", "vang": "vâng", "roi": "rồi", "cua": "của", "minh": "mình", "chau": "cháu",
+    "ngay": "ngày",
+    "thang": "tháng",
+    "mung": "mùng",
+    "mong": "mồng",
+    "sau": "sáu",
+    "tu": "tư",
+    "lam": "lăm",
+    "am": "âm",
+    "lich": "lịch",
+    "tuoi": "tuổi",
+    "a": "à",
+    "nham": "nhầm",
+    "phai": "phải",
+    "loi": "lỗi",
+    "quen": "quên",
+    "y": "ý",
+    "la": "là",
+    "toi": "tôi",
+    "sua": "sửa",
+    "lai": "lại",
+    "thoi": "thôi",
+    "da": "dạ",
+    "vang": "vâng",
+    "roi": "rồi",
+    "cua": "của",
+    "minh": "mình",
+    "chau": "cháu",
 }
 
 
@@ -63,13 +123,19 @@ def extract_dob(transcript: str, today: date) -> Field[DobValue]:
         return Field(INVALID, Provenance.NORMALIZED, span=original)
 
     correction = find_last_phrase(text, _CORRECTIONS, unaccented=False)
-    segment = text[correction.end():].strip() if correction else text
+    segment = text[correction.end() :].strip() if correction else text
     tokens = segment.split()
-    provenance = Provenance.NORMALIZED if restored or _uses_spoken_numbers(tokens) else Provenance.EXACT
+    provenance = (
+        Provenance.NORMALIZED if restored or _uses_spoken_numbers(tokens) else Provenance.EXACT
+    )
 
     value = _parse_tokens(tokens, today)
     if value is None:
-        if correction is not None or _has_date_content(tokens) or find_last_phrase(text, _AGE, unaccented=False):
+        if (
+            correction is not None
+            or _has_date_content(tokens)
+            or find_last_phrase(text, _AGE, unaccented=False)
+        ):
             return Field(INVALID, provenance, span=original)
         return Field.nothing()
     # span phải là chuỗi con của transcript: với câu không dấu, span là câu gốc chứ không phải bản đã khôi phục
@@ -79,7 +145,9 @@ def extract_dob(transcript: str, today: date) -> Field[DobValue]:
 def _uses_spoken_numbers(tokens: list[str]) -> bool:
     """Có số đọc bằng chữ không. "năm" đứng trước một số là từ khoá năm, không phải số 5."""
     return any(
-        is_number_token(t) and not t.isdigit() and not (t == "năm" and i + 1 < len(tokens) and tokens[i + 1].isdigit())
+        is_number_token(t)
+        and not t.isdigit()
+        and not (t == "năm" and i + 1 < len(tokens) and tokens[i + 1].isdigit())
         for i, t in enumerate(tokens)
     )
 
@@ -92,7 +160,10 @@ def _numeric_to_words(match: re.Match[str]) -> str:
 def _has_date_content(tokens: list[str]) -> bool:
     if "tháng" in tokens:
         return True
-    if any(t == "năm" and i + 1 < len(tokens) and is_number_token(tokens[i + 1]) for i, t in enumerate(tokens)):
+    if any(
+        t == "năm" and i + 1 < len(tokens) and is_number_token(tokens[i + 1])
+        for i, t in enumerate(tokens)
+    ):
         return True
     numbers = [t for t in tokens if is_number_token(t)]
     return any(t.isdigit() for t in numbers) or len(numbers) >= 2
@@ -178,7 +249,11 @@ def _resolve_date(day: int, month: int, year_tokens: list[str], today: date) -> 
 
 
 def _resolve_two_digit_year(day: int, month: int, yy: int, today: date) -> DobValue:
-    valid = [d for d in (_checked(day, month, century + yy, today) for century in (1900, 2000)) if d is not INVALID]
+    valid = [
+        d
+        for d in (_checked(day, month, century + yy, today) for century in (1900, 2000))
+        if d is not INVALID
+    ]
     # Cả hai thế kỷ đều cho tuổi hợp lệ ("năm 20" -> 1920 hay 2020) -> hỏi lại, không đoán
     return valid[0] if len(valid) == 1 else INVALID
 

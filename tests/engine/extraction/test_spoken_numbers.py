@@ -28,7 +28,9 @@ def test_parse_number(words: str, expected: int) -> None:
     assert parse_number(words.split()) == expected
 
 
-@pytest.mark.parametrize("words", ["mươi", "mười mốt", "một mươi", "lăm hai", "trăm", "hai 5", "mốt ba"])
+@pytest.mark.parametrize(
+    "words", ["mươi", "mười mốt", "một mươi", "lăm hai", "trăm", "hai 5", "mốt ba"]
+)
 def test_parse_number_rejects_malformed(words: str) -> None:
     assert parse_number(words.split()) is None
 

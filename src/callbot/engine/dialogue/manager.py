@@ -60,7 +60,9 @@ class DialogueManager:
             except Exception:
                 logger.exception("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
         # TODO: inbound chưa tạo appointment (vd. PATIENT_NOT_FOUND) — contract chưa nêu ghi vào đâu
-        return BotAction(t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason)
+        return BotAction(
+            t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
+        )
 
     def unreachable(self, ctx: CallContext) -> BotAction:
         """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail."""
@@ -142,7 +144,9 @@ class DialogueManager:
             # TODO: bắt 409 SLOT_TAKEN -> đọc lại /slots và đề xuất lại
             if action == "RESCHEDULE":
                 self._gateway.reschedule(ctx, ctx.pending_slot_id)
-                return BotAction(t.done("RESCHEDULED", slot), "ENDED", ended=True, outcome="RESCHEDULED")
+                return BotAction(
+                    t.done("RESCHEDULED", slot), "ENDED", ended=True, outcome="RESCHEDULED"
+                )
             self._gateway.book(ctx, ctx.pending_slot_id)
             return BotAction(t.done("BOOKED", slot), "ENDED", ended=True, outcome="BOOKED")
         return None
@@ -155,7 +159,9 @@ class DialogueManager:
         if index is not None and 1 <= index <= len(ctx.presented_slots):
             slot = ctx.presented_slots[index - 1]
         elif nlu.entities.preferred_period:
-            slot = next(iter(_filter_by_period(ctx.presented_slots, nlu.entities.preferred_period)), None)
+            slot = next(
+                iter(_filter_by_period(ctx.presented_slots, nlu.entities.preferred_period)), None
+            )
         if slot is None:
             return None
         ctx.pending_slot_id = slot["slot_id"]

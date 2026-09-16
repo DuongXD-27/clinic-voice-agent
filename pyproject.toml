@@ -26,6 +26,7 @@ llm = [
 ]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.6",
 ]
 
 [build-system]
@@ -42,3 +43,21 @@ dev-mode-dirs = ["src"]
 [tool.pytest.ini_options]
 # Không thêm src/ vào sys.path: test chạy trên package đã cài (`pip install -e ".[dev]"`), giống Docker
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.format]
+# Khớp .gitattributes (*.py eol=lf)
+line-ending = "lf"
+
+[tool.ruff.lint]
+# E/W: pycodestyle, F: pyflakes, I: isort, B: bugbear
+select = ["E", "W", "F", "I", "B"]
+# Chuỗi/comment tiếng Việt dài — để formatter lo độ dài dòng
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["callbot"]

@@ -16,7 +16,7 @@ from callbot.engine.extraction.schema import ClinicalLevel
         "chảy máu nhiều quá",
         "Tôi bị đau ngực có sao không?",
         "đau ngực nhưng muốn đặt lịch khám",  # recall: vẫn EMERGENCY dù có ngữ cảnh đặt lịch
-        "không khó thở lắm",                   # recall: không xét phủ định
+        "không khó thở lắm",  # recall: không xét phủ định
     ],
 )
 def test_emergency(text: str) -> None:
@@ -53,7 +53,10 @@ def test_advice_request_needs_asking(text: str) -> None:
     ],
 )
 def test_mention_is_not_transferred(text: str) -> None:
-    assert extract_clinical(text).value not in (ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST)
+    assert extract_clinical(text).value not in (
+        ClinicalLevel.EMERGENCY,
+        ClinicalLevel.ADVICE_REQUEST,
+    )
 
 
 def test_mention_and_none() -> None:

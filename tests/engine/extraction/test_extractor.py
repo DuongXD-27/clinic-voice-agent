@@ -83,17 +83,31 @@ def test_voicemail_short_circuits_outbound_identity_steps() -> None:
         assert result.full_name.found is False and result.intent.value is None
 
     # Sau xác minh, và ở inbound, không xét tín hiệu đường dây
-    assert extractor.extract(ctx(QuestionId.ASK_INTENT), "để lại lời nhắn sau tiếng bíp").line_signal.value is None
+    assert (
+        extractor.extract(
+            ctx(QuestionId.ASK_INTENT), "để lại lời nhắn sau tiếng bíp"
+        ).line_signal.value
+        is None
+    )
     inbound = extractor.extract(ctx(QuestionId.ASK_NAME, direction="inbound"), "hộp thư thoại")
     assert inbound.line_signal.value is None
 
 
 def test_silent_turn_is_not_a_failed_understanding() -> None:
     # Rev 1.1 §1.1.7: im lặng (silence_ms > 0) không tính vào §1.1.5 -> không trường nào mang NONE "đã chạy"
-    for question in (QuestionId.ASK_NAME, QuestionId.ASK_DOB, QuestionId.ASK_INTENT, QuestionId.CANCEL_RECONFIRM):
+    for question in (
+        QuestionId.ASK_NAME,
+        QuestionId.ASK_DOB,
+        QuestionId.ASK_INTENT,
+        QuestionId.CANCEL_RECONFIRM,
+    ):
         result = extractor.extract(ctx(question), "", silence_ms=4000)
         assert result.silent is True
-        assert result.intent.value is None and result.full_name.value is None and result.agreement.value is None
+        assert (
+            result.intent.value is None
+            and result.full_name.value is None
+            and result.agreement.value is None
+        )
         assert result.to_trace()["silent"] is True
 
     # ASR không ra chữ nhưng harness không báo im lặng -> không hiểu, không phải im lặng
@@ -102,7 +116,10 @@ def test_silent_turn_is_not_a_failed_understanding() -> None:
     assert result.intent.value is Intent.NONE
 
     # silence_ms > 0 thắng cả khi có text lạc (vd. tiếng ồn ra chữ)
-    assert extractor.extract(ctx(QuestionId.CANCEL_RECONFIRM), "hủy đi", silence_ms=1).agreement.value is None
+    assert (
+        extractor.extract(ctx(QuestionId.CANCEL_RECONFIRM), "hủy đi", silence_ms=1).agreement.value
+        is None
+    )
 
 
 def test_line_signal_uses_unreachable_reason_names() -> None:
@@ -110,7 +127,10 @@ def test_line_signal_uses_unreachable_reason_names() -> None:
     assert result.line_signal.value is LineSignal.LINE_BUSY
     assert result.full_name.found is False and result.silent is False
     # Người thật nói "đang bận" ở bước hỏi tên không kết thúc cuộc gọi
-    assert extractor.extract(ctx(QuestionId.ASK_NAME), "tôi đang bận").line_signal.value is LineSignal.NONE
+    assert (
+        extractor.extract(ctx(QuestionId.ASK_NAME), "tôi đang bận").line_signal.value
+        is LineSignal.NONE
+    )
 
 
 def test_out_of_scope_at_identity_step_only_when_answer_is_not_an_identifier() -> None:
@@ -137,7 +157,9 @@ def test_agreement_is_downgraded_when_caller_talks_about_something_else() -> Non
     assert result.agreement.value is Agreement.UNCLEAR
     assert result.cancel_reason.value == "UNSPECIFIED"
 
-    result = extractor.extract(ctx(QuestionId.CANCEL_RECONFIRM), "đúng rồi hủy đi, mà tôi đau ngực quá")
+    result = extractor.extract(
+        ctx(QuestionId.CANCEL_RECONFIRM), "đúng rồi hủy đi, mà tôi đau ngực quá"
+    )
     assert result.clinical.value is ClinicalLevel.EMERGENCY
     assert result.agreement.value is not Agreement.AGREE
 
@@ -174,18 +196,26 @@ def test_fallback_is_only_called_when_rules_find_nothing() -> None:
 
 def test_fallback_span_must_be_in_transcript() -> None:
     invented = FakeFallback(intent=Field(Intent.CANCEL, Provenance.FALLBACK, span="hủy lịch"))
-    result = InformationExtractor(fallback=invented).extract(ctx(QuestionId.ASK_INTENT), "chắc để tuần sau em ạ")
+    result = InformationExtractor(fallback=invented).extract(
+        ctx(QuestionId.ASK_INTENT), "chắc để tuần sau em ạ"
+    )
     assert result.intent.value is Intent.NONE
     assert result.intent.provenance is Provenance.NONE
 
     no_span = FakeFallback(intent=Field(Intent.CANCEL, Provenance.FALLBACK))
-    result = InformationExtractor(fallback=no_span).extract(ctx(QuestionId.ASK_INTENT), "chắc để tuần sau em ạ")
+    result = InformationExtractor(fallback=no_span).extract(
+        ctx(QuestionId.ASK_INTENT), "chắc để tuần sau em ạ"
+    )
     assert result.intent.found is False
 
 
 def test_fallback_cannot_unlock_cancellation() -> None:
-    fallback = FakeFallback(agreement=Field(Agreement.AGREE, Provenance.FALLBACK, span="bận mất rồi"))
-    result = InformationExtractor(fallback=fallback).extract(ctx(QuestionId.CANCEL_RECONFIRM), "hôm đó tôi bận mất rồi")
+    fallback = FakeFallback(
+        agreement=Field(Agreement.AGREE, Provenance.FALLBACK, span="bận mất rồi")
+    )
+    result = InformationExtractor(fallback=fallback).extract(
+        ctx(QuestionId.CANCEL_RECONFIRM), "hôm đó tôi bận mất rồi"
+    )
     assert "agreement" in fallback.calls
     assert result.agreement.value is Agreement.UNCLEAR
 
@@ -196,9 +226,16 @@ def test_fallback_cannot_unlock_cancellation() -> None:
 
 
 def test_name_fallback_is_off_by_default_and_guarded() -> None:
-    fallback = FakeFallback(full_name=Field("nguyễn văn a", Provenance.FALLBACK, span="nguyễn văn a"))
+    fallback = FakeFallback(
+        full_name=Field("nguyễn văn a", Provenance.FALLBACK, span="nguyễn văn a")
+    )
     transcript = "à ừ thì là nguyễn văn a nhé em"  # tầng luật loại: có từ chức năng "là"
-    assert InformationExtractor(fallback=fallback).extract(ctx(QuestionId.ASK_NAME), transcript).full_name.found is False
+    assert (
+        InformationExtractor(fallback=fallback)
+        .extract(ctx(QuestionId.ASK_NAME), transcript)
+        .full_name.found
+        is False
+    )
 
     enabled = InformationExtractor(fallback=fallback, name_fallback=True)
     result = enabled.extract(ctx(QuestionId.ASK_NAME), transcript)
@@ -206,7 +243,9 @@ def test_name_fallback_is_off_by_default_and_guarded() -> None:
     assert result.full_name.provenance is Provenance.FALLBACK
 
     invented = FakeFallback(full_name=Field("trần thị b", Provenance.FALLBACK, span="nguyễn văn a"))
-    result = InformationExtractor(fallback=invented, name_fallback=True).extract(ctx(QuestionId.ASK_NAME), transcript)
+    result = InformationExtractor(fallback=invented, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), transcript
+    )
     assert result.full_name.found is False
 
 
@@ -214,5 +253,9 @@ def test_trace_is_json_ready() -> None:
     result = extractor.extract(ctx(QuestionId.ASK_DOB), "mười bốn tháng ba năm bảy tám")
     trace = result.to_trace()
     json.dumps(trace, ensure_ascii=False)
-    assert trace["dob"] == {"value": "1978-03-14", "provenance": "NORMALIZED", "span": "mười bốn tháng ba năm bảy tám"}
+    assert trace["dob"] == {
+        "value": "1978-03-14",
+        "provenance": "NORMALIZED",
+        "span": "mười bốn tháng ba năm bảy tám",
+    }
     assert trace["question_id"] == "ASK_DOB"

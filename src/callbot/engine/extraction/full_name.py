@@ -11,7 +11,13 @@ chế độ bỏ dấu thanh đã có trong thiết kế §5.1 (tuần 3+), khô
 """
 
 from callbot.engine.extraction.schema import Field, Provenance
-from callbot.engine.extraction.text import PhraseSet, clean, compile_phrases, is_unaccented, strip_diacritics
+from callbot.engine.extraction.text import (
+    PhraseSet,
+    clean,
+    compile_phrases,
+    is_unaccented,
+    strip_diacritics,
+)
 
 MIN_WORDS = 2
 # Tên tiếng Việt dài nhất thường 5 từ; câu dài hơn gần như chắc là một câu nói, không phải tên.
@@ -19,25 +25,78 @@ MAX_WORDS = 6
 
 _PREFIXES = compile_phrases(
     [
-        "dạ", "vâng", "ạ", "alo", "a lô", "vâng ạ", "dạ vâng",
-        "tôi là", "tên tôi là", "tôi tên là", "tên tôi", "em là", "tên em là", "em tên là", "tên em",
-        "mình là", "tên mình là", "con là", "tên con là", "cháu là", "tên cháu là",
-        "anh là", "chị là", "cô là", "chú là", "bác là", "ông là", "bà là",
-        "họ tên là", "họ và tên là", "họ tên", "họ và tên",
+        "dạ",
+        "vâng",
+        "ạ",
+        "alo",
+        "a lô",
+        "vâng ạ",
+        "dạ vâng",
+        "tôi là",
+        "tên tôi là",
+        "tôi tên là",
+        "tên tôi",
+        "em là",
+        "tên em là",
+        "em tên là",
+        "tên em",
+        "mình là",
+        "tên mình là",
+        "con là",
+        "tên con là",
+        "cháu là",
+        "tên cháu là",
+        "anh là",
+        "chị là",
+        "cô là",
+        "chú là",
+        "bác là",
+        "ông là",
+        "bà là",
+        "họ tên là",
+        "họ và tên là",
+        "họ tên",
+        "họ và tên",
     ],
     unaccented_exclude=["ạ"],  # "a" có thể là tên ("Nguyễn Văn A")
 )
-_SUFFIXES = compile_phrases(["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ"], unaccented_exclude=["ạ", "ấy ạ"])
-_GREETINGS = frozenset({"alo", "a lô", "xin chào", "chào", "chào em", "chào chị", "ai đấy", "ai vậy", "ai đó"})
+_SUFFIXES = compile_phrases(
+    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ"], unaccented_exclude=["ạ", "ấy ạ"]
+)
+_GREETINGS = frozenset(
+    {"alo", "a lô", "xin chào", "chào", "chào em", "chào chị", "ai đấy", "ai vậy", "ai đó"}
+)
 # Từ chức năng không bao giờ là một phần tên: có chúng thì đây là câu nói, không phải tên.
 # Cố ý KHÔNG đưa "được", "thôi", "anh" vào — đó là tên thật (Trần Văn Được, Lê Văn Thôi, Nguyễn Thị Anh).
 _NON_NAME_WORDS = frozenset(
-    {"là", "không", "gì", "ai", "đâu", "nào", "của", "muốn", "cần", "gọi", "hỏi", "tôi", "mình",
-     "đấy", "vậy", "nhỉ", "sao", "chưa", "xin", "chào"}
+    {
+        "là",
+        "không",
+        "gì",
+        "ai",
+        "đâu",
+        "nào",
+        "của",
+        "muốn",
+        "cần",
+        "gọi",
+        "hỏi",
+        "tôi",
+        "mình",
+        "đấy",
+        "vậy",
+        "nhỉ",
+        "sao",
+        "chưa",
+        "xin",
+        "chào",
+    }
 )
 # Không dấu: bỏ các từ trùng tên người khi mất dấu — "ai" (Ái), "dau" (Đậu), "nao", "can" (Cần), "hoi" (Hợi),
 # "la" (La), "minh" (Minh), "day" (Đầy), "sao" (Sáo)
-_NON_NAME_WORDS_UNACCENTED = frozenset({"khong", "gi", "cua", "muon", "goi", "toi", "vay", "nhi", "chua", "xin", "chao"})
+_NON_NAME_WORDS_UNACCENTED = frozenset(
+    {"khong", "gi", "cua", "muon", "goi", "toi", "vay", "nhi", "chua", "xin", "chao"}
+)
 _GREETINGS_UNACCENTED = frozenset(strip_diacritics(g) for g in _GREETINGS)
 
 
@@ -68,7 +127,7 @@ def _strip_repeated(text: str, phrases: PhraseSet, unaccented: bool, at_start: b
         changed = False
         for phrase, _ in phrases.for_text(text, unaccented):
             if at_start and (text == phrase or text.startswith(phrase + " ")):
-                text = text[len(phrase):].strip()
+                text = text[len(phrase) :].strip()
                 changed = True
                 break
             if not at_start and (text == phrase or text.endswith(" " + phrase)):

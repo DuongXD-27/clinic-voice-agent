@@ -22,16 +22,50 @@ bị tắt, vì bỏ dấu làm "đau" trùng "đâu"/"đầu", "ho" trùng "h�
 """
 
 from callbot.engine.extraction.schema import ClinicalLevel, Field, Provenance
-from callbot.engine.extraction.text import clean, compile_phrases, find_phrase, is_unaccented, remove_phrases
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    remove_phrases,
+)
 
 _EMERGENCY = compile_phrases(
     [
-        "đau ngực", "tức ngực", "đau thắt ngực", "khó thở", "không thở được", "thở không được", "ngạt thở",
-        "co giật", "lên cơn co giật", "ngất", "ngất xỉu", "bất tỉnh", "hôn mê", "lịm đi",
-        "chảy máu nhiều", "chảy máu không cầm", "mất máu", "nôn ra máu", "ho ra máu", "đi ngoài ra máu",
-        "đột quỵ", "méo miệng", "yếu nửa người", "liệt nửa người", "sốc phản vệ",
-        "ngộ độc", "uống nhầm thuốc", "quá liều", "tự tử", "tai nạn", "đau đầu dữ dội", "sốt cao co giật",
-        "vỡ ối", "ra máu",
+        "đau ngực",
+        "tức ngực",
+        "đau thắt ngực",
+        "khó thở",
+        "không thở được",
+        "thở không được",
+        "ngạt thở",
+        "co giật",
+        "lên cơn co giật",
+        "ngất",
+        "ngất xỉu",
+        "bất tỉnh",
+        "hôn mê",
+        "lịm đi",
+        "chảy máu nhiều",
+        "chảy máu không cầm",
+        "mất máu",
+        "nôn ra máu",
+        "ho ra máu",
+        "đi ngoài ra máu",
+        "đột quỵ",
+        "méo miệng",
+        "yếu nửa người",
+        "liệt nửa người",
+        "sốc phản vệ",
+        "ngộ độc",
+        "uống nhầm thuốc",
+        "quá liều",
+        "tự tử",
+        "tai nạn",
+        "đau đầu dữ dội",
+        "sốt cao co giật",
+        "vỡ ối",
+        "ra máu",
     ],
     # "tu tu" = từ từ, "ra mau" = ra mau (nhanh lên), "vo oi" = vợ ơi
     unaccented_exclude=["tự tử", "ra máu", "vỡ ối"],
@@ -41,19 +75,56 @@ _EMERGENCY = compile_phrases(
 _ADVICE_PHRASES = compile_phrases(
     [
         # đánh giá mức độ
-        "có sao không", "có nguy hiểm không", "có nặng không", "có bị làm sao không",
-        "có bình thường không", "có ảnh hưởng gì không", "có lây không",
-        "có phải bị", "bị bệnh gì", "bị làm sao", "là bệnh gì", "là bị gì", "bị gì vậy",
-        "tại sao bị", "vì sao bị", "tại sao lại bị", "nguyên nhân do đâu",
+        "có sao không",
+        "có nguy hiểm không",
+        "có nặng không",
+        "có bị làm sao không",
+        "có bình thường không",
+        "có ảnh hưởng gì không",
+        "có lây không",
+        "có phải bị",
+        "bị bệnh gì",
+        "bị làm sao",
+        "là bệnh gì",
+        "là bị gì",
+        "bị gì vậy",
+        "tại sao bị",
+        "vì sao bị",
+        "tại sao lại bị",
+        "nguyên nhân do đâu",
         # thuốc
-        "uống thuốc gì", "dùng thuốc gì", "thuốc gì", "uống gì cho", "uống bao nhiêu", "liều",
-        "có nên uống", "uống được không", "ngừng thuốc", "bỏ thuốc được không", "kiêng gì", "nên ăn gì",
+        "uống thuốc gì",
+        "dùng thuốc gì",
+        "thuốc gì",
+        "uống gì cho",
+        "uống bao nhiêu",
+        "liều",
+        "có nên uống",
+        "uống được không",
+        "ngừng thuốc",
+        "bỏ thuốc được không",
+        "kiêng gì",
+        "nên ăn gì",
         # phân khoa / mức khẩn
-        "khám khoa nào", "khoa nào thì phù hợp", "nên khám gì", "khám bác sĩ nào thì", "có cần đi khám", "có cần khám",
-        "có cần khám gấp", "có cần đi viện", "có cần cấp cứu", "có gấp không", "có cần xét nghiệm",
+        "khám khoa nào",
+        "khoa nào thì phù hợp",
+        "nên khám gì",
+        "khám bác sĩ nào thì",
+        "có cần đi khám",
+        "có cần khám",
+        "có cần khám gấp",
+        "có cần đi viện",
+        "có cần cấp cứu",
+        "có gấp không",
+        "có cần xét nghiệm",
         # xin cách xử lý
-        "nên làm gì", "phải làm sao", "làm sao cho đỡ", "làm thế nào cho đỡ", "làm sao cho hết",
-        "làm gì cho đỡ", "xử lý thế nào",
+        "nên làm gì",
+        "phải làm sao",
+        "làm sao cho đỡ",
+        "làm thế nào cho đỡ",
+        "làm sao cho hết",
+        "làm gì cho đỡ",
+        "xử lý thế nào",
     ],
     # "lieu" = liệu, "co lay khong" = có lấy không, "co gap khong" = có gặp không
     unaccented_exclude=["liều", "có lây không", "có gấp không"],
@@ -61,16 +132,46 @@ _ADVICE_PHRASES = compile_phrases(
 
 _SYMPTOMS = compile_phrases(
     [
-        "đau", "nhức", "sốt", "ho", "nôn", "buồn nôn", "chóng mặt", "hoa mắt", "mệt", "ngứa", "sưng", "viêm",
-        "tiêu chảy", "táo bón", "mất ngủ", "huyết áp", "tiểu đường", "dạ dày", "triệu chứng", "bệnh",
-        "thuốc", "dị ứng", "nổi mẩn", "phát ban", "chảy máu", "tê", "khàn tiếng", "khó tiêu", "đầy bụng",
+        "đau",
+        "nhức",
+        "sốt",
+        "ho",
+        "nôn",
+        "buồn nôn",
+        "chóng mặt",
+        "hoa mắt",
+        "mệt",
+        "ngứa",
+        "sưng",
+        "viêm",
+        "tiêu chảy",
+        "táo bón",
+        "mất ngủ",
+        "huyết áp",
+        "tiểu đường",
+        "dạ dày",
+        "triệu chứng",
+        "bệnh",
+        "thuốc",
+        "dị ứng",
+        "nổi mẩn",
+        "phát ban",
+        "chảy máu",
+        "tê",
+        "khàn tiếng",
+        "khó tiêu",
+        "đầy bụng",
     ]
 )
 # Cụm chứa từ triệu chứng nhưng không phải triệu chứng
-_NOT_SYMPTOM = compile_phrases(["bệnh viện", "bệnh nhân", "khám bệnh", "đơn thuốc", "hồ sơ bệnh án"])
+_NOT_SYMPTOM = compile_phrases(
+    ["bệnh viện", "bệnh nhân", "khám bệnh", "đơn thuốc", "hồ sơ bệnh án"]
+)
 
 _INTERROGATIVE_FINALS = frozenset({"không", "chưa", "sao", "gì", "nào", "à", "hả", "nhỉ", "chứ"})
-_INTERROGATIVE_PHRASES = compile_phrases(["có phải", "liệu", "thế nào", "ra sao", "làm sao", "tại sao", "vì sao"])
+_INTERROGATIVE_PHRASES = compile_phrases(
+    ["có phải", "liệu", "thế nào", "ra sao", "làm sao", "tại sao", "vì sao"]
+)
 _TRAILING_PARTICLES = frozenset({"ạ", "vậy", "thế", "em", "chị", "anh", "bác sĩ"})
 # Có từ nói về lịch hẹn -> câu hỏi đuôi là hỏi về lịch, không phải hỏi về triệu chứng
 _SCHEDULING = compile_phrases(
@@ -98,7 +199,11 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
     if symptom is None:
         return Field.nothing(ClinicalLevel.NONE)
 
-    if not unaccented and _is_question(symptom_text) and find_phrase(symptom_text, _SCHEDULING) is None:
+    if (
+        not unaccented
+        and _is_question(symptom_text)
+        and find_phrase(symptom_text, _SCHEDULING) is None
+    ):
         # "đau bụng thế này có được không" — hỏi đánh giá triệu chứng, không nhắc tới lịch
         return Field(ClinicalLevel.ADVICE_REQUEST, Provenance.NORMALIZED, span=symptom_text)
     return Field(ClinicalLevel.MENTION, exact, span=symptom.group(0))

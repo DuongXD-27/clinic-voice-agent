@@ -22,7 +22,9 @@ def assert_target_appointment(ctx: CallContext, appointment_id: Optional[str]) -
 def assert_slot_offered(ctx: CallContext, slot_id: str) -> None:
     """SF-02: slot phải do GET /slots trả về trong chính cuộc gọi này."""
     if slot_id not in ctx.offered_slot_ids:
-        raise SevereFailureBlocked("SF-02", f"Slot {slot_id} không có trong GET /slots của cuộc gọi")
+        raise SevereFailureBlocked(
+            "SF-02", f"Slot {slot_id} không có trong GET /slots của cuộc gọi"
+        )
 
 
 def assert_can_disclose(ctx: CallContext) -> None:

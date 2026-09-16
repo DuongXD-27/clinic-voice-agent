@@ -54,7 +54,7 @@ def test_match(text: str, slot_id) -> None:
 @pytest.mark.parametrize(
     "text, slot_ids",
     [
-        ("chiều thứ năm", ("thu_1430", "thu_1600")),       # không được tự chọn slot đầu
+        ("chiều thứ năm", ("thu_1430", "thu_1600")),  # không được tự chọn slot đầu
         ("hai giờ rưỡi", ("wed_1430", "thu_1430")),
         ("thứ năm", ("thu_1430", "thu_1600", "next_thu_0900")),
         ("buổi chiều", ("wed_1430", "thu_1430", "thu_1600")),
@@ -75,9 +75,9 @@ def test_half_past_two_without_period_matches_the_only_listed_time() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "tối thứ bảy",       # không có slot
-        "khung thứ năm",     # chỉ đọc 3 khung
-        "hai giờ",           # 14:00 không có; không lấy 14:30
+        "tối thứ bảy",  # không có slot
+        "khung thứ năm",  # chỉ đọc 3 khung
+        "hai giờ",  # 14:00 không có; không lấy 14:30
         "khung 2 lúc 10 giờ",  # tiêu chí mâu thuẫn
     ],
 )

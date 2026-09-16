@@ -36,10 +36,14 @@ class FakeClinicAPI:
     def get_appointment(self, appointment_id: str) -> dict[str, Any]:
         return dict(self.appointments[appointment_id])
 
-    def create_appointment(self, patient_id: str, slot_id: str, idempotency_key: Optional[str] = None):
+    def create_appointment(
+        self, patient_id: str, slot_id: str, idempotency_key: Optional[str] = None
+    ):
         raise NotImplementedError
 
-    def confirm_appointment(self, appointment_id: str, version: int, idempotency_key: Optional[str] = None):
+    def confirm_appointment(
+        self, appointment_id: str, version: int, idempotency_key: Optional[str] = None
+    ):
         return self._write(appointment_id, "CONFIRMED", {"idempotency_key": idempotency_key})
 
     def cancel_appointment(self, appointment_id, cancel_reason, version, idempotency_key=None):

@@ -78,7 +78,9 @@ def test_emergency_unaccented(text: str) -> None:
     assert extract_clinical(text).value is ClinicalLevel.EMERGENCY
 
 
-@pytest.mark.parametrize("text", ["dau bung co sao khong", "toi nen uong thuoc gi", "co can di kham gap khong"])
+@pytest.mark.parametrize(
+    "text", ["dau bung co sao khong", "toi nen uong thuoc gi", "co can di kham gap khong"]
+)
 def test_advice_unaccented(text: str) -> None:
     assert extract_clinical(text).value is ClinicalLevel.ADVICE_REQUEST
 
@@ -86,16 +88,19 @@ def test_advice_unaccented(text: str) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "tu tu da em",                 # từ từ, không phải tự tử
-        "lieu co kip khong em",        # liệu, không phải liều
-        "benh vien o dau vay",         # "dau" = đâu
-        "ho hen toi mai",              # "ho" = họ
+        "tu tu da em",  # từ từ, không phải tự tử
+        "lieu co kip khong em",  # liệu, không phải liều
+        "benh vien o dau vay",  # "dau" = đâu
+        "ho hen toi mai",  # "ho" = họ
         "co lay khong em",
         "vo oi ra mau len",
     ],
 )
 def test_clinical_unaccented_collisions_do_not_transfer(text: str) -> None:
-    assert extract_clinical(text).value not in (ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST)
+    assert extract_clinical(text).value not in (
+        ClinicalLevel.EMERGENCY,
+        ClinicalLevel.ADVICE_REQUEST,
+    )
 
 
 # --- Agreement (SF-05) ------------------------------------------------------------
@@ -103,7 +108,18 @@ def test_clinical_unaccented_collisions_do_not_transfer(text: str) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["da", "vang", "co", "dung", "dung huy", "dung, huy", "khong sao", "toi da doi y", "thoi huy di", "huy a"],
+    [
+        "da",
+        "vang",
+        "co",
+        "dung",
+        "dung huy",
+        "dung, huy",
+        "khong sao",
+        "toi da doi y",
+        "thoi huy di",
+        "huy a",
+    ],
 )
 def test_cancel_reconfirm_unaccented_never_agrees_without_clear_cancel(text: str) -> None:
     assert extract_agreement(text, QuestionId.CANCEL_RECONFIRM).value is not Agreement.AGREE
@@ -136,7 +152,9 @@ def test_readback_unaccented(question: QuestionId, text: str, expected: Agreemen
 
 def test_full_name_unaccented_keeps_single_letter_given_name() -> None:
     assert extract_full_name("da toi la nguyen van a").value == "nguyen van a"
-    assert extract_full_name("nguyen thi ai").value == "nguyen thi ai"  # "ai" trùng từ nghi vấn khi mất dấu
+    assert (
+        extract_full_name("nguyen thi ai").value == "nguyen thi ai"
+    )  # "ai" trùng từ nghi vấn khi mất dấu
     assert extract_full_name("anh can gi").found is False
 
 
@@ -173,10 +191,19 @@ def test_cancel_reason_unaccented(text: str, expected: str) -> None:
 
 
 def test_line_signal_unaccented() -> None:
-    assert extract_line_signal("vui long de lai loi nhan sau tieng bip").value is LineSignal.VOICEMAIL
-    assert extract_line_signal("thue bao quy khach vua goi tam thoi khong lien lac duoc").value is LineSignal.NO_ANSWER
-    assert extract_line_signal("so may quy khach vua goi hien dang ban").value is LineSignal.LINE_BUSY
-    assert extract_line_signal("toi dang ban").value is LineSignal.NONE  # người thật; "ban" không có tổng đài
+    assert (
+        extract_line_signal("vui long de lai loi nhan sau tieng bip").value is LineSignal.VOICEMAIL
+    )
+    assert (
+        extract_line_signal("thue bao quy khach vua goi tam thoi khong lien lac duoc").value
+        is LineSignal.NO_ANSWER
+    )
+    assert (
+        extract_line_signal("so may quy khach vua goi hien dang ban").value is LineSignal.LINE_BUSY
+    )
+    assert (
+        extract_line_signal("toi dang ban").value is LineSignal.NONE
+    )  # người thật; "ban" không có tổng đài
 
 
 # --- Slot -------------------------------------------------------------------------

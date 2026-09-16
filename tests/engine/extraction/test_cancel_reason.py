@@ -28,9 +28,9 @@ def test_explicit_reasons(text: str, expected: str) -> None:
     "text",
     [
         "hủy đi",
-        "tôi không bận nhưng muốn hủy",   # phủ định
-        "bận mà cũng đắt quá",           # nhiều lý do -> không chọn hộ
-        "vợ tôi bảo thế",                 # không suy diễn
+        "tôi không bận nhưng muốn hủy",  # phủ định
+        "bận mà cũng đắt quá",  # nhiều lý do -> không chọn hộ
+        "vợ tôi bảo thế",  # không suy diễn
     ],
 )
 def test_unspecified(text: str) -> None:

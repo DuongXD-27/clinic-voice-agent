@@ -18,9 +18,21 @@ from typing import Iterable, Optional
 # Âm tiết đóng (hoàng, thuyết) chỉ có một cách viết nên không đụng tới.
 # "quý": u thuộc phụ âm "qu" nên dấu luôn nằm trên y — loại trừ bằng (?<!q).
 _TONE_PLACEMENT = {
-    "oà": "òa", "oá": "óa", "oả": "ỏa", "oã": "õa", "oạ": "ọa",
-    "oè": "òe", "oé": "óe", "oẻ": "ỏe", "oẽ": "õe", "oẹ": "ọe",
-    "uỳ": "ùy", "uý": "úy", "uỷ": "ủy", "uỹ": "ũy", "uỵ": "ụy",
+    "oà": "òa",
+    "oá": "óa",
+    "oả": "ỏa",
+    "oã": "õa",
+    "oạ": "ọa",
+    "oè": "òe",
+    "oé": "óe",
+    "oẻ": "ỏe",
+    "oẽ": "õe",
+    "oẹ": "ọe",
+    "uỳ": "ùy",
+    "uý": "úy",
+    "uỷ": "ủy",
+    "uỹ": "ũy",
+    "uỵ": "ụy",
 }
 _TONE_PLACEMENT_RE = re.compile(r"(?<!q)(" + "|".join(_TONE_PLACEMENT) + r")(?!\w)")
 _PUNCTUATION_RE = re.compile(r"[^\w\s]|_")
@@ -50,7 +62,9 @@ def clean(text: str) -> str:
 
 def strip_diacritics(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
-    return unicodedata.normalize("NFC", "".join(c for c in decomposed if unicodedata.category(c) != "Mn"))
+    return unicodedata.normalize(
+        "NFC", "".join(c for c in decomposed if unicodedata.category(c) != "Mn")
+    )
 
 
 def is_unaccented(text: str) -> bool:
@@ -119,8 +133,12 @@ def find_phrase(
     return None
 
 
-def find_last_phrase(text: str, phrases: PhraseSet, unaccented: Optional[bool] = None) -> Optional[re.Match[str]]:
-    matches = [m for _, pattern in phrases.for_text(text, unaccented) for m in pattern.finditer(text)]
+def find_last_phrase(
+    text: str, phrases: PhraseSet, unaccented: Optional[bool] = None
+) -> Optional[re.Match[str]]:
+    matches = [
+        m for _, pattern in phrases.for_text(text, unaccented) for m in pattern.finditer(text)
+    ]
     return max(matches, key=lambda m: m.end()) if matches else None
 
 
@@ -148,5 +166,5 @@ def remove_spans(text: str, matches: Iterable[re.Match[str]]) -> str:
     """Xoá các đoạn đã khớp (thay bằng khoảng trắng) để bộ khớp sau không đọc lại chúng."""
     chars = list(text)
     for match in matches:
-        chars[match.start():match.end()] = " " * (match.end() - match.start())
+        chars[match.start() : match.end()] = " " * (match.end() - match.start())
     return " ".join("".join(chars).split())

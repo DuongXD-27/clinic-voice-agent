@@ -24,7 +24,9 @@ class TranscriptAggregator:
     def result(self) -> Transcript:
         text = " ".join(e.text.strip() for e in self.finals if e.text.strip())
         scores = [e.confidence for e in self.finals if e.confidence is not None]
-        return Transcript(text=text, confidence=min(scores) if scores else None, is_silence=not text)
+        return Transcript(
+            text=text, confidence=min(scores) if scores else None, is_silence=not text
+        )
 
     def reset(self) -> None:
         self.finals.clear()
