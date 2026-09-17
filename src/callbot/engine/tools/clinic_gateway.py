@@ -1,10 +1,13 @@
-"""Tool layer: mọi lệnh đọc/ghi clinic mock đi qua đây để guardrail luôn được áp dụng.
+"""Clinic Gateway — "kiểm soát đọc / ghi và retry" (kiến trúc); mọi lệnh tới clinic mock đi qua đây.
 
+Đọc: đi hết mọi trang, chuẩn hóa về khóa canonical (`tools/normalize.py`), lỗi là `ClinicAPIError`.
+Ghi:
+- Kiểm tra đồng nhất phiên (FSM) + SF-01 / SF-02 / SF-05 + bằng chứng xác nhận TRƯỚC khi gửi
 - Mỗi write đọc lại version mới nhất làm If-Match (§4.2.3)
 - Idempotency-Key cố định theo call_id + lượt + thao tác (+ slot): gửi lại không tạo bản ghi trùng
-- Kiểm tra đồng nhất phiên (FSM) + SF-01 / SF-02 / SF-05 + bằng chứng xác nhận TRƯỚC khi gửi
-- Lệnh được commit vào nhật ký trước khi gửi; kết quả không xác định -> `WriteOutcomeUnknown`,
-  không gửi lại và không phát sinh lệnh thay thế (F-03)
+- Lệnh được commit vào nhật ký trước khi gửi; kết quả về ba lớp (F-05 §5.4):
+  thành công có bằng chứng | từ chối xác định `ClinicWriteRejected` | chưa rõ `WriteOutcomeUnknown`
+- VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần cùng key. Retry cho lỗi tạm thời khác: T-12.
 """
 
 import logging
@@ -12,26 +15,32 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-import httpx
-
 from callbot.engine.errors import (
+    ClinicAPIError,
     ClinicWriteRejected,
     SessionStoreUnavailable,
     SlotTaken,
     WriteOutcomeUnknown,
 )
-from callbot.engine.extraction.schema import to_local
 from callbot.engine.journal import ClinicCommand, current_journal
 from callbot.engine.policy import guardrails
 from callbot.engine.session import fsm
 from callbot.engine.session.context import CallContext
-from callbot.engine.tools.ports import ClinicAPI
+from callbot.engine.tools.normalize import (
+    iso_local,
+    normalize_appointment,
+    normalize_patient_candidate,
+    normalize_slot,
+)
+from callbot.engine.tools.ports import PAGE_LIMIT, ClinicAPI, Page
 from callbot.engine.types import CancelReason, TransferReason, UnreachableReason
 
 logger = logging.getLogger(__name__)
 
 # Mock giới hạn `to - from` tối đa 14 ngày
 SLOT_WINDOW_DAYS = 14
+# Trần số trang một lần đọc: 20 × 100 bản ghi — vượt là mock trả cursor hỏng, không phải dữ liệu thật
+MAX_PAGES = 20
 
 
 class ClinicGateway:
@@ -42,31 +51,47 @@ class ClinicGateway:
     # --- Đọc -----------------------------------------------------------------
 
     def get_appointment(self, ctx: CallContext) -> dict[str, Any]:
+        """Appointment của cuộc gọi (SF-01). Đọc được ngay lượt 0 — SF-03 cấm tiết lộ, không cấm đọc."""
         guardrails.assert_target_appointment(ctx, ctx.target_appointment_id)
-        return self._api.get_appointment(ctx.target_appointment_id)
+        assert ctx.target_appointment_id is not None
+        return normalize_appointment(self._api.get_appointment(ctx.target_appointment_id))
 
     def find_patients_by_phone(self, phone: str) -> list[dict[str, Any]]:
-        payload = self._api.find_patient_by_phone(phone)
-        if isinstance(payload, list):
-            return payload
-        return payload.get("data") or payload.get("patients") or payload.get("items") or []
+        """Ứng viên inbound theo số đã chuẩn hóa (Verifier lo, T-01) — mọi trang, mỗi phần tử
+        {patient_id, full_name, dob, verifiable}. Chỉ là tra cứu, không phải bằng chứng danh tính (§1.1.9)."""
+        rows = self._all_pages(
+            lambda cursor: self._api.find_patient_by_phone(phone, cursor=cursor, limit=PAGE_LIMIT)
+        )
+        return [normalize_patient_candidate(row) for row in rows]
 
     def list_open_slots(self, ctx: CallContext, now: datetime) -> list[dict[str, Any]]:
         """Nguồn slot hợp lệ duy nhất để đề xuất; thay toàn bộ `ctx.slots` (SF-02).
 
         `now` là thời điểm tiếp nhận lượt, để xử lý lại lượt đọc đúng cửa sổ thời gian cũ.
         """
-        start = to_local(now).replace(microsecond=0)
-        payload = self._api.get_slots(
-            self._clinic_id,
-            start.isoformat(),
-            (start + timedelta(days=SLOT_WINDOW_DAYS)).isoformat(),
+        start = now
+        from_, to = iso_local(start), iso_local(start + timedelta(days=SLOT_WINDOW_DAYS))
+        rows = self._all_pages(
+            lambda cursor: self._api.get_slots(
+                self._clinic_id, from_, to, cursor=cursor, limit=PAGE_LIMIT
+            )
         )
-        raw = (
-            payload if isinstance(payload, list) else payload.get("data", payload.get("slots", []))
-        )
-        ctx.slots = [_normalize_slot(slot) for slot in raw]
+        ctx.slots = [normalize_slot(row) for row in rows]
         return list(ctx.slots)
+
+    @staticmethod
+    def _all_pages(fetch: Callable[[Optional[str]], Page]) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        cursor: Optional[str] = None
+        for _ in range(MAX_PAGES):
+            page = fetch(cursor)
+            rows.extend(page["data"])
+            if not page["has_more"] or not page["next_cursor"]:
+                return rows
+            cursor = page["next_cursor"]
+        raise ClinicAPIError(
+            None, "PAGINATION_OVERFLOW", f"Quá {MAX_PAGES} trang, cursor có thể hỏng"
+        )
 
     # --- Ghi -----------------------------------------------------------------
 
@@ -133,8 +158,18 @@ class ClinicGateway:
         ctx.created_appointment_id = created["appointment_id"]
         return created
 
-    def transfer(self, ctx: CallContext, reason: TransferReason) -> dict[str, Any]:
+    def transfer(self, ctx: CallContext, reason: TransferReason) -> Optional[dict[str, Any]]:
+        """Outbound: ghi TRANSFERRED lên appointment của cuộc gọi.
+
+        Inbound chưa tạo lịch: không có gì để ghi (rev 1.1 §2.1) — trả None, không gửi request.
+        Gateway tự quyết theo hướng gọi để Dialogue gọi vô điều kiện (luồng "Chuyển nhân viên — không ghi Mock").
+        """
         fsm.check_closing_write(ctx)
+        if ctx.call.direction == "inbound" and ctx.created_appointment_id is None:
+            logger.info(
+                "%s: inbound chưa tạo lịch, chuyển máy %s không ghi Mock", ctx.call_id, reason
+            )
+            return None
         appointment_id = self._target(ctx)
         return self._write(
             ctx,
@@ -174,28 +209,27 @@ class ClinicGateway:
         key = f"{ctx.call_id}:{ctx.turn}:{operation}"
         # VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần với cùng Idempotency-Key
         for attempt in (1, 2):
-            version = self._current_version(ctx) if read_version else None
+            try:
+                version = self._current_version(ctx) if read_version else None
+            except ClinicAPIError as exc:
+                # Chưa gửi lệnh ghi nào: từ chối xác định, có thể thử lại nếu lỗi tạm thời
+                raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
             command = ClinicCommand(operation.split(":")[0], endpoint, payload, version, key)
             # Không lưu được nhật ký -> SessionStoreUnavailable, lệnh không được gửi
             journal.begin(command)
             try:
                 result = send(version, key)
-            except httpx.HTTPStatusError as exc:
-                status, code = exc.response.status_code, _error_code(exc.response)
-                if status >= 500:
-                    raise self._unknown(journal, command, f"HTTP {status} {code}") from exc
-                journal.failed(command, f"HTTP {status} {code}")
-                if code == "VERSION_CONFLICT" and attempt == 1:
+            except ClinicAPIError as exc:
+                if not exc.outcome_known:
+                    raise self._unknown(journal, command, f"{exc.code} {exc.message}") from exc
+                journal.failed(command, f"HTTP {exc.status} {exc.code}")
+                if exc.code == "VERSION_CONFLICT" and attempt == 1:
                     continue
-                if code == "SLOT_TAKEN":
-                    raise SlotTaken(status, code) from exc
-                raise ClinicWriteRejected(status, code) from exc
-            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-                # Chưa mở được kết nối: request chắc chắn chưa tới Clinic
-                journal.failed(command, type(exc).__name__)
-                raise ClinicWriteRejected(None, type(exc).__name__) from exc
+                if exc.code == "SLOT_TAKEN":
+                    raise SlotTaken(exc.status, exc.code) from exc
+                raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
             except Exception as exc:
-                # Timeout đọc, mất kết nối giữa chừng, lỗi lạ: không biết Clinic đã áp dụng chưa
+                # Lỗi ngoài hợp đồng cổng (bug, ngoại lệ transport lạ): không biết Clinic đã áp dụng chưa
                 raise self._unknown(journal, command, repr(exc)) from exc
             journal.succeeded(command, result if isinstance(result, dict) else {"result": result})
             return result
@@ -211,8 +245,7 @@ class ClinicGateway:
         return WriteOutcomeUnknown(f"{command.idempotency_key}: {error}")
 
     def _current_version(self, ctx: CallContext) -> int:
-        current = self._api.get_appointment(self._target(ctx))
-        return int(current["version"])
+        return self.get_appointment(ctx)["version"]
 
     @staticmethod
     def _target(ctx: CallContext) -> str:
@@ -220,20 +253,3 @@ class ClinicGateway:
         guardrails.assert_target_appointment(ctx, appointment_id)
         assert appointment_id is not None
         return appointment_id
-
-
-def _normalize_slot(slot: dict[str, Any]) -> dict[str, Any]:
-    """Mock trả `start_time`; engine và IE đọc `starts_at`."""
-    normalized = dict(slot)
-    if "starts_at" not in normalized and "start_time" in normalized:
-        normalized["starts_at"] = normalized["start_time"]
-    return normalized
-
-
-def _error_code(response: httpx.Response) -> Optional[str]:
-    try:
-        body = response.json()
-    except ValueError:
-        return None
-    error = body.get("error") if isinstance(body, dict) else None
-    return error.get("code") if isinstance(error, dict) else None

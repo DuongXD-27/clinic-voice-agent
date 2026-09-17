@@ -25,7 +25,13 @@ src/callbot/               # một core, hai transport (§1.3.2)
     policy/                # PolicyEngine + guardrails SF-01..SF-05
     verification/          # Verifier: xác minh tên + ngày sinh
     dialogue/              # Dialogue Manager, templates, prompts, llm/
-    tools/                 # ClinicGateway (If-Match, Idempotency-Key, nhật ký lệnh) + ClinicMockClient (HTTP)
+    tools/                 # Clinic Gateway: kiểm soát đọc/ghi và retry (F-05)
+      ports.py             # Protocol ClinicAPI 1:1 với mock (Page phân trang, ClinicAPIError)
+      clinic_gateway.py    # ClinicGateway: guardrail + FSM + nhật ký lệnh, đọc hết trang, chuẩn hóa
+      clinic_mock_client.py# ClinicMockClient (httpx) — httpx không lộ ra ngoài file này
+      fake_clinic.py       # FakeClinicAPI: mock trong bộ nhớ, hành xử như routes.py của mock
+      normalize.py         # start_time→starts_at, patient canonical, appointment int-hoá
+      telemetry.py         # ApiCallRecord + collect_api_calls() cho trace API/độ trễ
     journal.py             # nhật ký lệnh ghi Clinic gắn với lượt đang xử lý
     errors.py              # lỗi engine transport cần phân biệt (409/503)
     orchestrator.py        # CallOrchestrator: điều phối 1 lượt
