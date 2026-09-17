@@ -13,18 +13,25 @@ from callbot.transports.http.schemas import (
 
 _calls: dict[str, dict] = {}
 
+# A valid empty 8 kHz mono PCM WAV. The HTTP handler is still a contract stub;
+# the real transport replaces this with the configured TTS artifact.
+_STUB_AUDIO_URL = (
+    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="
+)
+
 
 def handle_call_start(payload: StartCallRequest) -> StartCallResponse:
     _calls[payload.call_id] = {
         "direction": payload.direction,
         "appointment_id": payload.appointment_id,
+        "mode": payload.mode,
         "turn": 0,
         "state": "AWAITING_IDENTITY",
     }
     return StartCallResponse(
         call_id=payload.call_id,
         utterance=t.greeting(payload.direction),
-        audio_url=None,
+        audio_url=_STUB_AUDIO_URL if payload.mode == "audio" else None,
         state="AWAITING_IDENTITY",
         turn=0,
     )
@@ -36,7 +43,7 @@ def handle_turn(call_id: str, payload: TurnRequest) -> TurnResponse:
 
     return TurnResponse(
         utterance=t.TRANSFER,
-        audio_url=None,
+        audio_url=_STUB_AUDIO_URL if call.get("mode") == "audio" else None,
         state="CLOSING",
         ended=True,
         outcome="TRANSFERRED",
