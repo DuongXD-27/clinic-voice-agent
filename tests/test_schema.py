@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from callbot.engine.tools.clinic_mock_client import ClinicMockClient
 from callbot.transports.http.main import app
+from callbot.transports.http.schemas import TurnRequest
 
 CALL_STATES = {
     "AWAITING_IDENTITY",
@@ -79,8 +80,6 @@ TURN_RESPONSE_CONTRACT = {
     "ended": ({"boolean"}, None),
     "outcome": ({"string", "null"}, END_OUTCOMES),
 }
-
-client = TestClient(app)
 
 
 def _operation(path: str, method: str) -> dict[str, Any]:
@@ -219,6 +218,7 @@ def test_listing_conformance_turn_response_fields_are_required() -> None:
     ],
 )
 def test_contract_start_call_accepts_direction_shapes(
+    client: TestClient,
     call_id: str,
     direction: str,
     appointment_id: str | None,
@@ -241,7 +241,8 @@ def test_contract_start_call_accepts_direction_shapes(
     assert response.json()["audio_url"] is None
 
 
-def test_contract_start_call_audio_mode_returns_audio_url() -> None:
+def test_team_scope_start_call_audio_mode_is_not_implemented(client: TestClient) -> None:
+    """F-02 is text-only; the contract still requires audio, so this is a known gap."""
     response = client.post(
         "/v1/calls",
         json={
@@ -254,10 +255,8 @@ def test_contract_start_call_audio_mode_returns_audio_url() -> None:
             "max_turns": 20,
         },
     )
-    assert response.status_code == 200
-    body = response.json()
-    _assert_start_response(body, "c_contract_audio")
-    assert isinstance(body["audio_url"], str) and body["audio_url"]
+    assert response.status_code == 501
+    assert response.json()["detail"]["code"] == "AUDIO_NOT_IMPLEMENTED"
 
 
 @pytest.mark.parametrize(
@@ -268,7 +267,7 @@ def test_contract_start_call_audio_mode_returns_audio_url() -> None:
     ],
 )
 def test_contract_start_call_rejects_values_outside_enums(
-    field_name: str, bad_value: object
+    client: TestClient, field_name: str, bad_value: object
 ) -> None:
     payload: dict[str, object] = {
         "call_id": "c_contract_invalid_start",
@@ -283,7 +282,7 @@ def test_contract_start_call_rejects_values_outside_enums(
     assert client.post("/v1/calls", json=payload).status_code == 422
 
 
-def test_team_hardening_start_call_rejects_coercible_string_integer() -> None:
+def test_team_hardening_start_call_rejects_coercible_string_integer(client: TestClient) -> None:
     """Strictness policy; the contract excerpt does not require rejection."""
     payload: dict[str, object] = {
         "call_id": "c_hardening_invalid_start",
@@ -298,16 +297,15 @@ def test_team_hardening_start_call_rejects_coercible_string_integer() -> None:
 
 
 @pytest.mark.parametrize(
-    ("call_id", "audio_url", "text", "silence_ms"),
+    ("call_id", "text", "silence_ms"),
     [
-        ("c_turn_audio", "https://harness/clips/c_turn_audio/1.wav", None, 0),
-        ("c_turn_text", None, "Tôi đồng ý", 0),
-        ("c_turn_silence", None, None, 1500),
+        ("c_turn_text", "Tôi đồng ý", 0),
+        ("c_turn_silence", None, 1500),
     ],
 )
-def test_contract_turn_accepts_audio_text_and_silence_shapes(
+def test_contract_turn_accepts_text_and_silence_shapes(
+    client: TestClient,
     call_id: str,
-    audio_url: str | None,
     text: str | None,
     silence_ms: int,
 ) -> None:
@@ -319,7 +317,7 @@ def test_contract_turn_accepts_audio_text_and_silence_shapes(
             "appointment_id": "apt_00417",
             "caller_number": None,
             "locale": "vi-VN",
-            "mode": "audio" if audio_url else "text",
+            "mode": "text",
             "max_turns": 20,
         },
     )
@@ -329,7 +327,7 @@ def test_contract_turn_accepts_audio_text_and_silence_shapes(
         f"/v1/calls/{call_id}/turn",
         json={
             "turn": 1,
-            "audio_url": audio_url,
+            "audio_url": None,
             "text": text,
             "silence_ms": silence_ms,
         },
@@ -338,12 +336,25 @@ def test_contract_turn_accepts_audio_text_and_silence_shapes(
     _assert_turn_response(response.json())
 
 
+def test_contract_turn_request_model_accepts_audio_shape() -> None:
+    """Audio is not served over HTTP yet (501), but the request model keeps the Listing 2 shape."""
+    request = TurnRequest.model_validate(
+        {
+            "turn": 1,
+            "audio_url": "https://harness/clips/c_turn_audio/1.wav",
+            "text": None,
+            "silence_ms": 0,
+        }
+    )
+    assert request.audio_url == "https://harness/clips/c_turn_audio/1.wav"
+
+
 @pytest.mark.parametrize(
     ("field_name", "bad_value"),
     [("turn", "1"), ("silence_ms", "0")],
 )
 def test_team_hardening_turn_rejects_coercible_string_integers(
-    field_name: str, bad_value: object
+    client: TestClient, field_name: str, bad_value: object
 ) -> None:
     """Strictness policy; the contract excerpt does not require rejection."""
     payload: dict[str, object] = {

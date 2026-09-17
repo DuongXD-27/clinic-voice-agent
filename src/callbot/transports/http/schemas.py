@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 CallState = Literal[
     "AWAITING_IDENTITY",
@@ -29,7 +29,19 @@ class StartCallRequest(BaseModel):
     caller_number: Optional[str]
     locale: str
     mode: Literal["text", "audio"]
-    max_turns: int = Field(strict=True)
+    max_turns: int = Field(strict=True, gt=0)
+
+    @model_validator(mode="after")
+    def _check_direction_fields(self) -> "StartCallRequest":
+        # §1.1.8: outbound gắn với một lịch hẹn; inbound định danh qua số gọi đến
+        if self.direction == "outbound" and not self.appointment_id:
+            raise ValueError("outbound yêu cầu appointment_id")
+        if self.direction == "inbound":
+            if not self.caller_number:
+                raise ValueError("inbound yêu cầu caller_number")
+            if self.appointment_id is not None:
+                raise ValueError("inbound không được có appointment_id")
+        return self
 
 
 class StartCallResponse(BaseModel):
@@ -41,10 +53,17 @@ class StartCallResponse(BaseModel):
 
 
 class TurnRequest(BaseModel):
-    turn: int = Field(strict=True)
+    turn: int = Field(strict=True, ge=1)
     audio_url: Optional[str]
     text: Optional[str]
     silence_ms: int = Field(strict=True, ge=0)
+
+    @model_validator(mode="after")
+    def _check_has_input(self) -> "TurnRequest":
+        # text=null chỉ hợp lệ khi lượt im lặng hoặc có audio
+        if self.text is None and self.audio_url is None and self.silence_ms == 0:
+            raise ValueError("text=null chỉ hợp lệ khi silence_ms > 0")
+        return self
 
 
 class TurnResponse(BaseModel):

@@ -13,11 +13,10 @@ theo từng lượt, và gọi ngược lại một "clinic mock" (mock backend 
 src/callbot/               # một core, hai transport (§1.3.2)
   transports/              # chỉ đổi request/response sang kiểu của engine, không chứa logic hội thoại
     http/                  # đường chấm điểm — uvicorn callbot.transports.http.main:app
-      main.py              # FastAPI app: /health, đăng ký router /v1/calls
-      calls.py             # 2 endpoint bắt buộc: POST /v1/calls, POST /v1/calls/{id}/turn
+      main.py              # FastAPI app: lifespan tạo ClinicMockClient + CallOrchestrator, /health
+      calls.py             # 2 endpoint bắt buộc, gọi CallOrchestrator: POST /v1/calls, POST /v1/calls/{id}/turn
       schemas.py           # Pydantic models cho request/response (§4.1)
       config.py            # đọc biến môi trường (CLINIC_MOCK_BASE_URL, ...)
-      stub_handlers.py     # handler giả, luôn chuyển máy — xoá khi nối engine (Bước 1)
     # phone/               # phone leg tuần 6 (§1.3.1), chưa làm
   engine/                  # AI Callbot Engine
     session/               # Session Manager: CallContext, FSM, repository
