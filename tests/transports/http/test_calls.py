@@ -19,7 +19,10 @@ def test_start_call() -> None:
             "call_id": "c_test_1",
             "direction": "outbound",
             "appointment_id": "apt_00417",
+            "caller_number": None,
+            "locale": "vi-VN",
             "mode": "text",
+            "max_turns": 20,
         },
     )
     assert response.status_code == 200
@@ -34,11 +37,19 @@ def test_start_call() -> None:
 def test_turn_defaults_to_transfer() -> None:
     client.post(
         "/v1/calls",
-        json={"call_id": "c_test_2", "direction": "outbound", "mode": "text"},
+        json={
+            "call_id": "c_test_2",
+            "direction": "outbound",
+            "appointment_id": None,
+            "caller_number": None,
+            "locale": "vi-VN",
+            "mode": "text",
+            "max_turns": 20,
+        },
     )
     response = client.post(
         "/v1/calls/c_test_2/turn",
-        json={"turn": 1, "text": "xin chào"},
+        json={"turn": 1, "audio_url": None, "text": "xin chào", "silence_ms": 0},
     )
     assert response.status_code == 200
     body = response.json()

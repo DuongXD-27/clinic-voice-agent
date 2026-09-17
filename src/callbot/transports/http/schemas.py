@@ -25,31 +25,31 @@ Outcome = Literal[
 class StartCallRequest(BaseModel):
     call_id: str
     direction: Literal["inbound", "outbound"]
-    appointment_id: Optional[str] = None
-    caller_number: Optional[str] = None
-    locale: str = "vi-VN"
-    mode: Literal["text", "audio"] = "text"
-    max_turns: int = 20
+    appointment_id: Optional[str]
+    caller_number: Optional[str]
+    locale: str
+    mode: Literal["text", "audio"]
+    max_turns: int = Field(strict=True)
 
 
 class StartCallResponse(BaseModel):
     call_id: str
     utterance: str
-    audio_url: Optional[str] = None
+    audio_url: Optional[str]
     state: CallState
-    turn: int = 0
+    turn: int
 
 
 class TurnRequest(BaseModel):
-    turn: int
-    audio_url: Optional[str] = None
-    text: Optional[str] = None
-    silence_ms: int = Field(default=0, ge=0)
+    turn: int = Field(strict=True)
+    audio_url: Optional[str]
+    text: Optional[str]
+    silence_ms: int = Field(strict=True, ge=0)
 
 
 class TurnResponse(BaseModel):
     utterance: str
-    audio_url: Optional[str] = None
+    audio_url: Optional[str]
     state: CallState
-    ended: bool = False
-    outcome: Optional[Outcome] = None
+    ended: bool
+    outcome: Optional[Outcome]
