@@ -9,10 +9,10 @@ from datetime import date
 from enum import Enum
 from typing import Any, Optional
 
-from callbot.engine.nlu.normalizer import normalize_name
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.types import TransferReason
+from callbot.engine.verification.names import normalize_name
 
 
 class VerificationStatus(str, Enum):

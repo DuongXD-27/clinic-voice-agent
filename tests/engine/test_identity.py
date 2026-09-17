@@ -4,7 +4,7 @@ from datetime import datetime
 import pytest
 
 from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
-from callbot.engine.nlu.normalizer import normalize_text, strip_diacritics
+from callbot.engine.verification.names import normalize_text, strip_diacritics
 from tests.engine.fake_clinic import FakeClinicAPI
 from tests.engine.identity_cases import IDENTITY_CASES, IdentityCase, PromptKind
 

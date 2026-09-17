@@ -86,7 +86,7 @@ Test lỗi là `tests/speech/test_narrowband.py::test_settings_default_to_narrow
 ## Ghi chú
 
 - Chỉ text mode: `mode=audio` trả 501; `audio_url` luôn `null`. Contract vẫn yêu cầu audio, đây là gap đã biết.
-- Session trong bộ nhớ, một process: chạy nhiều worker uvicorn sẽ mất session giữa các lượt.
+- Session trong bộ nhớ, một process: chạy nhiều worker uvicorn sẽ mất session giữa các lượt. *(Đã thay bằng PostgreSQL ở F-03.)*
 - `handle_turn` tự bắt mọi exception và chuyển máy `SYSTEM_ERROR`, nên 502/504/500 hiện chỉ xảy ra khi lỗi thoát ra khỏi engine (ví dụ trong `start_call`). F-02 không sửa cơ chế này và không thêm retry ghi ở HTTP adapter.
-- Router không kiểm tra `turn` tăng dần và không khoá khi hai request cùng `call_id` chạy đồng thời.
-- Nghiệp vụ còn dở (slot, `mark_unreachable`, extraction mới) nằm ngoài F-02; xem mục 5 của `docs/ai-callbot-architecture.md`.
+- Router không kiểm tra `turn` tăng dần và không khoá khi hai request cùng `call_id` chạy đồng thời. *(F-03 bổ sung, xem [http-api.md](../reference/http-api.md).)*
+- Nghiệp vụ còn dở (slot, `mark_unreachable`, extraction mới) nằm ngoài F-02; xem mục 5 của `docs/reference/ai-callbot-architecture.md`.

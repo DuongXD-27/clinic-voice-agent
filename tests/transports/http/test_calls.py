@@ -5,7 +5,18 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.engine.fake_clinic import FakeClinicAPI
 
-from callbot.engine import EngineSettings, SessionNotFound
+from callbot.engine import (
+    CallBusy,
+    CallConflict,
+    CallEnded,
+    EngineSettings,
+    InMemorySessionStore,
+    ReconciliationRequired,
+    SessionNotFound,
+    SessionStoreUnavailable,
+    TurnConflict,
+    TurnOutOfOrder,
+)
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
 from callbot.transports.http.calls import get_orchestrator
@@ -180,7 +191,11 @@ def test_orchestrator_created_once_and_clinic_closed_on_shutdown() -> None:
         created.append(clinic)
         return clinic
 
-    app = create_app(clinic_factory=factory, engine_settings=EngineSettings(llm_provider="none"))
+    app = create_app(
+        clinic_factory=factory,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=InMemorySessionStore,
+    )
     with TestClient(app) as client:
         orchestrator = app.state.orchestrator
         _start(client, "c_lifecycle")
@@ -219,6 +234,13 @@ _REQUEST = httpx.Request("GET", "https://clinic-mock.example/v1/appointments/apt
         ),
         (httpx.ReadTimeout("slow", request=_REQUEST), 504, "UPSTREAM_TIMEOUT"),
         (RuntimeError("sk_secret_key leaked"), 500, "INTERNAL_ERROR"),
+        (CallConflict("c_x"), 409, "CALL_CONFLICT"),
+        (TurnConflict("c_x"), 409, "TURN_CONFLICT"),
+        (TurnOutOfOrder("c_x", 3, 2), 409, "TURN_OUT_OF_ORDER"),
+        (CallEnded("c_x"), 409, "CALL_ENDED"),
+        (CallBusy("c_x"), 409, "CALL_BUSY"),
+        (ReconciliationRequired("c_x", 2, "sk_secret"), 409, "CALL_RECONCILIATION_REQUIRED"),
+        (SessionStoreUnavailable("postgresql://sk_secret@db"), 503, "SESSION_STORE_UNAVAILABLE"),
     ],
 )
 def test_engine_errors_map_to_http_status(
@@ -230,3 +252,179 @@ def test_engine_errors_map_to_http_status(
         assert response.json()["detail"]["code"] == code
         assert "sk_secret" not in response.text
         assert "Traceback" not in response.text
+
+
+# --- F-03: thứ tự lượt và replay qua HTTP ------------------------------------------------
+
+
+def test_turn_order_errors_over_http(client: TestClient) -> None:
+    _start(client, "c_http_order")
+    first = _turn(client, "c_http_order", 1, "Nguyễn Văn A.")
+
+    skipped = _turn(client, "c_http_order", 3, "14/03/1978")
+    assert skipped.status_code == 409
+    assert skipped.json()["detail"]["code"] == "TURN_OUT_OF_ORDER"
+    assert skipped.json()["detail"]["expected_turn"] == 2
+
+    conflict = _turn(client, "c_http_order", 1, "Trần Văn B")
+    assert (conflict.status_code, conflict.json()["detail"]["code"]) == (409, "TURN_CONFLICT")
+
+    replay = _turn(client, "c_http_order", 1, "Nguyễn Văn A.")
+    assert replay.status_code == 200 and replay.json() == first.json()
+
+
+def test_start_call_is_idempotent_over_http(client: TestClient) -> None:
+    first = _start(client, "c_http_open")
+    _turn(client, "c_http_open", 1, "Nguyễn Văn A.")
+    again = _start(client, "c_http_open")
+    assert again.status_code == 200 and again.json() == first.json()
+    # Context không bị reset: lượt 2 vẫn là ngày sinh
+    assert _turn(client, "c_http_open", 2, "14/03/1978").json()["state"] == "AWAITING_INTENT"
+
+    other = _start(client, "c_http_open", max_turns=5)
+    assert (other.status_code, other.json()["detail"]["code"]) == (409, "CALL_CONFLICT")
+
+
+def test_new_turn_after_end_returns_call_ended(client: TestClient) -> None:
+    _start(client, "c_http_end")
+    last = _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên")
+    assert last.json()["ended"] is True
+    after = _turn(client, "c_http_end", 2, "alo")
+    assert (after.status_code, after.json()["detail"]["code"]) == (409, "CALL_ENDED")
+    assert _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên").json() == last.json()
+
+
+def test_ready_reports_session_store(client: TestClient) -> None:
+    assert client.get("/ready").json() == {"status": "ready"}
+
+    class Down(InMemorySessionStore):
+        def check_ready(self) -> None:
+            raise SessionStoreUnavailable("db down")
+
+    app = create_app(
+        clinic_factory=FakeClinicAPI,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=Down,
+    )
+    with TestClient(app) as down:
+        response = down.get("/ready")
+        assert response.status_code == 503
+        assert response.json()["code"] == "SESSION_STORE_UNAVAILABLE"
+        assert down.get("/health").status_code == 200  # liveness không phụ thuộc DB
+
+
+# --- F-04: Information Extraction mới trên đường HTTP -------------------------------------
+
+
+def _conversation(client: TestClient, call_id: str, lines: list[Optional[str]], **start):
+    assert _start(client, call_id, **start).status_code == 200
+    bodies = []
+    for turn, line in enumerate(lines, start=1):
+        response = (
+            _turn(client, call_id, turn, None, silence_ms=2000)
+            if line is None
+            else _turn(client, call_id, turn, line)
+        )
+        assert response.status_code == 200, response.text
+        bodies.append(response.json())
+    return bodies
+
+
+@pytest.mark.parametrize(
+    ("call_id", "start", "lines", "outcome", "write"),
+    [
+        (
+            "c_ie_confirm",
+            {},
+            ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được."],
+            "CONFIRMED",
+            ("apt_00417", "CONFIRMED", {}),
+        ),
+        (
+            "c_ie_cancel",
+            {},
+            ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch", "Vâng", "Hủy đi"],
+            "CANCELLED",
+            ("apt_00417", "CANCELLED", {"cancel_reason": "UNSPECIFIED"}),
+        ),
+        (
+            "c_ie_resched",
+            {},
+            ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng", "Được"],
+            "RESCHEDULED",
+            ("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"}),
+        ),
+        (
+            "c_ie_book",
+            {"direction": "inbound", "appointment_id": None, "caller_number": "0912345600"},
+            ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đặt lịch khám", "khung 1", "Đồng ý"],
+            "BOOKED",
+            ("apt_new_1", "BOOKED", {"slot_id": "slot_aa01"}),
+        ),
+        (
+            "c_ie_voicemail",
+            {},
+            ["Quý khách vui lòng để lại lời nhắn sau tiếng bíp"],
+            "UNREACHABLE",
+            ("apt_00417", "UNREACHABLE", {"unreachable_reason": "VOICEMAIL"}),
+        ),
+    ],
+)
+def test_information_extraction_over_http(
+    client: TestClient,
+    clinic: FakeClinicAPI,
+    call_id: str,
+    start: dict[str, Any],
+    lines: list[str],
+    outcome: str,
+    write: tuple,
+) -> None:
+    bodies = _conversation(client, call_id, lines, **start)
+    assert bodies[-1]["ended"] is True and bodies[-1]["outcome"] == outcome
+    assert clinic.writes == [write]
+
+    store = client.app.state.session_store
+    last = store.get_turn(call_id, len(lines))
+    assert last.status == "COMPLETED" and last.extraction is not None
+    fields_found = [
+        (name, item["provenance"], item["span"])
+        for name, item in last.extraction.items()
+        if isinstance(item, dict) and item.get("provenance") not in (None, "NONE")
+    ]
+    assert fields_found, last.extraction
+    assert all(span for _, _, span in fields_found)
+    [command] = store.list_commands(call_id)
+    assert command.status == "SUCCEEDED"
+
+
+def test_http_app_on_postgres_replays_across_app_restart(
+    postgres_store: Any, postgres_url: str
+) -> None:
+    from callbot.engine.session.postgres import PostgresSessionStore
+
+    clinic = FakeClinicAPI()
+
+    def new_app():
+        def store_factory():
+            store = PostgresSessionStore(postgres_url, max_size=4)
+            store.open()
+            return store
+
+        return create_app(
+            clinic_factory=lambda: clinic,
+            engine_settings=EngineSettings(llm_provider="none"),
+            session_store_factory=store_factory,
+        )
+
+    with TestClient(new_app()) as first:
+        assert first.get("/ready").json() == {"status": "ready"}
+        _start(first, "c_pg_http")
+        asked = _turn(first, "c_pg_http", 1, "Nguyễn Văn A.").json()
+
+    with TestClient(new_app()) as second:
+        assert _start(second, "c_pg_http").json()["utterance"] == greeting("outbound")
+        assert _turn(second, "c_pg_http", 1, "Nguyễn Văn A.").json() == asked
+        assert _turn(second, "c_pg_http", 2, "14/03/1978").json()["state"] == "AWAITING_INTENT"
+        done = _turn(second, "c_pg_http", 3, "Có, tôi đến được").json()
+        assert done["outcome"] == "CONFIRMED"
+    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

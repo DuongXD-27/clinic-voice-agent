@@ -1,15 +1,14 @@
+from callbot.engine.errors import SessionNotFound
 from callbot.engine.session.context import CallContext
-from callbot.engine.session.manager import (
-    InMemorySessionRepository,
-    SessionManager,
-    SessionNotFound,
-    SessionRepository,
-)
+from callbot.engine.session.manager import SessionManager, TurnOutcome, TurnRun
+from callbot.engine.session.store import InMemorySessionStore, SessionStore
 
 __all__ = [
     "CallContext",
-    "InMemorySessionRepository",
+    "InMemorySessionStore",
     "SessionManager",
     "SessionNotFound",
-    "SessionRepository",
+    "SessionStore",
+    "TurnOutcome",
+    "TurnRun",
 ]

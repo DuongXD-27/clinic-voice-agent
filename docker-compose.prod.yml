@@ -1,10 +1,41 @@
 # Chạy trên EC2, do workflow CI/CD (.github/workflows/ci-cd.yml) chép lên /opt/callbot cùng .env.
 # Caddy nhận 80/443, tự xin cert Let's Encrypt cho BOT_DOMAIN và chuyển tới bot trong mạng nội bộ.
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: callbot
+      POSTGRES_PASSWORD: ${SESSION_DB_PASSWORD:?Cần SESSION_DB_PASSWORD trong .env}
+      POSTGRES_DB: callbot
+    volumes:
+      # Không xoá volume khi deploy: phiên và nhật ký lệnh cần cho đối soát
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callbot -d callbot"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    image: ${IMAGE:?Cần IMAGE trong .env}
+    command: ["python", "-m", "callbot.engine.session.postgres.migrate"]
+    environment:
+      SESSION_DATABASE_URL: postgresql://callbot:${SESSION_DB_PASSWORD}@postgres:5432/callbot
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   bot:
     image: ${IMAGE:?Cần IMAGE trong .env}
     restart: unless-stopped
     env_file: .env
+    environment:
+      SESSION_DATABASE_URL: postgresql://callbot:${SESSION_DB_PASSWORD}@postgres:5432/callbot
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
   caddy:
     image: caddy:2.8-alpine
@@ -21,5 +52,6 @@ services:
       - bot
 
 volumes:
+  pg_data:
   caddy_data:
   caddy_config:

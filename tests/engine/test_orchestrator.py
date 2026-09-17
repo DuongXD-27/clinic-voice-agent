@@ -1,18 +1,27 @@
+"""Orchestrator thật + Information Extraction mới trên clinic giả (F-04)."""
+
+from dataclasses import fields
 from datetime import date
+from typing import Optional
 
 from callbot.engine import CallerInput, CallStart, create_orchestrator
+from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE
-from callbot.engine.nlu.normalizer import normalize_name, parse_dob
+from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
+from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
+from callbot.engine.verification.names import normalize_name
 from tests.engine.fake_clinic import FakeClinicAPI
 
+SILENCE = None
 
-def _run(orchestrator, call_id: str, lines: list[str | None]):
+
+def _run(orchestrator, call_id: str, lines: list[Optional[str]], start: int = 1):
     action = None
-    for turn, line in enumerate(lines, start=1):
+    for turn, line in enumerate(lines, start=start):
         caller = (
-            CallerInput(turn=turn, is_silence=True)
-            if line is None
+            CallerInput(turn=turn, text=None, silence_ms=2000)
+            if line is SILENCE
             else CallerInput(turn=turn, text=line)
         )
         action = orchestrator.handle_turn(call_id, caller)
@@ -23,11 +32,16 @@ def _outbound(call_id: str) -> CallStart:
     return CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417")
 
 
-def test_normalizer() -> None:
+def _inbound(call_id: str, phone: str = "0912345600") -> CallStart:
+    return CallStart(call_id=call_id, direction="inbound", caller_number=phone)
+
+
+def _context(bot, call_id: str) -> CallContext:
+    return CallContext.from_dict(bot.sessions.store.get_session(call_id).context)
+
+
+def test_name_normalizer_moved_to_verification() -> None:
     assert normalize_name("Nguyễn  Văn A") == "nguyen van a"
-    assert parse_dob("Ngày 14 tháng 3 năm 1978.") == date(1978, 3, 14)
-    assert parse_dob("14/03/1978") == date(1978, 3, 14)
-    assert parse_dob("không nhớ") is None
 
 
 def test_identity_match() -> None:
@@ -51,6 +65,24 @@ def test_opening_discloses_ai_assistant() -> None:
         assert opening.state == "AWAITING_IDENTITY"
         # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
         assert opening.utterance.rstrip().endswith("?")
+    assert _context(bot, "c_greet_out").question.question_id is QuestionId.ASK_NAME
+
+
+def test_confirm_attendance_in_one_readback_turn() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_confirm"))
+    summary = _run(bot, "c_confirm", ["Nguyễn Văn A", "14/03/1978"])
+    assert summary.state == "AWAITING_INTENT" and "14 tháng 10" in summary.utterance
+    assert _context(bot, "c_confirm").question.question_id is QuestionId.CONFIRM_READBACK
+
+    action = _run(bot, "c_confirm", ["Có, tôi đến được."], start=3)
+    assert action.outcome == "CONFIRMED"
+    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+    evidence = _context(bot, "c_confirm").evidence
+    assert [(e.kind, e.label, e.question_id, e.turn) for e in evidence] == [
+        ("CONFIRMATION", "AGREE", QuestionId.CONFIRM_READBACK, 3)
+    ]
 
 
 def test_reference_call_reschedule() -> None:
@@ -74,25 +106,122 @@ def test_reference_call_reschedule() -> None:
     assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
 
 
-def test_identity_mismatch_transfers_without_disclosure() -> None:
+def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
-    bot.start_call(_outbound("c_wrong_id"))
-    action = _run(bot, "c_wrong_id", ["Trần Thị B", "Ngày 1 tháng 1 năm 1990"])
-    assert action.outcome == "TRANSFERRED"
-    assert action.transfer_reason == "IDENTITY_FAILED"
-    assert "Nội tổng quát" not in action.utterance
+    bot.start_call(_outbound("c_taken"))
+    _run(bot, "c_taken", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch", "hai giờ rưỡi chiều"])
+
+    clinic.taken_slots.add("slot_91d2")  # người khác vừa lấy
+    action = _run(bot, "c_taken", ["Được"], start=5)
+    assert action.state == "OFFERING_SLOTS" and action.utterance.startswith(t.SLOT_TAKEN)
+    assert "2 giờ 30 chiều" not in action.utterance
+    ctx = _context(bot, "c_taken")
+    assert ctx.selected_slot_id is None and ctx.evidence == []
+    assert clinic.writes == []
+
+    action = _run(bot, "c_taken", ["khung 1", "được"], start=6)
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"})]
 
 
-def test_cancel_requires_second_confirmation() -> None:
+def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
+    clinic = FakeClinicAPI()
+    clinic.slots.append({"slot_id": "slot_cc03", "starts_at": "2026-10-14T16:00:00+07:00"})
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_ambiguous"))
+    _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
+
+    action = _run(bot, "c_ambiguous", ["buổi chiều"], start=4)
+    assert action.state == "OFFERING_SLOTS"
+    ctx = _context(bot, "c_ambiguous")
+    assert ctx.presented_slot_ids == ["slot_91d2", "slot_cc03"]
+    assert ctx.selected_slot_id is None and ctx.failed_understandings == 0
+
+
+def test_refusing_slots_drops_pending_action_without_writing() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_refuse_slot"))
+    _run(bot, "c_refuse_slot", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
+
+    action = _run(bot, "c_refuse_slot", ["thôi không đổi nữa"], start=4)
+    assert action.state == "AWAITING_INTENT"
+    ctx = _context(bot, "c_refuse_slot")
+    assert ctx.pending_action is None and ctx.selected_slot_id is None
+    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
+    assert clinic.writes == []
+
+
+def test_cancel_requires_explicit_second_confirmation() -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_cancel"))
-    action = _run(bot, "c_cancel", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch"])
-    assert action.ended is False and clinic.writes == []
+    action = _run(bot, "c_cancel", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch vì bận"])
+    assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
 
-    action = bot.handle_turn("c_cancel", CallerInput(turn=4, text="Vâng"))
+    # SF-05: "Vâng" không hủy lịch — hỏi lại bằng câu lựa chọn
+    action = _run(bot, "c_cancel", ["Vâng"], start=4)
+    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+
+    action = _run(bot, "c_cancel", ["Hủy giúp tôi"], start=5)
     assert action.outcome == "CANCELLED"
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+    kinds = [(e.kind, e.turn) for e in _context(bot, "c_cancel").evidence]
+    assert kinds == [("REQUEST", 3), ("CONFIRMATION", 5)]
+
+
+def test_cancel_refused_keeps_appointment() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_cancel_no"))
+    _run(bot, "c_cancel_no", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch"])
+    action = _run(bot, "c_cancel_no", ["Thôi không hủy nữa"], start=4)
+    assert action.state == "AWAITING_INTENT"
+    assert _context(bot, "c_cancel_no").evidence == []
+    assert clinic.writes == []
+
+
+def test_unclear_confirmation_counts_from_second_time() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_unclear"))
+    _run(bot, "c_unclear", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch"])
+
+    _run(bot, "c_unclear", ["Vâng"], start=4)
+    ctx = _context(bot, "c_unclear")
+    assert (ctx.unclear_streak, ctx.failed_understandings) == (1, 0)
+    _run(bot, "c_unclear", ["Dạ"], start=5)
+    ctx = _context(bot, "c_unclear")
+    assert (ctx.unclear_streak, ctx.failed_understandings) == (2, 1)
+    action = _run(bot, "c_unclear", ["Ừ"], start=6)
+    assert action.transfer_reason == "NOT_UNDERSTOOD"
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
+
+
+def test_repeat_request_rereads_pending_question_without_counting() -> None:
+    bot = create_orchestrator(FakeClinicAPI())
+    bot.start_call(_outbound("c_repeat"))
+    _run(bot, "c_repeat", ["Nguyễn Văn A"])
+    action = _run(bot, "c_repeat", ["gì cơ"], start=2)
+    assert action.utterance == t.ASK_DOB
+    assert _context(bot, "c_repeat").failed_understandings == 0
+
+
+def test_inbound_booking_with_open_intent_question() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_inbound("c_book"))
+    action = _run(bot, "c_book", ["Nguyễn Văn A", "14/03/1978"])
+    assert action.utterance == t.ASK_INTENT_INBOUND
+
+    # Câu hỏi mở: "vâng" không được suy ra thành đặt lịch
+    action = _run(bot, "c_book", ["Vâng"], start=3)
+    assert action.state == "AWAITING_INTENT" and clinic.slot_reads == 0
+
+    action = _run(bot, "c_book", ["Tôi muốn đặt lịch khám", "khung 2", "Đồng ý"], start=4)
+    assert action.outcome == "BOOKED"
+    assert clinic.writes == [("apt_new_1", "BOOKED", {"slot_id": "slot_91d2"})]
 
 
 def test_clinical_question_transfers() -> None:
@@ -105,11 +234,42 @@ def test_clinical_question_transfers() -> None:
     assert action.transfer_reason == "CLINICAL_QUESTION"
 
 
-def test_three_silent_turns_unreachable() -> None:
-    bot = create_orchestrator(FakeClinicAPI())
+def test_request_human_transfers_before_verification() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_human"))
+    action = _run(bot, "c_human", ["cho tôi gặp nhân viên"])
+    assert action.transfer_reason == "PATIENT_REQUEST"
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "PATIENT_REQUEST"})]
+
+
+def test_outbound_three_silent_turns_marks_unreachable() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_silent"))
-    action = _run(bot, "c_silent", [None, None, None])
+    action = _run(bot, "c_silent", [SILENCE, SILENCE, SILENCE])
     assert action.outcome == "UNREACHABLE"
+    assert clinic.writes == [("apt_00417", "UNREACHABLE", {"unreachable_reason": "SILENCE"})]
+    assert clinic.appointments["apt_00417"]["attempt_count"] == 1
+
+
+def test_inbound_silence_transfers_without_booking() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_inbound("c_in_silent"))
+    action = _run(bot, "c_in_silent", [SILENCE, SILENCE, SILENCE])
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "NOT_UNDERSTOOD")
+    assert clinic.writes == []
+
+
+def test_voicemail_ends_unreachable_without_disclosing() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_voicemail"))
+    action = _run(bot, "c_voicemail", ["Xin vui lòng để lại lời nhắn sau tiếng bíp"])
+    assert action.outcome == "UNREACHABLE" and action.utterance == t.GOODBYE_UNREACHABLE
+    assert "14 tháng 10" not in action.utterance
+    assert clinic.writes == [("apt_00417", "UNREACHABLE", {"unreachable_reason": "VOICEMAIL"})]
 
 
 def test_two_failed_understandings_transfer() -> None:
@@ -117,3 +277,68 @@ def test_two_failed_understandings_transfer() -> None:
     bot.start_call(_outbound("c_confused"))
     action = _run(bot, "c_confused", ["alo", "alo"])
     assert action.transfer_reason == "NOT_UNDERSTOOD"
+
+
+def test_extraction_with_provenance_is_stored_on_turn_record() -> None:
+    bot = create_orchestrator(FakeClinicAPI())
+    bot.start_call(_outbound("c_trace"))
+    _run(bot, "c_trace", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch"])
+    record = bot.sessions.store.get_turn("c_trace", 3)
+    assert record.extraction["question_id"] == "CONFIRM_READBACK"
+    assert record.extraction["intent"] == {
+        "value": "CANCEL",
+        "provenance": "EXACT",
+        "span": "hủy",
+    }
+    assert record.extraction["full_name"]["provenance"] == "NONE"
+
+
+class _SpyExtractor(InformationExtractor):
+    def __init__(self) -> None:
+        super().__init__()
+        self.contexts: list[TurnContext] = []
+
+    def extract(self, ctx, transcript, *, silence_ms=0):
+        self.contexts.append(ctx)
+        return super().extract(ctx, transcript, silence_ms=silence_ms)
+
+
+def test_extractor_never_sees_patient_identity() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    spy = _SpyExtractor()
+    bot._extractor = spy
+    bot.start_call(_outbound("c_private"))
+    # Người gọi nói sai tên: không được "sửa" theo hồ sơ
+    _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
+
+    assert {f.name for f in fields(TurnContext)} == {
+        "turn",
+        "question_id",
+        "direction",
+        "now",
+        "slots",
+        "presented_slot_ids",
+    }
+    verify = clinic.appointments["apt_00417"]["patient"]["verify"]
+    for seen in spy.contexts:
+        dumped = repr(seen)
+        assert verify["full_name"] not in dumped and verify["dob"] not in dumped
+        assert "pt_3391" not in dumped
+    session = bot.sessions.store.get_session("c_private")
+    assert session.context["claimed_name"] == "nguyễn văn bê"
+
+
+def test_trace_failure_does_not_rerun_committed_turn() -> None:
+    class BrokenTracer:
+        def log(self, call_id, turn, event):
+            raise OSError("disk full")
+
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic, tracer=BrokenTracer())
+    bot.start_call(_outbound("c_trace_fail"))
+    first = _run(bot, "c_trace_fail", ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"])
+    assert first.outcome == "CONFIRMED"
+    again = bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
+    assert again == first
+    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

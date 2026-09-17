@@ -24,6 +24,7 @@ class ClinicAPI(Protocol):
         cancel_reason: str,
         version: int,
         idempotency_key: Optional[str] = None,
+        confirmed: bool = False,
     ) -> dict[str, Any]: ...
 
     def transfer_appointment(
@@ -38,6 +39,14 @@ class ClinicAPI(Protocol):
         self,
         appointment_id: str,
         new_slot_id: str,
+        version: int,
+        idempotency_key: Optional[str] = None,
+    ) -> dict[str, Any]: ...
+
+    def mark_unreachable(
+        self,
+        appointment_id: str,
+        unreachable_reason: str,
         version: int,
         idempotency_key: Optional[str] = None,
     ) -> dict[str, Any]: ...

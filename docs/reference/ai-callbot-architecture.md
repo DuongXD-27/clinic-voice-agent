@@ -193,14 +193,15 @@ Harness chấm trạng thái cuối cùng trong Mock, kết hợp nhật ký ghi
 
 | Thành phần | Hiện trạng |
 |---|---|
-| [HTTP router](../src/callbot/transports/http/calls.py) | Hai endpoint gọi `CallOrchestrator` thật (F-02, [evidence](evidence/f02-http-engine.md)); chỉ text mode, `mode=audio` trả 501. |
-| [Call Orchestrator](../src/callbot/engine/orchestrator.py) | Có điều phối lượt; đang import bộ trích xuất `engine/nlu`. |
-| [Information Extraction mới](../src/callbot/engine/extraction/extractor.py) | Có module trích xuất theo ngữ cảnh câu hỏi; chưa nối vào Orchestrator. |
-| [Dialogue Manager](../src/callbot/engine/dialogue/manager.py) | Có các nhánh nghiệp vụ; còn TODO về xử lý slot và sử dụng LLM. |
-| [Policy](../src/callbot/engine/policy/policy_engine.py) | Có bộ đếm; nhánh ba lượt im lặng chưa phân biệt inbound/outbound theo Rev 1.1. |
-| [Clinic Gateway](../src/callbot/engine/tools/clinic_gateway.py) | Có kiểm soát một số lệnh ghi; `mark_unreachable` vẫn là `NotImplementedError`. |
-| [Speech pipeline](../src/callbot/speech/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
-| [TTS](../src/callbot/speech/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
+| [HTTP router](../../src/callbot/transports/http/calls.py) | Hai endpoint gọi `CallOrchestrator` thật (F-02, [evidence](../evidence/f02-http-engine.md)); chỉ text mode, `mode=audio` trả 501. Mã lỗi thứ tự lượt / đối soát: [http-api.md](http-api.md). |
+| [Session Manager](../../src/callbot/engine/session/manager.py) | PostgreSQL store, khóa theo `call_id`, replay, nhật ký lệnh Clinic, chặn đối soát (F-03, [evidence](../evidence/f03-session-store.md), [vận hành](session-operations.md)). |
+| [Call Orchestrator](../../src/callbot/engine/orchestrator.py) | Điều phối lượt với `extraction.InformationExtractor`; `engine/nlu` đã xoá (F-04, [evidence](../evidence/f04-information-extraction-http.md)). |
+| [Information Extraction](../../src/callbot/engine/extraction/extractor.py) | Nối vào Orchestrator; IE chỉ nhận `TurnContext` (không hồ sơ bệnh nhân). LLM fallback chưa bật. |
+| [Dialogue Manager](../../src/callbot/engine/dialogue/manager.py) | Điều phối theo `question_id`, `agreement`, `slot_choice`; bằng chứng xác nhận; `SLOT_TAKEN` đề xuất lại. Chưa dùng LLM. |
+| [Policy](../../src/callbot/engine/policy/policy_engine.py) | Bộ đếm theo thiết kế IE §6.1; im lặng: outbound `UNREACHABLE`, inbound chuyển máy. Chưa có giới hạn lần thử danh tính riêng (§6.2). |
+| [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. |
+| [Speech pipeline](../../src/callbot/speech/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
+| [TTS](../../src/callbot/speech/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
 | Phone Adapter | Chưa có transport điện thoại trong repo. |
 | Output Guard | Là phần của thiết kế đích; chưa có một bước kiểm tra đầu ra tập trung trong Orchestrator. |
 

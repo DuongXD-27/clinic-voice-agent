@@ -16,6 +16,22 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      # Test tích hợp session store (F-03) chạy trên PostgreSQL thật, không skip
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: callbot
+          POSTGRES_PASSWORD: callbot
+          POSTGRES_DB: callbot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U callbot -d callbot"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      TEST_SESSION_DATABASE_URL: postgresql://callbot:callbot@localhost:5432/callbot
+      REQUIRE_POSTGRES_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -80,7 +96,9 @@ jobs:
           CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
           CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SESSION_DB_PASSWORD: ${{ secrets.SESSION_DB_PASSWORD }}
         run: |
+          : "${SESSION_DB_PASSWORD:?Thiếu secret SESSION_DB_PASSWORD}"
           : "${BOT_DOMAIN:?Thiếu variable BOT_DOMAIN}"
           : "${CLINIC_MOCK_API_KEY:?Thiếu secret CLINIC_MOCK_API_KEY}"
           umask 077
@@ -91,6 +109,7 @@ jobs:
             echo "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
             echo "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
             echo "GEMINI_API_KEY=$GEMINI_API_KEY"
+            echo "SESSION_DB_PASSWORD=$SESSION_DB_PASSWORD"
           } > deploy.env
 
       - name: Deploy
@@ -111,9 +130,12 @@ jobs:
           BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
         run: |
           for i in $(seq 1 30); do
-            curl -fsS "https://$BOT_DOMAIN/health" && break
+            curl -fsS "https://$BOT_DOMAIN/ready" && break
             sleep 5
           done
+          curl -fsS "https://$BOT_DOMAIN/ready"
+          # Không tái sử dụng call_id: phiên lưu bền, mỗi lần smoke một id riêng
+          CALL_ID="ci_smoke_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           curl -fsS -X POST "https://$BOT_DOMAIN/v1/calls" \
             -H "Content-Type: application/json" \
-            -d '{"call_id":"ci_smoke","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'
+            -d '{"call_id":"'"$CALL_ID"'","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'

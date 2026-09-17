@@ -2,12 +2,24 @@
 
 import logging
 from collections.abc import Callable
-from typing import Annotated, TypeVar
+from typing import Annotated, Any, TypeVar
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from callbot.engine import CallerInput, CallOrchestrator, CallStart, SessionNotFound
+from callbot.engine import (
+    CallBusy,
+    CallConflict,
+    CallEnded,
+    CallerInput,
+    CallOrchestrator,
+    CallStart,
+    ReconciliationRequired,
+    SessionNotFound,
+    SessionStoreUnavailable,
+    TurnConflict,
+    TurnOutOfOrder,
+)
 from callbot.transports.http.schemas import (
     StartCallRequest,
     StartCallResponse,
@@ -23,15 +35,17 @@ T = TypeVar("T")
 
 
 def get_orchestrator(request: Request) -> CallOrchestrator:
-    """Orchestrator tạo một lần trong lifespan (main.py) — session sống qua các lượt."""
+    """Orchestrator tạo một lần trong lifespan (main.py); session nằm trong session store."""
     return request.app.state.orchestrator
 
 
 Orchestrator = Annotated[CallOrchestrator, Depends(get_orchestrator)]
 
 
-def _error(status_code: int, code: str, message: str) -> HTTPException:
-    return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+def _error(status_code: int, code: str, message: str, **extra: Any) -> HTTPException:
+    return HTTPException(
+        status_code=status_code, detail={"code": code, "message": message, **extra}
+    )
 
 
 def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
@@ -40,6 +54,32 @@ def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
         return operation()
     except SessionNotFound as exc:
         raise _error(404, "CALL_NOT_FOUND", f"Không tìm thấy cuộc gọi {call_id}") from exc
+    except CallConflict as exc:
+        raise _error(409, "CALL_CONFLICT", "call_id đã mở với cấu hình khác") from exc
+    except TurnConflict as exc:
+        raise _error(409, "TURN_CONFLICT", "Lượt này đã nhận với đầu vào khác") from exc
+    except TurnOutOfOrder as exc:
+        raise _error(
+            409,
+            "TURN_OUT_OF_ORDER",
+            f"Đang chờ lượt {exc.expected_turn}",
+            expected_turn=exc.expected_turn,
+        ) from exc
+    except CallEnded as exc:
+        raise _error(409, "CALL_ENDED", "Cuộc gọi đã kết thúc") from exc
+    except CallBusy as exc:
+        raise _error(409, "CALL_BUSY", "Cuộc gọi đang xử lý một lượt khác") from exc
+    except ReconciliationRequired as exc:
+        logger.error("Phiên %s cần đối soát (lượt %s)", call_id, exc.turn)
+        raise _error(
+            409,
+            "CALL_RECONCILIATION_REQUIRED",
+            "Kết quả ghi Clinic chưa xác định, phiên bị chặn chờ đối soát",
+            turn=exc.turn,
+        ) from exc
+    except SessionStoreUnavailable as exc:
+        logger.error("Session store không sẵn sàng khi xử lý %s", call_id)
+        raise _error(503, "SESSION_STORE_UNAVAILABLE", "Kho phiên không sẵn sàng") from exc
     except httpx.TimeoutException as exc:
         logger.warning("Clinic mock timeout khi xử lý %s", call_id)
         raise _error(504, "UPSTREAM_TIMEOUT", "Clinic API không phản hồi kịp") from exc
@@ -88,11 +128,12 @@ def call_turn(
     if payload.audio_url is not None:
         raise _error(422, "AUDIO_URL_NOT_ALLOWED", "Cuộc gọi text mode không nhận audio_url")
 
-    is_silence = payload.silence_ms > 0
+    # Giữ nguyên text và silence_ms: engine tự xác định im lặng và so khớp khi gửi lại lượt
     caller = CallerInput(
         turn=payload.turn,
-        text="" if is_silence else (payload.text or ""),
-        is_silence=is_silence,
+        text=payload.text,
+        silence_ms=payload.silence_ms,
+        audio_url=payload.audio_url,
     )
     action = _run_engine(call_id, lambda: orchestrator.handle_turn(call_id, caller))
     return TurnResponse(
