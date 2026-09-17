@@ -1,31 +1,56 @@
-"""Dialogue Manager: sinh phản hồi, điều phối hội thoại theo kịch bản, gọi tools khi cần.
+"""Dialogue Manager: chọn câu hỏi tiếp theo, gọi tools khi đủ điều kiện, đặt `question_id`.
 
-Mỗi handler trả về BotAction, hoặc None nếu câu người gọi không dùng được cho bước
-hiện tại — orchestrator giao cho Policy quyết định hỏi lại hay chuyển máy (§1.1.5).
+Nhận thẳng `ExtractionResult` (thiết kế IE v1.1). Mỗi phản hồi kèm `Understanding` để Policy đếm §1.1.5;
+Dialogue không tự quyết chuyển máy vì không hiểu.
+
+Quy ước:
+- Mỗi câu hỏi nghiệp vụ đi qua `_ask`, lưu `question_id` + nội dung + lượt. Câu nhắc chung
+  (im lặng, "em chưa hiểu") không đổi câu hỏi đang chờ, nên không tạo được bằng chứng xác nhận.
+- Chỉ `agreement == AGREE` cho đúng câu hỏi xác nhận mới tạo bằng chứng và gọi lệnh ghi;
+  REFUSE bỏ hành động chờ; UNCLEAR hỏi lại bằng câu lựa chọn A/B.
+- Slot chỉ lấy từ GET /slots của cuộc gọi; lời người gọi chỉ là tiêu chí lọc.
 """
 
 import logging
-from datetime import datetime
+from dataclasses import dataclass, replace
+from datetime import date, datetime
 from typing import Any, Optional
+
+import httpx
 
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.llm.base import LLMClient
-from callbot.engine.nlu.schema import Intent, NLUResult
-from callbot.engine.session.context import CallContext
+from callbot.engine.errors import TURN_ABORTING_ERRORS, ClinicWriteRejected, SlotTaken
+from callbot.engine.extraction.schema import (
+    Agreement,
+    ExtractionResult,
+    Field,
+    Intent,
+    QuestionId,
+)
+from callbot.engine.extraction.slot_choice import filter_slots, parse_slot_criteria
+from callbot.engine.policy.guardrails import SevereFailureBlocked
+from callbot.engine.policy.policy_engine import Understanding
+from callbot.engine.session.context import ActionEvidence, CallContext, PendingAction, Question
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from callbot.engine.types import BotAction, TransferReason
+from callbot.engine.types import (
+    BotAction,
+    CallState,
+    Outcome,
+    TransferReason,
+    UnreachableReason,
+)
 from callbot.engine.verification.identity import IdentityVerifier, VerificationStatus
 
 logger = logging.getLogger(__name__)
 
 MAX_SLOTS_PRESENTED = 3
-_PERIOD_HOURS = {"MORNING": range(0, 12), "AFTERNOON": range(12, 18), "EVENING": range(18, 24)}
-_INTENT_FOR_ACTION = {
-    "CONFIRM": Intent.CONFIRM_ATTENDANCE,
-    "CANCEL": Intent.CANCEL,
-    "RESCHEDULE": Intent.RESCHEDULE,
-    "BOOK": Intent.BOOK,
-}
+
+
+@dataclass(frozen=True)
+class Reply:
+    action: BotAction
+    understanding: Understanding = "UNDERSTOOD"
 
 
 class DialogueManager:
@@ -43,153 +68,378 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
-        return BotAction(utterance=t.greeting(ctx.call.direction), state="AWAITING_IDENTITY")
+        return self._ask(
+            ctx, QuestionId.ASK_NAME, t.greeting(ctx.call.direction), "AWAITING_IDENTITY"
+        )
 
-    def reprompt(self, ctx: CallContext, silence: bool = False) -> BotAction:
-        if silence:
-            return BotAction(utterance=t.SILENCE, state=ctx.state)
-        if ctx.state == "AWAITING_IDENTITY":
-            text = t.ASK_NAME_AGAIN if ctx.identity_step == "ASK_NAME" else t.ASK_DOB_AGAIN
-            return BotAction(utterance=text, state=ctx.state)
-        return BotAction(utterance=t.NOT_UNDERSTOOD, state=ctx.state)
+    def silence(self, ctx: CallContext) -> BotAction:
+        # Không đổi câu hỏi đang chờ: "Alo, còn nghe máy không" không phải câu hỏi xác nhận
+        return BotAction(utterance=t.SILENCE, state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
-        if ctx.target_appointment_id:
+        # Rev 1.1 §2.1: inbound chưa tạo lịch thì không ghi gì, chỉ trả outcome
+        if ctx.target_appointment_id and not ctx.ended:
             try:
                 self._gateway.transfer(ctx, reason)
-            except Exception:
+            except TURN_ABORTING_ERRORS:
+                raise
+            except (ClinicWriteRejected, SevereFailureBlocked, httpx.HTTPError):
                 logger.exception("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
-        # TODO: inbound chưa tạo appointment (vd. PATIENT_NOT_FOUND) — contract chưa nêu ghi vào đâu
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
         )
 
-    def unreachable(self, ctx: CallContext) -> BotAction:
+    def unreachable(self, ctx: CallContext, reason: UnreachableReason) -> BotAction:
         """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail."""
         try:
-            self._gateway.mark_unreachable(ctx)
-        except NotImplementedError:
-            logger.warning("mark_unreachable chưa được hỗ trợ bởi contract §4.2")
-        return BotAction(t.GOODBYE_UNREACHABLE, "ENDED", ended=True, outcome="UNREACHABLE")
+            self._gateway.mark_unreachable(ctx, reason)
+        except TURN_ABORTING_ERRORS:
+            raise
+        except (ClinicWriteRejected, SevereFailureBlocked, httpx.HTTPError):
+            logger.exception("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
+        return BotAction(
+            t.GOODBYE_UNREACHABLE,
+            "ENDED",
+            ended=True,
+            outcome="UNREACHABLE",
+            unreachable_reason=reason,
+        )
 
-    # --- Điều phối theo state ---------------------------------------------------
+    # --- Điều phối theo câu hỏi đang chờ -------------------------------------------
 
-    def respond(self, ctx: CallContext, nlu: NLUResult) -> Optional[BotAction]:
-        handlers = {
-            "AWAITING_IDENTITY": self._handle_identity,
-            "AWAITING_INTENT": self._handle_intent,
-            "AWAITING_CONFIRMATION": self._handle_confirmation,
-            "OFFERING_SLOTS": self._handle_slot_choice,
-        }
-        handler = handlers.get(ctx.state)
-        return handler(ctx, nlu) if handler else None
+    def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
+        if extraction.intent.value is Intent.REPEAT_REQUEST and ctx.question is not None:
+            # Đọc lại đúng câu đang chờ; không tính là không hiểu (thiết kế §6.1)
+            return Reply(BotAction(ctx.question.text, ctx.state), "NEUTRAL")
 
-    def _handle_identity(self, ctx: CallContext, nlu: NLUResult) -> Optional[BotAction]:
+        question = ctx.question.question_id if ctx.question else None
+        if question in (QuestionId.ASK_NAME, QuestionId.ASK_DOB):
+            return self._identity(ctx, extraction)
+        if question is QuestionId.CONFIRM_READBACK:
+            return self._attendance(ctx, extraction, now)
+        if question is QuestionId.ASK_INTENT:
+            return self._intent(ctx, extraction, now)
+        if question is QuestionId.OFFER_SLOTS:
+            return self._slot_choice(ctx, extraction, now)
+        if question is QuestionId.SLOT_READBACK:
+            return self._slot_readback(ctx, extraction, now)
+        if question is QuestionId.CANCEL_RECONFIRM:
+            return self._cancel_reconfirm(ctx, extraction, now)
+        return self._not_understood(ctx)
+
+    # --- Danh tính ---------------------------------------------------------------------
+
+    def _identity(self, ctx: CallContext, ex: ExtractionResult) -> Reply:
         if ctx.identity_step == "ASK_NAME":
-            if not nlu.entities.full_name:
-                return None
-            ctx.claimed_name = nlu.entities.full_name
+            if not ex.full_name.found or not ex.full_name.value:
+                return self._not_understood(ctx, QuestionId.ASK_NAME, t.ASK_NAME_AGAIN)
+            # Lưu đúng điều người gọi nói — không "sửa" theo hồ sơ; Verifier đối chiếu riêng
+            ctx.claimed_name = ex.full_name.value
             ctx.identity_step = "ASK_DOB"
-            return BotAction(t.ASK_DOB, "AWAITING_IDENTITY")
+            return Reply(self._ask(ctx, QuestionId.ASK_DOB, t.ASK_DOB, "AWAITING_IDENTITY"))
 
-        if not nlu.entities.dob:
-            return None
-        ctx.claimed_dob = nlu.entities.dob
+        if not isinstance(ex.dob.value, date):
+            return self._not_understood(ctx, QuestionId.ASK_DOB, t.ASK_DOB_AGAIN)
+        ctx.claimed_dob = ex.dob.value
         result = self._verifier.verify(ctx)
         if result.status is not VerificationStatus.VERIFIED:
-            return self.transfer(ctx, result.transfer_reason or "IDENTITY_FAILED")
+            return Reply(self.transfer(ctx, result.transfer_reason or "IDENTITY_FAILED"))
 
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
-            return BotAction(t.ASK_INTENT_INBOUND, "AWAITING_INTENT")
-        appointment = self._gateway.get_appointment(ctx)
-        return BotAction(t.appointment_summary(ctx, appointment), "AWAITING_INTENT")
-
-    def _handle_intent(self, ctx: CallContext, nlu: NLUResult) -> Optional[BotAction]:
-        outbound = ctx.call.direction == "outbound"
-        if outbound and nlu.intent in (Intent.CONFIRM_ATTENDANCE, Intent.AFFIRM):
-            ctx.pending_action = "CONFIRM"
-            appointment = self._gateway.get_appointment(ctx)
-            return BotAction(t.attendance_readback(ctx, appointment), "AWAITING_CONFIRMATION")
-        if outbound and nlu.intent is Intent.CANCEL:
-            ctx.pending_action = "CANCEL"
-            ctx.cancel_confirmations = 1
-            return BotAction(t.CANCEL_RECONFIRM, "AWAITING_CONFIRMATION")
-        if outbound and nlu.intent is Intent.RESCHEDULE:
-            ctx.pending_action = "RESCHEDULE"
-            return self._offer_slots(ctx, nlu)
-        if not outbound and nlu.intent in (Intent.BOOK, Intent.AFFIRM):
-            ctx.pending_action = "BOOK"
-            return self._offer_slots(ctx, nlu)
-        return None
-
-    def _handle_confirmation(self, ctx: CallContext, nlu: NLUResult) -> Optional[BotAction]:
-        if nlu.intent is Intent.DENY:
-            return self._abort_pending(ctx)
-        action = ctx.pending_action
-        accepted = {Intent.AFFIRM, _INTENT_FOR_ACTION.get(action)}
-        if nlu.intent not in accepted:
-            return None
-
-        if action == "CONFIRM":
-            self._gateway.confirm(ctx)
-            return BotAction(t.done("CONFIRMED"), "ENDED", ended=True, outcome="CONFIRMED")
-        if action == "CANCEL":
-            ctx.cancel_confirmations = 2
-            self._gateway.cancel(ctx, nlu.entities.cancel_reason or "UNSPECIFIED")
-            return BotAction(t.done("CANCELLED"), "ENDED", ended=True, outcome="CANCELLED")
-        if action in ("RESCHEDULE", "BOOK") and ctx.pending_slot_id:
-            slot = self._presented_slot(ctx, ctx.pending_slot_id)
-            # TODO: bắt 409 SLOT_TAKEN -> đọc lại /slots và đề xuất lại
-            if action == "RESCHEDULE":
-                self._gateway.reschedule(ctx, ctx.pending_slot_id)
-                return BotAction(
-                    t.done("RESCHEDULED", slot), "ENDED", ended=True, outcome="RESCHEDULED"
-                )
-            self._gateway.book(ctx, ctx.pending_slot_id)
-            return BotAction(t.done("BOOKED", slot), "ENDED", ended=True, outcome="BOOKED")
-        return None
-
-    def _handle_slot_choice(self, ctx: CallContext, nlu: NLUResult) -> Optional[BotAction]:
-        if nlu.intent is Intent.DENY:
-            return self._abort_pending(ctx)
-        index = nlu.entities.slot_choice_index
-        slot: Optional[dict[str, Any]] = None
-        if index is not None and 1 <= index <= len(ctx.presented_slots):
-            slot = ctx.presented_slots[index - 1]
-        elif nlu.entities.preferred_period:
-            slot = next(
-                iter(_filter_by_period(ctx.presented_slots, nlu.entities.preferred_period)), None
+            return Reply(
+                self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT")
             )
-        if slot is None:
-            return None
-        ctx.pending_slot_id = slot["slot_id"]
-        return BotAction(t.slot_readback(ctx, slot), "AWAITING_CONFIRMATION")
+        appointment = self._gateway.get_appointment(ctx)
+        return Reply(
+            self._ask(
+                ctx,
+                QuestionId.CONFIRM_READBACK,
+                t.appointment_summary(ctx, appointment),
+                "AWAITING_INTENT",
+                action="CONFIRM",
+            )
+        )
 
-    # --- Helpers ---------------------------------------------------------------
+    # --- Outbound: đến khám được không ----------------------------------------------------
 
-    def _offer_slots(self, ctx: CallContext, nlu: NLUResult) -> BotAction:
-        slots = self._gateway.list_open_slots(ctx)
-        if nlu.entities.preferred_period:
-            slots = _filter_by_period(slots, nlu.entities.preferred_period) or slots
-        # TODO: lọc theo department / preferred_date; loại slot trùng lịch cũ khi reschedule
-        ctx.presented_slots = slots[:MAX_SLOTS_PRESENTED]
-        if not ctx.presented_slots:
-            return self.transfer(ctx, "OUT_OF_SCOPE")
-        return BotAction(t.offer_slots(ctx, ctx.presented_slots), "OFFERING_SLOTS")
+    def _attendance(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        intent = ex.intent.value
+        if intent in (Intent.CANCEL, Intent.RESCHEDULE):
+            return self._start(ctx, intent, ex, now)
 
-    def _abort_pending(self, ctx: CallContext) -> BotAction:
-        ctx.pending_action = None
-        ctx.pending_slot_id = None
-        ctx.cancel_confirmations = 0
-        return BotAction(t.KEEP_APPOINTMENT, "AWAITING_INTENT")
+        agreement = ex.agreement.value
+        if agreement is Agreement.AGREE:
+            ctx.set_pending("CONFIRM")
+            self._record_confirmation(ctx, ex)
+            self._gateway.confirm(ctx)
+            return Reply(self._finish("CONFIRMED", t.done("CONFIRMED")))
+        if agreement is Agreement.REFUSE:
+            ctx.clear_pending()
+            return Reply(
+                self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT")
+            )
+        if ex.agreement.found or intent is Intent.CONFIRM:
+            # "tôi sẽ đến" không có từ đồng ý: hỏi lại bằng câu lựa chọn, chưa ghi
+            return Reply(
+                self._ask(
+                    ctx,
+                    QuestionId.CONFIRM_READBACK,
+                    t.ATTENDANCE_CHOICE,
+                    ctx.state,
+                    action="CONFIRM",
+                ),
+                "UNCLEAR",
+            )
+        return self._not_understood(ctx)
+
+    # --- Câu hỏi ý định mở ---------------------------------------------------------------
+
+    def _intent(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        intent = ex.intent.value
+        if ctx.call.direction == "outbound":
+            if intent is Intent.CONFIRM:
+                ctx.set_pending("CONFIRM")
+                appointment = self._gateway.get_appointment(ctx)
+                return Reply(
+                    self._ask(
+                        ctx,
+                        QuestionId.CONFIRM_READBACK,
+                        t.attendance_readback(ctx, appointment),
+                        "AWAITING_CONFIRMATION",
+                        action="CONFIRM",
+                    )
+                )
+            if intent in (Intent.CANCEL, Intent.RESCHEDULE):
+                return self._start(ctx, intent, ex, now)
+            return self._not_understood(ctx)
+
+        if intent is Intent.BOOK:
+            return self._start(ctx, intent, ex, now)
+        if intent in (Intent.CANCEL, Intent.RESCHEDULE):
+            # Inbound trong phạm vi hợp đồng chỉ đặt lịch mới
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
+        return self._not_understood(ctx)
+
+    def _start(
+        self, ctx: CallContext, intent: Intent, ex: ExtractionResult, now: datetime
+    ) -> Reply:
+        if intent is Intent.CANCEL:
+            ctx.set_pending("CANCEL")
+            ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
+            if ex.cancel_reason.found:
+                ctx.cancel_reason = ex.cancel_reason.value
+            return Reply(
+                self._ask(
+                    ctx,
+                    QuestionId.CANCEL_RECONFIRM,
+                    t.CANCEL_RECONFIRM,
+                    "AWAITING_CONFIRMATION",
+                    action="CANCEL",
+                )
+            )
+        action: PendingAction = "RESCHEDULE" if intent is Intent.RESCHEDULE else "BOOK"
+        ctx.set_pending(action)
+        return self._offer_slots(ctx, now, criteria_text=ex.transcript)
+
+    # --- Chọn slot -----------------------------------------------------------------------
+
+    def _slot_choice(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        choice = ex.slot_choice.value
+        if choice is not None and choice.kind == "MATCH":
+            slot = ctx.find_slot(choice.slot_id)
+            assert slot is not None and ctx.pending_action is not None
+            ctx.select_slot(slot["slot_id"])
+            return Reply(
+                self._ask(
+                    ctx,
+                    QuestionId.SLOT_READBACK,
+                    t.slot_readback(ctx, slot),
+                    "AWAITING_CONFIRMATION",
+                    action=ctx.pending_action,
+                    slot_id=slot["slot_id"],
+                )
+            )
+        if choice is not None and choice.kind == "AMBIGUOUS":
+            # Không tự chọn slot đầu: đọc tối đa 3 slot trong số khớp, hỏi lại
+            candidates = [s for s in ctx.slots if s["slot_id"] in choice.slot_ids]
+            return Reply(self._present(ctx, candidates, t.SLOT_AMBIGUOUS), "NEUTRAL")
+        if ex.agreement.value is Agreement.REFUSE:
+            return self._abandon(ctx)
+        if ctx.call.direction == "outbound" and ex.intent.value is Intent.CANCEL:
+            return self._start(ctx, Intent.CANCEL, ex, now)
+        if ex.slot_choice.found:
+            # NO_MATCH có tiêu chí: đọc lại các khung đang có, tính là không hiểu (thiết kế §6.1)
+            return Reply(self._present(ctx, ctx.slots, t.SLOT_NO_MATCH), "NOT_UNDERSTOOD")
+        return self._not_understood(ctx)
+
+    def _slot_readback(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        action, slot_id = ctx.pending_action, ctx.selected_slot_id
+        slot = ctx.find_slot(slot_id)
+        assert action in ("RESCHEDULE", "BOOK") and slot is not None and slot_id is not None
+
+        agreement = ex.agreement.value
+        if agreement is Agreement.AGREE:
+            self._record_confirmation(ctx, ex)
+            try:
+                if action == "RESCHEDULE":
+                    self._gateway.reschedule(ctx, slot_id)
+                else:
+                    self._gateway.book(ctx, slot_id)
+            except SlotTaken:
+                # Đọc lại /slots, đề xuất lại và cần xác nhận mới — không retry mù
+                ctx.select_slot(None)
+                return self._offer_slots(ctx, now, prefix=t.SLOT_TAKEN)
+            outcome: Outcome = "RESCHEDULED" if action == "RESCHEDULE" else "BOOKED"
+            return Reply(self._finish(outcome, t.done(outcome, slot)))
+        if agreement is Agreement.REFUSE:
+            if ex.intent.value in (Intent.RESCHEDULE, Intent.BOOK):
+                # "không, khung khác" — vẫn đổi / đặt, chỉ bỏ slot này
+                ctx.select_slot(None)
+                return Reply(self._present(ctx, ctx.slots))
+            return self._abandon(ctx)
+        if ctx.call.direction == "outbound" and ex.intent.value is Intent.CANCEL:
+            return self._start(ctx, Intent.CANCEL, ex, now)
+        if ex.agreement.found:
+            return Reply(
+                self._ask(
+                    ctx,
+                    QuestionId.SLOT_READBACK,
+                    t.slot_choice(ctx, slot),
+                    "AWAITING_CONFIRMATION",
+                    action=action,
+                    slot_id=slot_id,
+                ),
+                "UNCLEAR",
+            )
+        return self._not_understood(ctx)
+
+    # --- Hủy lịch --------------------------------------------------------------------------
+
+    def _cancel_reconfirm(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        agreement = ex.agreement.value
+        if agreement is Agreement.AGREE:
+            # IE chỉ trả AGREE ở đây khi có động từ hủy tường minh (SF-05); "vâng" là UNCLEAR
+            self._record_confirmation(ctx, ex)
+            if ctx.cancel_reason is None and ex.cancel_reason.found:
+                ctx.cancel_reason = ex.cancel_reason.value
+            self._gateway.cancel(ctx, ctx.cancel_reason or "UNSPECIFIED")
+            return Reply(self._finish("CANCELLED", t.done("CANCELLED")))
+        if agreement is Agreement.REFUSE:
+            return self._abandon(ctx)
+        if ex.intent.value is Intent.RESCHEDULE:
+            return self._start(ctx, Intent.RESCHEDULE, ex, now)
+        if ex.agreement.found:
+            return Reply(
+                self._ask(
+                    ctx,
+                    QuestionId.CANCEL_RECONFIRM,
+                    t.CANCEL_CHOICE,
+                    "AWAITING_CONFIRMATION",
+                    action="CANCEL",
+                ),
+                "UNCLEAR",
+            )
+        return self._not_understood(ctx)
+
+    # --- Helpers ---------------------------------------------------------------------------
+
+    def _abandon(self, ctx: CallContext) -> Reply:
+        """Người gọi từ chối: bỏ hành động chờ, không ghi gì."""
+        ctx.clear_pending()
+        if ctx.call.direction == "inbound":
+            return Reply(
+                self._ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT")
+            )
+        appointment = self._gateway.get_appointment(ctx)
+        return Reply(
+            self._ask(
+                ctx,
+                QuestionId.CONFIRM_READBACK,
+                t.keep_appointment(ctx, appointment),
+                "AWAITING_INTENT",
+                action="CONFIRM",
+            )
+        )
+
+    def _offer_slots(
+        self,
+        ctx: CallContext,
+        now: datetime,
+        criteria_text: Optional[str] = None,
+        prefix: str = "",
+    ) -> Reply:
+        slots = self._gateway.list_open_slots(ctx, now)
+        if not slots:
+            ctx.clear_pending()
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
+        candidates = slots
+        if criteria_text:
+            # "đổi sang buổi chiều": lọc trước khi đọc; thứ tự ("khung 2") chưa có nghĩa ở lượt này
+            criteria = replace(parse_slot_criteria(criteria_text, now), ordinal=None)
+            if not criteria.empty:
+                candidates = filter_slots(slots, criteria) or slots
+        return Reply(self._present(ctx, candidates, prefix))
+
+    def _present(
+        self, ctx: CallContext, candidates: list[dict[str, Any]], prefix: str = ""
+    ) -> BotAction:
+        presented = candidates[:MAX_SLOTS_PRESENTED]
+        ctx.presented_slot_ids = [slot["slot_id"] for slot in presented]
+        assert ctx.pending_action is not None
+        return self._ask(
+            ctx,
+            QuestionId.OFFER_SLOTS,
+            t.offer_slots(ctx, presented, prefix),
+            "OFFERING_SLOTS",
+            action=ctx.pending_action,
+        )
+
+    def _not_understood(
+        self,
+        ctx: CallContext,
+        question_id: Optional[QuestionId] = None,
+        text: str = t.NOT_UNDERSTOOD,
+    ) -> Reply:
+        if question_id is not None:
+            # Hỏi lại cùng một câu hỏi danh tính bằng lời khác
+            return Reply(self._ask(ctx, question_id, text, ctx.state), "NOT_UNDERSTOOD")
+        return Reply(BotAction(text, ctx.state), "NOT_UNDERSTOOD")
+
+    def _record_confirmation(self, ctx: CallContext, ex: ExtractionResult) -> None:
+        ctx.add_evidence(self._evidence(ctx, ex, "CONFIRMATION", ex.agreement))
 
     @staticmethod
-    def _presented_slot(ctx: CallContext, slot_id: str) -> Optional[dict[str, Any]]:
-        return next((s for s in ctx.presented_slots if s["slot_id"] == slot_id), None)
+    def _evidence(
+        ctx: CallContext, ex: ExtractionResult, kind: Any, source: Field[Any]
+    ) -> ActionEvidence:
+        assert ctx.pending_action is not None and source.value is not None
+        return ActionEvidence(
+            kind=kind,
+            action=ctx.pending_action,
+            slot_id=ctx.selected_slot_id,
+            turn=ex.turn,
+            question_id=ex.question_id,
+            question_turn=ctx.question.turn if ctx.question else None,
+            transcript=ex.transcript,
+            label=source.value.value,
+            provenance=source.provenance.value,
+            span=source.span,
+        )
 
+    @staticmethod
+    def _ask(
+        ctx: CallContext,
+        question_id: QuestionId,
+        text: str,
+        state: CallState,
+        action: Optional[PendingAction] = None,
+        slot_id: Optional[str] = None,
+    ) -> BotAction:
+        ctx.question = Question(question_id, text, ctx.turn, action=action, slot_id=slot_id)
+        return BotAction(text, state)
 
-def _filter_by_period(slots: list[dict[str, Any]], period: str) -> list[dict[str, Any]]:
-    hours = _PERIOD_HOURS.get(period, range(24))
-    return [s for s in slots if datetime.fromisoformat(s["starts_at"]).hour in hours]
+    @staticmethod
+    def _finish(outcome: Outcome, text: str) -> BotAction:
+        return BotAction(text, "ENDED", ended=True, outcome=outcome)

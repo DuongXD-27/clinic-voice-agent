@@ -13,19 +13,21 @@ theo từng lượt, và gọi ngược lại một "clinic mock" (mock backend 
 src/callbot/               # một core, hai transport (§1.3.2)
   transports/              # chỉ đổi request/response sang kiểu của engine, không chứa logic hội thoại
     http/                  # đường chấm điểm — uvicorn callbot.transports.http.main:app
-      main.py              # FastAPI app: lifespan tạo ClinicMockClient + CallOrchestrator, /health
+      main.py              # FastAPI app: lifespan tạo session store PostgreSQL + ClinicMockClient + CallOrchestrator, /health, /ready
       calls.py             # 2 endpoint bắt buộc, gọi CallOrchestrator: POST /v1/calls, POST /v1/calls/{id}/turn
       schemas.py           # Pydantic models cho request/response (§4.1)
       config.py            # đọc biến môi trường (CLINIC_MOCK_BASE_URL, ...)
     # phone/               # phone leg tuần 6 (§1.3.1), chưa làm
   engine/                  # AI Callbot Engine
-    session/               # Session Manager: CallContext, FSM, repository
-    extraction/            # Information Extraction theo docs/information-extraction-design.md
-    nlu/                   # bản cũ, engine đang dùng — thay bằng extraction/ khi nối
+    session/               # Session Manager: CallContext, FSM, thứ tự lượt / replay, store (in-memory cho test)
+      postgres/            # PostgreSQL store, migrations/*.sql, migrate + inspect (chỉ đọc)
+    extraction/            # Information Extraction theo docs/reference/information-extraction-design.md
     policy/                # PolicyEngine + guardrails SF-01..SF-05
     verification/          # Verifier: xác minh tên + ngày sinh
     dialogue/              # Dialogue Manager, templates, prompts, llm/
-    tools/                 # ClinicGateway (If-Match, Idempotency-Key) + ClinicMockClient (HTTP)
+    tools/                 # ClinicGateway (If-Match, Idempotency-Key, nhật ký lệnh) + ClinicMockClient (HTTP)
+    journal.py             # nhật ký lệnh ghi Clinic gắn với lượt đang xử lý
+    errors.py              # lỗi engine transport cần phân biệt (409/503)
     orchestrator.py        # CallOrchestrator: điều phối 1 lượt
   speech/                  # Realtime STT pipeline + TTS
     audio/                 # codec wav/G.711, chuẩn hoá về PCM 8 kHz băng hẹp, tải audio_url
@@ -41,6 +43,7 @@ tests/                     # cùng cấu trúc với src/callbot: engine/, speec
 ## Yêu cầu môi trường
 
 - Python >= 3.11
+- PostgreSQL >= 11 — bắt buộc với ứng dụng HTTP (phiên, lượt, nhật ký lệnh Clinic)
 - Docker (nếu muốn chạy bằng container hoặc dùng `docker-compose`)
 
 ## Setup cơ bản (chạy local)
@@ -53,7 +56,10 @@ pip install -e ".[dev]"
 pip install -e ".[speech,llm]"      # tuỳ chọn: numpy + Gemini (ASR/LLM)
 pip install -e ".[speech-local]"    # tuỳ chọn: PhoWhisper self-hosted
 
-cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL nếu cần
+cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL, SESSION_DATABASE_URL
+
+docker run -d --name callbot-pg -e POSTGRES_USER=callbot -e POSTGRES_PASSWORD=callbot   -e POSTGRES_DB=callbot -p 5432:5432 postgres:16-alpine
+python -m callbot.engine.session.postgres.migrate   # một lần, trước khi chạy worker
 
 uvicorn callbot.transports.http.main:app --reload
 ```
@@ -71,6 +77,9 @@ curl -X POST http://localhost:8000/v1/calls \
 ## Chạy test & lint
 
 ```bash
+# Test tích hợp PostgreSQL chạy khi có biến này (thiếu thì skip; CI bắt buộc)
+export TEST_SESSION_DATABASE_URL=postgresql://callbot:callbot@localhost:5432/callbot
+
 make check     # ruff check + ruff format --check + pytest (giống CI)
 make format    # tự sửa lint + format code
 make test      # chỉ pytest
@@ -86,7 +95,7 @@ docker build -t vinmec-callbot .
 docker run --rm -p 8000:8000 vinmec-callbot
 ```
 
-`docker compose up --build` chạy bot, đọc cấu hình từ `.env`. Clinic mock đã
+`docker compose up --build` chạy PostgreSQL (volume `pg_data`) → `migrate` → bot (`WEB_CONCURRENCY` worker), đọc cấu hình từ `.env`. Vận hành nhiều worker và đối soát: [docs/reference/session-operations.md](docs/reference/session-operations.md). Mã lỗi HTTP: [docs/reference/http-api.md](docs/reference/http-api.md). Clinic mock đã
 deploy riêng tại `https://clinic-mock.vmec-callbot.tech` — đặt `CLINIC_MOCK_API_KEY`
 trong `.env`.
 
@@ -94,11 +103,11 @@ trong `.env`.
 
 [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml):
 
-- Mọi push / PR: chạy `make check` (ruff lint, ruff format check, pytest).
+- Mọi push / PR: chạy `make check` (ruff lint, ruff format check, pytest) với PostgreSQL service.
 - Push lên `main` (hoặc chạy tay *Run workflow*): test → build image lên
   `ghcr.io/<owner>/callbot-vinmec` → SSH vào EC2, chép
   [docker-compose.prod.yml](docker-compose.prod.yml) + `.env` sinh từ secrets vào
-  `/opt/callbot`, `docker compose pull && up -d` → smoke test `/health` và `POST /v1/calls`.
+  `/opt/callbot`, `docker compose pull && up -d` (PostgreSQL + migrate + bot) → smoke test `/ready` và `POST /v1/calls` với `call_id` riêng mỗi lần.
 
 URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối):
 
@@ -122,12 +131,12 @@ URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối)
    | Secret | `EC2_SSH_KEY` | private key SSH vào EC2 |
    | Secret | `CLINIC_MOCK_API_KEY` | key `sk_...` của clinic mock |
    | Secret | `GEMINI_API_KEY` | tuỳ chọn, khi dùng audio / LLM |
+   | Secret | `SESSION_DB_PASSWORD` | mật khẩu PostgreSQL của session store trên EC2 |
    | Variable | `BOT_DOMAIN` | `vmec-callbot.tech` |
    | Variable | `EC2_USER` | tuỳ chọn, mặc định `ubuntu` |
    | Variable | `CLINIC_MOCK_BASE_URL` | tuỳ chọn, mặc định `https://clinic-mock.vmec-callbot.tech/v1` |
 
 ## Trạng thái hiện tại
 
-Khung project mới chỉ dựng phần sườn: 2 endpoint theo đúng contract đã chạy
-được, nhưng `state_machine.py` chưa có logic của 7 kịch bản (hiện luôn trả về
-`TRANSFERRED` như một hành vi an toàn mặc định).
+- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04); `mode=audio` trả 501.
+- Phiên lưu trong PostgreSQL, chạy được nhiều worker; gửi lại lượt trả kết quả đã lưu, lệnh ghi Clinic có nhật ký và chặn đối soát khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).

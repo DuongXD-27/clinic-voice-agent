@@ -2,7 +2,9 @@
 
 from typing import Optional
 
-from callbot.engine.session.context import CallContext
+from callbot.engine.extraction.schema import Agreement, Intent
+from callbot.engine.session.context import CallContext, PendingAction
+from callbot.engine.session.fsm import CONFIRMATION_QUESTION_FOR
 
 
 class SevereFailureBlocked(Exception):
@@ -19,9 +21,9 @@ def assert_target_appointment(ctx: CallContext, appointment_id: Optional[str]) -
         )
 
 
-def assert_slot_offered(ctx: CallContext, slot_id: str) -> None:
+def assert_slot_offered(ctx: CallContext, slot_id: Optional[str]) -> None:
     """SF-02: slot phải do GET /slots trả về trong chính cuộc gọi này."""
-    if slot_id not in ctx.offered_slot_ids:
+    if slot_id is None or ctx.find_slot(slot_id) is None:
         raise SevereFailureBlocked(
             "SF-02", f"Slot {slot_id} không có trong GET /slots của cuộc gọi"
         )
@@ -43,7 +45,38 @@ def assert_no_clinical_advice(utterance: str) -> None:
         raise SevereFailureBlocked("SF-04", "Câu trả lời có dấu hiệu tư vấn lâm sàng")
 
 
-def assert_cancel_reconfirmed(ctx: CallContext) -> None:
-    """SF-05: hủy lịch cần xác nhận ý định lần thứ hai."""
-    if ctx.cancel_confirmations < 2:
-        raise SevereFailureBlocked("SF-05", "Chưa có xác nhận hủy lần hai")
+def assert_action_confirmed(
+    ctx: CallContext, action: PendingAction, slot_id: Optional[str] = None
+) -> None:
+    """Lệnh ghi cần câu trả lời AGREE ở chính lượt này, cho đúng câu hỏi, hành động và slot.
+
+    SF-05: hủy lịch cần thêm yêu cầu hủy ở một lượt TRƯỚC lượt xác nhận — hai lượt khác nhau.
+    """
+    question = ctx.question
+    expected_question = CONFIRMATION_QUESTION_FOR[action]
+    confirmations = [
+        item
+        for item in ctx.evidence_for("CONFIRMATION", action, slot_id)
+        if item.label == Agreement.AGREE.value
+        and item.turn == ctx.turn
+        and item.question_id is expected_question
+        and question is not None
+        and item.question_id is question.question_id
+        and item.question_turn == question.turn
+        and question.turn < item.turn
+        and question.action == action
+        and question.slot_id == slot_id
+    ]
+    code = "SF-05" if action == "CANCEL" else "CONFIRMATION"
+    if not confirmations:
+        raise SevereFailureBlocked(code, f"Chưa có xác nhận hợp lệ cho {action} ({slot_id})")
+    if action != "CANCEL":
+        return
+    confirmed_at = min(item.turn for item in confirmations)
+    requests = [
+        item
+        for item in ctx.evidence_for("REQUEST", "CANCEL")
+        if item.label == Intent.CANCEL.value and item.turn < confirmed_at
+    ]
+    if not requests:
+        raise SevereFailureBlocked("SF-05", "Chưa có yêu cầu hủy ở lượt trước lượt xác nhận")

@@ -1,62 +1,244 @@
-"""Session Manager: tạo / quản lý phiên, lưu trạng thái hội thoại, quản lý state machine."""
+"""Session Manager: mở phiên, thứ tự lượt, replay, khóa theo call_id, state machine (F-03).
 
-import threading
-from typing import Optional, Protocol
+Một lượt đi qua các bước:
 
+1. Khóa `call_id` (chờ tối đa `lock_timeout_s`, quá thì `CallBusy`).
+2. Lượt đã có bản ghi: COMPLETED + cùng đầu vào -> trả nguyên kết quả cũ, không chạy lại gì.
+   PROCESSING (worker trước chết / request trước lỗi) -> xử lý tiếp nếu chưa có lệnh ghi nào
+   có thể đã tới Clinic; ngược lại chặn đối soát.
+3. Lượt mới: phải đúng `last_completed_turn + 1`; đặt chỗ lượt (commit) với thời điểm tiếp nhận.
+4. Chạy xử lý với nhật ký lệnh gắn vào lượt; commit context + history + kết quả trong một transaction.
+"""
+
+import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Optional
+
+from callbot.engine.errors import (
+    CallConflict,
+    CallEnded,
+    ReconciliationRequired,
+    SessionNotFound,
+    TurnConflict,
+    TurnOutOfOrder,
+    WriteOutcomeUnknown,
+)
+from callbot.engine.extraction.schema import VN_TZ
+from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.session.context import CallContext
-from callbot.engine.session.fsm import ensure_transition
-from callbot.engine.types import CallStart, CallState, Outcome
+from callbot.engine.session.fsm import check_invariants, ensure_transition
+from callbot.engine.session.store import CommandRecord, SessionRecord, SessionStore
+from callbot.engine.types import (
+    BotAction,
+    CallerInput,
+    CallStart,
+    CallState,
+    Outcome,
+    TransferReason,
+    UnreachableReason,
+)
+
+logger = logging.getLogger(__name__)
+
+LOCK_TIMEOUT_S = 5.0
 
 
-class SessionRepository(Protocol):
-    def get(self, call_id: str) -> Optional[CallContext]: ...
-
-    def save(self, ctx: CallContext) -> None: ...
+def now_vn() -> datetime:
+    return datetime.now(VN_TZ)
 
 
-class InMemorySessionRepository:
-    """Đủ cho 1 process. TODO: Redis nếu chạy nhiều worker."""
-
-    def __init__(self) -> None:
-        self._items: dict[str, CallContext] = {}
-        self._lock = threading.Lock()
-
-    def get(self, call_id: str) -> Optional[CallContext]:
-        with self._lock:
-            return self._items.get(call_id)
-
-    def save(self, ctx: CallContext) -> None:
-        with self._lock:
-            self._items[ctx.call_id] = ctx
+@dataclass(frozen=True)
+class TurnOutcome:
+    action: BotAction
+    extraction: Optional[dict[str, Any]] = None
 
 
-class SessionNotFound(Exception):
-    pass
+@dataclass(frozen=True)
+class TurnRun:
+    action: BotAction
+    replayed: bool
+    extraction: Optional[dict[str, Any]] = None
+
+
+TurnProcessor = Callable[[CallContext, CallerInput, datetime], TurnOutcome]
 
 
 class SessionManager:
-    def __init__(self, repository: SessionRepository) -> None:
-        self._repository = repository
+    def __init__(
+        self,
+        store: SessionStore,
+        lock_timeout_s: float = LOCK_TIMEOUT_S,
+        clock: Callable[[], datetime] = now_vn,
+    ) -> None:
+        self._store = store
+        self._lock_timeout_s = lock_timeout_s
+        self._clock = clock
 
-    def open(self, call: CallStart) -> CallContext:
-        ctx = CallContext(call=call)
-        self._repository.save(ctx)
-        return ctx
+    @property
+    def store(self) -> SessionStore:
+        return self._store
 
-    def get(self, call_id: str) -> CallContext:
-        ctx = self._repository.get(call_id)
-        if ctx is None:
-            raise SessionNotFound(call_id)
-        return ctx
+    # --- Mở phiên ----------------------------------------------------------------
 
-    def transition(self, ctx: CallContext, target: CallState) -> None:
+    def open(
+        self, call: CallStart, opening: Callable[[CallContext], BotAction]
+    ) -> tuple[BotAction, bool]:
+        """Trả (phản hồi mở phiên, có phải replay không). Không bao giờ reset context đã có."""
+        config = call.to_dict()
+        with self._store.call_lock(call.call_id, self._lock_timeout_s):
+            existing = self._store.get_session(call.call_id)
+            if existing is not None:
+                if existing.start_config != config:
+                    raise CallConflict(call.call_id)
+                return BotAction.from_dict(existing.opening), True
+
+            ctx = CallContext(call=call, opened_at=self._clock())
+            action = opening(ctx)
+            ctx.record("bot", action.utterance)
+            self.transition(ctx, action.state)
+            self._store.create_session(
+                SessionRecord(
+                    call_id=call.call_id,
+                    start_config=config,
+                    opening=action.to_dict(),
+                    context=ctx.to_dict(),
+                )
+            )
+            return action, False
+
+    # --- Một lượt ------------------------------------------------------------------
+
+    def run_turn(self, call_id: str, caller: CallerInput, process: TurnProcessor) -> TurnRun:
+        with self._store.call_lock(call_id, self._lock_timeout_s):
+            session = self._store.get_session(call_id)
+            if session is None:
+                raise SessionNotFound(call_id)
+
+            received_at = self._admit(session, caller)
+            if isinstance(received_at, TurnRun):
+                return received_at
+
+            ctx = CallContext.from_dict(session.context)
+            journal = StoreCommandJournal(self._store, call_id, caller.turn)
+            try:
+                with bind_journal(journal):
+                    outcome = process(ctx, caller, received_at)
+            except WriteOutcomeUnknown as exc:
+                self._block(call_id, caller.turn, str(exc))
+                raise ReconciliationRequired(call_id, caller.turn, str(exc)) from exc
+            except ReconciliationRequired as exc:
+                # Nhật ký phát hiện khóa lệnh đã tồn tại với kết quả chưa rõ
+                self._block(call_id, caller.turn, str(exc))
+                raise
+
+            self._store.complete_turn(
+                call_id,
+                caller.turn,
+                ctx.to_dict(),
+                outcome.action.to_dict(),
+                outcome.extraction,
+                ended=ctx.ended,
+            )
+            return TurnRun(outcome.action, replayed=False, extraction=outcome.extraction)
+
+    def _admit(self, session: SessionRecord, caller: CallerInput) -> "datetime | TurnRun":
+        call_id, turn = session.call_id, caller.turn
+        fingerprint = caller.fingerprint()
+        existing = self._store.get_turn(call_id, turn)
+
+        if existing is not None:
+            if existing.input != fingerprint:
+                raise TurnConflict(f"{call_id}: lượt {turn} đã nhận với đầu vào khác")
+            if existing.status == "COMPLETED":
+                assert existing.result is not None
+                return TurnRun(BotAction.from_dict(existing.result), replayed=True, extraction=None)
+            if existing.status == "RECONCILIATION_REQUIRED":
+                raise ReconciliationRequired(call_id, turn, existing.detail or "")
+            # PROCESSING còn lại: chỉ xử lý tiếp khi chắc chắn chưa lệnh ghi nào tới Clinic
+            unsettled = [
+                command
+                for command in self._store.list_commands(call_id, turn)
+                if command.status != "FAILED"
+            ]
+            if unsettled:
+                detail = "lệnh chưa rõ kết quả: " + ", ".join(
+                    f"{c.idempotency_key} ({c.status})" for c in unsettled
+                )
+                self._block(call_id, turn, detail)
+                raise ReconciliationRequired(call_id, turn, detail)
+            # Dùng lại thời điểm tiếp nhận cũ: "ngày mai" không đổi nghĩa khi xử lý lại
+            return existing.received_at
+
+        blocked = self._store.find_blocked_turn(call_id)
+        if blocked is not None:
+            raise ReconciliationRequired(call_id, blocked)
+        if session.ended:
+            raise CallEnded(call_id)
+        expected = session.last_completed_turn + 1
+        if turn != expected:
+            raise TurnOutOfOrder(call_id, turn, expected)
+        received_at = self._clock()
+        self._store.reserve_turn(call_id, turn, fingerprint, received_at)
+        return received_at
+
+    def _block(self, call_id: str, turn: int, detail: str) -> None:
+        try:
+            self._store.mark_reconciliation_required(call_id, turn, detail)
+        except Exception:
+            # Không ghi được cờ chặn: lượt vẫn PROCESSING kèm lệnh chưa rõ, lần sau vẫn bị chặn
+            logger.exception("Không đánh dấu được lượt %s/%s cần đối soát", call_id, turn)
+
+    # --- State machine -----------------------------------------------------------------
+
+    @staticmethod
+    def transition(ctx: CallContext, target: CallState) -> None:
         ensure_transition(ctx.state, target)
+        check_invariants(ctx, target)
         ctx.state = target
 
-    def close(self, ctx: CallContext, outcome: Outcome) -> None:
+    @staticmethod
+    def close(
+        ctx: CallContext,
+        outcome: Outcome,
+        transfer_reason: Optional[TransferReason] = None,
+        unreachable_reason: Optional[UnreachableReason] = None,
+    ) -> None:
+        ensure_transition(ctx.state, "ENDED")
         ctx.outcome = outcome
+        ctx.transfer_reason = transfer_reason
+        ctx.unreachable_reason = unreachable_reason
+        check_invariants(ctx, "ENDED")
         ctx.state = "ENDED"
-        self._repository.save(ctx)
 
-    def save(self, ctx: CallContext) -> None:
-        self._repository.save(ctx)
+
+class StoreCommandJournal:
+    """`journal.CommandJournal` trên session store, gắn với một lượt."""
+
+    def __init__(self, store: SessionStore, call_id: str, turn: int) -> None:
+        self._store = store
+        self._call_id = call_id
+        self._turn = turn
+
+    def begin(self, command: ClinicCommand) -> None:
+        self._store.begin_command(
+            CommandRecord(
+                idempotency_key=command.idempotency_key,
+                call_id=self._call_id,
+                turn=self._turn,
+                operation=command.operation,
+                endpoint=command.endpoint,
+                payload=command.payload,
+                if_match=command.if_match,
+            )
+        )
+
+    def succeeded(self, command: ClinicCommand, result: dict[str, Any]) -> None:
+        self._store.finish_command(command.idempotency_key, "SUCCEEDED", result=result)
+
+    def failed(self, command: ClinicCommand, error: str) -> None:
+        self._store.finish_command(command.idempotency_key, "FAILED", error=error)
+
+    def unknown(self, command: ClinicCommand, error: str) -> None:
+        self._store.finish_command(command.idempotency_key, "UNKNOWN", error=error)

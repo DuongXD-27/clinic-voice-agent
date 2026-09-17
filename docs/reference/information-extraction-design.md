@@ -447,16 +447,20 @@ Loại khỏi bản này: [1] (DST 2023 — không dùng cho quyết định nà
 
 ---
 
-## Phụ lục — Đối chiếu code hiện tại (`src/callbot/engine/`)
+## Phụ lục — Đối chiếu code hiện tại (`src/callbot/engine/`, cập nhật F-04, 17/09/2026)
+
+`engine/nlu` đã xoá; orchestrator, Policy, Dialogue dùng thẳng `ExtractionResult`.
 
 | Thiết kế v1.1 | Code hiện tại | File |
 |---|---|---|
-| Agreement tách riêng, ngưỡng theo hành động | `AFFIRM` gộp trong `Intent`, chứa "dạ", "vâng", "ừ" | `nlu/rule_parser.py`, `nlu/schema.py` |
-| Clinical 3 lớp | Bắt theo từ khoá triệu chứng "đau", "uống" | `nlu/rule_parser.py` |
-| `MATCH/AMBIGUOUS/NO_MATCH` trên toàn bộ `/slots` | Lấy slot đầu khớp buổi, chỉ trong 3 slot đã đọc | `dialogue/manager.py` |
-| Tên so theo từ, căn cuối; ngày sinh là cổng | So bằng nhau sau khi bỏ dấu toàn bộ | `verification/identity.py` |
-| `provenance`, `span` | Không có | `nlu/schema.py` |
-| Tín hiệu voicemail | Không có | — |
-| `REPEAT_REQUEST`, `NOT_PATIENT` | Không có | `nlu/schema.py` |
-| Giới hạn lần thử danh tính | Không có | `policy/policy_engine.py` |
+| Agreement tách riêng, ngưỡng theo hành động | Đã nối; `AGREE` mới tạo bằng chứng và mở khóa lệnh ghi, Gateway kiểm tra lại | `dialogue/manager.py`, `policy/guardrails.py` |
+| Clinical 3 lớp | Đã nối; `EMERGENCY` / `ADVICE_REQUEST` chuyển máy, `MENTION` không | `policy/policy_engine.py` |
+| `MATCH/AMBIGUOUS/NO_MATCH` trên toàn bộ `/slots` | Đã nối; `SLOT_TAKEN` đọc lại slot, cần xác nhận mới | `dialogue/manager.py`, `tools/clinic_gateway.py` |
+| Tên so theo từ, căn cuối; ngày sinh là cổng | **Chưa** — vẫn so bằng nhau sau khi bỏ dấu toàn bộ | `verification/identity.py`, `verification/names.py` |
+| `provenance`, `span` | Lưu trong bản ghi lượt (`call_turns.extraction`) và trace | `session/manager.py`, `orchestrator.py` |
+| Tín hiệu đường dây | Đã nối; outbound ghi `UNREACHABLE` theo lý do | `policy/policy_engine.py` |
+| `REPEAT_REQUEST`, `NOT_PATIENT` | Đã nối (đọc lại câu đang chờ / chuyển máy `IDENTITY_FAILED`) | `dialogue/manager.py`, `policy/policy_engine.py` |
+| Bộ đếm §6.1 | Đã nối (`UNCLEAR` từ lần hai liên tiếp, im lặng riêng) | `policy/policy_engine.py` |
+| Giới hạn lần thử danh tính §6.2 | Dùng chung bộ đếm §1.1.5, chưa đếm riêng từng trường | `policy/policy_engine.py` |
+| LLM tuyến sau | Chưa bật | `extraction/fallback.py` |
 | Output guard kiểm tra mốc giờ (SF-02) | Chỉ có kiểm tra SF-03 trong câu mẫu và từ khoá SF-04 | `dialogue/templates.py`, `policy/guardrails.py` |

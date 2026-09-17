@@ -1,5 +1,30 @@
 services:
   # Clinic mock chạy riêng tại clinic-mock.vmec-callbot.tech; bot gọi qua CLINIC_MOCK_BASE_URL trong .env
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: callbot
+      POSTGRES_PASSWORD: callbot
+      POSTGRES_DB: callbot
+    volumes:
+      # Phiên, lượt và nhật ký lệnh Clinic phải còn qua restart
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U callbot -d callbot"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Chạy một lần trước khi bot khởi động worker
+  migrate:
+    build: .
+    command: ["python", "-m", "callbot.engine.session.postgres.migrate"]
+    environment:
+      SESSION_DATABASE_URL: postgresql://callbot:callbot@postgres:5432/callbot
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   bot:
     build: .
     ports:
@@ -7,3 +32,11 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      SESSION_DATABASE_URL: postgresql://callbot:callbot@postgres:5432/callbot
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pg_data:

@@ -59,10 +59,12 @@ class ClinicMockClient:
         cancel_reason: str,
         version: int,
         idempotency_key: Optional[str] = None,
+        confirmed: bool = False,
     ) -> dict[str, Any]:
+        # `confirmed` = người gọi đã xác nhận hủy lần hai (SF-05); Gateway chỉ đặt True khi đủ bằng chứng
         response = self._client.post(
             f"/appointments/{appointment_id}/cancel",
-            json={"cancel_reason": cancel_reason},
+            json={"cancel_reason": cancel_reason, "confirmed": confirmed},
             headers=self._write_headers(idempotency_key, version),
         )
         response.raise_for_status()
@@ -93,6 +95,22 @@ class ClinicMockClient:
         response = self._client.post(
             f"/appointments/{appointment_id}/reschedule",
             json={"new_slot_id": new_slot_id, "requested_by": "PATIENT"},
+            headers=self._write_headers(idempotency_key, version),
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def mark_unreachable(
+        self,
+        appointment_id: str,
+        unreachable_reason: str,
+        version: int,
+        idempotency_key: Optional[str] = None,
+    ) -> dict[str, Any]:
+        # §4.2.5: body chỉ có unreachable_reason; mock tự tăng attempt_count, gửi kèm sẽ bị 400
+        response = self._client.post(
+            f"/appointments/{appointment_id}/unreachable",
+            json={"unreachable_reason": unreachable_reason},
             headers=self._write_headers(idempotency_key, version),
         )
         response.raise_for_status()

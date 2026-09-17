@@ -1,4 +1,4 @@
-"""Information Extraction — thiết kế docs/information-extraction-design.md v1.1.
+"""Information Extraction — thiết kế docs/reference/information-extraction-design.md v1.1.
 
 Một file cho mỗi trường ở §1 của thiết kế; `extractor.InformationExtractor` điều phối theo `question_id`.
 """

@@ -10,8 +10,8 @@ Thứ tự trong một lượt:
 4. full_name    — chỉ ASK_NAME.
 5. dob          — chỉ ASK_DOB.
    OUT_OF_SCOPE ở bước danh tính — chỉ khi câu trả lời không phải tên / ngày sinh.
-6. agreement    — chỉ câu hỏi xác nhận.
-7. slot_choice  — chỉ OFFER_SLOTS.
+6. slot_choice  — chỉ OFFER_SLOTS.
+7. agreement    — câu hỏi xác nhận; ở OFFER_SLOTS chỉ khi không rút ra tiêu chí slot (chỉ ra REFUSE/UNCLEAR).
 8. cancel_reason — khi đang hủy.
 """
 
@@ -120,15 +120,19 @@ class InformationExtractor:
             if out_of_scope.found:
                 intent = out_of_scope
 
-        agreement: Field[Agreement] = skipped
-        if question in CONFIRMATION_QUESTIONS:
-            agreement = self._agreement(question, transcript, intent, clinical)
-
         slot_choice = skipped
         if question is QuestionId.OFFER_SLOTS:
             slot_choice = extract_slot_choice(
                 transcript, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
+
+        agreement: Field[Agreement] = skipped
+        if question in CONFIRMATION_QUESTIONS:
+            agreement = self._agreement(question, transcript, intent, clinical)
+        elif question is QuestionId.OFFER_SLOTS and not slot_choice.found:
+            # Chỉ để nhận lời từ chối chọn slot ("thôi không đổi nữa"). OFFER_SLOTS không có ngưỡng
+            # AGREE trong agreement._agree_span nên kết quả không bao giờ là AGREE, không mở khóa ghi.
+            agreement = extract_agreement(transcript, question)
 
         cancel_reason = skipped
         if question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
