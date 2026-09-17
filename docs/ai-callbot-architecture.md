@@ -193,7 +193,7 @@ Harness chấm trạng thái cuối cùng trong Mock, kết hợp nhật ký ghi
 
 | Thành phần | Hiện trạng |
 |---|---|
-| [HTTP router](../src/callbot/transports/http/calls.py) | Có hai endpoint nhưng đang gọi `stub_handlers`, chưa nối engine. |
+| [HTTP router](../src/callbot/transports/http/calls.py) | Hai endpoint gọi `CallOrchestrator` thật (F-02, [evidence](evidence/f02-http-engine.md)); chỉ text mode, `mode=audio` trả 501. |
 | [Call Orchestrator](../src/callbot/engine/orchestrator.py) | Có điều phối lượt; đang import bộ trích xuất `engine/nlu`. |
 | [Information Extraction mới](../src/callbot/engine/extraction/extractor.py) | Có module trích xuất theo ngữ cảnh câu hỏi; chưa nối vào Orchestrator. |
 | [Dialogue Manager](../src/callbot/engine/dialogue/manager.py) | Có các nhánh nghiệp vụ; còn TODO về xử lý slot và sử dụng LLM. |

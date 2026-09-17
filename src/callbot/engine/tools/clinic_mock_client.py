@@ -12,6 +12,9 @@ class ClinicMockClient:
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = httpx.Client(base_url=base_url, headers=headers, timeout=timeout)
 
+    def close(self) -> None:
+        self._client.close()
+
     def find_patient_by_phone(self, phone: str) -> dict[str, Any]:
         response = self._client.get("/patients", params={"phone": phone})
         response.raise_for_status()
