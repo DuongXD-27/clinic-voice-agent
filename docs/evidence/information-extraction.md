@@ -2,7 +2,7 @@
 
 ## Mục tiêu
 
-Xây module Information Extraction (IE) theo [docs/information-extraction-design.md](../information-extraction-design.md) v1.1: từ transcript của một lượt và câu bot vừa hỏi (`question_id`), trích và chuẩn hoá các trường `full_name`, `dob`, `intent`, `clinical`, `agreement`, `slot_choice`, `cancel_reason`, `line_signal`, `silent`, mỗi trường có `provenance` và `span` để truy vết.
+Xây module Information Extraction (IE) theo [docs/reference/information-extraction-design.md](../reference/information-extraction-design.md) v1.1: từ transcript của một lượt và câu bot vừa hỏi (`question_id`), trích và chuẩn hoá các trường `full_name`, `dob`, `intent`, `clinical`, `agreement`, `slot_choice`, `cancel_reason`, `line_signal`, `silent`, mỗi trường có `provenance` và `span` để truy vết.
 
 Phạm vi:
 
@@ -49,7 +49,7 @@ Kết quả mong đợi: `InformationExtractor.extract(ctx, transcript, silence_
 - `src/callbot/engine/extraction/line_signal.py`
 - `src/callbot/engine/extraction/fallback.py`
 - `tests/engine/extraction/test_*.py` (12 file)
-- `docs/information-extraction-design.md`
+- `docs/reference/information-extraction-design.md`
 
 ## Luồng hiện tại
 
@@ -103,7 +103,7 @@ Chỉ chạy test của phần liên quan: `python -m pytest tests\engine\extrac
 
 ## Ghi chú
 
-- **Chưa nối vào pipeline:** `src/callbot/engine/orchestrator.py` vẫn dùng `callbot.engine.nlu.extractor.InformationExtractor` (bản heuristic cũ). Module `callbot.engine.extraction` mới chỉ được dùng trong unit test; việc thay thế trong orchestrator, Dialogue Manager và Policy là task tiếp theo (xem Phụ lục "Đối chiếu code hiện tại" của thiết kế).
+- **Đã nối vào pipeline (F-04):** orchestrator, Policy và Dialogue dùng `ExtractionResult` trực tiếp; `engine/nlu` đã xoá. Xem [f04-information-extraction-http.md](f04-information-extraction-http.md).
 - **Tuyến sau chưa có cài đặt:** `FallbackExtractor` mới là Protocol; test dùng fake. NER cho tên tắt mặc định (`name_fallback=False`), bật theo kế hoạch tuần 3; LLM cho intent/agreement theo kế hoạch tuần 4 (§8).
 - **Ngoài phạm vi IE:** so khớp tên/ngày sinh với hồ sơ (Verifier), bộ đếm §1.1.5, giới hạn lần thử danh tính, chọn `transfer_reason` (Policy), output guard lời thoại (§7). Số điện thoại (§5.3) đang hoãn.
 - **Phụ thuộc câu hỏi mở (§10):** nhóm đang hiểu MENTION không bắt buộc chuyển máy (câu 6); REPEAT_REQUEST và agreement mơ hồ lần đầu không tính là failed understanding (câu 7); lượt nào nhận clip voicemail (câu 9). Nếu PO trả lời khác, chủ yếu đổi ở Policy — IE giữ nguyên nhãn.
