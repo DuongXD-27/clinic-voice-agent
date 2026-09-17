@@ -116,4 +116,4 @@ jobs:
           done
           curl -fsS -X POST "https://$BOT_DOMAIN/v1/calls" \
             -H "Content-Type: application/json" \
-            -d '{"call_id":"ci_smoke","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'
+            -d '{"call_id":"ci_smoke","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'
