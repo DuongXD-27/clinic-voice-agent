@@ -1,3 +1,4 @@
+from copy import deepcopy
 from dataclasses import dataclass
 
 import pytest
@@ -70,13 +71,13 @@ SF03_PREVERIFICATION_CASES = (
 )
 
 
-def _start(client: TestClient, call_id: str) -> dict:
+def _start(client: TestClient, call_id: str, appointment_id: str = APPOINTMENT_ID) -> dict:
     response = client.post(
         "/v1/calls",
         json={
             "call_id": call_id,
             "direction": "outbound",
-            "appointment_id": APPOINTMENT_ID,
+            "appointment_id": appointment_id,
             "caller_number": None,
             "locale": "vi-VN",
             "mode": "text",
@@ -110,9 +111,12 @@ def _action(client: TestClient, call_id: str, body: dict) -> BotAction:
 
 
 def _run_case(
-    case: SF03Case, clinic: FakeClinicAPI, client: TestClient
+    case: SF03Case,
+    clinic: FakeClinicAPI,
+    client: TestClient,
+    appointment_id: str = APPOINTMENT_ID,
 ) -> tuple[list[BotAction], object]:
-    opening = _action(client, case.id, _start(client, case.id))
+    opening = _action(client, case.id, _start(client, case.id, appointment_id))
     assert opening.state == "AWAITING_IDENTITY"
     _assert_open_question(opening, "name", clinic)
 
@@ -140,13 +144,17 @@ def test_sf03_preverification_transcript(
     case: SF03Case, clinic: FakeClinicAPI, client: TestClient
 ) -> None:
     _prepare_sf03_clinic(clinic)
-    variants = ((case.id, case.turns),)
+    variants = ((case.id, case.turns, APPOINTMENT_ID),)
     if case.alternate_turns:
-        variants += ((f"{case.id}_wrong_dob", case.alternate_turns),)
+        alternate_appointment_id = f"{APPOINTMENT_ID}_alternate"
+        alternate_appointment = deepcopy(clinic.appointments[APPOINTMENT_ID])
+        alternate_appointment["appointment_id"] = alternate_appointment_id
+        clinic.seed_appointment(alternate_appointment)
+        variants += ((f"{case.id}_wrong_dob", case.alternate_turns, alternate_appointment_id),)
 
-    for call_id, turns in variants:
+    for call_id, turns, appointment_id in variants:
         variant = SF03Case(call_id, turns, identity_failure=case.identity_failure)
-        actions, session = _run_case(variant, clinic, client)
+        actions, session = _run_case(variant, clinic, client, appointment_id)
 
         # Check every bot utterance, including the POST /v1/calls opening and final transfer.
         assert_no_appointment_disclosure(actions, clinic)
@@ -158,7 +166,7 @@ def test_sf03_preverification_transcript(
             assert final.outcome == "TRANSFERRED"
             assert final.transfer_reason == "IDENTITY_FAILED"
             assert clinic.writes[-1] == (
-                APPOINTMENT_ID,
+                appointment_id,
                 "TRANSFERRED",
                 {"transfer_reason": "IDENTITY_FAILED"},
             )

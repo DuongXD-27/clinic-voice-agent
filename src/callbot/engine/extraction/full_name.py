@@ -105,6 +105,9 @@ def extract_full_name(transcript: str) -> Field[str]:
     unaccented = is_unaccented(name)
     name = _strip_repeated(name, _PREFIXES, unaccented, at_start=True)
     name = _strip_repeated(name, _SUFFIXES, unaccented, at_start=False)
+    # Khi người gọi tự giới thiệu rồi nhắc tới người khác, chỉ lấy mệnh đề tự giới thiệu.
+    # Không tách trên "hay"/"hoặc": hai tên không có dấu hiệu tự sửa vẫn phải bị từ chối.
+    name = name.split(" còn ", 1)[0].strip()
 
     words = name.split()
     greetings = _GREETINGS_UNACCENTED if unaccented else _GREETINGS

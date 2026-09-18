@@ -110,10 +110,10 @@ trong `.env`.
 
 ## CI/CD
 
-[.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml):
+[.github/workflows/ci.yml](.github/workflows/ci.yml) và [.github/workflows/cd.yml](.github/workflows/cd.yml):
 
-- Mọi push / PR: chạy `make check` (ruff lint, ruff format check, pytest) với PostgreSQL service.
-- Push lên `main` (hoặc chạy tay *Run workflow*): test → build image lên
+- Chỉ thay đổi mã nguồn/test/cấu hình runtime mới chạy CI (`make check`) với PostgreSQL service; thay đổi tài liệu không kích hoạt pipeline.
+- CI thành công trên push lên `main` mới kích hoạt CD: build image lên
   `ghcr.io/<owner>/callbot-vinmec` → SSH vào EC2, chép
   [docker-compose.prod.yml](docker-compose.prod.yml) + `.env` sinh từ secrets vào
   `/opt/callbot`, `docker compose pull && up -d` (PostgreSQL + migrate + bot) → smoke test `/ready` và `POST /v1/calls` với `call_id` riêng mỗi lần.

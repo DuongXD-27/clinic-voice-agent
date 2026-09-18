@@ -16,6 +16,8 @@ from callbot.engine.extraction.schema import VN_TZ
 from callbot.engine.session.context import CallContext
 from callbot.engine.types import CallStart
 from callbot.engine.verification.identity import (
+    LookupStatus,
+    PrepareResult,
     VerificationResult,
     VerificationStatus,
     matches,
@@ -200,9 +202,17 @@ def test_context_sensitive_identity_extraction(
     assert getattr(result, field).found is False
 
 
+class _NoopGateway:
+    def transfer(self, ctx: CallContext, reason: str) -> None:
+        return None
+
+
 class _RecordingVerifier:
     def __init__(self) -> None:
         self.calls: list[tuple[str, date]] = []
+
+    def prepare(self, ctx: CallContext) -> PrepareResult:
+        return PrepareResult(LookupStatus.LOADED)
 
     def verify(self, ctx: CallContext) -> VerificationResult:
         assert ctx.claimed_name is not None and ctx.claimed_dob is not None
@@ -223,7 +233,7 @@ def _verification_boundary(
         opened_at=NOW,
     )
     verifier = _RecordingVerifier()
-    manager = DialogueManager(cast(Any, None), cast(Any, verifier))
+    manager = DialogueManager(cast(Any, _NoopGateway()), cast(Any, verifier))
     extractor = InformationExtractor()
     manager.opening(context)
 
@@ -237,16 +247,12 @@ def _verification_boundary(
 
 
 def test_TC_IEN_53_verifier_receives_extracted_name_not_utterance() -> None:
-    _, verifier = _verification_boundary(
-        "Dạ, tôi tên là Nguyễn Văn A ạ", "14/03/1978"
-    )
+    _, verifier = _verification_boundary("Dạ, tôi tên là Nguyễn Văn A ạ", "14/03/1978")
     assert verifier.calls == [("nguyễn văn a", CANONICAL_DOB)]
 
 
 def test_TC_IEN_54_verifier_receives_canonical_dob() -> None:
-    _, verifier = _verification_boundary(
-        CANONICAL_NAME, "Tôi sinh ngày 14 tháng 3 năm 1978"
-    )
+    _, verifier = _verification_boundary(CANONICAL_NAME, "Tôi sinh ngày 14 tháng 3 năm 1978")
     assert verifier.calls == [("nguyễn văn a", CANONICAL_DOB)]
 
 
