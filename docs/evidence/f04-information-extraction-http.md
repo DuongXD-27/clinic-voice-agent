@@ -69,7 +69,7 @@ python -m pytest -q tests/engine tests/transports
 | --- | --- |
 | `python -m ruff check src tests` | Pass |
 | `python -m ruff format --check src tests` | Pass |
-| `python -m pytest -q` (có PostgreSQL 16 thật, gồm cả F-03) | 493 passed, 1 skipped, 1 failed |
+| `python -m pytest -q` (kết quả lịch sử trước khi chuyển session sang Redis) | 493 passed, 1 skipped, 1 failed |
 | `python -m pytest -q tests/engine/test_orchestrator.py` | 22 passed |
 | `python -m pytest -q tests/engine/test_identity.py` | 13 passed |
 | `python -m pytest -q tests/engine/extraction` | 334 passed |

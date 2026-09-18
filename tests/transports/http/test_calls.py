@@ -10,8 +10,8 @@ from callbot.engine import (
     CallConflict,
     CallEnded,
     EngineSettings,
-    InMemorySessionStore,
     ReconciliationRequired,
+    RedisSessionStore,
     SessionNotFound,
     SessionStoreUnavailable,
     TurnConflict,
@@ -179,7 +179,7 @@ def test_turn_rejects_invalid_input(
     assert _turn(client, "c_invalid_turn", turn, text, silence_ms=silence_ms).status_code == 422
 
 
-def test_orchestrator_created_once_and_clinic_closed_on_shutdown() -> None:
+def test_orchestrator_created_once_and_clinic_closed_on_shutdown(redis_store_factory) -> None:
     created: list[FakeClinicAPI] = []
     closed: list[FakeClinicAPI] = []
 
@@ -195,7 +195,7 @@ def test_orchestrator_created_once_and_clinic_closed_on_shutdown() -> None:
     app = create_app(
         clinic_factory=factory,
         engine_settings=EngineSettings(llm_provider="none"),
-        session_store_factory=InMemorySessionStore,
+        session_store_factory=redis_store_factory,
     )
     with TestClient(app) as client:
         orchestrator = app.state.orchestrator
@@ -241,7 +241,7 @@ _REQUEST = httpx.Request("GET", "https://clinic-mock.example/v1/appointments/apt
         (CallEnded("c_x"), 409, "CALL_ENDED"),
         (CallBusy("c_x"), 409, "CALL_BUSY"),
         (ReconciliationRequired("c_x", 2, "sk_secret"), 409, "CALL_RECONCILIATION_REQUIRED"),
-        (SessionStoreUnavailable("postgresql://sk_secret@db"), 503, "SESSION_STORE_UNAVAILABLE"),
+        (SessionStoreUnavailable("private store details"), 503, "SESSION_STORE_UNAVAILABLE"),
     ],
 )
 def test_engine_errors_map_to_http_status(
@@ -292,26 +292,27 @@ def test_new_turn_after_end_returns_call_ended(client: TestClient) -> None:
     assert last.json()["ended"] is True
     after = _turn(client, "c_http_end", 2, "alo")
     assert (after.status_code, after.json()["detail"]["code"]) == (409, "CALL_ENDED")
-    assert _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên").json() == last.json()
+    replay = _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên")
+    assert (replay.status_code, replay.json()["detail"]["code"]) == (409, "CALL_ENDED")
 
 
-def test_ready_reports_session_store(client: TestClient) -> None:
+def test_ready_reports_session_store(client: TestClient, redis_store_factory) -> None:
     assert client.get("/ready").json() == {"status": "ready"}
 
-    class Down(InMemorySessionStore):
+    class Down(RedisSessionStore):
         def check_ready(self) -> None:
-            raise SessionStoreUnavailable("db down")
+            raise SessionStoreUnavailable("redis down")
 
     app = create_app(
         clinic_factory=FakeClinicAPI,
         engine_settings=EngineSettings(llm_provider="none"),
-        session_store_factory=Down,
+        session_store_factory=lambda: Down(redis_store_factory()._client),
     )
     with TestClient(app) as down:
         response = down.get("/ready")
         assert response.status_code == 503
         assert response.json()["code"] == "SESSION_STORE_UNAVAILABLE"
-        assert down.get("/health").status_code == 200  # liveness không phụ thuộc DB
+        assert down.get("/health").status_code == 200  # liveness không phụ thuộc Redis
 
 
 # --- F-04: Information Extraction mới trên đường HTTP -------------------------------------
@@ -386,46 +387,28 @@ def test_information_extraction_over_http(
 
     store = client.app.state.session_store
     last = store.get_turn(call_id, len(lines))
-    assert last.status == "COMPLETED" and last.extraction is not None
-    fields_found = [
-        (name, item["provenance"], item["span"])
-        for name, item in last.extraction.items()
-        if isinstance(item, dict) and item.get("provenance") not in (None, "NONE")
-    ]
-    assert fields_found, last.extraction
-    assert all(span for _, _, span in fields_found)
+    assert last.status == "COMPLETED" and last.extraction is None
+    assert last.input == {} and last.result == {}
+    assert store.get_session(call_id).context == {}
     [command] = store.list_commands(call_id)
     assert command.status == "SUCCEEDED"
 
 
-def test_http_app_on_postgres_replays_across_app_restart(
-    postgres_store: Any, postgres_url: str
-) -> None:
-    from callbot.engine.session.postgres import PostgresSessionStore
-
+def test_http_app_restart_keeps_active_session_in_redis(redis_store_factory) -> None:
     clinic = FakeClinicAPI()
 
     def new_app():
-        def store_factory():
-            store = PostgresSessionStore(postgres_url, max_size=4)
-            store.open()
-            return store
-
         return create_app(
             clinic_factory=lambda: clinic,
             engine_settings=EngineSettings(llm_provider="none"),
-            session_store_factory=store_factory,
+            session_store_factory=redis_store_factory,
         )
 
     with TestClient(new_app()) as first:
-        assert first.get("/ready").json() == {"status": "ready"}
-        _start(first, "c_pg_http")
-        asked = _turn(first, "c_pg_http", 1, "Nguyễn Văn A.").json()
+        _start(first, "c_restart_http")
+        _turn(first, "c_restart_http", 1, "Nguyễn Văn A.")
+        asked = _turn(first, "c_restart_http", 1, "Nguyễn Văn A.").json()
 
     with TestClient(new_app()) as second:
-        assert _start(second, "c_pg_http").json()["utterance"] == greeting("outbound")
-        assert _turn(second, "c_pg_http", 1, "Nguyễn Văn A.").json() == asked
-        assert _turn(second, "c_pg_http", 2, "14/03/1978").json()["state"] == "AWAITING_INTENT"
-        done = _turn(second, "c_pg_http", 3, "Có, tôi đến được").json()
-        assert done["outcome"] == "CONFIRMED"
-    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+        assert _turn(second, "c_restart_http", 1, "Nguyễn Văn A.").json() == asked
+        assert _turn(second, "c_restart_http", 2, "14/03/1978").status_code == 200

@@ -123,7 +123,7 @@ def test_inbound_two_full_matches_transfers_instead_of_guessing() -> None:
     action = _identity_turns(bot, "c_twin")
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_NOT_FOUND")
-    assert _ctx(bot, "c_twin").patient_id is None
+    assert bot.sessions.store.get_session("c_twin").context == {}
     assert clinic.writes == []
 
 

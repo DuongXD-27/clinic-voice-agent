@@ -65,7 +65,7 @@ class CallOrchestrator:
             self._trace(
                 call.call_id,
                 0,
-                {"event": "call_started", "call": call.to_dict(), "bot": action.utterance},
+                {"event": "call_started", "direction": call.direction, "state": action.state},
             )
         return action
 
@@ -77,9 +77,6 @@ class CallOrchestrator:
                 caller.turn,
                 {
                     "event": "turn",
-                    "caller": caller.fingerprint(),
-                    "extraction": run.extraction,
-                    "bot": run.action.utterance,
                     "state": run.action.state,
                     "outcome": run.action.outcome,
                     "transfer_reason": run.action.transfer_reason,
@@ -100,7 +97,7 @@ class CallOrchestrator:
             logger.error("Chặn severe failure %s tại %s", blocked.code, ctx.call_id)
             action = self._dialogue.transfer(ctx, "SYSTEM_ERROR")
         except Exception:
-            logger.exception("Lỗi xử lý lượt %s của %s", caller.turn, ctx.call_id)
+            logger.error("Lỗi xử lý lượt %s của %s", caller.turn, ctx.call_id)
             action = self._dialogue.transfer(ctx, "SYSTEM_ERROR")
 
         self._apply(ctx, action)
@@ -156,4 +153,4 @@ class CallOrchestrator:
         try:
             self._tracer.log(call_id, turn, event)
         except Exception:
-            logger.exception("Xuất trace lỗi cho %s lượt %s", call_id, turn)
+            logger.error("Xuất trace lỗi cho %s lượt %s", call_id, turn)

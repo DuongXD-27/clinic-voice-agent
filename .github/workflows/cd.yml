@@ -79,11 +79,11 @@ jobs:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
       NAME_FALLBACK_PROVIDER: ${{ vars.NAME_FALLBACK_PROVIDER || 'none' }}
       NAME_FALLBACK_MODEL: ${{ vars.NAME_FALLBACK_MODEL }}
       NAME_FALLBACK_MAX_TOKENS: ${{ vars.NAME_FALLBACK_MAX_TOKENS }}
       NAME_FALLBACK_TIMEOUT_S: ${{ vars.NAME_FALLBACK_TIMEOUT_S || '3.0' }}
-      SESSION_DB_PASSWORD: ${{ secrets.SESSION_DB_PASSWORD }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout tested commit
@@ -97,9 +97,9 @@ jobs:
           set -euo pipefail
           : "${EC2_HOST:?Missing secret EC2_HOST}"
           : "${EC2_SSH_KEY:?Missing secret EC2_SSH_KEY}"
-          : "${SESSION_DB_PASSWORD:?Missing secret SESSION_DB_PASSWORD}"
           : "${BOT_DOMAIN:?Missing variable BOT_DOMAIN}"
           : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
+          : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
           case "$NAME_FALLBACK_PROVIDER" in
             none) ;;
             openai) : "${OPENAI_API_KEY:?Missing secret OPENAI_API_KEY}" ;;
@@ -129,6 +129,9 @@ jobs:
             echo "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
             echo "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
             echo "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+            echo "REDIS_PASSWORD=$REDIS_PASSWORD"
+            echo "REDIS_MAXMEMORY=256mb"
+            echo "WEB_CONCURRENCY=2"
             echo "GEMINI_API_KEY=$GEMINI_API_KEY"
             echo "OPENAI_API_KEY=$OPENAI_API_KEY"
             echo "GROQ_API_KEY=$GROQ_API_KEY"
@@ -137,7 +140,6 @@ jobs:
             echo "NAME_FALLBACK_MODEL=$NAME_FALLBACK_MODEL"
             echo "NAME_FALLBACK_MAX_TOKENS=$NAME_FALLBACK_MAX_TOKENS"
             echo "NAME_FALLBACK_TIMEOUT_S=$NAME_FALLBACK_TIMEOUT_S"
-            echo "SESSION_DB_PASSWORD=$SESSION_DB_PASSWORD"
           } > deploy.env
 
       - name: Upload deployment files

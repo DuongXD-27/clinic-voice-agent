@@ -1,65 +1,71 @@
-# Vận hành session store — nhiều worker và đối soát
+# Vận hành session tạm trên Redis
 
-Áp dụng từ F-03. Phiên, lượt và nhật ký lệnh Clinic nằm trong PostgreSQL; ứng dụng HTTP **không** tự chuyển sang bộ nhớ khi DB lỗi.
+Session chỉ phục vụ một luồng cuộc gọi đang chạy. Hồ sơ bệnh nhân và kết quả nghiệp vụ chính thức thuộc Clinic. Callbot không dùng PostgreSQL và không có kho session trong RAM của process.
 
-## 1. Cấu hình
+## Cấu hình
 
-| Biến | Mặc định | Ghi chú |
-|---|---|---|
-| `SESSION_DATABASE_URL` | — | Bắt buộc, `postgresql://user:pass@host:5432/db` |
-| `SESSION_POOL_MIN_SIZE` / `SESSION_POOL_MAX_SIZE` | `1` / `10` | Pool **mỗi worker**. Một request đang xử lý giữ 1 connection khóa và mượn thêm 1 connection đọc/ghi |
-| `SESSION_POOL_TIMEOUT_S` | `5` | Chờ connection từ pool |
-| `WEB_CONCURRENCY` | `2` | Số worker uvicorn trong Docker |
+| Biến | Mặc định | Ý nghĩa |
+| --- | --- | --- |
+| `REDIS_URL` | `redis://:callbot@localhost:6379/0` | Redis dùng chung giữa các worker |
+| `REDIS_KEY_PREFIX` | `callbot` | Namespace của key |
+| `SESSION_IDLE_TTL_S` | `1800` | Xóa nội dung sau thời gian không hoạt động |
+| `SESSION_MAX_AGE_S` | `7200` | Tuổi tối đa tuyệt đối của session |
+| `SESSION_TOMBSTONE_TTL_S` | `86400` | Thời gian giữ metadata kỹ thuật đã làm sạch |
+| `SESSION_MAX_BYTES` | `262144` | Giới hạn kích thước một cuộc gọi |
+| `SESSION_LOCK_LEASE_S` | `60` | Lease khóa phân tán theo `call_id` |
+| `REDIS_MAXMEMORY` | `256mb` | Giới hạn RAM của Redis trong Compose |
 
-Tổng connection tối đa ≈ `WEB_CONCURRENCY × SESSION_POOL_MAX_SIZE` (+1 cho migrate). Giữ dưới `max_connections` của PostgreSQL (mặc định 100).
+Mật khẩu nằm trong `REDIS_PASSWORD` của Compose. Nếu chạy app trực tiếp, đặt mật khẩu đã URL-encode trong `REDIS_URL`.
 
-## 2. Khởi động
+## Yêu cầu bắt buộc với Redis
+
+Ứng dụng HTTP kiểm tra cấu hình khi khởi động và từ chối chạy nếu một điều kiện sau không đúng:
+
+- RDB snapshot tắt: `save ""`.
+- AOF tắt: `appendonly no`.
+- Có giới hạn bộ nhớ: `maxmemory > 0`.
+- Không tự ý đẩy key đang chạy: `maxmemory-policy noeviction`.
+
+`noeviction` làm lệnh ghi thất bại rõ ràng khi hết RAM. Bot trả `503 SESSION_STORE_UNAVAILABLE` và không gửi lệnh Clinic nếu chưa ghi được journal. Redis không có volume; restart Redis làm mất các cuộc gọi đang chạy, và lượt tiếp theo nhận `404 CALL_NOT_FOUND`. Đây là dữ liệu tạm có chủ đích.
+
+## Vòng đời dữ liệu
+
+Mỗi `call_id` có một JSON key chứa context, các lượt và journal lệnh Clinic. Mọi thay đổi thay thế atomically một key trong khóa phân tán của cuộc gọi.
+
+- Session mới luôn có TTL; TTL bị chặn bởi cả idle timeout và maximum age.
+- Lượt kết thúc không ghi Clinic: xóa ngay cấu hình cuộc gọi, transcript, kết quả và extraction.
+- Clinic trả thành công: xóa ngay toàn bộ nội dung khách hàng sau acknowledgement, trước khi trả HTTP.
+- Kết quả ghi Clinic không xác định: xóa nội dung và giữ tombstone `RECONCILIATION_REQUIRED` để chặn ghi trùng.
+- Hết hạn: cleanup làm sạch nội dung; Redis TTL vẫn là lớp bảo vệ cuối cùng nếu cleanup dừng.
+- Tombstone chỉ giữ mã trạng thái, số lượt, trạng thái lệnh, attempts, idempotency key và thời điểm kỹ thuật. Endpoint, payload, result và error đều bị xóa.
+
+Bot không sao chép hồ sơ bệnh nhân sang nơi lưu bền. Trong lúc hội thoại, các trường cần thiết chỉ tồn tại tạm trong key Redis; sau khi ghi Clinic thành công hoặc cuộc gọi kết thúc, chúng bị xóa.
+
+## Đồng thời và lỗi
+
+- Khóa Redis `SET NX PX` theo `call_id`; chờ quá 5 giây trả `409 CALL_BUSY`.
+- Các `call_id` khác nhau không chặn nhau, nên có thể chạy nhiều worker/replica.
+- Nếu khóa hết hạn hoặc đổi chủ trong khi xử lý, request trả `503`; không coi lượt là hoàn thành an toàn.
+- Lượt `PROCESSING` không có lệnh, hoặc chỉ có lệnh `FAILED`, có thể xử lý tiếp.
+- Lượt có lệnh `PENDING`, `UNKNOWN` hoặc `SUCCEEDED` nhưng chưa hoàn tất bị chặn bằng `409 CALL_RECONCILIATION_REQUIRED`.
+- Redis mất kết nối khiến readiness trả `503`; ứng dụng không chuyển sang bộ nhớ cục bộ.
+
+## Khởi động và kiểm tra
 
 ```bash
-# Migration: MỘT lần, trước khi khởi động worker
-python -m callbot.engine.session.postgres.migrate
-
-# Nhiều worker
-uvicorn callbot.transports.http.main:app --host 0.0.0.0 --port 8000 --workers 4
+docker compose up --build
+curl http://localhost:8000/ready
 ```
 
-`docker compose up --build` chạy theo thứ tự `postgres` (healthy) → `migrate` (thoát 0) → `bot`. Volume `pg_data` giữ dữ liệu qua restart; **không** xoá volume khi deploy.
+Compose khởi động Redis trước, chờ healthcheck rồi mới chạy bot. `/health` chỉ kiểm tra process; `/ready` kiểm tra Redis và cleanup session.
 
-Dùng `/ready` cho readiness (DB + phiên bản schema), `/health` cho liveness.
-
-## 3. Cơ chế
-
-- Mỗi lượt khóa theo `call_id` bằng advisory lock cấp session của PostgreSQL, trên một connection riêng, giữ suốt lượt. Chờ tối đa 5 giây, quá thì `409 CALL_BUSY`. Các cuộc gọi khác nhau không chặn nhau.
-- Lượt được đặt chỗ (`call_turns.status = PROCESSING`) cùng thời điểm tiếp nhận trước khi xử lý. Context, history và kết quả commit trong **một** transaction (`COMPLETED`).
-- Trước mỗi lệnh ghi Clinic, lệnh được commit vào `clinic_commands` (`PENDING`) với payload, `If-Match` và `Idempotency-Key` cố định `{call_id}:{turn}:{thao tác}[:{slot}]`, rồi mới gửi. Sau đó cập nhật `SUCCEEDED` / `FAILED` / `UNKNOWN`.
-- Lượt `PROCESSING` còn lại (worker chết, request trước lỗi):
-  - Không có lệnh, hoặc mọi lệnh `FAILED` (Clinic từ chối chắc chắn) → xử lý tiếp với thời điểm tiếp nhận cũ.
-  - Có lệnh `PENDING` / `UNKNOWN` / `SUCCEEDED` → đánh dấu `RECONCILIATION_REQUIRED`, trả `409 CALL_RECONCILIATION_REQUIRED`.
-- Timeout đọc hoặc mất kết nối khi đang gửi lệnh ghi → `UNKNOWN`, phiên bị chặn; bot **không** gửi lại lệnh và **không** phát lệnh chuyển máy thay thế.
-
-## 4. Chuyển từ bộ nhớ sang PostgreSQL (lần triển khai đầu)
-
-Không có dữ liệu phiên cũ để migrate. Trước khi triển khai: dừng nhận cuộc gọi mới và chờ các cuộc gọi đang chạy kết thúc, rồi deploy. Cuộc gọi còn dở khi deploy sẽ nhận `404 CALL_NOT_FOUND` ở lượt tiếp theo.
-
-Không tái sử dụng `call_id`: đợt này chưa có chính sách xoá session / lượt / nhật ký lệnh. Smoke test tạo id riêng mỗi lần (`ci_smoke_<run_id>_<attempt>`).
-
-## 5. Tra cứu và đối soát
-
-Công cụ **chỉ đọc**, không sửa hay mở khóa phiên:
+Chạy test với Redis thật:
 
 ```bash
-# Các lượt đang chờ đối soát
-python -m callbot.engine.session.postgres.inspect blocked
-
-# Chi tiết một cuộc gọi: tóm tắt context (không in tên / ngày sinh), từng lượt, từng lệnh Clinic
-python -m callbot.engine.session.postgres.inspect call <call_id>
-
-# Trong Docker
-docker compose exec bot python -m callbot.engine.session.postgres.inspect blocked
+docker run --rm -p 6379:6379 redis:7.4-alpine
+export TEST_REDIS_URL=redis://localhost:6379/15
+export REQUIRE_REDIS_TESTS=1
+python -m pytest -q tests/engine/session
 ```
 
-Quy trình cho mỗi lượt `RECONCILIATION_REQUIRED`:
-
-1. `inspect call <call_id>`: tìm lệnh có `status` khác `SUCCEEDED` / `FAILED` (hoặc `SUCCEEDED` nhưng lượt chưa `COMPLETED`). Ghi lại `idempotency_key`, `endpoint`, `payload`, `if_match`.
-2. Đối chiếu trên Clinic: `GET /v1/appointments/{id}` — xem `status`, `version`, các trường lý do (`cancel_reason`, `transfer_reason`, `unreachable_reason`, `new_slot_id`), và với đặt lịch inbound thì tìm lịch hẹn mới của bệnh nhân. Mock trả kết quả cũ khi gửi lại cùng `Idempotency-Key`, nhưng **không** gửi lại lệnh từ công cụ này.
-3. Kết luận lệnh đã áp dụng hay chưa và báo cho người phụ trách cuộc gọi / harness. Tự động đối soát và mở khóa phiên **nằm ngoài** F-03; phiên vẫn bị chặn sau bước này.
+Unit test dùng `fakeredis` nhưng luôn chạy chính `RedisSessionStore`; không còn implementation session dành riêng cho test. CI chạy thêm bài tích hợp trên Redis thật.

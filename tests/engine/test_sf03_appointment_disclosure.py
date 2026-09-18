@@ -105,8 +105,8 @@ def _action(client: TestClient, call_id: str, body: dict) -> BotAction:
         state=body["state"],
         ended=body.get("ended", False),
         outcome=body.get("outcome"),
-        transfer_reason=session.context["transfer_reason"],
-        unreachable_reason=session.context["unreachable_reason"],
+        transfer_reason=session.context.get("transfer_reason"),
+        unreachable_reason=session.context.get("unreachable_reason"),
     )
 
 
@@ -130,7 +130,13 @@ def _run_case(
         actions.append(action)
         assert action.state == expected.expected_state
         assert action.outcome == expected.expected_outcome
-        assert action.transfer_reason == expected.expected_transfer_reason
+        if action.ended:
+            assert (
+                clinic.appointments[appointment_id].get("transfer_reason")
+                == expected.expected_transfer_reason
+            )
+        else:
+            assert action.transfer_reason == expected.expected_transfer_reason
         if expected.expected_prompt:
             _assert_open_question(action, expected.expected_prompt, clinic)
 
@@ -158,13 +164,15 @@ def test_sf03_preverification_transcript(
 
         # Check every bot utterance, including the POST /v1/calls opening and final transfer.
         assert_no_appointment_disclosure(actions, clinic)
-        assert session.context["identity_step"] != "VERIFIED"
+        if session.ended:
+            assert session.context == {}
+        else:
+            assert session.context["identity_step"] != "VERIFIED"
 
         if case.identity_failure:
             final = actions[-1]
             assert final.state == "ENDED"
             assert final.outcome == "TRANSFERRED"
-            assert final.transfer_reason == "IDENTITY_FAILED"
             assert clinic.writes[-1] == (
                 appointment_id,
                 "TRANSFERRED",

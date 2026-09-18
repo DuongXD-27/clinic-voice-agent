@@ -1,4 +1,4 @@
-"""Hợp đồng session store — chạy cho cả in-memory và PostgreSQL thật (fixture `store`)."""
+"""Hợp đồng session store chạy qua RedisSessionStore (fixture `store`)."""
 
 import threading
 import time
@@ -85,7 +85,8 @@ def test_reconciliation_flag(store) -> None:
     assert store.find_blocked_turn("c_block") is None
     store.mark_reconciliation_required("c_block", 1, "timeout confirm")
     assert store.find_blocked_turn("c_block") == 1
-    assert store.get_turn("c_block", 1).detail == "timeout confirm"
+    assert store.get_turn("c_block", 1).detail is None
+    assert store.get_session("c_block").context == {}
 
 
 def test_command_journal_lifecycle(store) -> None:
@@ -99,11 +100,12 @@ def test_command_journal_lifecycle(store) -> None:
     with pytest.raises(ReconciliationRequired):
         store.begin_command(_command("c_cmd"))
 
-    store.finish_command("k1", "FAILED", error="HTTP 409 VERSION_CONFLICT")
+    store.finish_command("c_cmd", "k1", "FAILED", error="HTTP 409 VERSION_CONFLICT")
     store.begin_command(_command("c_cmd"))  # lần trước thất bại xác định: gửi lại cùng khóa
-    store.finish_command("k1", "SUCCEEDED", result={"status": "CONFIRMED"})
+    store.finish_command("c_cmd", "k1", "SUCCEEDED", result={"status": "CONFIRMED"})
     [done] = store.list_commands("c_cmd")
-    assert (done.status, done.attempts, done.result) == ("SUCCEEDED", 2, {"status": "CONFIRMED"})
+    assert (done.status, done.attempts, done.result) == ("SUCCEEDED", 2, None)
+    assert done.payload == {} and done.endpoint == ""
 
     with pytest.raises(ReconciliationRequired):
         store.begin_command(_command("c_cmd"))  # đã thành công
@@ -113,7 +115,7 @@ def test_failed_command_key_cannot_be_reused_with_other_payload(store) -> None:
     store.create_session(_session("c_payload"))
     store.reserve_turn("c_payload", 1, {}, RECEIVED)
     store.begin_command(_command("c_payload", payload={"cancel_reason": "COST"}))
-    store.finish_command("k1", "FAILED", error="HTTP 409")
+    store.finish_command("c_payload", "k1", "FAILED", error="HTTP 409")
     with pytest.raises(ReconciliationRequired):
         store.begin_command(_command("c_payload", payload={"cancel_reason": "UNSPECIFIED"}))
 

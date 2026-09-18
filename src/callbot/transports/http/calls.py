@@ -87,7 +87,7 @@ def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
         logger.warning("Clinic mock lỗi khi xử lý %s: %s", call_id, type(exc).__name__)
         raise _error(502, "UPSTREAM_ERROR", "Clinic API trả lỗi") from exc
     except Exception as exc:
-        logger.exception("Lỗi ngoài dự kiến khi xử lý %s", call_id)
+        logger.error("Lỗi ngoài dự kiến khi xử lý %s", call_id)
         raise _error(500, "INTERNAL_ERROR", "Lỗi hệ thống") from exc
 
 

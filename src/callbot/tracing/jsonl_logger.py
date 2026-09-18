@@ -15,7 +15,19 @@ class JsonlLogger:
             "call_id": call_id,
             "turn": turn,
             "ts": datetime.now(timezone.utc).isoformat(),
-            **event,
+            # Allowlist: không lưu transcript, hồ sơ, audio URL hay payload Clinic.
+            **{
+                key: event[key]
+                for key in (
+                    "event",
+                    "direction",
+                    "state",
+                    "outcome",
+                    "transfer_reason",
+                    "unreachable_reason",
+                )
+                if key in event
+            },
         }
         with self._path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")

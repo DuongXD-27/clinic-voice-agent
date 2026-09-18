@@ -91,7 +91,7 @@ class DialogueManager:
             except TURN_ABORTING_ERRORS:
                 raise
             except (ClinicWriteRejected, SevereFailureBlocked):
-                logger.exception("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
+                logger.error("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
         )
@@ -103,7 +103,7 @@ class DialogueManager:
         except TURN_ABORTING_ERRORS:
             raise
         except (ClinicWriteRejected, SevereFailureBlocked):
-            logger.exception("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
+            logger.error("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
         return BotAction(
             t.GOODBYE_UNREACHABLE,
             "ENDED",

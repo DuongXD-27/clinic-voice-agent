@@ -88,8 +88,10 @@ class SessionManager:
         """Trả (phản hồi mở phiên, có phải replay không). Không bao giờ reset context đã có."""
         config = call.to_dict()
         with self._store.call_lock(call.call_id, self._lock_timeout_s):
+            self._store.expire_session(call.call_id)
             existing = self._store.get_session(call.call_id)
             if existing is not None:
+                self._check_retired(existing)
                 if existing.start_config != config:
                     raise CallConflict(call.call_id)
                 return BotAction.from_dict(existing.opening), True
@@ -112,9 +114,11 @@ class SessionManager:
 
     def run_turn(self, call_id: str, caller: CallerInput, process: TurnProcessor) -> TurnRun:
         with self._store.call_lock(call_id, self._lock_timeout_s):
+            self._store.expire_session(call_id)
             session = self._store.get_session(call_id)
             if session is None:
                 raise SessionNotFound(call_id)
+            self._check_retired(session)
 
             received_at = self._admit(session, caller)
             if isinstance(received_at, TurnRun):
@@ -142,6 +146,15 @@ class SessionManager:
                 ended=ctx.ended,
             )
             return TurnRun(outcome.action, replayed=False, extraction=outcome.extraction)
+
+    def _check_retired(self, session: SessionRecord) -> None:
+        if session.purged_reason in ("RECONCILIATION_REQUIRED", "CLINIC_COMMITTED"):
+            commands = self._store.list_commands(session.call_id)
+            turn = max((c.turn for c in commands), default=session.last_completed_turn + 1)
+            self._block(session.call_id, turn, "Customer content removed; reconcile in Clinic")
+            raise ReconciliationRequired(session.call_id, turn)
+        if session.purged_reason or session.ended:
+            raise CallEnded(session.call_id)
 
     def _admit(self, session: SessionRecord, caller: CallerInput) -> "datetime | TurnRun":
         call_id, turn = session.call_id, caller.turn
@@ -188,7 +201,7 @@ class SessionManager:
             self._store.mark_reconciliation_required(call_id, turn, detail)
         except Exception:
             # Không ghi được cờ chặn: lượt vẫn PROCESSING kèm lệnh chưa rõ, lần sau vẫn bị chặn
-            logger.exception("Không đánh dấu được lượt %s/%s cần đối soát", call_id, turn)
+            logger.error("Không đánh dấu được lượt %s/%s cần đối soát", call_id, turn)
 
     # --- State machine -----------------------------------------------------------------
 
@@ -235,10 +248,12 @@ class StoreCommandJournal:
         )
 
     def succeeded(self, command: ClinicCommand, result: dict[str, Any]) -> None:
-        self._store.finish_command(command.idempotency_key, "SUCCEEDED", result=result)
+        self._store.finish_command(
+            self._call_id, command.idempotency_key, "SUCCEEDED", result=result
+        )
 
     def failed(self, command: ClinicCommand, error: str) -> None:
-        self._store.finish_command(command.idempotency_key, "FAILED", error=error)
+        self._store.finish_command(self._call_id, command.idempotency_key, "FAILED", error=error)
 
     def unknown(self, command: ClinicCommand, error: str) -> None:
-        self._store.finish_command(command.idempotency_key, "UNKNOWN", error=error)
+        self._store.finish_command(self._call_id, command.idempotency_key, "UNKNOWN", error=error)
