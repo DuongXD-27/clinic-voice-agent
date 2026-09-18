@@ -10,3 +10,5 @@ traces.jsonl
 
 # Clinic mock (repo riêng, đã deploy tại clinic-mock.vmec-callbot.tech) — không thuộc repo này
 clinic-mock/
+
+eval/stt-bench/master

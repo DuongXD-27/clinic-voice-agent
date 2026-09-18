@@ -28,6 +28,7 @@ llm = [
 dev = [
     "fakeredis>=2.26,<3",
     "pytest>=8.0",
+    "pyyaml>=6.0",
     "ruff>=0.6",
 ]
 
