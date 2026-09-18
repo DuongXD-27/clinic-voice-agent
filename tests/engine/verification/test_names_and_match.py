@@ -1,0 +1,80 @@
+"""normalize_name (khóa so khớp tên) và match_record (đối chiếu một hồ sơ chuẩn)."""
+
+import unicodedata
+from datetime import date
+
+import pytest
+
+from callbot.engine.verification import MatchDetail, match_record, matches
+from callbot.engine.verification.names import normalize_name
+
+DOB = date(1978, 3, 14)
+REF = {
+    "patient_id": "pt_3391",
+    "full_name": "Nguyễn Văn A",
+    "dob": "1978-03-14",
+    "verifiable": True,
+}
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ("Nguyễn Văn A", "nguyen van a"),
+        ("NGUYỄN VĂN A", "Nguyễn Văn A"),
+        ("Nguyễn   Văn\tA", "Nguyễn Văn A"),
+        ("  Nguyễn Văn A  ", "Nguyễn Văn A"),
+        (unicodedata.normalize("NFD", "Nguyễn Văn A"), "Nguyễn Văn A"),  # NFD từ ASR
+        ("Đặng Thị Hà", "dang thi ha"),  # đ/Đ không tách được bằng NFD
+    ],
+)
+def test_normalize_name_is_diacritic_case_and_space_insensitive(a: str, b: str) -> None:
+    assert normalize_name(a) == normalize_name(b)
+
+
+def test_normalize_name_tradeoff_ha_equals_ha() -> None:
+    # Đánh đổi có chủ ý (docstring names.py): bỏ dấu để chịu lỗi ASR — DOB là yếu tố thứ hai
+    assert normalize_name("Hà") == normalize_name("Hạ")
+
+
+def test_normalize_name_does_not_drop_or_reorder_tokens() -> None:
+    assert normalize_name("Văn A") != normalize_name("Nguyễn Văn A")
+    assert normalize_name("A Văn Nguyễn") != normalize_name("Nguyễn Văn A")
+
+
+@pytest.mark.parametrize(
+    "name, dob, expected",
+    [
+        ("nguyễn văn a", DOB, MatchDetail.NAME_AND_DOB_MATCH),
+        ("Nguyen Van A", DOB, MatchDetail.NAME_AND_DOB_MATCH),
+        ("Nguyễn Văn A", date(1979, 3, 14), MatchDetail.DOB_MISMATCH),
+        ("Trần Văn B", DOB, MatchDetail.NAME_MISMATCH),
+        ("Trần Văn B", date(1979, 3, 14), MatchDetail.BOTH_MISMATCH),
+        ("Văn A", DOB, MatchDetail.NAME_MISMATCH),  # thiếu họ: không fuzzy
+    ],
+)
+def test_match_record_outcomes(name: str, dob: date, expected: MatchDetail) -> None:
+    assert match_record(name, dob, REF) is expected
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        {**REF, "verifiable": False},
+        {**REF, "full_name": None, "dob": None, "verifiable": False},
+        {**REF, "dob": "14/03/1978"},  # dob sai định dạng dù verifiable bị đặt True
+        {**REF, "full_name": ""},
+        {"patient_id": "pt_x"},
+    ],
+)
+def test_unverifiable_record_never_matches(ref: dict) -> None:
+    assert match_record("Nguyễn Văn A", DOB, ref) is MatchDetail.RECORD_UNVERIFIABLE
+
+
+def test_matches_wrapper_keeps_bool_contract_on_mock_verify_block() -> None:
+    verify = {"full_name": "Nguyễn Văn A", "dob": "1978-03-14"}
+    assert matches("nguyễn văn a", DOB, verify)
+    assert not matches("nguyễn văn b", DOB, verify)
+    assert not matches("nguyễn văn a", date(1978, 3, 15), verify)
+    assert not matches("nguyễn văn a", DOB, {})
+    assert not matches("nguyễn văn a", DOB, {"full_name": "Nguyễn Văn A", "dob": "14/03/1978"})

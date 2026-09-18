@@ -1,6 +1,6 @@
 # Plan T-01 — Identity Verifier
 
-**Owner:** B (Hưng) · **Trạng thái:** Đã duyệt 17-09-2026 (chuẩn hóa số điện thoại thuộc T-01, nằm trong `prepare()`) · **Ngày:** 17-09-2026
+**Owner:** B (Hưng) · **Trạng thái:** Đã thực thi 18-09-2026 — xem `docs/evidence/t01-identity-verifier.md`; đã duyệt 17-09-2026 (chuẩn hóa số điện thoại thuộc T-01, nằm trong `prepare()`). Lệch so với plan: bước 7 không sửa `identity_cases.py` (test của A) — case TC_ID_14–17 nằm ở `tests/engine/verification/test_identity_flow.py`; `SCHEMA_VERSION` giữ 1 (thay đổi cộng thêm); thêm `VerificationStatus.UNAVAILABLE` và `MatchDetail.NO_REFERENCE`; nhánh "không có ứng viên → không hỏi tên" chờ T-02 (A). · **Ngày:** 17-09-2026
 **Nguồn:** `docs/task-breakdown.md` §3 (T-01); `tailieu/Luồng nghiệp vụ Callbot.pdf` (nhánh Inbound/Outbound tới "Nhu cầu"); `tailieu/AI-callbot-architecture.svg` (node Identity Verifier → Clinic Gateway); contract AIHR-PC-001 rev 1.1 §1.1.1–1.1.2, §1.1.9, §4.2.2, SF-03
 **Phụ thuộc:** F-05 (phân trang `/patients`, dữ liệu canonical, `FakeClinicAPI` mới) — `docs/plans/f05-clinic-gateway.md`
 

@@ -66,6 +66,9 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
+        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Không ném lỗi.
+        # T-02: khi prepare.transfer_reason khác None -> chào ngắn, lượt 1 chuyển máy, không hỏi tên.
+        self._verifier.prepare(ctx)
         return self._ask(
             ctx, QuestionId.ASK_NAME, t.greeting(ctx.call.direction), "AWAITING_IDENTITY"
         )
