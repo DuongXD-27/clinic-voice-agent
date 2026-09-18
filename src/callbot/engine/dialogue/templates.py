@@ -62,7 +62,6 @@ SILENCE = "Alo, anh chị còn nghe máy không ạ?"
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
 # Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ
 CANCEL_CHOICE = "Dạ, anh chị muốn hủy lịch khám hay giữ lịch ạ?"
-ATTENDANCE_CHOICE = "Dạ, anh chị sẽ đến khám theo lịch này, hay muốn đổi hoặc hủy lịch ạ?"
 BOOKING_ABANDONED = "Dạ, em chưa đặt lịch nào cho anh chị. Anh chị cần em hỗ trợ gì thêm ạ?"
 SLOT_TAKEN = "Dạ, khung giờ đó vừa có người đặt. "
 SLOT_NO_MATCH = "Dạ, em chưa thấy khung giờ đó. "
@@ -72,6 +71,13 @@ TRANSFER = "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ an
 GOODBYE_UNREACHABLE = "Dạ, em xin phép gọi lại sau ạ. Chào anh chị."
 
 _PERIOD_WORDS = ((12, "sáng"), (18, "chiều"), (24, "tối"))
+# §1.1.3: đọc lại "date, time and clinic". Mock chỉ trả `clinic_id` (Listing 3, không có /clinics):
+# tên lấy theo seed Mock (clinic-mock `store.CLINICS`). Id lạ -> "Vinmec", không đoán tên cơ sở.
+CLINIC_NAMES = {
+    "cl_vinmec": "Vinmec Times City",
+    "c_001": "Phòng khám Đa khoa Trung tâm",
+    "c_002": "Phòng khám Đa khoa Cầu Giấy",
+}
 
 
 def greeting(direction: str) -> str:
@@ -95,12 +101,17 @@ def speak_datetime(iso: str) -> str:
     return f"{hour} giờ{minute} {period} ngày {moment.day} tháng {moment.month}"
 
 
+def attendance_facts(appointment: dict[str, Any]) -> str:
+    """Ngày, giờ, cơ sở (§1.1.3) — dùng chung cho mọi câu đọc lại và câu báo đã xác nhận."""
+    return f"{speak_datetime(appointment['starts_at'])} tại {clinic_name(appointment)}"
+
+
 def appointment_summary(ctx: CallContext, appointment: dict[str, Any]) -> str:
     """Figure 0 rev 1.1: tóm tắt + đọc lại ngày, giờ, cơ sở + hỏi đến được không, trong một lượt."""
     guardrails.assert_can_disclose(ctx)
     return (
-        f"Cảm ơn anh chị. Lịch khám {appointment.get('department', '')} của anh chị là "
-        f"{speak_datetime(appointment['starts_at'])} tại {_clinic(appointment)} ạ. {ASK_ATTENDANCE}"
+        f"Cảm ơn anh chị. Lịch khám {_department(appointment)}của anh chị là "
+        f"{attendance_facts(appointment)} ạ. {ASK_ATTENDANCE}"
     )
 
 
@@ -108,16 +119,34 @@ def attendance_readback(ctx: CallContext, appointment: dict[str, Any]) -> str:
     """§1.1.3: đọc lại ngày, giờ, cơ sở trước khi CONFIRMED."""
     guardrails.assert_can_disclose(ctx)
     return (
-        f"Dạ, em xin xác nhận lại: {speak_datetime(appointment['starts_at'])} "
-        f"tại {_clinic(appointment)}. Anh chị đồng ý chứ ạ?"
+        f"Dạ, em xin xác nhận lại: lịch khám {_department(appointment)}"
+        f"{attendance_facts(appointment)}. Anh chị đồng ý chứ ạ?"
+    )
+
+
+def attendance_reread(ctx: CallContext, appointment: dict[str, Any]) -> str:
+    """Câu trả lời chưa rõ: đọc lại (kiến trúc §3.2 "Chưa rõ -> O_READ") bằng câu hỏi có / không —
+    "vâng" là câu trả lời hợp lệ, khác câu A/B."""
+    guardrails.assert_can_disclose(ctx)
+    return (
+        f"Dạ, lịch khám {_department(appointment)}của anh chị là "
+        f"{attendance_facts(appointment)}. {ASK_ATTENDANCE}"
+    )
+
+
+def confirmed(ctx: CallContext, appointment: dict[str, Any]) -> str:
+    """Báo đã xác nhận bằng chính bản ghi Mock trả về sau lệnh ghi, không bằng câu đã đọc."""
+    guardrails.assert_can_disclose(ctx)
+    return (
+        f"Dạ, em đã xác nhận lịch khám {attendance_facts(appointment)} cho anh chị. "
+        "Hẹn gặp anh chị ạ."
     )
 
 
 def keep_appointment(ctx: CallContext, appointment: dict[str, Any]) -> str:
     guardrails.assert_can_disclose(ctx)
     return (
-        f"Dạ, em giữ nguyên lịch khám {speak_datetime(appointment['starts_at'])} "
-        f"tại {_clinic(appointment)} cho anh chị. {ASK_ATTENDANCE}"
+        f"Dạ, em giữ nguyên lịch khám {attendance_facts(appointment)} cho anh chị. {ASK_ATTENDANCE}"
     )
 
 
@@ -140,8 +169,6 @@ def slot_choice(ctx: CallContext, slot: dict[str, Any]) -> str:
 
 
 def done(outcome: str, slot: dict[str, Any] | None = None) -> str:
-    if outcome == "CONFIRMED":
-        return "Dạ, em đã xác nhận lịch khám. Hẹn gặp anh chị ạ."
     if outcome == "CANCELLED":
         return "Dạ, em đã hủy lịch khám cho anh chị ạ."
     if outcome in ("RESCHEDULED", "BOOKED") and slot:
@@ -149,5 +176,14 @@ def done(outcome: str, slot: dict[str, Any] | None = None) -> str:
     return "Dạ, em cảm ơn anh chị ạ."
 
 
-def _clinic(appointment: dict[str, Any]) -> str:
-    return appointment.get("clinic_name") or "Vinmec"
+def clinic_name(appointment: dict[str, Any]) -> str:
+    return (
+        appointment.get("clinic_name")
+        or CLINIC_NAMES.get(appointment.get("clinic_id") or "")
+        or "Vinmec"
+    )
+
+
+def _department(appointment: dict[str, Any]) -> str:
+    department = appointment.get("department")
+    return f"{department} " if department else ""

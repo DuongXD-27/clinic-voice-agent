@@ -7,7 +7,8 @@ Quy ước:
 - Mỗi câu hỏi nghiệp vụ đi qua `_ask`, lưu `question_id` + nội dung + lượt. Câu nhắc chung
   (im lặng, "em chưa hiểu") không đổi câu hỏi đang chờ, nên không tạo được bằng chứng xác nhận.
 - Chỉ `agreement == AGREE` cho đúng câu hỏi xác nhận mới tạo bằng chứng và gọi lệnh ghi;
-  REFUSE bỏ hành động chờ; UNCLEAR hỏi lại bằng câu lựa chọn A/B.
+  REFUSE bỏ hành động chờ; UNCLEAR hỏi lại — câu đến khám thì đọc lại ngày, giờ, cơ sở bằng câu
+  có / không (T-04), câu hủy / chọn slot thì bằng câu lựa chọn A/B.
 - Slot chỉ lấy từ GET /slots của cuộc gọi; lời người gọi chỉ là tiêu chí lọc.
 """
 
@@ -18,7 +19,12 @@ from typing import Any, Optional
 
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.llm.base import LLMClient
-from callbot.engine.errors import TURN_ABORTING_ERRORS, ClinicWriteRejected, SlotTaken
+from callbot.engine.errors import (
+    TURN_ABORTING_ERRORS,
+    ClinicWriteRejected,
+    SlotTaken,
+    WriteOutcomeUnknown,
+)
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -211,6 +217,11 @@ class DialogueManager:
     # --- Outbound: đến khám được không ----------------------------------------------------
 
     def _attendance(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        """§1.1.3: chỉ ghi CONFIRMED khi người gọi đồng ý đúng câu đọc lại ngày, giờ, cơ sở (T-04).
+
+        AGREE gồm cả "vâng / dạ / ừ" và câu khẳng định sẽ đến ("tôi sẽ đến" — Bảng 1); IE đã hạ câu
+        ngập ngừng, câu hỏi đuôi, "nhưng ..." xuống UNCLEAR.
+        """
         intent = ex.intent.value
         if intent in (Intent.CANCEL, Intent.RESCHEDULE):
             return self._start(ctx, intent, ex, now)
@@ -219,20 +230,27 @@ class DialogueManager:
         if agreement is Agreement.AGREE:
             ctx.set_pending("CONFIRM")
             self._record_confirmation(ctx, ex)
-            self._gateway.confirm(ctx)
-            return Reply(self._finish("CONFIRMED", t.done("CONFIRMED")))
+            written = self._gateway.confirm(ctx)
+            if written.get("status") != "CONFIRMED":
+                # Mock nhận lệnh (2xx) nhưng bản ghi không ở CONFIRMED: không báo thành công, cũng không
+                # ghi /transfer thay thế (lệnh đã commit, phiên đã khóa) — chặn lượt để đối soát.
+                raise WriteOutcomeUnknown(
+                    f"{ctx.call_id}: confirm trả status {written.get('status')}"
+                )
+            return Reply(self._finish("CONFIRMED", t.confirmed(ctx, written)))
         if agreement is Agreement.REFUSE:
             ctx.clear_pending()
             return Reply(
                 self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT")
             )
         if ex.agreement.found or intent is Intent.CONFIRM:
-            # "tôi sẽ đến" không có từ đồng ý: hỏi lại bằng câu lựa chọn, chưa ghi
+            # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
+            appointment = self._gateway.get_appointment(ctx)
             return Reply(
                 self._ask(
                     ctx,
                     QuestionId.CONFIRM_READBACK,
-                    t.ATTENDANCE_CHOICE,
+                    t.attendance_reread(ctx, appointment),
                     ctx.state,
                     action="CONFIRM",
                 ),
@@ -263,8 +281,8 @@ class DialogueManager:
 
         if intent is Intent.BOOK:
             return self._start(ctx, intent, ex, now)
-        if intent in (Intent.CANCEL, Intent.RESCHEDULE):
-            # Inbound trong phạm vi hợp đồng chỉ đặt lịch mới
+        if intent in (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE):
+            # Inbound chỉ có kịch bản đặt lịch mới (§1); việc với lịch có sẵn -> chuyển ngay (§1.1.5)
             return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
         return self._not_understood(ctx)
 

@@ -55,10 +55,17 @@ def _inbound(call_id: str = "c_gw_in") -> CallContext:
     )
 
 
+def _verify(ctx: CallContext) -> None:
+    """FSM (T-02): đã xác minh cần hồ sơ đọc ở lượt 0 và patient_id."""
+    ctx.identity_lookup = "LOADED"
+    ctx.patient_id = "pt_3391"
+    ctx.identity_step = "VERIFIED"
+
+
 def _ready_to_confirm(call_id: str = "c_cf") -> CallContext:
     """§1.1.3: đọc lại lịch xong, chờ đúng câu hỏi CONFIRM_READBACK — chưa có bằng chứng AGREE."""
     ctx = _outbound(call_id)
-    ctx.identity_step = "VERIFIED"
+    _verify(ctx)
     ctx.state = "AWAITING_CONFIRMATION"
     ctx.question = Question(
         QuestionId.CONFIRM_READBACK, "Anh chị đến được không ạ?", turn=2, action="CONFIRM"
@@ -87,7 +94,7 @@ def _agree_confirm(ctx: CallContext) -> None:
 def _ready_to_cancel(call_id: str = "c_cancel") -> CallContext:
     """§1.1.4/SF-05: yêu cầu hủy đã ghi nhận ở lượt trước, chờ đúng câu hỏi CANCEL_RECONFIRM."""
     ctx = _outbound(call_id)
-    ctx.identity_step = "VERIFIED"
+    _verify(ctx)
     ctx.state = "AWAITING_CONFIRMATION"
     ctx.question = Question(
         QuestionId.CANCEL_RECONFIRM, "Anh chị muốn hủy hẳn, đúng không ạ?", turn=2, action="CANCEL"
@@ -296,7 +303,7 @@ def test_cancel_without_prior_request_evidence_is_blocked_by_sf05() -> None:
     fake = FakeClinicAPI()
     gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
     ctx = _outbound("c_ca2")
-    ctx.identity_step = "VERIFIED"
+    _verify(ctx)
     ctx.state = "AWAITING_CONFIRMATION"
     ctx.question = Question(
         QuestionId.CANCEL_RECONFIRM, "Anh chị muốn hủy hẳn, đúng không ạ?", turn=2, action="CANCEL"
