@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from callbot.speech.types import NARROWBAND_RATE, SampleRate
@@ -11,6 +12,14 @@ class SpeechSettings(BaseSettings):
     # Tần số chuẩn của pipeline. Mặc định băng hẹp 8 kHz như đường dây điện thoại;
     # đặt 16000 chỉ để so sánh WER, không dùng cho số liệu báo cáo.
     sample_rate: SampleRate = NARROWBAND_RATE
+
+    @field_validator("sample_rate", mode="before")
+    @classmethod
+    def parse_sample_rate(cls, value: object) -> object:
+        # Environment variables and dotenv values arrive as strings.
+        if isinstance(value, str) and value in {"8000", "16000"}:
+            return int(value)
+        return value
 
     asr_provider: Literal["gemini", "phowhisper"] = "gemini"
     tts_provider: Literal["none"] = "none"

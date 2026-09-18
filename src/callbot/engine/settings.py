@@ -10,6 +10,8 @@ class EngineSettings(BaseSettings):
     gemini_api_key: str = ""
     gemini_llm_model: str = "gemini-2.5-flash"
 
+    name_fallback_provider: Literal["none", "openai", "gemini", "groq", "openrouter"] = "none"
+
     clinic_id: str = "cl_vinmec"
 
     # §1.1.5: chuyển máy sau 2 lần liên tiếp không hiểu

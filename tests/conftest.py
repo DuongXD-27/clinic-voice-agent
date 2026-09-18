@@ -12,6 +12,16 @@ from tests.engine.fake_clinic import FakeClinicAPI
 POSTGRES_URL_ENV = "TEST_SESSION_DATABASE_URL"
 
 
+@pytest.fixture(autouse=True)
+def offline_name_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer's .env must never turn unit tests into paid NER requests."""
+    monkeypatch.setenv("NAME_FALLBACK_PROVIDER", "none")
+    monkeypatch.setenv("NAME_FALLBACK_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("NAME_FALLBACK_TIMEOUT_S", "3.0")
+    monkeypatch.setenv("NAME_FALLBACK_MAX_TOKENS", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+
 @pytest.fixture
 def clinic() -> FakeClinicAPI:
     return FakeClinicAPI()

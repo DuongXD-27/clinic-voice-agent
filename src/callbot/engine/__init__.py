@@ -15,6 +15,7 @@ from callbot.engine.errors import (
     TurnOutOfOrder,
 )
 from callbot.engine.extraction import InformationExtractor
+from callbot.engine.extraction.ner import NameNER
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
 from callbot.engine.session import InMemorySessionStore, SessionManager, SessionStore
@@ -22,6 +23,7 @@ from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
+from llm.gateway import create_gateway
 
 
 def create_orchestrator(
@@ -36,10 +38,14 @@ def create_orchestrator(
     """
     settings = settings or EngineSettings()
     gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id)
+    name_fallback = None
+    if settings.name_fallback_provider != "none":
+        name_fallback = NameNER(create_gateway(settings.name_fallback_provider))
     return CallOrchestrator(
         sessions=SessionManager(store if store is not None else InMemorySessionStore()),
-        # LLM fallback chưa bật (F-04): chỉ tầng luật
-        extractor=InformationExtractor(),
+        extractor=InformationExtractor(
+            fallback=name_fallback, name_fallback=name_fallback is not None
+        ),
         policy=PolicyEngine(settings),
         dialogue=DialogueManager(gateway, IdentityVerifier(gateway), llm=create_llm(settings)),
         tracer=tracer,

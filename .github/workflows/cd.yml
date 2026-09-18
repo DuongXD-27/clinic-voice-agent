@@ -76,6 +76,13 @@ jobs:
       CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
       CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NAME_FALLBACK_PROVIDER: ${{ vars.NAME_FALLBACK_PROVIDER || 'none' }}
+      NAME_FALLBACK_MODEL: ${{ vars.NAME_FALLBACK_MODEL }}
+      NAME_FALLBACK_MAX_TOKENS: ${{ vars.NAME_FALLBACK_MAX_TOKENS }}
+      NAME_FALLBACK_TIMEOUT_S: ${{ vars.NAME_FALLBACK_TIMEOUT_S || '3.0' }}
       SESSION_DB_PASSWORD: ${{ secrets.SESSION_DB_PASSWORD }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -93,6 +100,14 @@ jobs:
           : "${SESSION_DB_PASSWORD:?Missing secret SESSION_DB_PASSWORD}"
           : "${BOT_DOMAIN:?Missing variable BOT_DOMAIN}"
           : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
+          case "$NAME_FALLBACK_PROVIDER" in
+            none) ;;
+            openai) : "${OPENAI_API_KEY:?Missing secret OPENAI_API_KEY}" ;;
+            gemini) : "${GEMINI_API_KEY:?Missing secret GEMINI_API_KEY}" ;;
+            groq) : "${GROQ_API_KEY:?Missing secret GROQ_API_KEY}" ;;
+            openrouter) : "${OPENROUTER_API_KEY:?Missing secret OPENROUTER_API_KEY}" ;;
+            *) echo "Invalid NAME_FALLBACK_PROVIDER" >&2; exit 1 ;;
+          esac
 
       - name: Configure SSH
         shell: bash
@@ -115,6 +130,13 @@ jobs:
             echo "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
             echo "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
             echo "GEMINI_API_KEY=$GEMINI_API_KEY"
+            echo "OPENAI_API_KEY=$OPENAI_API_KEY"
+            echo "GROQ_API_KEY=$GROQ_API_KEY"
+            echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
+            echo "NAME_FALLBACK_PROVIDER=$NAME_FALLBACK_PROVIDER"
+            echo "NAME_FALLBACK_MODEL=$NAME_FALLBACK_MODEL"
+            echo "NAME_FALLBACK_MAX_TOKENS=$NAME_FALLBACK_MAX_TOKENS"
+            echo "NAME_FALLBACK_TIMEOUT_S=$NAME_FALLBACK_TIMEOUT_S"
             echo "SESSION_DB_PASSWORD=$SESSION_DB_PASSWORD"
           } > deploy.env
 
