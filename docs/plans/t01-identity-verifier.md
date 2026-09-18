@@ -254,7 +254,7 @@ Bước 2–3 không phụ thuộc gì, làm ngay. Bước 4–6 chờ F-05 (`no
 | Q-2 | Inbound có ứng viên nhưng sai tên/DOB: `PATIENT_NOT_FOUND` hay `IDENTITY_FAILED`? | `PATIENT_NOT_FOUND` — bám §1.1.9 và ô "Không xác định được một hồ sơ khớp"; `detail` vẫn ghi `NAME_MISMATCH`/`DOB_MISMATCH` cho trace | `IDENTITY_FAILED` — lệch chữ contract |
 | Q-3 | Mức khớp tên | Chính xác sau chuẩn hóa; nới lỏng = false-accept | Knob `name_match` mặc định exact, chỉ bật nếu tester báo từ chối nhầm nhiều |
 | Q-4 | Outbound `UNAVAILABLE` (404 appointment / mock lỗi ở lượt 0) | Lượt 1 `TRANSFERRED/SYSTEM_ERROR`; Gateway.transfer thử ghi, thất bại thì chỉ trả outcome (architecture §4) | — |
-| Q-5 | Giữ `full_name`/`dob` chuẩn trong Session Postgres | Đúng luồng PDF và §4.2.2; dữ liệu tổng hợp; xóa cùng phiên khi kết thúc | Chỉ giữ `patient_id`, đọc lại Mock lúc verify — trái luồng |
+| Q-5 | Giữ tạm `full_name`/`dob` chuẩn trong Redis session | Đúng luồng PDF và §4.2.2; xóa khi ghi Clinic thành công, kết thúc hoặc hết TTL | Chỉ giữ `patient_id`, đọc lại Mock lúc verify — trái luồng |
 | Q-6 | `verify: null` → fallback `display_name`? | Không — viết tắt, so khớp sẽ false-accept; `RECORD_UNVERIFIABLE` | — |
 | R-1 | Người gọi đọc tên thiếu họ → MISMATCH | Chấp nhận; T-02 hỏi "họ và tên đầy đủ" trước khi gọi `verify` | — |
 | R-2 | Hai người cùng số, cùng tên, cùng DOB → AMBIGUOUS → chuyển máy | Đúng "khớp duy nhất"; không tự chọn | — |

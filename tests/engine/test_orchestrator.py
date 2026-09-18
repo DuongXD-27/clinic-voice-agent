@@ -4,7 +4,9 @@ from dataclasses import fields
 from datetime import date
 from typing import Optional
 
-from callbot.engine import CallerInput, CallStart, create_orchestrator
+import pytest
+
+from callbot.engine import CallEnded, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
@@ -74,7 +76,7 @@ def test_opening_discloses_ai_assistant() -> None:
     assert _context(bot, "c_greet_unknown").question is None
 
 
-def test_confirm_attendance_in_one_readback_turn() -> None:
+def test_confirm_attendance_in_one_readback_turn(monkeypatch) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_confirm"))
@@ -82,10 +84,18 @@ def test_confirm_attendance_in_one_readback_turn() -> None:
     assert summary.state == "AWAITING_INTENT" and "14 tháng 10" in summary.utterance
     assert _context(bot, "c_confirm").question.question_id is QuestionId.CONFIRM_READBACK
 
+    evidence = []
+    confirm = bot._dialogue._gateway.confirm
+
+    def capture(ctx):
+        evidence.extend(ctx.evidence)
+        return confirm(ctx)
+
+    monkeypatch.setattr(bot._dialogue._gateway, "confirm", capture)
     action = _run(bot, "c_confirm", ["Có, tôi đến được."], start=3)
     assert action.outcome == "CONFIRMED"
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
-    evidence = _context(bot, "c_confirm").evidence
+    assert bot.sessions.store.get_session("c_confirm").context == {}
     assert [(e.kind, e.label, e.question_id, e.turn) for e in evidence] == [
         ("CONFIRMATION", "AGREE", QuestionId.CONFIRM_READBACK, 3)
     ]
@@ -159,7 +169,7 @@ def test_refusing_slots_drops_pending_action_without_writing() -> None:
     assert clinic.writes == []
 
 
-def test_cancel_requires_explicit_second_confirmation() -> None:
+def test_cancel_requires_explicit_second_confirmation(monkeypatch) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_cancel"))
@@ -170,10 +180,18 @@ def test_cancel_requires_explicit_second_confirmation() -> None:
     action = _run(bot, "c_cancel", ["Vâng"], start=4)
     assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
 
+    kinds = []
+    cancel = bot._dialogue._gateway.cancel
+
+    def capture(ctx, reason):
+        kinds.extend((e.kind, e.turn) for e in ctx.evidence)
+        return cancel(ctx, reason)
+
+    monkeypatch.setattr(bot._dialogue._gateway, "cancel", capture)
     action = _run(bot, "c_cancel", ["Hủy giúp tôi"], start=5)
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
-    kinds = [(e.kind, e.turn) for e in _context(bot, "c_cancel").evidence]
+    assert bot.sessions.store.get_session("c_cancel").context == {}
     assert kinds == [("REQUEST", 3), ("CONFIRMATION", 5)]
 
 
@@ -332,7 +350,7 @@ def test_extractor_never_sees_patient_identity() -> None:
         assert verify["full_name"] not in dumped and verify["dob"] not in dumped
         assert "pt_3391" not in dumped
     session = bot.sessions.store.get_session("c_private")
-    assert session.context["claimed_name"] == "nguyễn văn bê"
+    assert session.context == {} and session.ended
 
 
 def test_trace_failure_does_not_rerun_committed_turn() -> None:
@@ -345,6 +363,6 @@ def test_trace_failure_does_not_rerun_committed_turn() -> None:
     bot.start_call(_outbound("c_trace_fail"))
     first = _run(bot, "c_trace_fail", ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"])
     assert first.outcome == "CONFIRMED"
-    again = bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
-    assert again == first
+    with pytest.raises(CallEnded):
+        bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

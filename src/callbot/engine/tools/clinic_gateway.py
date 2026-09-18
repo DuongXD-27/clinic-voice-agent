@@ -241,7 +241,7 @@ class ClinicGateway:
             journal.unknown(command, error)
         except SessionStoreUnavailable:
             # Lệnh vẫn PENDING trong nhật ký — lần xử lý sau cũng bị chặn đối soát
-            logger.exception("Không ghi được trạng thái UNKNOWN cho %s", command.idempotency_key)
+            logger.error("Không ghi được trạng thái UNKNOWN cho %s", command.idempotency_key)
         return WriteOutcomeUnknown(f"{command.idempotency_key}: {error}")
 
     def _current_version(self, ctx: CallContext) -> int:
