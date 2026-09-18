@@ -199,7 +199,7 @@ Harness chấm trạng thái cuối cùng trong Mock, kết hợp nhật ký ghi
 | [Information Extraction](../../src/callbot/engine/extraction/extractor.py) | Nối vào Orchestrator; IE chỉ nhận `TurnContext` (không hồ sơ bệnh nhân). LLM fallback chưa bật. |
 | [Dialogue Manager](../../src/callbot/engine/dialogue/manager.py) | Điều phối theo `question_id`, `agreement`, `slot_choice`; bằng chứng xác nhận; `SLOT_TAKEN` đề xuất lại. Chưa dùng LLM. |
 | [Policy](../../src/callbot/engine/policy/policy_engine.py) | Bộ đếm theo thiết kế IE §6.1; im lặng: outbound `UNREACHABLE`, inbound chuyển máy. Chưa có giới hạn lần thử danh tính riêng (§6.2). |
-| [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. |
+| [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. F-05 ([evidence](../evidence/f05-clinic-gateway.md)): đọc hết trang, chuẩn hóa slot/patient/appointment, lỗi ba lớp không lộ `httpx`, `FakeClinicAPI` hành xử như mock, contract test fake ↔ mock thật. |
 | [Speech pipeline](../../src/callbot/speech/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
 | [TTS](../../src/callbot/speech/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
 | Phone Adapter | Chưa có transport điện thoại trong repo. |

@@ -69,8 +69,15 @@ class IdentityVerifier:
             if ctx.call.caller_number
             else []
         )
+        # Gateway trả ứng viên canonical {patient_id, full_name, dob, verifiable} (F-05 §5.3);
+        # hồ sơ không verifiable coi là không khớp (fail-closed)
         matched = [
-            p for p in candidates if matches(ctx.claimed_name, ctx.claimed_dob, p.get("verify", {}))
+            p
+            for p in candidates
+            if p.get("verifiable")
+            and matches(
+                ctx.claimed_name, ctx.claimed_dob, {"full_name": p["full_name"], "dob": p["dob"]}
+            )
         ]
         # §1.1.9: phải khớp đúng MỘT hồ sơ; không tạo patient mới
         if len(matched) != 1:

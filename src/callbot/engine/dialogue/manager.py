@@ -16,8 +16,6 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Optional
 
-import httpx
-
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.llm.base import LLMClient
 from callbot.engine.errors import TURN_ABORTING_ERRORS, ClinicWriteRejected, SlotTaken
@@ -77,13 +75,13 @@ class DialogueManager:
         return BotAction(utterance=t.SILENCE, state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
-        # Rev 1.1 §2.1: inbound chưa tạo lịch thì không ghi gì, chỉ trả outcome
-        if ctx.target_appointment_id and not ctx.ended:
+        # Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None), chỉ trả outcome
+        if not ctx.ended:
             try:
                 self._gateway.transfer(ctx, reason)
             except TURN_ABORTING_ERRORS:
                 raise
-            except (ClinicWriteRejected, SevereFailureBlocked, httpx.HTTPError):
+            except (ClinicWriteRejected, SevereFailureBlocked):
                 logger.exception("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
@@ -95,7 +93,7 @@ class DialogueManager:
             self._gateway.mark_unreachable(ctx, reason)
         except TURN_ABORTING_ERRORS:
             raise
-        except (ClinicWriteRejected, SevereFailureBlocked, httpx.HTTPError):
+        except (ClinicWriteRejected, SevereFailureBlocked):
             logger.exception("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
         return BotAction(
             t.GOODBYE_UNREACHABLE,

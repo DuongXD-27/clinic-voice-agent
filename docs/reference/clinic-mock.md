@@ -87,6 +87,16 @@ Một số điểm dễ sai đã được kiểm chứng trên bản mentor:
 | Header khi ghi | Contract yêu cầu mọi thao tác ghi phải có Idempotency-Key (bản mentor không bắt buộc, nhưng bot vẫn phải gửi). Nên gửi kèm If-Match với phiên bản vừa đọc; nếu phiên bản đã cũ, mock trả 409 VERSION_CONFLICT và bot cần đọc lại rồi gửi lại với cùng Idempotency-Key. Dùng lại một Idempotency-Key với nội dung khác sẽ bị từ chối 422 IDEMPOTENCY_CONFLICT |
 | Dạng dữ liệu danh sách | Các endpoint trả danh sách bọc kết quả trong trường `data`, kèm `next_cursor` và `has_more` để phân trang |
 
+Phía bot (F-05, `src/callbot/engine/tools/`) đã cài các quy ước trên như sau:
+
+| Quy ước | Cài ở đâu |
+|---|---|
+| Phân trang | `ClinicGateway._all_pages` đi hết `next_cursor` (trần 20 trang × 100); Dialogue/Verifier luôn nhận danh sách đầy đủ |
+| Shape canonical | `tools/normalize.py`: slot thêm `starts_at`/`ends_at` (giữ `start_time` gốc); ứng viên inbound chỉ còn `{patient_id, full_name, dob, verifiable}`; appointment ép `version`/`attempt_count` về int, `patient.verify` là dict hoặc `None` |
+| Lỗi | Client raise `ClinicAPIError(status, code, message, request_id, outcome_known)` cho mọi lỗi (envelope hoặc transport); Gateway dịch lỗi ghi về ba lớp: thành công / `ClinicWriteRejected(retryable)` / `WriteOutcomeUnknown`. `httpx` không xuất hiện ngoài `clinic_mock_client.py` |
+| Số điện thoại | Gateway **không** chuẩn hóa; Verifier chuẩn hóa về `0xxxxxxxxx` trước khi gọi (T-01) |
+| Fake | `FakeClinicAPI` hành xử như `routes.py` (phân trang, If-Match, idempotency, lifecycle, mã lỗi). `FakeClinicAPI.with_mock_fixtures()` seed đúng dữ liệu §5.3. Contract test `tests/engine/tools/test_clinic_api_contract.py` chạy cùng case trên fake và trên mock thật (`CLINIC_MOCK_LIVE=1`) |
+
 ### 5.3. Dữ liệu có sẵn
 
 Bản mentor chỉ nạp một bộ dữ liệu cố định, dùng chung cho mọi khóa truy cập:
@@ -176,7 +186,7 @@ So với contract, bản mentor đã có reset và nạp dữ liệu; còn thi�
 | Việc | Người phụ trách | Thời hạn |
 |---|---|---|
 | Triển khai instance chung, điền địa chỉ vào tài liệu này, đăng ký với chương trình | *(điền)* | Trước ngày 3 tuần 1 |
-| Cập nhật client gọi mock trong bot theo mục 5.2 và 5.4 (khóa truy cập, tiền tố /v1, dạng danh sách, định dạng thời gian, số điện thoại, thao tác không liên lạc được) | *(điền)* | Tuần này |
+| Cập nhật client gọi mock trong bot theo mục 5.2 và 5.4 (khóa truy cập, tiền tố /v1, dạng danh sách, định dạng thời gian, thao tác không liên lạc được) — **xong F-05** (`docs/evidence/f05-clinic-gateway.md`); số điện thoại → T-01 | Hưng | 17-09-2026 |
 | Hỏi chương trình về harness và 10 case mẫu, image chính thức và digest, định dạng nạp dữ liệu, lịch chấm | *(điền)* | Ngay |
 | Gửi mentor danh sách điểm lệch còn lại ở mục 4 (endpoint quản trị còn thiếu, nạp dữ liệu theo case, cờ xác nhận khi hủy, chưa bắt buộc Idempotency-Key, mã lỗi ngoài danh sách, giờ khám của lịch hẹn mẫu) | *(điền)* | Sau khi xác nhận repo là bản tạm |
 | Đổi sang image chính thức và chạy kiểm tra trước chấm điểm | *(điền)* | Trước lần chấm đầu tiên |
