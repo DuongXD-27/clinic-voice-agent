@@ -6,9 +6,10 @@ from typing import Any
 import pytest
 
 from callbot.engine.errors import ClinicAPIError, ClinicWriteRejected, WriteOutcomeUnknown
+from callbot.engine.extraction.schema import Agreement, Intent, QuestionId
 from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
-from callbot.engine.session.context import CallContext
+from callbot.engine.session.context import ActionEvidence, CallContext, Question
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.tools.fake_clinic import FakeClinicAPI, clinic_error
 from callbot.engine.tools.telemetry import collect_api_calls
@@ -51,6 +52,78 @@ def _inbound(call_id: str = "c_gw_in") -> CallContext:
         call=CallStart(call_id=call_id, direction="inbound", caller_number="0912345600"),
         opened_at=OCT,
         turn=3,
+    )
+
+
+def _ready_to_confirm(call_id: str = "c_cf") -> CallContext:
+    """§1.1.3: đọc lại lịch xong, chờ đúng câu hỏi CONFIRM_READBACK — chưa có bằng chứng AGREE."""
+    ctx = _outbound(call_id)
+    ctx.identity_step = "VERIFIED"
+    ctx.state = "AWAITING_CONFIRMATION"
+    ctx.question = Question(
+        QuestionId.CONFIRM_READBACK, "Anh chị đến được không ạ?", turn=2, action="CONFIRM"
+    )
+    ctx.set_pending("CONFIRM", None)
+    return ctx
+
+
+def _agree_confirm(ctx: CallContext) -> None:
+    ctx.add_evidence(
+        ActionEvidence(
+            kind="CONFIRMATION",
+            action="CONFIRM",
+            slot_id=None,
+            turn=ctx.turn,
+            question_id=QuestionId.CONFIRM_READBACK,
+            question_turn=2,
+            transcript="Có, tôi đến được.",
+            label=Agreement.AGREE.value,
+            provenance="EXACT",
+            span=None,
+        )
+    )
+
+
+def _ready_to_cancel(call_id: str = "c_cancel") -> CallContext:
+    """§1.1.4/SF-05: yêu cầu hủy đã ghi nhận ở lượt trước, chờ đúng câu hỏi CANCEL_RECONFIRM."""
+    ctx = _outbound(call_id)
+    ctx.identity_step = "VERIFIED"
+    ctx.state = "AWAITING_CONFIRMATION"
+    ctx.question = Question(
+        QuestionId.CANCEL_RECONFIRM, "Anh chị muốn hủy hẳn, đúng không ạ?", turn=2, action="CANCEL"
+    )
+    ctx.set_pending("CANCEL", None)
+    ctx.add_evidence(
+        ActionEvidence(
+            kind="REQUEST",
+            action="CANCEL",
+            slot_id=None,
+            turn=1,
+            question_id=None,
+            question_turn=None,
+            transcript="Tôi muốn hủy.",
+            label=Intent.CANCEL.value,
+            provenance="EXACT",
+            span=None,
+        )
+    )
+    return ctx
+
+
+def _agree_cancel(ctx: CallContext) -> None:
+    ctx.add_evidence(
+        ActionEvidence(
+            kind="CONFIRMATION",
+            action="CANCEL",
+            slot_id=None,
+            turn=ctx.turn,
+            question_id=QuestionId.CANCEL_RECONFIRM,
+            question_turn=2,
+            transcript="Đúng rồi, hủy giúp tôi.",
+            label=Agreement.AGREE.value,
+            provenance="EXACT",
+            span=None,
+        )
     )
 
 
@@ -154,6 +227,102 @@ def test_transfer_outbound_writes_with_fresh_if_match_and_fixed_key() -> None:
     assert fake.requests == [("c_t:3:transfer", "TRANSFERRED")]
     assert journal.statuses == ["begin", "succeeded"]
     assert journal.events[0][1].if_match == 3
+
+
+# --- Confirm / Cancel (T-03) --------------------------------------------------------------
+
+
+def test_confirm_writes_after_valid_readback_agreement() -> None:
+    fake = FakeClinicAPI()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _ready_to_confirm("c_cf1")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        result = gateway.confirm(ctx)
+
+    assert result["status"] == "CONFIRMED"
+    assert fake.writes == [("apt_00417", "CONFIRMED", {})]
+    assert fake.requests == [("c_cf1:3:confirm", "CONFIRMED")]
+    assert journal.statuses == ["begin", "succeeded"]
+
+
+def test_confirm_without_agreement_evidence_is_blocked() -> None:
+    fake = FakeClinicAPI()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _ready_to_confirm("c_cf2")  # chưa gọi _agree_confirm
+
+    with bind_journal(RecordingJournal()), pytest.raises(SevereFailureBlocked) as exc:
+        gateway.confirm(ctx)
+
+    assert exc.value.code == "CONFIRMATION"
+    assert fake.writes == [] and fake.requests == []
+
+
+def test_confirm_blocks_write_when_call_has_no_target_appointment() -> None:
+    """SF-01: dù mọi bằng chứng đều hợp lệ, không có appointment đích thì không được ghi."""
+    fake = FakeClinicAPI()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _ready_to_confirm("c_cf3")
+    ctx.call = CallStart(call_id="c_cf3", direction="outbound", appointment_id=None)
+    _agree_confirm(ctx)
+
+    with bind_journal(RecordingJournal()), pytest.raises(SevereFailureBlocked) as exc:
+        gateway.confirm(ctx)
+
+    assert exc.value.code == "SF-01"
+    assert fake.writes == [] and fake.requests == []
+
+
+def test_cancel_writes_reason_and_confirmed_flag_after_second_agreement() -> None:
+    fake = FakeClinicAPI()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _ready_to_cancel("c_ca1")
+    _agree_cancel(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        result = gateway.cancel(ctx, "PATIENT_UNAVAILABLE")
+
+    assert result["status"] == "CANCELLED"
+    assert fake.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+    assert fake.requests == [("c_ca1:3:cancel", "CANCELLED")]
+    assert journal.statuses == ["begin", "succeeded"]
+
+
+def test_cancel_without_prior_request_evidence_is_blocked_by_sf05() -> None:
+    """SF-05: chỉ có câu trả lời AGREE ở lượt hiện tại, không có yêu cầu hủy ở lượt trước đó."""
+    fake = FakeClinicAPI()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _outbound("c_ca2")
+    ctx.identity_step = "VERIFIED"
+    ctx.state = "AWAITING_CONFIRMATION"
+    ctx.question = Question(
+        QuestionId.CANCEL_RECONFIRM, "Anh chị muốn hủy hẳn, đúng không ạ?", turn=2, action="CANCEL"
+    )
+    ctx.set_pending("CANCEL", None)
+    _agree_cancel(ctx)  # không có ActionEvidence(kind="REQUEST", ...) ở lượt trước
+
+    with bind_journal(RecordingJournal()), pytest.raises(SevereFailureBlocked) as exc:
+        gateway.cancel(ctx, "PATIENT_UNAVAILABLE")
+
+    assert exc.value.code == "SF-05"
+    assert fake.writes == [] and fake.requests == []
+
+
+def test_cancel_version_conflict_rereads_and_retries_once_with_same_key() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("cancel_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    ctx = _ready_to_cancel("c_ca3")
+    _agree_cancel(ctx)
+
+    with bind_journal(RecordingJournal()):
+        result = gateway.cancel(ctx, "PATIENT_UNAVAILABLE")
+
+    assert result["status"] == "CANCELLED"
+    assert [key for key, _ in fake.requests] == ["c_ca3:3:cancel", "c_ca3:3:cancel"]
 
 
 # --- Ba lớp kết quả ghi ------------------------------------------------------------------
