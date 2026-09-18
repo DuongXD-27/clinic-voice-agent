@@ -7,6 +7,8 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
+    # TTS ElevenLabs qua WebSocket stream-input (speech/tts/elevenlabs.py); uvicorn[standard] cũng kéo gói này
+    "websockets>=13",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     # Session store (F-03): nhiều worker dùng chung phiên
