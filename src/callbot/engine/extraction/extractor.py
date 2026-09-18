@@ -72,7 +72,7 @@ class InformationExtractor:
         self, fallback: Optional[FallbackExtractor] = None, name_fallback: bool = False
     ) -> None:
         self._fallback = fallback
-        # NER cho tên chỉ bật từ tuần 3 (thiết kế §8); intent/agreement dùng tuyến sau khi có `fallback`.
+        # Factory bật NER theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
         self._name_fallback = name_fallback
 
     def extract(

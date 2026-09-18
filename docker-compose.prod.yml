@@ -1,4 +1,4 @@
-# Chạy trên EC2, do workflow CI/CD (.github/workflows/ci-cd.yml) chép lên /opt/callbot cùng .env.
+# Chạy trên EC2, do workflow CD (.github/workflows/cd.yml) chép lên /opt/callbot cùng .env.
 # Caddy nhận 80/443, tự xin cert Let's Encrypt cho BOT_DOMAIN và chuyển tới bot trong mạng nội bộ.
 services:
   postgres:
@@ -33,6 +33,14 @@ services:
     environment:
       SESSION_DATABASE_URL: postgresql://callbot:${SESSION_DB_PASSWORD}@postgres:5432/callbot
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      NAME_FALLBACK_PROVIDER: ${NAME_FALLBACK_PROVIDER:-none}
+      NAME_FALLBACK_MODEL: ${NAME_FALLBACK_MODEL:-}
+      NAME_FALLBACK_MAX_TOKENS: ${NAME_FALLBACK_MAX_TOKENS:-}
+      NAME_FALLBACK_TIMEOUT_S: ${NAME_FALLBACK_TIMEOUT_S:-3.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

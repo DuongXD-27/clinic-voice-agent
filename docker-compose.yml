@@ -34,6 +34,14 @@ services:
         required: false
     environment:
       SESSION_DATABASE_URL: postgresql://callbot:callbot@postgres:5432/callbot
+      NAME_FALLBACK_PROVIDER: ${NAME_FALLBACK_PROVIDER:-none}
+      NAME_FALLBACK_MODEL: ${NAME_FALLBACK_MODEL:-}
+      NAME_FALLBACK_MAX_TOKENS: ${NAME_FALLBACK_MAX_TOKENS:-}
+      NAME_FALLBACK_TIMEOUT_S: ${NAME_FALLBACK_TIMEOUT_S:-3.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

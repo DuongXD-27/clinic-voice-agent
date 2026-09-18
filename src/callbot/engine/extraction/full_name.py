@@ -15,6 +15,7 @@ from callbot.engine.extraction.text import (
     PhraseSet,
     clean,
     compile_phrases,
+    find_phrase,
     is_unaccented,
     strip_diacritics,
 )
@@ -61,7 +62,14 @@ _PREFIXES = compile_phrases(
     unaccented_exclude=["ạ"],  # "a" có thể là tên ("Nguyễn Văn A")
 )
 _SUFFIXES = compile_phrases(
-    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ"], unaccented_exclude=["ạ", "ấy ạ"]
+    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà"], unaccented_exclude=["ạ", "ấy ạ", "mà"]
+)
+_SELF_INTRODUCTIONS = compile_phrases(["tôi là", "tên tôi là", "tôi tên là"])
+_OTHER_PERSON_INTRODUCTIONS = compile_phrases(
+    [
+        f"còn {relative} tôi là"
+        for relative in ("em", "anh", "chị", "bố", "mẹ", "con", "vợ", "chồng")
+    ]
 )
 _GREETINGS = frozenset(
     {"alo", "a lô", "xin chào", "chào", "chào em", "chào chị", "ai đấy", "ai vậy", "ai đó"}
@@ -103,11 +111,18 @@ _GREETINGS_UNACCENTED = frozenset(strip_diacritics(g) for g in _GREETINGS)
 def extract_full_name(transcript: str) -> Field[str]:
     name = clean(transcript)
     unaccented = is_unaccented(name)
+    # Only isolate a first-person claim when the next clause explicitly names someone else.
+    introduction = find_phrase(name, _SELF_INTRODUCTIONS, unaccented=unaccented)
+    other_person = find_phrase(name, _OTHER_PERSON_INTRODUCTIONS, unaccented=unaccented)
+    if (
+        introduction
+        and other_person
+        and introduction.end() < other_person.start()
+        and not _strip_repeated(name[: introduction.start()].strip(), _PREFIXES, unaccented, True)
+    ):
+        name = name[: other_person.start()].strip()
     name = _strip_repeated(name, _PREFIXES, unaccented, at_start=True)
     name = _strip_repeated(name, _SUFFIXES, unaccented, at_start=False)
-    # Khi người gọi tự giới thiệu rồi nhắc tới người khác, chỉ lấy mệnh đề tự giới thiệu.
-    # Không tách trên "hay"/"hoặc": hai tên không có dấu hiệu tự sửa vẫn phải bị từ chối.
-    name = name.split(" còn ", 1)[0].strip()
 
     words = name.split()
     greetings = _GREETINGS_UNACCENTED if unaccented else _GREETINGS
