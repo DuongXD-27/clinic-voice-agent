@@ -181,7 +181,8 @@ def test_identity(case: IdentityCase) -> None:
     opening = orchestrator.start_call(_call_start(case))
     assert opening.state == "AWAITING_IDENTITY"
     assert opening.outcome is None
-    _assert_open_question(opening, "name", clinic)
+    if case.opening_prompt:
+        _assert_open_question(opening, case.opening_prompt, clinic)
 
     actions = [opening]
     for turn_number, expected in enumerate(case.turns, start=1):

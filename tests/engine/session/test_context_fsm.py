@@ -25,6 +25,9 @@ def _ctx(**overrides) -> CallContext:
     ctx = CallContext(
         call=CallStart(call_id="c_ctx", direction="outbound", appointment_id="apt_00417"),
         opened_at=datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ),
+        # Hồ sơ đã đọc ở lượt 0 (T-01); FSM đòi có khi đã xác minh (T-02)
+        identity_lookup="LOADED",
+        patient_id="pt_3391",
     )
     for name, value in overrides.items():
         setattr(ctx, name, value)
@@ -87,6 +90,23 @@ def test_illegal_transitions_are_blocked() -> None:
         SessionManager.transition(ended, "AWAITING_IDENTITY")
     with pytest.raises(IllegalTransition):
         SessionManager.close(ended, "CONFIRMED")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"identity_lookup": "PENDING"},  # chưa đọc hồ sơ ở lượt 0
+        {"identity_lookup": "NO_CANDIDATES"},  # không có hồ sơ để đối chiếu
+        {"identity_lookup": "UNAVAILABLE"},
+        {"patient_id": None},  # không biết đúng bệnh nhân
+    ],
+)
+def test_verified_requires_loaded_reference_and_patient(overrides) -> None:
+    """T-02: 'đã xác minh' chỉ hợp lệ khi đã đối chiếu với hồ sơ đọc ở lượt 0 và có patient_id."""
+    ctx = _ctx(identity_step="VERIFIED", **overrides)
+    with pytest.raises(InconsistentSession):
+        SessionManager.transition(ctx, "AWAITING_INTENT")
+    assert ctx.state == "AWAITING_IDENTITY"
 
 
 def test_close_goes_through_fsm_and_is_terminal() -> None:

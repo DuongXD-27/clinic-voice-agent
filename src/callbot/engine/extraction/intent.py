@@ -33,6 +33,9 @@ PRIORITY: tuple[Intent, ...] = (
     Intent.CONFIRM,
     Intent.REPEAT_REQUEST,
 )
+# Nhãn chỉ có nghĩa ở bước danh tính; không thuộc PRIORITY để bước nghiệp vụ (và tuyến sau) không bao giờ
+# gán. Xét sau mọi nhãn trong PRIORITY.
+IDENTITY_ONLY: tuple[Intent, ...] = (Intent.CANNOT_PROVIDE,)
 
 _DIRECTION_ONLY: dict[Intent, Direction] = {Intent.CONFIRM: "outbound", Intent.BOOK: "inbound"}
 # Nhãn hành động: cụm phủ định đứng trước làm mất nhãn
@@ -153,10 +156,26 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "nói chậm",
         "nghe không kịp",
     ],
+    # Cố ý không có "không biết" / "không rõ" đứng một mình: "không biết ai gọi", "không rõ" (nghe không rõ)
+    Intent.CANNOT_PROVIDE: [
+        "không nhớ",
+        "chẳng nhớ",
+        "quên mất",
+        "quên rồi",
+        "không muốn nói",
+        "không muốn cung cấp",
+        "không tiện nói",
+        "không tiện cung cấp",
+        "không cung cấp",
+        "không nói được",
+        "không biết ngày sinh",
+        "không biết năm sinh",
+    ],
 }
 _UNACCENTED_EXCLUDE: dict[Intent, list[str]] = {
     Intent.RESCHEDULE: ["dời", "đổi lại"],  # "doi" = đợi / đói / đội; "doi lai" = đợi lại
     Intent.CONFIRM: ["tôi đến", "đúng lịch"],  # "toi den" = tối đến; "dung lich" = dùng lịch
+    Intent.CANNOT_PROVIDE: ["quên mất", "quên rồi"],  # "quen mat" = quen mặt; "quen roi" = quen rồi
 }
 _COMPILED = {
     intent: compile_phrases(words, _UNACCENTED_EXCLUDE.get(intent, ()))
@@ -191,7 +210,7 @@ def extract_intent(
     unaccented = is_unaccented(text)
     provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
     allowed_set = frozenset(allowed) if allowed is not None else frozenset(PRIORITY)
-    for intent in PRIORITY:
+    for intent in (*PRIORITY, *IDENTITY_ONLY):
         if intent not in allowed_set or not allowed_in_direction(intent, direction):
             continue
         span = _match(intent, text, unaccented)

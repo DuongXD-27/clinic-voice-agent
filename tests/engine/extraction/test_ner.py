@@ -221,7 +221,7 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, monkeypatch):
     with patch("callbot.engine.create_gateway", return_value=adapter._gateway) as factory:
         bot = create_orchestrator(FakeClinicAPI(), settings=settings)
     factory.assert_called_once_with("openai")
-    bot.start_call(CallStart(call_id="ner", direction="inbound", caller_number="0900000000"))
+    bot.start_call(CallStart(call_id="ner", direction="inbound", caller_number="0912345600"))
     action = bot.handle_turn("ner", CallerInput(turn=1, text=TRANSCRIPT))
     assert action.state == "AWAITING_IDENTITY"
     session = bot.sessions.store.get_session("ner")

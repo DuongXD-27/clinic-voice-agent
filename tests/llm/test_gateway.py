@@ -267,7 +267,7 @@ def test_ner_and_orchestrator_route_through_gateway(provider):
         )
     factory.assert_called_once_with(provider)
     bot.start_call(
-        CallStart(call_id="gateway-ner", direction="inbound", caller_number="0900000000")
+        CallStart(call_id="gateway-ner", direction="inbound", caller_number="0912345600")
     )
     action = bot.handle_turn("gateway-ner", CallerInput(turn=1, text=TEXT))
     assert action.state == "AWAITING_IDENTITY"

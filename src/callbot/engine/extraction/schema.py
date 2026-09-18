@@ -64,6 +64,9 @@ class Intent(str, Enum):
     OUT_OF_SCOPE = "OUT_OF_SCOPE"
     REPEAT_REQUEST = "REPEAT_REQUEST"  # không tính vào §1.1.5
     NOT_PATIENT = "NOT_PATIENT"
+    # Chỉ ở bước danh tính: người gọi nói rõ không nhớ / không muốn cung cấp tên, ngày sinh.
+    # Bot hiểu câu này — không phải failed understanding §1.1.5 mà là xác minh không thực hiện được (§1.1.1).
+    CANNOT_PROVIDE = "CANNOT_PROVIDE"
     NONE = "NONE"  # tính vào §1.1.5
 
 

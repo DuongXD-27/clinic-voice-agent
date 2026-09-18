@@ -113,9 +113,10 @@ def test_calls_do_not_share_state(client: TestClient) -> None:
     _start(client, "c_iso_b")
     _turn(client, "c_iso_a", 1, "Nguyễn Văn A.")
 
-    # c_iso_b vẫn đang ở bước hỏi tên: câu ngày sinh không dùng được -> hỏi lại tên
+    # c_iso_b chưa có tên: giữ ngày sinh (T-02) nhưng vẫn phải hỏi tên — không dùng tên của c_iso_a
     response = _turn(client, "c_iso_b", 1, "Ngày 14 tháng 3 năm 1978.")
-    assert response.json()["utterance"] == t.ASK_NAME_AGAIN
+    assert response.json()["utterance"] == t.ASK_NAME_AFTER_DOB
+    assert response.json()["state"] == "AWAITING_IDENTITY"
     assert _turn(client, "c_iso_a", 2, "Ngày 14 tháng 3 năm 1978.").json()["state"] == (
         "AWAITING_INTENT"
     )

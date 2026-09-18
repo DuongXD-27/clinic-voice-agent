@@ -56,8 +56,9 @@ def test_opening_discloses_ai_assistant() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     openings = [
         bot.start_call(_outbound("c_greet_out")),
+        # Số dạng +84 (Hình 0 contract) chuẩn hóa về số có hồ sơ trong fake
         bot.start_call(
-            CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84987654321")
+            CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84912345600")
         ),
     ]
     for opening in openings:
@@ -66,6 +67,11 @@ def test_opening_discloses_ai_assistant() -> None:
         # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
         assert opening.utterance.rstrip().endswith("?")
     assert _context(bot, "c_greet_out").question.question_id is QuestionId.ASK_NAME
+
+    # T-02: không có hồ sơ -> không hỏi tên, nhưng vẫn công bố AI ngay câu đầu
+    handoff = bot.start_call(_inbound("c_greet_unknown", "0999999999"))
+    assert AI_DISCLOSURE in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
+    assert _context(bot, "c_greet_unknown").question is None
 
 
 def test_confirm_attendance_in_one_readback_turn() -> None:

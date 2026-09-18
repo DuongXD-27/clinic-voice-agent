@@ -331,7 +331,11 @@ Bất kỳ lượt nào hiểu được → reset bộ đếm về 0.
 
 ### 6.2. Giới hạn lần thử danh tính
 
-- Mỗi trường (`full_name`, `dob`) được hỏi lại **tối đa 1 lần** khi giá trị là `NONE` / `INVALID`.
+- Không có bộ đếm riêng cho danh tính (contract §1.1.5 chỉ đặt một ngưỡng): dùng bộ đếm §6.1 — **hai lượt liên tiếp** không dùng được → `NOT_UNDERSTOOD`. Ở bước danh tính, một lượt chỉ tính là hiểu khi điền được trường **còn thiếu**; nhắc lại điều đã có không reset bộ đếm (T-02).
+- Người gọi có thể nói gộp tên + ngày sinh, hoặc ngày sinh trước; bot giữ phần đã có và chỉ hỏi phần còn thiếu. `dob == INVALID` có câu hỏi lại riêng (đủ ngày, tháng, năm dương lịch).
+- Người gọi nói rõ không nhớ / không muốn cung cấp (`intent == CANNOT_PROVIDE`, chỉ ở bước danh tính): hỏi lại một lần, lần hai liên tiếp → `IDENTITY_FAILED` — xác minh không thực hiện được (§1.1.1), không phải "không hiểu".
+- Người gọi nói nhu cầu trước khi xác minh ("tôi muốn đặt lịch"): lần đầu không tính (như `UNCLEAR`), hỏi lại tên; nhu cầu không được dùng trước khi xác minh xong.
+- Tra cứu hồ sơ ở lượt 0 không cho dữ liệu (không số / không hồ sơ / Mock lỗi): lượt 0 không hỏi tên, lượt 1 chuyển máy `PATIENT_NOT_FOUND` / `SYSTEM_ERROR`.
 - Khi đã có đủ cả hai giá trị hợp lệ và Verifier trả `MISMATCH` → **chuyển máy ngay** `IDENTITY_FAILED`. Không hỏi lại, không nói trường nào sai.
 - Inbound: không tìm được đúng một hồ sơ khớp → `PATIENT_NOT_FOUND`. Không tạo hồ sơ mới (§1.1.9).
 
@@ -461,7 +465,7 @@ Loại khỏi bản này: [1] (DST 2023 — không dùng cho quyết định nà
 | Tín hiệu đường dây | Đã nối; outbound ghi `UNREACHABLE` theo lý do | `policy/policy_engine.py` |
 | `REPEAT_REQUEST`, `NOT_PATIENT` | Đã nối (đọc lại câu đang chờ / chuyển máy `IDENTITY_FAILED`) | `dialogue/manager.py`, `policy/policy_engine.py` |
 | Bộ đếm §6.1 | Đã nối (`UNCLEAR` từ lần hai liên tiếp, im lặng riêng) | `policy/policy_engine.py` |
-| Giới hạn lần thử danh tính §6.2 | Dùng chung bộ đếm §1.1.5, chưa đếm riêng từng trường | `policy/policy_engine.py` |
+| Giới hạn lần thử danh tính §6.2 | Đã nối (T-02): bộ đếm §1.1.5 + quy tắc tiến triển; `CANNOT_PROVIDE` → `IDENTITY_FAILED`; tên + ngày sinh trong một câu | `dialogue/manager.py`, `policy/policy_engine.py`, `extraction/full_name.py` |
 | NER tên tuyến sau | Few-shot qua [LLM gateway](llm-gateway.md), OpenAI/Gemini/Groq/OpenRouter; tắt mặc định, chưa có evaluation model thật; xem [vận hành NER](name-ner.md) | `extraction/ner.py`, `src/llm/prompt/ner.py`, `src/llm/providers/` |
 | LLM tuyến sau intent/agreement | Chưa có adapter | `extraction/fallback.py` |
 | Output guard kiểm tra mốc giờ (SF-02) | Chỉ có kiểm tra SF-03 trong câu mẫu và từ khoá SF-04 | `dialogue/templates.py`, `policy/guardrails.py` |

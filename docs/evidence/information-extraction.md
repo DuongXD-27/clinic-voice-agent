@@ -63,8 +63,9 @@ transcript + TurnContext(question_id, direction, now, slots, presented_slot_ids)
   -> clinical (mọi lượt):       EMERGENCY | ADVICE_REQUEST | MENTION | NONE
   -> intent:                    bước danh tính chỉ REQUEST_HUMAN / NOT_PATIENT / REPEAT_REQUEST;
                                 bước khác: luật -> (nếu NONE và có fallback) tuyến sau + guard_fallback
+  -> dob (ASK_NAME, ASK_DOB):   date | INVALID | NONE        (T-02: người gọi hay nói gộp tên + ngày sinh)
   -> full_name (ASK_NAME, intent NONE, không phải clinical chuyển máy): chuỗi | NONE
-  -> dob (ASK_DOB):             date | INVALID | NONE
+                                có ngày sinh hợp lệ trong câu -> chỉ trích trên phần đứng trước (name_before_dob)
   -> OUT_OF_SCOPE (bước danh tính, không trích được tên/ngày sinh)
   -> agreement (ASK_ATTENDANCE / CONFIRM_READBACK / SLOT_READBACK / CANCEL_RECONFIRM):
                                 AGREE | REFUSE | UNCLEAR, hạ AGREE -> UNCLEAR nếu intent/clinical mâu thuẫn

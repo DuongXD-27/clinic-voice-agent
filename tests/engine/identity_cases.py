@@ -20,6 +20,8 @@ class IdentityCase:
     direction: Literal["outbound", "inbound"] = "outbound"
     caller_number: Optional[str] = None
     expected_lookup_phone: Optional[str] = None
+    # T-02: không có hồ sơ để đối chiếu thì lượt 0 không hỏi tên (None)
+    opening_prompt: Optional[PromptKind] = "name"
 
 
 CORRECT_NAME = "Nguyễn Văn A"
@@ -88,10 +90,11 @@ IDENTITY_CASES = (
         direction="inbound",
         caller_number="0999999999",
         expected_lookup_phone="0999999999",
+        opening_prompt=None,
+        # T-02: số không có hồ sơ -> lượt 0 không hỏi tên, lượt 1 chuyển máy bất kể người gọi nói gì
         turns=(
-            ASK_DOB_AFTER_CORRECT_NAME,
             IdentityTurn(
-                CORRECT_DOB,
+                CORRECT_NAME,
                 "ENDED",
                 expected_outcome="TRANSFERRED",
                 expected_transfer_reason="PATIENT_NOT_FOUND",
