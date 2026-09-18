@@ -89,9 +89,10 @@ _MISMATCH_RANK = {
 
 @dataclass(frozen=True)
 class VerificationResult:
+    # Giữ thứ tự (status, patient_id) và detail tùy chọn để stub/test hiện có tạo được `VerificationResult(status)`
     status: VerificationStatus
-    detail: MatchDetail
     patient_id: Optional[str] = None
+    detail: Optional[MatchDetail] = None
     candidates: int = 0
 
     @property
@@ -105,7 +106,7 @@ class VerificationResult:
     def to_trace(self) -> dict[str, Any]:
         return {
             "status": self.status.value,
-            "detail": self.detail.value,
+            "detail": self.detail.value if self.detail else None,
             "candidates": self.candidates,
             "patient_id": self.patient_id,
         }
@@ -201,7 +202,9 @@ class IdentityVerifier:
         if ctx.identity_lookup == "PENDING":
             raise ValueError("prepare() chưa chạy ở lượt 0")
         if ctx.identity_lookup == "UNAVAILABLE":
-            return VerificationResult(VerificationStatus.UNAVAILABLE, MatchDetail.NO_REFERENCE)
+            return VerificationResult(
+                VerificationStatus.UNAVAILABLE, detail=MatchDetail.NO_REFERENCE
+            )
 
         details = [
             (match_record(ctx.claimed_name, ctx.claimed_dob, ref), ref)
@@ -210,32 +213,36 @@ class IdentityVerifier:
         matched = [ref for detail, ref in details if detail is MatchDetail.NAME_AND_DOB_MATCH]
         count = len(details)
 
+        def verified() -> VerificationResult:
+            return VerificationResult(
+                VerificationStatus.VERIFIED,
+                matched[0].get("patient_id"),
+                detail=MatchDetail.NAME_AND_DOB_MATCH,
+                candidates=count,
+            )
+
         if ctx.call.direction == "outbound":
             if matched:
-                return VerificationResult(
-                    VerificationStatus.VERIFIED,
-                    MatchDetail.NAME_AND_DOB_MATCH,
-                    matched[0].get("patient_id"),
-                    count,
-                )
+                return verified()
             return VerificationResult(
-                VerificationStatus.MISMATCH, self._representative(details), candidates=count
+                VerificationStatus.MISMATCH,
+                detail=self._representative(details),
+                candidates=count,
             )
 
         # Inbound (§1.1.9): đúng MỘT hồ sơ khớp cả hai; 0 hoặc >= 2 -> không xác định được hồ sơ
         if len(matched) == 1:
-            return VerificationResult(
-                VerificationStatus.VERIFIED,
-                MatchDetail.NAME_AND_DOB_MATCH,
-                matched[0].get("patient_id"),
-                count,
-            )
+            return verified()
         if len(matched) > 1:
             return VerificationResult(
-                VerificationStatus.PATIENT_NOT_FOUND, MatchDetail.AMBIGUOUS, candidates=count
+                VerificationStatus.PATIENT_NOT_FOUND,
+                detail=MatchDetail.AMBIGUOUS,
+                candidates=count,
             )
         return VerificationResult(
-            VerificationStatus.PATIENT_NOT_FOUND, self._representative(details), candidates=count
+            VerificationStatus.PATIENT_NOT_FOUND,
+            detail=self._representative(details),
+            candidates=count,
         )
 
     @staticmethod

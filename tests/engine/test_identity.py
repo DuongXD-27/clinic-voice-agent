@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -42,32 +42,94 @@ def _assert_open_question(action: BotAction, kind: PromptKind, clinic: FakeClini
     )
 
 
+def _spoken_datetime_values(value: str) -> tuple[str, ...]:
+    """Deterministic renderings that can disclose an ISO appointment timestamp."""
+    moment = datetime.fromisoformat(value)
+    hour_12 = moment.hour % 12 or 12
+    period = "sáng" if moment.hour < 12 else "chiều" if moment.hour < 18 else "tối"
+    values = {
+        value,
+        moment.date().isoformat(),
+        moment.strftime("%d/%m/%Y"),
+        moment.strftime("%d-%m-%Y"),
+        f"{moment.day} tháng {moment.month}",
+        f"ngày {moment.day} tháng {moment.month}",
+        f"{moment.day} tháng {moment.month} năm {moment.year}",
+        f"ngày {moment.day} tháng {moment.month} năm {moment.year}",
+        f"{moment.hour}:{moment.minute:02d}",
+        f"{moment.hour}h{moment.minute:02d}",
+        f"{moment.hour} giờ {moment.minute}",
+        f"{moment.hour} giờ {moment.minute} phút",
+        f"{hour_12} giờ {moment.minute} {period}",
+        f"{hour_12} giờ {moment.minute} phút {period}",
+    }
+    if moment.minute == 0:
+        values.update((f"{moment.hour} giờ", f"{hour_12} giờ {period}"))
+    if moment.minute == 30:
+        values.add(f"{hour_12} giờ rưỡi {period}")
+    return tuple(values)
+
+
+def _spoken_date_values(value: str) -> tuple[str, ...]:
+    parsed = date.fromisoformat(value)
+    return (
+        value,
+        parsed.strftime("%d/%m/%Y"),
+        parsed.strftime("%d-%m-%Y"),
+        f"{parsed.day} tháng {parsed.month} năm {parsed.year}",
+        f"ngày {parsed.day} tháng {parsed.month} năm {parsed.year}",
+    )
+
+
 def _protected_values(clinic: FakeClinicAPI) -> tuple[str, ...]:
     appointment = clinic.appointments[APPOINTMENT_ID]
     patient = appointment["patient"]
-    starts_at = datetime.fromisoformat(appointment["starts_at"])
-    return (
-        appointment["appointment_id"],
-        appointment["clinic_id"],
-        appointment["status"],
-        appointment["starts_at"],
-        starts_at.date().isoformat(),
-        starts_at.strftime("%d/%m/%Y"),
-        f"{starts_at.day} tháng {starts_at.month}",
-        f"{starts_at.hour} giờ sáng",
-        appointment["department"],
-        patient["patient_id"],
-        patient["display_name"],
-        patient["verify"]["full_name"],
-    )
+    verify = patient["verify"]
+    protected = {
+        appointment.get("appointment_id"),
+        appointment.get("status"),
+        appointment.get("clinic_id"),
+        appointment.get("clinic_name"),
+        appointment.get("department"),
+        appointment.get("cancel_reason"),
+        appointment.get("new_slot_id"),
+        patient.get("patient_id"),
+        patient.get("display_name"),
+        verify.get("full_name"),
+    }
+
+    status_aliases = {
+        "SCHEDULED": ("đã lên lịch", "lịch đã đặt"),
+        "CONFIRMED": ("đã xác nhận", "lịch đã được xác nhận"),
+        "CANCELLED": ("đã hủy", "lịch đã bị hủy"),
+        "RESCHEDULED": ("đã đổi lịch", "lịch đã được đổi"),
+    }
+    protected.update(status_aliases)
+    for aliases in status_aliases.values():
+        protected.update(aliases)
+
+    for field in ("starts_at", "ends_at", "confirmed_at"):
+        field_value = appointment.get(field)
+        if field_value:
+            protected.update(_spoken_datetime_values(field_value))
+    if verify.get("dob"):
+        protected.update(_spoken_date_values(verify["dob"]))
+
+    return tuple(value for value in protected if isinstance(value, str) and value)
 
 
 def assert_no_appointment_disclosure(
     actions_before_verification: list[BotAction], clinic: FakeClinicAPI
 ) -> None:
-    transcript = _searchable("\n".join(action.utterance for action in actions_before_verification))
-    disclosed = [value for value in _protected_values(clinic) if _searchable(value) in transcript]
-    assert not disclosed, f"protected values disclosed before verification: {disclosed!r}"
+    protected = _protected_values(clinic)
+    for index, action in enumerate(actions_before_verification):
+        utterance = _searchable(action.utterance)
+        disclosed = [value for value in protected if _searchable(value) in utterance]
+        assert not disclosed, (
+            "protected values disclosed before verification: "
+            f"utterance[{index}]={action.utterance!r}, state={action.state!r}, "
+            f"values={disclosed!r}"
+        )
 
 
 def _assert_appointment_side_effects(
