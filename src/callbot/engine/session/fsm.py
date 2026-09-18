@@ -91,6 +91,13 @@ def check_invariants(ctx: CallContext, state: Optional[CallState] = None) -> Non
         if state != "AWAITING_IDENTITY" and not ctx.identity_verified:
             problems.append(f"{state} cần xác minh danh tính xong")
 
+    if ctx.identity_verified:
+        # T-02: xác minh chỉ có nghĩa khi đã đối chiếu với hồ sơ đọc ở lượt 0 và biết đúng bệnh nhân
+        if ctx.identity_lookup != "LOADED":
+            problems.append(f"đã xác minh nhưng tra cứu hồ sơ là {ctx.identity_lookup}")
+        if not ctx.patient_id:
+            problems.append("đã xác minh nhưng chưa có patient_id")
+
     if state == "AWAITING_IDENTITY":
         if ctx.identity_verified:
             problems.append("AWAITING_IDENTITY nhưng đã xác minh")

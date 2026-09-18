@@ -7,14 +7,16 @@ Thứ tự trong một lượt:
 1. line_signal  — outbound, cho tới khi xác minh xong; khác NONE thì dừng, không đọc câu hộp thư thoại thành tên.
 2. clinical     — mọi lượt, trước intent.
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
-4. full_name    — chỉ ASK_NAME.
-5. dob          — chỉ ASK_DOB.
-   OUT_OF_SCOPE ở bước danh tính — chỉ khi câu trả lời không phải tên / ngày sinh.
+4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
+5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
+   Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
+   trả lời không phải tên / ngày sinh.
 6. slot_choice  — chỉ OFFER_SLOTS.
 7. agreement    — câu hỏi xác nhận; ở OFFER_SLOTS chỉ khi không rút ra tiêu chí slot (chỉ ra REFUSE/UNCLEAR).
 8. cancel_reason — khi đang hủy.
 """
 
+from datetime import date
 from typing import Optional
 
 from callbot.engine.extraction.agreement import extract_agreement
@@ -22,7 +24,7 @@ from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import extract_dob
 from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
-from callbot.engine.extraction.full_name import extract_full_name
+from callbot.engine.extraction.full_name import extract_full_name, name_before_dob
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
 from callbot.engine.extraction.schema import (
@@ -47,10 +49,22 @@ from callbot.engine.extraction.text import clean
 # - NOT_PATIENT:   "tôi là vợ anh ấy" không phải tên; outbound phải chuyển máy, không tiết lộ.
 # - REPEAT_REQUEST: "gì cơ" không phải tên, và không tính vào §1.1.5.
 IDENTITY_SAFE_INTENTS = frozenset({Intent.REQUEST_HUMAN, Intent.NOT_PATIENT, Intent.REPEAT_REQUEST})
-# OUT_OF_SCOPE ở bước danh tính chỉ xét SAU khi không trích được tên / ngày sinh: hợp đồng §1.1.5 và
-# §1.2.3 bắt chuyển máy OUT_OF_SCOPE (không phải NOT_UNDERSTOOD sau 2 lần hỏi lại), nhưng "thanh toan"
-# trùng tên "Thanh Toàn" khi mất dấu — tên hợp lệ thì luôn thắng.
-_IDENTITY_FALLBACK_INTENTS = frozenset({Intent.OUT_OF_SCOPE})
+# Nhãn ở bước danh tính chỉ xét SAU khi không trích được tên / ngày sinh — tên hợp lệ luôn thắng
+# ("thanh toan" trùng tên "Thanh Toàn" khi mất dấu; "Lê Văn Thôi", "Trần Văn Được"):
+# - OUT_OF_SCOPE: §1.1.5, §1.2.3 bắt chuyển máy OUT_OF_SCOPE, không phải NOT_UNDERSTOOD sau 2 lần hỏi lại.
+# - Ý định nghiệp vụ: người gọi nói nhu cầu trước khi đọc tên ("tôi muốn đặt lịch", Hình 0 contract) —
+#   Dialogue hỏi lại tên, không tính là không hiểu; ý định không được dùng trước khi xác minh xong.
+# - CANNOT_PROVIDE: "tôi không nhớ ngày sinh" — xác minh không thực hiện được (§1.1.1).
+_IDENTITY_FALLBACK_INTENTS = frozenset(
+    {
+        Intent.OUT_OF_SCOPE,
+        Intent.RESCHEDULE,
+        Intent.CANCEL,
+        Intent.BOOK,
+        Intent.CONFIRM,
+        Intent.CANNOT_PROVIDE,
+    }
+)
 
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
 
@@ -100,25 +114,33 @@ class InformationExtractor:
         clinical = extract_clinical(transcript)
         intent = self._intent(ctx, transcript)
 
+        dob = extract_dob(transcript, ctx.today) if question in IDENTITY_QUESTIONS else skipped
+
         full_name: Field[str] = skipped
         if (
             question is QuestionId.ASK_NAME
             and intent.value is Intent.NONE
             and clinical.value not in _TRANSFER_CLINICAL
         ):
-            full_name = self._full_name(transcript)
-
-        dob = extract_dob(transcript, ctx.today) if question is QuestionId.ASK_DOB else skipped
+            if isinstance(dob.value, date):
+                # Tên chỉ nằm trước ngày sinh; không tách chắc chắn được thì hỏi lại, không đoán.
+                # Chỉ tách khi ra một ngày hợp lệ: INVALID còn là mọi câu có chữ số ("bảo hiểm có chi trả
+                # 80% không") — tách thì phần trước thành "tên" rác, đi vào Verifier và chuyển máy sai lý do.
+                name_part = name_before_dob(transcript)
+                full_name = self._full_name(name_part) if name_part else Field.nothing()
+            else:
+                full_name = self._full_name(transcript)
 
         if (
             question in IDENTITY_QUESTIONS
             and intent.value is Intent.NONE
             and not full_name.found
-            and dob.value is None
+            # INVALID không chặn: "bảo hiểm có chi trả 80% không" có chữ số nên dob ra INVALID
+            and not isinstance(dob.value, date)
         ):
-            out_of_scope = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
-            if out_of_scope.found:
-                intent = out_of_scope
+            fallback_intent = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
+            if fallback_intent.found:
+                intent = fallback_intent
 
         slot_choice = skipped
         if question is QuestionId.OFFER_SLOTS:

@@ -19,9 +19,40 @@ GREETING_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
 )
+# Lượt 0 khi tra cứu hồ sơ không cho dữ liệu để xác minh (T-02): vẫn công bố AI, không hỏi tên,
+# không nói lý do ("số này chưa có hồ sơ" cũng là thông tin về hồ sơ). Lượt 1 chuyển máy.
+GREETING_HANDOFF_OUTBOUND = (
+    f"Dạ em xin chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
+    "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
+)
+GREETING_HANDOFF_INBOUND = (
+    f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
+    "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
+)
 ASK_NAME_AGAIN = "Dạ, anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
+# Đã có ngày sinh, còn thiếu tên. §1.1.2: không nhắc lại ngày sinh người gọi vừa nói.
+ASK_NAME_AFTER_DOB = "Dạ, anh chị cho em xin thêm họ và tên đầy đủ ạ."
+# Người gọi nói nhu cầu trước khi đọc tên: ghi nhận nhưng phải xác minh trước (SF-03)
+ASK_NAME_FOR_REQUEST = (
+    "Dạ vâng, để hỗ trợ anh chị, em cần xác minh thông tin trước. "
+    "Anh chị cho em xin họ và tên đầy đủ ạ."
+)
+ASK_DOB_FOR_REQUEST = (
+    "Dạ vâng, để hỗ trợ anh chị, em cần xác minh thông tin trước. "
+    "Anh chị cho em xin ngày tháng năm sinh ạ."
+)
+ASK_NAME_DECLINED = (
+    "Dạ, em cần họ và tên để xác minh đúng người trước khi hỗ trợ. "
+    "Anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
+)
 ASK_DOB = "Dạ, anh chị cho em xin ngày tháng năm sinh ạ."
 ASK_DOB_AGAIN = "Dạ, em chưa nghe rõ. Anh chị nhắc lại giúp em ngày, tháng, năm sinh ạ."
+# dob INVALID (31/02, thiếu năm, năm 2 chữ số mơ hồ, tuổi, âm lịch): không nhắc lại điều người gọi vừa nói
+ASK_DOB_INVALID = "Dạ, anh chị vui lòng cho em xin đủ ngày, tháng, năm sinh theo dương lịch ạ."
+ASK_DOB_DECLINED = (
+    "Dạ, em cần ngày tháng năm sinh để xác minh đúng người trước khi hỗ trợ. "
+    "Anh chị vui lòng cho em xin ạ."
+)
 # Câu hỏi MỞ (ASK_INTENT): "vâng" không phải câu trả lời hợp lệ, không suy ra đặt lịch
 ASK_INTENT_INBOUND = "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?"
 ASK_CHANGE_OR_CANCEL = "Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?"
@@ -49,6 +80,11 @@ def greeting(direction: str) -> str:
     [R-26] công bố là trợ lý ảo AI ngay câu đầu + [R-02] hỏi tên bằng câu hỏi mở.
     """
     return GREETING_OUTBOUND if direction == "outbound" else GREETING_INBOUND
+
+
+def greeting_handoff(direction: str) -> str:
+    """Câu chào khi không thể xác minh (không có hồ sơ / không đọc được hồ sơ): [R-26], không hỏi tên."""
+    return GREETING_HANDOFF_OUTBOUND if direction == "outbound" else GREETING_HANDOFF_INBOUND
 
 
 def speak_datetime(iso: str) -> str:

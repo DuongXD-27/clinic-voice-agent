@@ -20,6 +20,7 @@ from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.llm.base import LLMClient
 from callbot.engine.errors import TURN_ABORTING_ERRORS, ClinicWriteRejected, SlotTaken
 from callbot.engine.extraction.schema import (
+    INVALID,
     Agreement,
     ExtractionResult,
     Field,
@@ -43,6 +44,8 @@ from callbot.engine.verification.identity import IdentityVerifier, VerificationS
 logger = logging.getLogger(__name__)
 
 MAX_SLOTS_PRESENTED = 3
+# Nhu cầu người gọi nói ở bước danh tính: chỉ để trả lời "cần xác minh trước", không dùng sau xác minh
+_BUSINESS_INTENTS = frozenset({Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK})
 
 
 @dataclass(frozen=True)
@@ -67,8 +70,11 @@ class DialogueManager:
 
     def opening(self, ctx: CallContext) -> BotAction:
         # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Không ném lỗi.
-        # T-02: khi prepare.transfer_reason khác None -> chào ngắn, lượt 1 chuyển máy, không hỏi tên.
-        self._verifier.prepare(ctx)
+        prepare = self._verifier.prepare(ctx)
+        if prepare.transfer_reason is not None:
+            # Không có hồ sơ để đối chiếu: không hỏi tên. Listing 1 không cho kết thúc ở lượt 0,
+            # nên Policy.check_preconditions chuyển máy ở lượt 1.
+            return BotAction(t.greeting_handoff(ctx.call.direction), "AWAITING_IDENTITY")
         return self._ask(
             ctx, QuestionId.ASK_NAME, t.greeting(ctx.call.direction), "AWAITING_IDENTITY"
         )
@@ -131,20 +137,59 @@ class DialogueManager:
     # --- Danh tính ---------------------------------------------------------------------
 
     def _identity(self, ctx: CallContext, ex: ExtractionResult) -> Reply:
-        if ctx.identity_step == "ASK_NAME":
-            if not ex.full_name.found or not ex.full_name.value:
-                return self._not_understood(ctx, QuestionId.ASK_NAME, t.ASK_NAME_AGAIN)
+        """Hỏi mở tên, ngày sinh (§1.1.2); nhận phần còn thiếu, kể cả khi người gọi nói gộp hai thứ.
+
+        Chỉ tính là hiểu khi điền được trường CÒN THIẾU — nhắc lại điều đã có không reset bộ đếm §1.1.5,
+        nên bước này không lặp vô hạn. Đủ hai trường thì đối chiếu một lần; không khớp thì chuyển ngay.
+        """
+        progressed = False
+        if ctx.claimed_name is None and ex.full_name.found and ex.full_name.value:
             # Lưu đúng điều người gọi nói — không "sửa" theo hồ sơ; Verifier đối chiếu riêng
             ctx.claimed_name = ex.full_name.value
-            ctx.identity_step = "ASK_DOB"
-            return Reply(self._ask(ctx, QuestionId.ASK_DOB, t.ASK_DOB, "AWAITING_IDENTITY"))
+            progressed = True
+        if ctx.claimed_dob is None and isinstance(ex.dob.value, date):
+            ctx.claimed_dob = ex.dob.value
+            progressed = True
+        if ctx.claimed_name is not None and ctx.claimed_dob is not None:
+            return self._verify(ctx)
 
-        if not isinstance(ex.dob.value, date):
-            return self._not_understood(ctx, QuestionId.ASK_DOB, t.ASK_DOB_AGAIN)
-        ctx.claimed_dob = ex.dob.value
+        ask_name = ctx.claimed_name is None
+        ctx.identity_step = "ASK_NAME" if ask_name else "ASK_DOB"
+        question = QuestionId.ASK_NAME if ask_name else QuestionId.ASK_DOB
+        dob_invalid = ex.dob.value == INVALID
+        if progressed:
+            text = (
+                t.ASK_NAME_AFTER_DOB
+                if ask_name
+                else t.ASK_DOB_INVALID
+                if dob_invalid
+                else t.ASK_DOB
+            )
+            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
+
+        if not ask_name and dob_invalid:
+            # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
+            return self._not_understood(ctx, question, t.ASK_DOB_INVALID)
+        intent = ex.intent.value
+        if intent is Intent.CANNOT_PROVIDE:
+            text = t.ASK_NAME_DECLINED if ask_name else t.ASK_DOB_DECLINED
+            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "DECLINED")
+        if intent in _BUSINESS_INTENTS:
+            # Nói nhu cầu trước khi xác minh: lần đầu không tính là không hiểu, không dùng nhu cầu này
+            text = t.ASK_NAME_FOR_REQUEST if ask_name else t.ASK_DOB_FOR_REQUEST
+            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "UNCLEAR")
+        return self._not_understood(
+            ctx, question, t.ASK_NAME_AGAIN if ask_name else t.ASK_DOB_AGAIN
+        )
+
+    def _verify(self, ctx: CallContext) -> Reply:
         result = self._verifier.verify(ctx)
         if result.status is not VerificationStatus.VERIFIED:
+            # Không hỏi lại, không nói yếu tố nào sai — "ngày sinh chưa khớp" xác nhận tên đúng (§1.1.2)
             return Reply(self.transfer(ctx, result.transfer_reason or "IDENTITY_FAILED"))
+        if not result.patient_id:
+            logger.error("Xác minh %s không có patient_id", ctx.call_id)
+            return Reply(self.transfer(ctx, "SYSTEM_ERROR"))
 
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id

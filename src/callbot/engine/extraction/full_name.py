@@ -10,13 +10,17 @@ Transcript không dấu: tên được trả nguyên dạng không dấu ("nguye
 chế độ bỏ dấu thanh đã có trong thiết kế §5.1 (tuần 3+), không được đoán lại dấu cho tên.
 """
 
+from typing import Optional
+
 from callbot.engine.extraction.schema import Field, Provenance
+from callbot.engine.extraction.spoken_numbers import is_number_token, parse_number
 from callbot.engine.extraction.text import (
     PhraseSet,
     clean,
     compile_phrases,
     find_phrase,
     is_unaccented,
+    normalize,
     strip_diacritics,
 )
 
@@ -136,6 +140,84 @@ def extract_full_name(transcript: str) -> Field[str]:
     ):
         return Field.nothing()
     return Field(name, Provenance.NORMALIZED, span=name)
+
+
+# Dấu hiệu phần ngày sinh bắt đầu trong câu trả lời gộp "tên + ngày sinh" (T-02)
+_DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
+_DATE_WORDS_UNACCENTED = frozenset({"ngay", "thang", "nam", "mung", "mong"})
+_DAY_STARTS = frozenset({"ngày", "mùng", "mồng"})
+_DAY_STARTS_UNACCENTED = frozenset({"ngay", "mung", "mong"})
+# Từ nối còn sót ở cuối phần tên: "Nguyễn Văn A và ngày sinh là ...". Không có "năm" / "sinh":
+# vị trí cắt đã bỏ chúng, còn sót lại thì là tên ("Trần Văn Năm", "Nguyễn Văn Sinh").
+_TRAILING_LINKS = frozenset({"là", "và", "thì"})
+_TRAILING_LINKS_UNACCENTED = frozenset({"la", "va", "thi"})
+_MONTH = frozenset({"tháng", "thang"})
+_MAX_SPOKEN_DAY = 3  # "hai mươi mốt"
+# Cắt ở "sinh" mà trước đó dưới 3 từ thì "Sinh" có thể là tên: "Nguyễn Văn Sinh ngày 14 ...", "Lê Na sinh ..."
+_MIN_WORDS_BEFORE_SINH = 3
+
+
+def name_before_dob(transcript: str) -> Optional[str]:
+    """Phần tên đứng trước ngày sinh trong một câu, vd. "Nguyễn Văn A, sinh ngày 14/3/1978".
+
+    Chỉ gọi khi đã trích được ngày sinh trong câu (span của `dob` là cả câu, không dùng để cắt được).
+    Không tìm được ranh giới chắc chắn -> None: thà hỏi lại tên còn hơn đưa một tên bị cắt nhầm
+    vào Verifier (tên sai -> chuyển máy ngay). Tên có thể là từ chỉ số ("Nguyễn Văn Tám", "Trần Văn
+    Năm"), nên chỉ cắt ở dãy số đọc bằng chữ khi dãy đó không dính vào cuối tên.
+    """
+    unaccented = is_unaccented(clean(transcript))
+    links = _TRAILING_LINKS_UNACCENTED if unaccented else _TRAILING_LINKS
+
+    # Dấu phẩy là ranh giới rõ nhất (text mode): "Dạ, Nguyễn Văn Sinh, sinh năm 1978" — ghép các đoạn
+    # cho tới đoạn có ngày sinh, rồi cắt trong đoạn đó.
+    name: list[str] = []
+    for segment in normalize(transcript).split(","):
+        tokens = clean(segment).split()
+        found = _date_start(tokens, unaccented)
+        if found is None:
+            name += tokens
+            continue
+        cut, at_sinh = found
+        if cut < 0 or (at_sinh and 0 < cut < _MIN_WORDS_BEFORE_SINH):
+            # "Nguyễn Văn Sinh ngày 14 ...": "Sinh" là tên hay từ nối? Không đoán.
+            return None
+        name += tokens[:cut]
+        break
+    else:
+        return None  # không thấy phần ngày sinh
+
+    while name and name[-1] in links:
+        name.pop()
+    return " ".join(name) or None
+
+
+def _date_start(tokens: list[str], unaccented: bool) -> Optional[tuple[int, bool]]:
+    """(vị trí từ đầu tiên của phần ngày sinh, có cắt ở "sinh" không); None nếu không có phần ngày sinh.
+
+    Vị trí -1: có phần ngày sinh nhưng không cắt được chắc chắn.
+    """
+    date_words = _DATE_WORDS_UNACCENTED if unaccented else _DATE_WORDS
+    day_starts = _DAY_STARTS_UNACCENTED if unaccented else _DAY_STARTS
+    for i, token in enumerate(tokens):
+        following = tokens[i + 1] if i + 1 < len(tokens) else ""
+        if any(c.isdigit() for c in token) or token in day_starts:
+            return i, False
+        if token == "sinh" and (following in date_words or any(c.isdigit() for c in following)):
+            # "năm sinh 1978": phần ngày bắt đầu từ "năm". Nhưng "Nam sinh năm 1978" (không dấu, tên Nam):
+            # sau "sinh" đã là từ ngày tháng nên "nam" thuộc tên.
+            if following not in date_words and i > 0 and tokens[i - 1] in date_words:
+                return i - 1, True
+            return i, True
+        if not unaccented and is_number_token(token):
+            run = i
+            while run < len(tokens) and is_number_token(tokens[run]):
+                run += 1
+            if run < len(tokens) and tokens[run] in _MONTH:
+                # Cả dãy phải đọc ra đúng một ngày: với "Nguyễn Văn Tám mười bốn tháng ba", dãy
+                # "tám mười bốn" không phải ngày -> không biết "Tám" thuộc tên hay ngày
+                day = parse_number(tokens[i:run]) if run - i <= _MAX_SPOKEN_DAY else None
+                return (i if day is not None and 1 <= day <= 31 else -1), False
+    return None
 
 
 def _strip_repeated(text: str, phrases: PhraseSet, unaccented: bool, at_start: bool) -> str:
