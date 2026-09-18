@@ -23,7 +23,10 @@ src/callbot/               # một core, hai transport (§1.3.2)
       postgres/            # PostgreSQL store, migrations/*.sql, migrate + inspect (chỉ đọc)
     extraction/            # Information Extraction theo docs/reference/information-extraction-design.md
     policy/                # PolicyEngine + guardrails SF-01..SF-05
-    verification/          # Verifier: xác minh tên + ngày sinh
+    verification/          # Identity Verifier hai pha (T-01): prepare() lượt 0 đọc hồ sơ, verify() đối chiếu không I/O
+      identity.py          # LookupStatus/PrepareResult, MatchDetail/VerificationResult, match_record
+      phone.py             # normalize_phone: caller_number -> 0xxxxxxxxx (dạng mock nhận) hoặc None
+      names.py             # normalize_name: khóa so khớp tên (bỏ dấu, hoa/thường, khoảng trắng)
     dialogue/              # Dialogue Manager, templates, prompts, llm/
     tools/                 # Clinic Gateway: kiểm soát đọc/ghi và retry (F-05)
       ports.py             # Protocol ClinicAPI 1:1 với mock (Page phân trang, ClinicAPIError)

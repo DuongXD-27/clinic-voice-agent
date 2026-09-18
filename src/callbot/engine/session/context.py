@@ -20,6 +20,8 @@ from callbot.engine.types import (
 SCHEMA_VERSION = 1
 
 IdentityStep = Literal["ASK_NAME", "ASK_DOB", "VERIFIED"]
+# Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu
+IdentityLookup = Literal["PENDING", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"]
 PendingAction = Literal["CONFIRM", "CANCEL", "RESCHEDULE", "BOOK"]
 # REQUEST: người gọi yêu cầu hành động (chỉ dùng cho hủy lịch, SF-05)
 # CONFIRMATION: người gọi đồng ý câu hỏi xác nhận của hành động đang chờ
@@ -81,6 +83,11 @@ class CallContext:
     identity_step: IdentityStep = "ASK_NAME"
     claimed_name: Optional[str] = None
     claimed_dob: Optional[date] = None
+    # "Dữ liệu chuẩn nội bộ" đọc ở lượt 0 (§4.2.2 bản sao chỉ đọc): mỗi phần tử
+    # {patient_id, full_name, dob, verifiable}. Outbound đúng 1; inbound mọi ứng viên GET /patients.
+    # SF-03/§1.1.2: KHÔNG đưa vào build_turn_context (IE), trace hay lời thoại — Verifier đọc riêng.
+    identity_lookup: IdentityLookup = "PENDING"
+    identity_reference: list[dict[str, Any]] = field(default_factory=list)
 
     # Inbound: patient tìm qua GET /patients, appointment tạo bằng POST /appointments
     patient_id: Optional[str] = None
@@ -185,6 +192,8 @@ class CallContext:
             "identity_step": self.identity_step,
             "claimed_name": self.claimed_name,
             "claimed_dob": self.claimed_dob.isoformat() if self.claimed_dob else None,
+            "identity_lookup": self.identity_lookup,
+            "identity_reference": [dict(item) for item in self.identity_reference],
             "patient_id": self.patient_id,
             "created_appointment_id": self.created_appointment_id,
             "question": _question_to_dict(self.question),
@@ -218,6 +227,9 @@ class CallContext:
             identity_step=data["identity_step"],
             claimed_name=data["claimed_name"],
             claimed_dob=date.fromisoformat(data["claimed_dob"]) if data["claimed_dob"] else None,
+            # Hai khóa thêm ở T-01, đọc bằng .get để phiên lưu trước đó (schema 1 cũ) vẫn mở được
+            identity_lookup=data.get("identity_lookup", "PENDING"),
+            identity_reference=[dict(item) for item in data.get("identity_reference", [])],
             patient_id=data["patient_id"],
             created_appointment_id=data["created_appointment_id"],
             question=_question_from_dict(data["question"]),
