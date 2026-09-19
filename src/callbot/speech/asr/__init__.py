@@ -11,6 +11,16 @@ def create_asr(settings: SpeechSettings) -> ASRProvider:
         from callbot.speech.asr.phowhisper import PhoWhisperASR
 
         return PhoWhisperASR(model=settings.phowhisper_model)
+    if settings.asr_provider == "zipformer":
+        from callbot.speech.asr.zipformer import ZipFormerASR, default_paths
+
+        paths = default_paths()
+        return ZipFormerASR(
+            encoder_path=settings.zipformer_encoder_path or paths["encoder_path"],
+            decoder_path=settings.zipformer_decoder_path or paths["decoder_path"],
+            joiner_path=settings.zipformer_joiner_path or paths["joiner_path"],
+            tokens_path=settings.zipformer_tokens_path or paths["tokens_path"],
+        )
     raise ValueError(f"ASR provider không hỗ trợ: {settings.asr_provider}")
 
 

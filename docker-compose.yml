@@ -48,6 +48,11 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    # host.docker.internal chỉ tự có trên Docker Desktop (Mac/Windows) — trên
+    # Docker Linux cần khai báo tay để container gọi ngược ra service chạy
+    # trên host (vd. clinic-mock local ở CLINIC_MOCK_BASE_URL trong .env).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy

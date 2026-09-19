@@ -15,17 +15,27 @@ class SpeechSettings(BaseSettings):
 
     @field_validator("sample_rate", mode="before")
     @classmethod
-    def parse_sample_rate(cls, value: object) -> object:
-        # Environment variables and dotenv values arrive as strings.
-        if isinstance(value, str) and value in {"8000", "16000"}:
-            return int(value)
-        return value
+    def _coerce_sample_rate(cls, value: object) -> object:
+        # pydantic không tự coerce string "8000" từ .env thành Literal[int] — ép tay.
+        return int(value) if isinstance(value, str) else value
 
-    asr_provider: Literal["gemini", "phowhisper"] = "gemini"
-    tts_provider: Literal["none"] = "none"
+    asr_provider: Literal["gemini", "phowhisper", "zipformer"] = "gemini"
+    tts_provider: Literal["none", "openai"] = "none"
     gemini_api_key: str = ""
     gemini_asr_model: str = "gemini-2.5-flash"
     phowhisper_model: str = "vinai/PhoWhisper-large"
+
+    # OpenAI TTS dùng cho mode="audio" trên đường HTTP chấm điểm (xem tts/openai.py).
+    openai_api_key: str = ""
+    openai_tts_model: str = "tts-1"
+    openai_tts_voice: str = "alloy"
+
+    # ZipFormer 68M self-host qua sherpa-onnx (batch, xem asr/zipformer.py). Mặc định
+    # trỏ vào asset đi kèm repo (asr/assets/zipformer/); đổi qua .env nếu dùng model khác.
+    zipformer_encoder_path: str = ""
+    zipformer_decoder_path: str = ""
+    zipformer_joiner_path: str = ""
+    zipformer_tokens_path: str = ""
 
     vad_rms_threshold: float = 500.0
     vad_end_silence_ms: int = 600

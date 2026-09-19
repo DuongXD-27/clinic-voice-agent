@@ -10,3 +10,7 @@ traces.jsonl
 
 # Clinic mock (repo riêng, đã deploy tại clinic-mock.vmec-callbot.tech) — không thuộc repo này
 clinic-mock/
+
+# ZipFormer ONNX model assets (~74MB, không commit lên GitHub) — tự tải theo
+# docs/reference/zipformer-model-setup.md, hoặc Dockerfile tự tải lúc build image.
+src/callbot/speech/asr/assets/zipformer/

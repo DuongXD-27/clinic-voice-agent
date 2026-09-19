@@ -1,0 +1,39 @@
+"""OpenAI TTS — provider TTS dùng cho `mode="audio"` trên đường HTTP chấm điểm (§4.1.2).
+
+Xem `transports/http/speech.py` (SpeechBundle) và `transports/http/calls.py` cho
+chỗ được nối vào; `TTS_PROVIDER=openai` trong SpeechSettings kích hoạt provider này.
+"""
+
+from typing import Optional
+
+from callbot.speech.types import AudioSegment
+
+_PCM_SAMPLE_RATE = 24_000  # khớp response_format="pcm" của OpenAI (PCM 16-bit, 24kHz, mono)
+
+
+class OpenAITTS:
+    name = "openai"
+
+    def __init__(self, api_key: str, model: str, voice: str) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._voice = voice
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from openai import OpenAI  # pip install -e ".[speech-zipformer]"
+
+            self._client = OpenAI(api_key=self._api_key)
+        return self._client
+
+    def synthesize(self, text: str) -> Optional[AudioSegment]:
+        if not text.strip():
+            return None
+        response = self._get_client().audio.speech.create(
+            model=self._model,
+            voice=self._voice,
+            input=text,
+            response_format="pcm",
+        )
+        return AudioSegment(pcm=response.read(), sample_rate=_PCM_SAMPLE_RATE)
