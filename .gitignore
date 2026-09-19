@@ -6,9 +6,9 @@ __pycache__/
 .env
 *.egg-info/
 .pytest_cache/
+test-results/
 traces.jsonl
 
-# Clinic mock (repo riêng, đã deploy tại clinic-mock.vmec-callbot.tech) — không thuộc repo này
 clinic-mock/
 
 # ZipFormer ONNX model assets (~74MB, không commit lên GitHub) — tự tải theo

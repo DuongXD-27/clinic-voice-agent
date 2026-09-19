@@ -1,0 +1,17 @@
+# Image chỉ cần pyproject.toml + src; loại phần còn lại để build context nhỏ và không lộ secret.
+.git
+.github
+.venv
+.env
+.env.*
+!.env.example
+**/__pycache__
+**/*.pyc
+*.egg-info
+.pytest_cache
+.ruff_cache
+temp
+traces.jsonl
+tests
+docs
+clinic-mock

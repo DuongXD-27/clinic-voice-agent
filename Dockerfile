@@ -9,12 +9,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
+# trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./
+RUN mkdir -p src/callbot src/llm \
+    && touch src/callbot/__init__.py src/llm/__init__.py \
+    && pip install --no-cache-dir ".[speech-zipformer]" \
+    && rm -rf src
+
 COPY src ./src
 
-# speech-zipformer: sherpa-onnx + soundfile + openai — cần cho mode=audio (§4.1.2) chạy
-# ZipFormer 68M self-host + OpenAI TTS trên chính đường HTTP chấm điểm.
-RUN pip install --no-cache-dir ".[speech-zipformer]"
+RUN pip install --no-cache-dir --no-deps --force-reinstall .
 
 # Model ZipFormer bị .gitignore (nặng ~74MB/file) nên không có trong checkout git —
 # tải lúc build vào đường dẫn TUYỆT ĐỐI cố định, không phải src/... (sau `pip install .`,
