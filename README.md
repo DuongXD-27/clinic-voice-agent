@@ -145,5 +145,5 @@ URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối)
 
 ## Trạng thái hiện tại
 
-- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04); `mode=audio` trả 501.
+- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04). `mode=audio` (§4.1.2) đã nối vào cùng đường: ASR self-host ZipFormer 68M qua `sherpa-onnx` (`ASR_PROVIDER=zipformer`), TTS qua OpenAI (`TTS_PROVIDER=openai`), audio phản hồi tự phục vụ qua `/audio/{call_id}/{turn}.wav`. Core (`engine/`) không đổi — không biết khái niệm audio/text, xem `transports/http/speech.py`.
 - Phiên chỉ lưu tạm trên Redis không persistence, chạy được nhiều worker; nội dung khách hàng bị xóa khi Clinic ghi thành công, cuộc gọi kết thúc hoặc TTL hết hạn. Lệnh ghi Clinic có journal tạm để chặn ghi trùng khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).

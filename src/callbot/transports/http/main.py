@@ -2,10 +2,13 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from redis import Redis
 
 from callbot.engine import (
     ClinicAPI,
@@ -18,8 +21,10 @@ from callbot.engine import (
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
 from callbot.engine.tools.clinic_mock_client import ClinicMockClient
+from callbot.speech.settings import SpeechSettings
 from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.config import settings
+from callbot.transports.http.speech import CallModeStore, SpeechBundle, build_speech_bundle, warm_up
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +47,24 @@ def _default_session_store() -> SessionStore:
     return store
 
 
+def _default_speech() -> SpeechBundle:
+    return build_speech_bundle(SpeechSettings())
+
+
+def _default_call_mode() -> CallModeStore:
+    config = SessionSettings()
+    client = Redis.from_url(
+        config.redis_url, decode_responses=True, socket_connect_timeout=3, socket_timeout=3
+    )
+    return CallModeStore(client, key_prefix=config.redis_key_prefix, ttl_s=config.session_max_age_s)
+
+
 def create_app(
     clinic_factory: Callable[[], ClinicAPI] = _default_clinic,
     engine_settings: Optional[EngineSettings] = None,
     session_store_factory: Callable[[], SessionStore] = _default_session_store,
+    speech_factory: Callable[[], SpeechBundle] = _default_speech,
+    call_mode_factory: Callable[[], CallModeStore] = _default_call_mode,
     cleanup_interval_s: float = 30.0,
 ) -> FastAPI:
     if cleanup_interval_s <= 0:
@@ -56,6 +75,7 @@ def create_app(
         store = session_store_factory()
         clinic = None
         cleaner = None
+        call_mode = None
         stop = asyncio.Event()
         app.state.cleanup_healthy = True
 
@@ -79,12 +99,24 @@ def create_app(
             app.state.orchestrator = create_orchestrator(
                 clinic, engine_settings or EngineSettings(), store=store
             )
+            speech = speech_factory()
+            await asyncio.to_thread(warm_up, speech)
+            app.state.speech = speech
+            audio_dir = Path(speech.audio_store.directory)
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            # Thư mục thật chỉ biết được sau khi speech_factory() chạy ở đây — mount
+            # StaticFiles ngay trong lifespan, trước yield (chưa có traffic thật nào).
+            app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
+            call_mode = call_mode_factory()
+            app.state.call_mode = call_mode
             cleaner = asyncio.create_task(cleanup())
             yield
         finally:
             stop.set()
             if cleaner is not None:
                 await cleaner
+            if call_mode is not None:
+                call_mode.close()
             try:
                 close = getattr(clinic, "close", None)
                 if close is not None:

@@ -18,7 +18,7 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
-| `mode=audio` | `501 AUDIO_NOT_IMPLEMENTED` |
+| `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `transports/http/speech.py` |
 
 ## `POST /v1/calls/{call_id}/turn`
 
@@ -34,6 +34,7 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Có lệnh ghi Clinic chưa rõ kết quả | `409 CALL_RECONCILIATION_REQUIRED`, kèm `turn`; phiên bị chặn tới khi đối soát ([hướng dẫn](session-operations.md)) |
 | Redis session lỗi hoặc hết bộ nhớ | `503 SESSION_STORE_UNAVAILABLE`; không gửi lệnh Clinic khi chưa lưu được nhật ký |
 | `audio_url` trên cuộc gọi text | `422 AUDIO_URL_NOT_ALLOWED` |
+| `text` trên cuộc gọi audio | `422 TEXT_NOT_ALLOWED` |
 | Clinic timeout / lỗi ngoài lượt xử lý | `504 UPSTREAM_TIMEOUT` / `502 UPSTREAM_ERROR` |
 | Lỗi ngoài dự kiến | `500 INTERNAL_ERROR` |
 
