@@ -6,17 +6,36 @@ Vì vậy mọi chỗ mơ hồ ở đây đều trả `INVALID` — đừng "s�
 - không tự sửa 31/02 về ngày gần nhất,
 - không điền năm hiện tại khi thiếu năm,
 - năm 2 chữ số khớp được cả hai thế kỷ -> `INVALID`,
-- tự sửa trong câu mà phần sau không đủ ngày/tháng/năm -> `INVALID`.
+- tự sửa trong câu mà phần sau không đủ ngày/tháng/năm -> `INVALID`,
+- người gọi tự báo là không chắc ("hình như", "thì phải") -> `INVALID`, hỏi lại,
+- hai ngày cùng được nêu mà không có lời sửa ("14 hay 15 tháng 3") -> `INVALID`.
 
-Transcript không dấu ("muoi bon thang ba nam bay tam"): khôi phục dấu cho bảng từ đóng (số, ngày/tháng/
-năm, từ tự sửa) rồi parse như thường. Khôi phục sai chỉ làm ra INVALID hoặc một ngày không khớp hồ sơ,
-tức là từ chối nhầm ở Verifier — hướng an toàn.
+Phủ định khác tự sửa: "không phải A" bỏ A mà không có gì thay thế -> `INVALID`; chỉ
+"không phải A mà là B" và "A, à nhầm B" mới lấy B, và chỉ khi B đủ ngày/tháng/năm.
+
+Transcript mất dấu một phần ("ngày 14 thang 3 nam 1978"): khôi phục dấu theo *từng token*
+cho bảng từ đóng (số, ngày/tháng/năm, từ tự sửa); token đã có dấu giữ nguyên. Khôi phục sai
+chỉ làm ra INVALID hoặc một ngày không khớp hồ sơ, tức là từ chối nhầm ở Verifier — hướng an toàn.
+
+`span` luôn là đoạn có thật trong `clean(transcript)`; vùng ngày được nhận ra nằm ở
+`Reading.zone`, cũng là đoạn có thật — "14/3/1978" không bao giờ báo cáo thành đoạn
+"ngày 14 tháng 3 năm 1978" mà bộ trích xuất tự dựng để đi chung ngữ pháp với dạng nói.
 """
 
 import re
 from datetime import date
 from typing import Optional
 
+from callbot.engine.extraction.identity import (
+    AFFIRMATIONS,
+    ALTERNATIVES,
+    CORRECTIONS,
+    NEGATIONS,
+    UNCERTAINTY,
+    Reading,
+    Reason,
+    token_index,
+)
 from callbot.engine.extraction.schema import INVALID, DobValue, Field, Provenance
 from callbot.engine.extraction.spoken_numbers import (
     is_number_token,
@@ -28,33 +47,21 @@ from callbot.engine.extraction.text import (
     clean,
     compile_phrases,
     find_last_phrase,
-    is_unaccented,
+    find_phrase,
     normalize,
+    strip_punctuation,
 )
 
 MAX_AGE = 110
 
-# "14/3/1978", "14-03-78", "14.3" -> "14 tháng 3 năm 1978" để đi chung một ngữ pháp với dạng nói
-_NUMERIC_DATE = re.compile(r"(?<!\d)(\d{1,2})\s*[/\-.]\s*(\d{1,2})(?:\s*[/\-.]\s*(\d{2,4}))?(?!\d)")
-_CORRECTIONS = compile_phrases(
-    [
-        "à không",
-        "à nhầm",
-        "nhầm",
-        "nhầm rồi",
-        "không phải",
-        "à quên",
-        "xin lỗi",
-        "ý là",
-        "ý tôi là",
-        "ý em là",
-        "sửa lại",
-        "à thôi",
-        "à mà không",
-    ]
-)
+# "14 / 3 / 1978" -> "14/3/1978" để cả cụm nằm gọn trong một token nguồn
+_TIGHTEN = re.compile(r"(?<=\d)\s*([/\-.])\s*(?=\d)")
+# "14/3/1978", "14-03-78", "14.3" -> "ngày 14 tháng 3 năm 1978" để đi chung một ngữ pháp với dạng nói
+_NUMERIC_DATE = re.compile(r"(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?")
+_TRIM = ",.;:!?\"'()[]"
 _LUNAR = compile_phrases(["âm lịch", "âm", "lịch âm"])
 _AGE = compile_phrases(["tuổi"])
+_DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
 _FILLERS = frozenset(
     {
         "dạ",
@@ -74,7 +81,7 @@ _FILLERS = frozenset(
         "của",
     }
 )
-# Bảng từ đóng cho transcript không dấu. "sau" -> sáu, "tu" -> tư: trong câu trả lời ngày sinh
+# Bảng từ đóng cho token mất dấu. "sau" -> sáu, "tu" -> tư: trong câu trả lời ngày sinh
 # hai từ này gần như chỉ là số.
 _UNACCENTED_WORDS = {
     "ngay": "ngày",
@@ -108,38 +115,133 @@ _UNACCENTED_WORDS = {
 
 
 def extract_dob(transcript: str, today: date) -> Field[DobValue]:
-    original = clean(transcript)
-    # Nhận biết không dấu trên câu gốc, trước khi "14/3" được đổi thành "ngày 14 tháng 3" có dấu
-    restored = is_unaccented(original)
-    converted = _NUMERIC_DATE.sub(_numeric_to_words, normalize(transcript))
-    text = clean(converted)
-    if restored:
-        text = " ".join(restore_number_words(text.split(), _UNACCENTED_WORDS))
+    return read_dob(transcript, today).field
+
+
+def read_dob(transcript: str, today: date) -> Reading[DobValue]:
+    text = clean(transcript)
     if not text:
-        return Field.nothing()
-
-    if find_last_phrase(text, _LUNAR, unaccented=False) is not None:
-        # Âm lịch -> hỏi lại theo dương lịch; không tự quy đổi
-        return Field(INVALID, Provenance.NORMALIZED, span=original)
-
-    correction = find_last_phrase(text, _CORRECTIONS, unaccented=False)
-    segment = text[correction.end() :].strip() if correction else text
-    tokens = segment.split()
+        return Reading(Field.nothing(), Reason.NO_SIGNAL)
+    words = text.split()
+    spoken, origin = _parse_stream(transcript)
+    tokens = restore_number_words(spoken, _UNACCENTED_WORDS)
     provenance = (
-        Provenance.NORMALIZED if restored or _uses_spoken_numbers(tokens) else Provenance.EXACT
+        Provenance.NORMALIZED
+        if tokens != spoken or _uses_spoken_numbers(tokens)
+        else Provenance.EXACT
     )
+    joined = " ".join(tokens)
 
-    value = _parse_tokens(tokens, today)
-    if value is None:
+    def invalid(reason: Reason, zone: Optional[str] = None) -> Reading[DobValue]:
+        return Reading(Field(INVALID, provenance, span=text), reason, zone)
+
+    if find_last_phrase(joined, _LUNAR, mixed=True) is not None:
+        # Âm lịch -> hỏi lại theo dương lịch; không tự quy đổi
+        return invalid(Reason.OUT_OF_RANGE)
+
+    start = _affirmed_start(tokens)
+    if start is None:
+        return invalid(Reason.NEGATED)
+    segment = tokens[start:]
+
+    parsed = _parse_tokens(segment, today)
+    if parsed is None:
         if (
-            correction is not None
+            start > 0
             or _has_date_content(tokens)
-            or find_last_phrase(text, _AGE, unaccented=False)
+            or find_last_phrase(joined, _AGE, mixed=True) is not None
         ):
-            return Field(INVALID, provenance, span=original)
-        return Field.nothing()
-    # span phải là chuỗi con của transcript: với câu không dấu, span là câu gốc chứ không phải bản đã khôi phục
-    return Field(value, provenance, span=original if restored else segment)
+            # Có nội dung ngày tháng nhưng không đọc ra vùng nào (tuổi thay ngày sinh, chữ số
+            # lạc trong một câu khác) -> hỏi lại, và không ai được cắt tên dựa vào câu này
+            return invalid(Reason.OUT_OF_RANGE)
+        return Reading(Field.nothing(), Reason.NO_SIGNAL)
+
+    # Từ đây đã có một vùng ngày có thật: các chốt chặn bên dưới vẫn trả vùng đó ra, để lượt
+    # sau chỉ phải hỏi lại ngày sinh chứ không hỏi lại cả tên.
+    value, lo, hi = parsed
+    zone = " ".join(words[origin[start + lo][0] : origin[start + hi - 1][1] + 1])
+    if find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None:
+        # "14/3/1978 thì phải": người gọi đã tự nói là không chắc — hỏi lại, đừng xác minh hộ
+        return invalid(Reason.UNCERTAIN, zone)
+    if _ambiguous(segment):
+        return invalid(Reason.AMBIGUOUS, zone)
+    if value is INVALID:
+        return invalid(Reason.OUT_OF_RANGE, zone)
+    return Reading(Field(value, provenance, span=text), Reason.OK, zone)
+
+
+def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]]]:
+    """Token để phân tích, kèm vị trí của chúng trong `clean(transcript)`.
+
+    "14/3/1978" được đọc thành "ngày 14 tháng 3 năm 1978" cho cùng một bộ luật, nhưng cả sáu
+    token đều trỏ về ba từ có thật ("14", "3", "1978"), nên vùng ngày báo ra vẫn là lời người
+    gọi thật sự nói.
+    """
+    tokens: list[str] = []
+    origin: list[tuple[int, int]] = []
+    index = 0
+    for chunk in _TIGHTEN.sub(r"\1", normalize(transcript)).split():
+        produced = strip_punctuation(chunk).split()
+        if not produced:
+            continue
+        here = (index, index + len(produced) - 1)
+        index += len(produced)
+        match = _NUMERIC_DATE.fullmatch(chunk.strip(_TRIM))
+        if match is None:
+            tokens += produced
+            origin += [(i, i) for i in range(here[0], here[1] + 1)]
+            continue
+        day, month, year = match.groups()
+        parts = ["ngày", day, "tháng", month] + (["năm", year] if year else [])
+        tokens += parts
+        origin += [here] * len(parts)
+    return tokens, origin
+
+
+def _affirmed_start(tokens: list[str]) -> Optional[int]:
+    """Token bắt đầu mệnh đề được khẳng định sau cùng; `None` nếu câu chỉ bác bỏ.
+
+    Cụm chỉ được tính khi ít nhất một bên có nội dung ngày tháng. Ở bước hỏi tên, một tên
+    không dấu ("nguyen van a khong nho") khôi phục thành "... à không ..." — đó là tên cộng
+    lời từ chối, không phải lời tự sửa ngày sinh.
+    """
+    text = " ".join(tokens)
+    negation = find_last_phrase(text, NEGATIONS, mixed=True)
+    correction = find_last_phrase(text, CORRECTIONS, mixed=True)
+    marker = max(
+        (m for m in (negation, correction) if m is not None), key=lambda m: m.end(), default=None
+    )
+    if marker is None:
+        return 0
+    before = token_index(tokens, marker.start())
+    after = token_index(tokens, marker.end() - 1) + 1
+    if not _has_date_content(tokens[:before]) and not _has_date_content(tokens[after:]):
+        return 0
+    if marker is not negation:
+        return after
+    # "không phải A" -> không còn giá trị nào; chỉ "mà là B" mới đưa ra giá trị thay thế
+    tail = tokens[after:]
+    affirmation = find_phrase(" ".join(tail), AFFIRMATIONS, mixed=True)
+    if affirmation is None:
+        return None
+    return after + token_index(tail, affirmation.end() - 1) + 1
+
+
+def _ambiguous(tokens: list[str]) -> bool:
+    """ "14 hay 15 tháng 3", "... năm 1978 hoặc 1979": hai cách đọc, không chọn hộ.
+
+    Chỉ tính khi hai bên của từ nối đều là số — "hay" ở chỗ khác trong câu không phải lựa
+    chọn giữa hai ngày.
+    """
+    text = " ".join(tokens)
+    for _, pattern in ALTERNATIVES.for_text(text, mixed=True):
+        for match in pattern.finditer(text):
+            before = token_index(tokens, match.start())
+            after = token_index(tokens, match.end() - 1) + 1
+            if before > 0 and after < len(tokens):
+                if is_number_token(tokens[before - 1]) and is_number_token(tokens[after]):
+                    return True
+    return False
 
 
 def _uses_spoken_numbers(tokens: list[str]) -> bool:
@@ -150,11 +252,6 @@ def _uses_spoken_numbers(tokens: list[str]) -> bool:
         and not (t == "năm" and i + 1 < len(tokens) and tokens[i + 1].isdigit())
         for i, t in enumerate(tokens)
     )
-
-
-def _numeric_to_words(match: re.Match[str]) -> str:
-    day, month, year = match.groups()
-    return f" ngày {day} tháng {month}" + (f" năm {year} " if year else " ")
 
 
 def _has_date_content(tokens: list[str]) -> bool:
@@ -169,22 +266,35 @@ def _has_date_content(tokens: list[str]) -> bool:
     return any(t.isdigit() for t in numbers) or len(numbers) >= 2
 
 
-def _parse_tokens(tokens: list[str], today: date) -> Optional[DobValue]:
-    """date | INVALID | None (không có nội dung ngày tháng)."""
-    if tokens.count("tháng") > 1:
-        return INVALID
-    if "tháng" in tokens:
-        return _parse_with_month_anchor(tokens, tokens.index("tháng"), today)
+def _parse_tokens(tokens: list[str], today: date) -> Optional[tuple[DobValue, int, int]]:
+    """(giá trị, token đầu, token sau cuối) của vùng ngày; `None` khi không có nội dung ngày tháng.
+
+    Vùng được trả về cả khi giá trị là `INVALID`: "31/02/1978" vẫn là một vùng ngày có thật,
+    nên phần còn lại của câu vẫn tách được thành tên. Câu chỉ tình cờ có chữ số ("chi trả 80%")
+    thì không có vùng nào — không được cắt tên ở đó.
+    """
+    months = [i for i, t in enumerate(tokens) if t == "tháng"]
+    if len(months) > 1:
+        return (INVALID, *_date_extent(tokens))
+    if months:
+        return _parse_with_month_anchor(tokens, months[0], today)
     return _parse_digit_sequence(tokens, today)
 
 
-def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> DobValue:
+def _date_extent(tokens: list[str]) -> tuple[int, int]:
+    at = [i for i, t in enumerate(tokens) if is_number_token(t) or t in _DATE_WORDS]
+    return (at[0], at[-1] + 1) if at else (0, len(tokens))
+
+
+def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> tuple[DobValue, int, int]:
     day_tokens = _number_run_before(tokens, at)
     day = parse_number(day_tokens) if day_tokens else None
+    lo = at - len(day_tokens)
     if day is None or not 1 <= day <= 31:
-        return INVALID
+        return INVALID, lo, at + 1
 
     after = _number_run_after(tokens, at + 1)
+    hi = at + 1 + len(after)
     candidates: set[date] = set()
     saw_invalid = False
     for split in range(1, min(len(after), 3) + 1):
@@ -208,24 +318,28 @@ def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> DobValu
             candidates.add(resolved)
 
     if len(candidates) == 1 and not saw_invalid:
-        return candidates.pop()
-    return INVALID
+        return candidates.pop(), lo, hi
+    return INVALID, lo, hi
 
 
-def _parse_digit_sequence(tokens: list[str], today: date) -> Optional[DobValue]:
+def _parse_digit_sequence(tokens: list[str], today: date) -> Optional[tuple[DobValue, int, int]]:
     """Không có "tháng": "14 3 1978", "14031978", "một bốn không ba một chín bảy tám"."""
-    content = [t for t in tokens if t not in _FILLERS or is_number_token(t)]
+    picked = [i for i, t in enumerate(tokens) if t not in _FILLERS or is_number_token(t)]
+    content = [tokens[i] for i in picked]
     if not content or not all(is_number_token(t) for t in content):
         return None
     if len(content) == 1 and not content[0].isdigit():
         return None  # một từ số đứng một mình ("không") — không phải câu trả lời ngày sinh
+    lo, hi = picked[0], picked[-1] + 1
 
     if len(content) == 3 and all(t.isdigit() for t in content):
-        return _resolve_date(int(content[0]), int(content[1]), [content[2]], today) or INVALID
+        value = _resolve_date(int(content[0]), int(content[1]), [content[2]], today) or INVALID
+        return value, lo, hi
     digits = spoken_digits(content)
     if digits is None or len(digits) not in (6, 8):
-        return INVALID
-    return _resolve_date(int(digits[:2]), int(digits[2:4]), [digits[4:]], today) or INVALID
+        return INVALID, lo, hi
+    value = _resolve_date(int(digits[:2]), int(digits[2:4]), [digits[4:]], today) or INVALID
+    return value, lo, hi
 
 
 def _resolve_date(day: int, month: int, year_tokens: list[str], today: date) -> Optional[DobValue]:

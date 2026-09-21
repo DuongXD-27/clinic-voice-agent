@@ -1,4 +1,4 @@
-"""F-03: replay, thứ tự lượt, đồng thời, restart và gián đoạn — trên in-memory và PostgreSQL thật."""
+"""F-03: replay, thứ tự lượt, đồng thời, restart và gián đoạn trên Redis."""
 
 import threading
 import time
@@ -31,25 +31,9 @@ class SimulatedCrash(BaseException):
 
 
 @pytest.fixture
-def reopen(store, request) -> Iterator[Callable[[], object]]:
-    """Handle mới tới CÙNG dữ liệu — mô phỏng worker khác / ứng dụng khởi động lại."""
-    if type(store).__name__ != "PostgresSessionStore":
-        yield lambda: store
-        return
-    from callbot.engine.session.postgres import PostgresSessionStore
-
-    url = request.getfixturevalue("postgres_url")
-    opened: list[PostgresSessionStore] = []
-
-    def factory() -> PostgresSessionStore:
-        handle = PostgresSessionStore(url, max_size=4)
-        handle.open()
-        opened.append(handle)
-        return handle
-
-    yield factory
-    for handle in opened:
-        handle.close()
+def reopen(store) -> Iterator[Callable[[], object]]:
+    """Một orchestrator khác dùng chung Redis session store."""
+    yield lambda: store
 
 
 def _outbound(call_id: str) -> CallStart:
@@ -67,18 +51,26 @@ def _context(store, call_id: str) -> CallContext:
 # --- Replay ----------------------------------------------------------------------------
 
 
-def test_replaying_any_turn_returns_stored_result_without_side_effects(store) -> None:
+def test_replay_only_while_active_and_never_reopens_purged_call(store) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=store)
     opening = bot.start_call(_outbound("c_replay"))
-    results = [_say(bot, "c_replay", turn, text) for turn, text in enumerate(CANCEL_CALL, 1)]
+    results = []
+    for turn, text in enumerate(CANCEL_CALL, 1):
+        result = _say(bot, "c_replay", turn, text)
+        results.append(result)
+        if not result.ended:
+            assert _say(bot, "c_replay", turn, text) == result
+            assert bot.start_call(_outbound("c_replay")) == opening
     assert results[-1].outcome == "CANCELLED"
 
     before = store.get_session("c_replay")
     writes, requests = list(clinic.writes), list(clinic.requests)
     for turn, text in enumerate(CANCEL_CALL, 1):
-        assert _say(bot, "c_replay", turn, text) == results[turn - 1]
-    assert bot.start_call(_outbound("c_replay")) == opening
+        with pytest.raises(CallEnded):
+            _say(bot, "c_replay", turn, text)
+    with pytest.raises(CallEnded):
+        bot.start_call(_outbound("c_replay"))
 
     after = store.get_session("c_replay")
     assert after == before  # history, bộ đếm, context không đổi
@@ -123,14 +115,15 @@ def test_order_errors_leave_session_unchanged(store) -> None:
     assert store.get_turn("c_order", 3) is None
 
 
-def test_new_turn_after_end_is_rejected_but_old_turns_replay(store) -> None:
+def test_all_turns_after_end_are_rejected(store) -> None:
     bot = create_orchestrator(FakeClinicAPI(), store=store)
     bot.start_call(_outbound("c_ended"))
     last = _say(bot, "c_ended", 1, "cho tôi gặp nhân viên")
     assert last.ended
     with pytest.raises(CallEnded):
         _say(bot, "c_ended", 2, "alo")
-    assert _say(bot, "c_ended", 1, "cho tôi gặp nhân viên") == last
+    with pytest.raises(CallEnded):
+        _say(bot, "c_ended", 1, "cho tôi gặp nhân viên")
 
 
 def test_silence_input_is_compared_exactly(store) -> None:
@@ -155,7 +148,7 @@ class SlowClinic(FakeClinicAPI):
         return super().get_appointment(appointment_id)
 
 
-def test_two_workers_same_turn_process_once(store, reopen) -> None:
+def test_two_threads_same_turn_process_once(store, reopen) -> None:
     clinic = SlowClinic(delay=0.2)
     workers = [create_orchestrator(clinic, store=reopen()) for _ in range(2)]
     workers[0].start_call(_outbound("c_race"))
@@ -165,7 +158,10 @@ def test_two_workers_same_turn_process_once(store, reopen) -> None:
     results: list[object] = []
 
     def send(worker) -> None:
-        results.append(_say(worker, "c_race", 3, "Có, tôi đến được"))
+        try:
+            results.append(_say(worker, "c_race", 3, "Có, tôi đến được"))
+        except CallEnded as exc:
+            results.append(exc)
 
     threads = [threading.Thread(target=send, args=(worker,)) for worker in workers]
     for thread in threads:
@@ -173,8 +169,11 @@ def test_two_workers_same_turn_process_once(store, reopen) -> None:
     for thread in threads:
         thread.join()
 
-    assert len(results) == 2 and results[0] == results[1]
-    assert results[0].outcome == "CONFIRMED"
+    assert len(results) == 2
+    assert sum(isinstance(result, CallEnded) for result in results) == 1
+    assert [result.outcome for result in results if not isinstance(result, CallEnded)] == [
+        "CONFIRMED"
+    ]
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
     assert len(store.list_commands("c_race")) == 1
 
@@ -214,7 +213,7 @@ def test_different_calls_do_not_block_each_other(store) -> None:
     assert not _context(store, "c_iso_2").identity_verified
 
 
-def test_restart_continues_at_same_step_and_replays(store, reopen) -> None:
+def test_orchestrators_in_same_process_share_active_session(store, reopen) -> None:
     clinic = FakeClinicAPI()
     before_restart = create_orchestrator(clinic, store=reopen())
     before_restart.start_call(_outbound("c_restart"))
@@ -290,12 +289,14 @@ def test_crash_after_clinic_success_before_commit_blocks_for_reconciliation(stor
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]  # không gửi lại, không chuyển máy
 
 
-def test_crash_after_commit_before_response_replays(store) -> None:
+def test_lost_terminal_response_is_not_replayed_after_content_erasure(store) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=store)
     _verified(bot, "c_crash_after")
     lost = _say(bot, "c_crash_after", 3, "Có, tôi đến được")  # phản hồi không tới harness
-    assert _say(bot, "c_crash_after", 3, "Có, tôi đến được") == lost
+    assert lost.outcome == "CONFIRMED"
+    with pytest.raises(CallEnded):
+        _say(bot, "c_crash_after", 3, "Có, tôi đến được")
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
 
 
@@ -318,28 +319,28 @@ def test_write_timeout_requires_reconciliation_without_transfer(store) -> None:
     with pytest.raises(ReconciliationRequired):
         _say(bot, "c_timeout", 3, "Có, tôi đến được")
     assert [op for _, op in clinic.requests] == ["CONFIRMED"]  # không gửi lại
-    assert _context(store, "c_timeout").state == "AWAITING_INTENT"
+    assert store.get_session("c_timeout").context == {}
 
 
 def test_store_unavailable_before_journal_sends_nothing(store) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=store)
-    _verified(bot, "c_db_down")
+    _verified(bot, "c_redis_down")
 
     original = store.begin_command
 
     def unavailable(command):
-        raise SessionStoreUnavailable("db down")
+        raise SessionStoreUnavailable("redis down")
 
     store.begin_command = unavailable
     try:
         with pytest.raises(SessionStoreUnavailable):
-            _say(bot, "c_db_down", 3, "Có, tôi đến được")
+            _say(bot, "c_redis_down", 3, "Có, tôi đến được")
     finally:
         store.begin_command = original
     assert clinic.requests == [] and clinic.writes == []
 
-    assert _say(bot, "c_db_down", 3, "Có, tôi đến được").outcome == "CONFIRMED"
+    assert _say(bot, "c_redis_down", 3, "Có, tôi đến được").outcome == "CONFIRMED"
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
 
 

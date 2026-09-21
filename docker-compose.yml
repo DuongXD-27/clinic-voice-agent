@@ -1,30 +1,29 @@
 services:
-  # Clinic mock chạy riêng tại clinic-mock.vmec-callbot.tech; bot gọi qua CLINIC_MOCK_BASE_URL trong .env
-  postgres:
-    image: postgres:16-alpine
+  redis:
+    image: redis:7.4-alpine
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - noeviction
+      - --requirepass
+      - ${REDIS_PASSWORD:-callbot}
     environment:
-      POSTGRES_USER: callbot
-      POSTGRES_PASSWORD: callbot
-      POSTGRES_DB: callbot
-    volumes:
-      # Phiên, lượt và nhật ký lệnh Clinic phải còn qua restart
-      - pg_data:/var/lib/postgresql/data
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-callbot}
+    ports:
+      - "127.0.0.1:6379:6379"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U callbot -d callbot"]
-      interval: 2s
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
       timeout: 3s
-      retries: 30
+      retries: 10
 
-  # Chạy một lần trước khi bot khởi động worker
-  migrate:
-    build: .
-    command: ["python", "-m", "callbot.engine.session.postgres.migrate"]
-    environment:
-      SESSION_DATABASE_URL: postgresql://callbot:callbot@postgres:5432/callbot
-    depends_on:
-      postgres:
-        condition: service_healthy
-
+  # Clinic mock chạy riêng tại clinic-mock.vmec-callbot.tech; bot gọi qua CLINIC_MOCK_BASE_URL trong .env
   bot:
     build: .
     ports:
@@ -33,10 +32,37 @@ services:
       - path: .env
         required: false
     environment:
-      SESSION_DATABASE_URL: postgresql://callbot:callbot@postgres:5432/callbot
+      REDIS_URL: redis://:${REDIS_PASSWORD:-callbot}@redis:6379/0
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      SESSION_IDLE_TTL_S: ${SESSION_IDLE_TTL_S:-1800}
+      SESSION_MAX_AGE_S: ${SESSION_MAX_AGE_S:-7200}
+      SESSION_TOMBSTONE_TTL_S: ${SESSION_TOMBSTONE_TTL_S:-86400}
+      SESSION_MAX_BYTES: ${SESSION_MAX_BYTES:-262144}
+      SESSION_LOCK_LEASE_S: ${SESSION_LOCK_LEASE_S:-60}
+      NAME_FALLBACK_PROVIDER: ${NAME_FALLBACK_PROVIDER:-none}
+      NAME_FALLBACK_MODEL: ${NAME_FALLBACK_MODEL:-}
+      NAME_FALLBACK_MAX_TOKENS: ${NAME_FALLBACK_MAX_TOKENS:-}
+      NAME_FALLBACK_TIMEOUT_S: ${NAME_FALLBACK_TIMEOUT_S:-3.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # mode=audio (§4.1.2): ZipFormer 68M self-host qua sherpa-onnx + OpenAI TTS.
+      # Đường dẫn model trỏ vào chỗ Dockerfile tải lúc build (/app/models/zipformer),
+      # không phải src/... — xem comment trong Dockerfile.
+      ASR_PROVIDER: ${ASR_PROVIDER:-zipformer}
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+    # host.docker.internal chỉ tự có trên Docker Desktop (Mac/Windows) — trên
+    # Docker Linux cần khai báo tay để container gọi ngược ra service chạy
+    # trên host (vd. clinic-mock local ở CLINIC_MOCK_BASE_URL trong .env).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      migrate:
-        condition: service_completed_successfully
-
-volumes:
-  pg_data:
+      redis:
+        condition: service_healthy

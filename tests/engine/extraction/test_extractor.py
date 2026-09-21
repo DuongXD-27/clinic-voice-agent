@@ -4,6 +4,8 @@ import json
 from datetime import date, datetime
 from typing import Optional
 
+import pytest
+
 from callbot.engine.extraction import (
     Agreement,
     ClinicalLevel,
@@ -15,7 +17,7 @@ from callbot.engine.extraction import (
     QuestionId,
     TurnContext,
 )
-from callbot.engine.extraction.schema import VN_TZ
+from callbot.engine.extraction.schema import INVALID, VN_TZ
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)
 
@@ -51,7 +53,9 @@ def test_identity_step_does_not_run_business_intents() -> None:
     assert result.full_name.value == "lê văn thôi"
     assert result.agreement.value is None and result.dob.value is None
 
-    assert extractor.extract(ctx(QuestionId.ASK_NAME), "hủy lịch đi").intent.value is Intent.NONE
+    # Câu nghiệp vụ bị loại khỏi tên theo cụm -> quay về đúng nhãn ý định, không thành "tên"
+    business = extractor.extract(ctx(QuestionId.ASK_NAME), "hủy lịch đi")
+    assert business.full_name.found is False and business.intent.value is Intent.CANCEL
 
 
 def test_identity_step_keeps_safety_labels_and_does_not_read_them_as_names() -> None:
@@ -71,9 +75,102 @@ def test_identity_step_keeps_safety_labels_and_does_not_read_them_as_names() -> 
     assert result.clinical.value is ClinicalLevel.EMERGENCY
 
 
-def test_dob_only_when_asked() -> None:
+def test_dob_only_at_identity_steps() -> None:
     assert extractor.extract(ctx(QuestionId.ASK_DOB), "14/03/1978").dob.value == date(1978, 3, 14)
-    assert extractor.extract(ctx(QuestionId.ASK_NAME), "14/03/1978").dob.found is False
+    # T-02: hỏi tên mà người gọi đọc ngày sinh -> giữ lại, chỉ hỏi phần còn thiếu
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), "14/03/1978")
+    assert result.dob.value == date(1978, 3, 14) and result.full_name.found is False
+    assert extractor.extract(ctx(QuestionId.ASK_INTENT), "14/03/1978").dob.found is False
+
+
+@pytest.mark.parametrize(
+    "transcript, name",
+    [
+        ("Nguyễn Văn A, sinh ngày 14/3/1978", "nguyễn văn a"),
+        ("Dạ, Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978", "nguyễn văn a"),
+        ("Nguyễn Văn Sinh, sinh năm 14/3/1978", "nguyễn văn sinh"),
+        ("Tôi là Lê Na, 14/03/1978", "lê na"),
+        ("Tôi là Nguyễn Văn A sinh ngày mười bốn tháng ba năm 1978", "nguyễn văn a"),
+        ("Nguyễn Văn A năm sinh 14/03/1978", "nguyễn văn a"),
+        ("nguyen van a sinh ngay 14/3/1978", "nguyen van a"),
+        # Tên trùng từ ngày tháng / số vẫn nguyên vẹn
+        ("Nguyễn Văn Sinh sinh ngày 14/3/1978", "nguyễn văn sinh"),
+        ("Trần Văn Năm, 14/3/1978", "trần văn năm"),
+    ],
+)
+def test_name_and_dob_in_one_answer(transcript: str, name: str) -> None:
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), transcript)
+    assert result.full_name.value == name
+    assert isinstance(result.dob.value, date)
+    assert result.intent.value is Intent.NONE
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Nguyễn Văn Sinh 14/3/1978",  # "Sinh" là tên hay từ nối?
+        "Nguyễn Văn Tám mười bốn tháng ba năm 1978",  # "Tám" thuộc tên hay ngày?
+        "Lê Na sinh ngày 14/3/1978",  # cắt ở "sinh" còn dưới 3 từ
+    ],
+)
+def test_ambiguous_name_before_dob_is_not_guessed(transcript: str) -> None:
+    # Tên cắt nhầm -> Verifier chuyển máy ngay; không chắc thì để trống, bot hỏi lại tên
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), transcript)
+    assert result.full_name.found is False
+    assert result.dob.found
+
+
+def test_name_is_split_from_a_recognised_date_even_when_the_date_is_unusable() -> None:
+    # Ngày không tồn tại vẫn là một vùng ngày có thật -> giữ tên, chỉ hỏi lại ngày sinh
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), "Nguyễn Văn A, 31/02/1978")
+    assert result.full_name.value == "nguyễn văn a" and result.dob.value == INVALID
+
+    # Câu chỉ tình cờ có chữ số thì không có vùng ngày -> không được cắt "bảo hiểm có chi trả"
+    # thành tên và đẩy vào Verifier
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), "bảo hiểm có chi trả 80% không")
+    assert result.full_name.found is False and result.dob.value == INVALID
+
+
+@pytest.mark.parametrize(
+    "question, transcript",
+    [
+        (QuestionId.ASK_DOB, "Tôi không nhớ ngày sinh"),
+        (QuestionId.ASK_DOB, "tôi quên mất rồi"),
+        (QuestionId.ASK_DOB, "toi khong nho"),
+        (QuestionId.ASK_NAME, "tôi không muốn cung cấp"),
+    ],
+)
+def test_cannot_provide_at_identity_step(question: QuestionId, transcript: str) -> None:
+    assert extractor.extract(ctx(question), transcript).intent.value is Intent.CANNOT_PROVIDE
+
+
+def test_cannot_provide_never_leaves_identity_step() -> None:
+    # Ở bước nghiệp vụ "không nhớ" không phải nhãn; tên / ngày sinh hợp lệ luôn thắng
+    assert (
+        extractor.extract(ctx(QuestionId.ASK_INTENT), "tôi không nhớ").intent.value is Intent.NONE
+    )
+    # Người gọi tự báo là không chắc: ngày không đi tiếp vào Verifier, bot hỏi lại
+    result = extractor.extract(ctx(QuestionId.ASK_DOB), "không nhớ lắm, 14/3/1978 thì phải")
+    assert result.dob.value == INVALID and result.intent.value is Intent.NONE
+
+
+@pytest.mark.parametrize(
+    "direction, transcript, intent",
+    [
+        ("inbound", "Alô, tôi muốn đặt lịch khám ạ.", Intent.BOOK),  # Hình 0, kịch bản Book
+        ("outbound", "tôi muốn đổi lịch", Intent.RESCHEDULE),
+        ("outbound", "tôi muốn hủy lịch", Intent.CANCEL),
+    ],
+)
+def test_business_intent_before_identity_is_labelled(direction, transcript, intent) -> None:
+    result = extractor.extract(ctx(QuestionId.ASK_NAME, direction=direction), transcript)
+    assert result.intent.value is intent and result.full_name.found is False
+
+
+def test_out_of_scope_with_digits_at_name_step_is_still_detected() -> None:
+    # Chữ số làm dob thành INVALID ở bước hỏi tên; không được chặn OUT_OF_SCOPE (§1.2.3)
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), "bảo hiểm có chi trả 80% không")
+    assert result.dob.value == INVALID and result.intent.value is Intent.OUT_OF_SCOPE
 
 
 def test_voicemail_short_circuits_outbound_identity_steps() -> None:
@@ -259,3 +356,29 @@ def test_trace_is_json_ready() -> None:
         "span": "mười bốn tháng ba năm bảy tám",
     }
     assert trace["question_id"] == "ASK_DOB"
+
+
+@pytest.mark.parametrize(
+    "text, span",
+    [("tôi sẽ đến", "sẽ đến"), ("xác nhận", "xác nhận"), ("không hủy đâu, tôi vẫn đến", "vẫn đến")],
+)
+def test_stated_attendance_is_agreement_at_readback(text: str, span: str) -> None:
+    """T-04, contract Bảng 1: "states or agrees they will attend"."""
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.intent.value is Intent.CONFIRM
+    assert (result.agreement.value, result.agreement.span) == (Agreement.AGREE, span)
+
+
+@pytest.mark.parametrize(
+    "text, intent",
+    [("tôi sẽ đến được không", Intent.CONFIRM), ("không đến được", Intent.CANCEL)],
+)
+def test_attendance_wording_that_is_not_agreement(text: str, intent: Intent) -> None:
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.intent.value is intent and result.agreement.value is not Agreement.AGREE
+
+
+def test_stated_attendance_does_not_unlock_other_writes() -> None:
+    for question in (QuestionId.SLOT_READBACK, QuestionId.CANCEL_RECONFIRM):
+        result = InformationExtractor().extract(ctx(question), "tôi sẽ đến")
+        assert result.agreement.value is not Agreement.AGREE

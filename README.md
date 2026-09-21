@@ -13,21 +13,20 @@ theo từng lượt, và gọi ngược lại một "clinic mock" (mock backend 
 src/callbot/               # một core, hai transport (§1.3.2)
   transports/              # chỉ đổi request/response sang kiểu của engine, không chứa logic hội thoại
     http/                  # đường chấm điểm — uvicorn callbot.transports.http.main:app
-      main.py              # FastAPI app: lifespan tạo session store PostgreSQL + ClinicMockClient + CallOrchestrator, /health, /ready
+      main.py              # FastAPI app: lifespan tạo RedisSessionStore + ClinicMockClient + CallOrchestrator, /health, /ready
       calls.py             # 2 endpoint bắt buộc, gọi CallOrchestrator: POST /v1/calls, POST /v1/calls/{id}/turn
       schemas.py           # Pydantic models cho request/response (§4.1)
       config.py            # đọc biến môi trường (CLINIC_MOCK_BASE_URL, ...)
     # phone/               # phone leg tuần 6 (§1.3.1), chưa làm
   engine/                  # AI Callbot Engine
-    session/               # Session Manager: CallContext, FSM, thứ tự lượt / replay, store (in-memory cho test)
-      postgres/            # PostgreSQL store, migrations/*.sql, migrate + inspect (chỉ đọc)
+    session/               # Session Manager: Redis tạm, TTL, khóa phân tán, thứ tự lượt / replay
     extraction/            # Information Extraction theo docs/reference/information-extraction-design.md
     policy/                # PolicyEngine + guardrails SF-01..SF-05
     verification/          # Identity Verifier hai pha (T-01): prepare() lượt 0 đọc hồ sơ, verify() đối chiếu không I/O
       identity.py          # LookupStatus/PrepareResult, MatchDetail/VerificationResult, match_record
       phone.py             # normalize_phone: caller_number -> 0xxxxxxxxx (dạng mock nhận) hoặc None
       names.py             # normalize_name: khóa so khớp tên (bỏ dấu, hoa/thường, khoảng trắng)
-    dialogue/              # Dialogue Manager, templates, prompts, llm/
+    dialogue/              # Dialogue Manager, templates và prompts nghiệp vụ
     tools/                 # Clinic Gateway: kiểm soát đọc/ghi và retry (F-05)
       ports.py             # Protocol ClinicAPI 1:1 với mock (Page phân trang, ClinicAPIError)
       clinic_gateway.py    # ClinicGateway: guardrail + FSM + nhật ký lệnh, đọc hết trang, chuẩn hóa
@@ -41,18 +40,22 @@ src/callbot/               # một core, hai transport (§1.3.2)
   speech/                  # Realtime STT pipeline + TTS
     audio/                 # codec wav/G.711, chuẩn hoá về PCM 8 kHz băng hẹp, tải audio_url
     vad/                   # FrameClassifier (energy baseline) + StreamingVAD
-    asr/                   # ASRProvider: gemini.py, phowhisper.py
-    tts/                   # TTSProvider + AudioArtifactStore (sinh audio_url)
+    storage.py             # AudioArtifactStore sinh audio_url cho TTS
     transcript.py          # gộp partial/final
     pipeline.py            # STTPipeline: Audio -> VAD -> ASR -> Transcript
   tracing/                 # JsonlLogger: trace mỗi lượt ra JSONL
+src/inference/             # các model inference và hạ tầng dùng chung
+  common/                  # lỗi, telemetry và HTTP transport dùng chung
+  llm/                     # gateway, config, prompt và provider LLM
+  asr/                     # contract ASR và provider Gemini/PhoWhisper/ZipFormer
+  tts/                     # contract TTS và provider Null/OpenAI
 tests/                     # cùng cấu trúc với src/callbot: engine/, speech/, transports/http/
 ```
 
 ## Yêu cầu môi trường
 
 - Python >= 3.11
-- PostgreSQL >= 11 — bắt buộc với ứng dụng HTTP (phiên, lượt, nhật ký lệnh Clinic)
+- Redis >= 7 — kho tạm dùng chung cho phiên, lượt và nhật ký lệnh Clinic
 - Docker (nếu muốn chạy bằng container hoặc dùng `docker-compose`)
 
 ## Setup cơ bản (chạy local)
@@ -62,13 +65,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
-pip install -e ".[speech,llm]"      # tuỳ chọn: numpy + Gemini (ASR/LLM)
+pip install -e ".[speech]"          # tuỳ chọn: numpy + Gemini ASR
 pip install -e ".[speech-local]"    # tuỳ chọn: PhoWhisper self-hosted
 
-cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL, SESSION_DATABASE_URL
+cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL, REDIS_URL
 
-docker run -d --name callbot-pg -e POSTGRES_USER=callbot -e POSTGRES_PASSWORD=callbot   -e POSTGRES_DB=callbot -p 5432:5432 postgres:16-alpine
-python -m callbot.engine.session.postgres.migrate   # một lần, trước khi chạy worker
+docker run --rm -p 6379:6379 redis:7.4-alpine redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy noeviction --requirepass callbot
 
 uvicorn callbot.transports.http.main:app --reload
 ```
@@ -83,11 +85,24 @@ curl -X POST http://localhost:8000/v1/calls \
   -d '{"call_id":"c_demo","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'
 ```
 
+### Giao diện demo hai endpoint
+
+Sau khi server chạy, mở `http://localhost:8000/demo/`. Trang demo gọi trực tiếp
+`POST /v1/calls` và `POST /v1/calls/{call_id}/turn`, hỗ trợ cả hai chế độ:
+
+- `text`: nhập lời người gọi rồi gửi từng turn;
+- `audio`: thu microphone trong browser, mã hóa WAV PCM16 mono 16 kHz, upload qua
+  `PUT /demo-api/audio/{call_id}/{turn}.wav`, rồi truyền URL WAV vào `audio_url`.
+
+Route `/demo-api/*` chỉ là tiện ích test thủ công vì browser tạo `blob:` URL mà
+backend không thể tải. Harness chấm điểm vẫn dùng đúng hai endpoint contract và tự
+host audio đầu vào của nó. Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
+
 ## Chạy test & lint
 
 ```bash
-# Test tích hợp PostgreSQL chạy khi có biến này (thiếu thì skip; CI bắt buộc)
-export TEST_SESSION_DATABASE_URL=postgresql://callbot:callbot@localhost:5432/callbot
+# Test tích hợp Redis thật chạy khi có biến này (thiếu thì skip; CI bắt buộc)
+export TEST_REDIS_URL=redis://localhost:6379/15
 
 make check     # ruff check + ruff format --check + pytest (giống CI)
 make format    # tự sửa lint + format code
@@ -104,7 +119,7 @@ docker build -t vinmec-callbot .
 docker run --rm -p 8000:8000 vinmec-callbot
 ```
 
-`docker compose up --build` chạy PostgreSQL (volume `pg_data`) → `migrate` → bot (`WEB_CONCURRENCY` worker), đọc cấu hình từ `.env`. Vận hành nhiều worker và đối soát: [docs/reference/session-operations.md](docs/reference/session-operations.md). Mã lỗi HTTP: [docs/reference/http-api.md](docs/reference/http-api.md). Clinic mock đã
+`docker compose up --build` chạy Redis không persistence → bot (`WEB_CONCURRENCY` worker), đọc cấu hình từ `.env`. Vận hành nhiều worker và retention: [docs/reference/session-operations.md](docs/reference/session-operations.md). Mã lỗi HTTP: [docs/reference/http-api.md](docs/reference/http-api.md). Clinic mock đã
 deploy riêng tại `https://clinic-mock.vmec-callbot.tech` — đặt `CLINIC_MOCK_API_KEY`
 trong `.env`.
 
@@ -112,11 +127,11 @@ trong `.env`.
 
 [.github/workflows/ci.yml](.github/workflows/ci.yml) và [.github/workflows/cd.yml](.github/workflows/cd.yml):
 
-- Chỉ thay đổi mã nguồn/test/cấu hình runtime mới chạy CI (`make check`) với PostgreSQL service; thay đổi tài liệu không kích hoạt pipeline.
+- Chỉ thay đổi mã nguồn/test/cấu hình runtime mới chạy CI (`make check`) với Redis service; thay đổi tài liệu không kích hoạt pipeline.
 - CI thành công trên push lên `main` mới kích hoạt CD: build image lên
   `ghcr.io/<owner>/callbot-vinmec` → SSH vào EC2, chép
   [docker-compose.prod.yml](docker-compose.prod.yml) + `.env` sinh từ secrets vào
-  `/opt/callbot`, `docker compose pull && up -d` (PostgreSQL + migrate + bot) → smoke test `/ready` và `POST /v1/calls` với `call_id` riêng mỗi lần.
+  `/opt/callbot`, `docker compose pull && up -d` (Redis + bot) → smoke test `/ready` và `POST /v1/calls` với `call_id` riêng mỗi lần.
 
 URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối):
 
@@ -140,12 +155,12 @@ URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối)
    | Secret | `EC2_SSH_KEY` | private key SSH vào EC2 |
    | Secret | `CLINIC_MOCK_API_KEY` | key `sk_...` của clinic mock |
    | Secret | `GEMINI_API_KEY` | tuỳ chọn, khi dùng audio / LLM |
-   | Secret | `SESSION_DB_PASSWORD` | mật khẩu PostgreSQL của session store trên EC2 |
+   | Secret | `REDIS_PASSWORD` | mật khẩu Redis; dùng chuỗi URL-safe |
    | Variable | `BOT_DOMAIN` | `vmec-callbot.tech` |
    | Variable | `EC2_USER` | tuỳ chọn, mặc định `ubuntu` |
    | Variable | `CLINIC_MOCK_BASE_URL` | tuỳ chọn, mặc định `https://clinic-mock.vmec-callbot.tech/v1` |
 
 ## Trạng thái hiện tại
 
-- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04); `mode=audio` trả 501.
-- Phiên lưu trong PostgreSQL, chạy được nhiều worker; gửi lại lượt trả kết quả đã lưu, lệnh ghi Clinic có nhật ký và chặn đối soát khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).
+- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04). `mode=audio` (§4.1.2) đã nối vào cùng đường: ASR self-host ZipFormer 68M qua `sherpa-onnx` (`ASR_PROVIDER=zipformer`), TTS qua OpenAI (`TTS_PROVIDER=openai`), audio phản hồi tự phục vụ qua `/audio/{call_id}/{turn}.wav`. Core (`engine/`) không đổi — không biết khái niệm audio/text, xem `src/speech/bundle.py`.
+- Phiên chỉ lưu tạm trên Redis không persistence, chạy được nhiều worker; nội dung khách hàng bị xóa khi Clinic ghi thành công, cuộc gọi kết thúc hoặc TTL hết hạn. Lệnh ghi Clinic có journal tạm để chặn ghi trùng khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).

@@ -38,22 +38,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: callbot
-          POSTGRES_PASSWORD: callbot
-          POSTGRES_DB: callbot
+      redis:
+        image: redis:7.4-alpine
         ports:
-          - 5432:5432
+          - 6379:6379
         options: >-
-          --health-cmd "pg_isready -U callbot -d callbot"
-          --health-interval 2s
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
           --health-timeout 3s
-          --health-retries 30
+          --health-retries 10
     env:
-      TEST_SESSION_DATABASE_URL: postgresql://callbot:callbot@localhost:5432/callbot
-      REQUIRE_POSTGRES_TESTS: "1"
+      TEST_REDIS_URL: redis://localhost:6379/15
+      REQUIRE_REDIS_TESTS: "1"
     steps:
       - name: Checkout tested commit
         uses: actions/checkout@v4
@@ -63,9 +59,20 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         run: python -m pip install -e ".[dev,speech]"
 
       - name: Lint, format check and test
-        run: make check
+        run: make check PYTEST_ARGS="--junitxml=test-results/junit.xml"
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 14

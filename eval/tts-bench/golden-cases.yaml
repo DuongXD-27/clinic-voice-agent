@@ -1,0 +1,415 @@
+version: "1.0"
+
+suite:
+  name: "TTS Golden Suite"
+  language: "vi-VN"
+  description: >
+    Golden suite phục vụ QA TTS cho AI Callbot Vinmec MVP.
+    Scope ưu tiên Verify Identity, Confirm Attendance và No Answer.
+  total_cases: 40
+
+scoring:
+  zero_tolerance:
+    enabled: true
+    description: >
+      Nếu TTS đọc sai critical business content như ngày, giờ,
+      khoa/phòng khám, phủ định hoặc thông tin quan trọng thì case FAIL
+      dù giọng nói tự nhiên.
+
+  mos:
+    enabled: true
+    scale: "1-5"
+    dimensions:
+      - naturalness
+      - intelligibility
+      - pacing
+      - pronunciation
+
+  technical_check:
+    enabled: true
+    description: >
+      Kiểm file sinh thành công, không silent bất thường,
+      không clipping nghiêm trọng và thời lượng hợp lý.
+
+cases:
+
+  # ============================================================
+  # A. VERIFY IDENTITY — OPEN QUESTIONS
+  # 8 cases
+  # ============================================================
+
+  - id: TTS_ID_01
+    category: identity_prompt
+    text: "Dạ, anh chị vui lòng cho em xin họ và tên đầy đủ."
+    critical_items:
+      - type: intent
+        value: "họ và tên đầy đủ"
+    zero_tolerance: true
+
+  - id: TTS_ID_02
+    category: identity_prompt
+    text: "Anh chị vui lòng cho em biết ngày tháng năm sinh."
+    critical_items:
+      - type: intent
+        value: "ngày tháng năm sinh"
+    zero_tolerance: true
+
+  - id: TTS_ID_03
+    category: identity_prompt
+    text: "Dạ, em chưa xác nhận được thông tin. Anh chị vui lòng nói lại họ và tên đầy đủ."
+    critical_items:
+      - type: intent
+        value: "họ và tên đầy đủ"
+    zero_tolerance: true
+
+  - id: TTS_ID_04
+    category: identity_prompt
+    text: "Anh chị vui lòng nói lại ngày tháng năm sinh giúp em."
+    critical_items:
+      - type: intent
+        value: "ngày tháng năm sinh"
+    zero_tolerance: true
+
+  - id: TTS_ID_05
+    category: identity_prompt
+    text: "Em xin lỗi, em chưa nghe rõ tên của anh chị."
+    critical_items:
+      - type: intent
+        value: "tên"
+    zero_tolerance: false
+
+  - id: TTS_ID_06
+    category: identity_prompt
+    text: "Em xin lỗi, em chưa nghe rõ ngày sinh của anh chị."
+    critical_items:
+      - type: intent
+        value: "ngày sinh"
+    zero_tolerance: false
+
+  - id: TTS_ID_07
+    category: identity_failure
+    text: "Em chưa thể xác minh danh tính của anh chị. Em xin chuyển cuộc gọi đến nhân viên hỗ trợ."
+    critical_items:
+      - type: action
+        value: "chuyển cuộc gọi"
+    zero_tolerance: true
+
+  - id: TTS_ID_08
+    category: identity_failure
+    text: "Thông tin chưa khớp với hồ sơ. Em xin phép chuyển anh chị đến nhân viên hỗ trợ."
+    critical_items:
+      - type: action
+        value: "chuyển"
+    zero_tolerance: true
+
+
+  # ============================================================
+  # B. DATE / TIME
+  # 12 cases
+  # ============================================================
+
+  - id: TTS_DT_01
+    category: date_time
+    text: "Ngày 14 tháng 10 lúc 9 giờ sáng."
+    critical_items:
+      - type: date
+        value: "14 tháng 10"
+      - type: time
+        value: "9 giờ sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_02
+    category: date_time
+    text: "Ngày 4 tháng 3 lúc 8 giờ sáng."
+    critical_items:
+      - type: date
+        value: "4 tháng 3"
+      - type: time
+        value: "8 giờ sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_03
+    category: date_time
+    text: "Ngày 14 tháng 3 lúc 8 giờ 30 phút sáng."
+    critical_items:
+      - type: date
+        value: "14 tháng 3"
+      - type: time
+        value: "8 giờ 30 phút sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_04
+    category: date_time
+    text: "Ngày 15 tháng 3 lúc 9 giờ 15 phút sáng."
+    critical_items:
+      - type: date
+        value: "15 tháng 3"
+      - type: time
+        value: "9 giờ 15 phút sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_05
+    category: date_time
+    text: "Ngày 20 tháng 11 lúc 2 giờ chiều."
+    critical_items:
+      - type: date
+        value: "20 tháng 11"
+      - type: time
+        value: "2 giờ chiều"
+    zero_tolerance: true
+
+  - id: TTS_DT_06
+    category: date_time
+    text: "Ngày 1 tháng 12 lúc 3 giờ 30 phút chiều."
+    critical_items:
+      - type: date
+        value: "1 tháng 12"
+      - type: time
+        value: "3 giờ 30 phút chiều"
+    zero_tolerance: true
+
+  - id: TTS_DT_07
+    category: date_time
+    text: "Ngày 29 tháng 2 năm 2028."
+    critical_items:
+      - type: date
+        value: "29 tháng 2 năm 2028"
+    zero_tolerance: true
+
+  - id: TTS_DT_08
+    category: date_time
+    text: "Ngày 31 tháng 12 năm 2026 lúc 11 giờ 45 phút sáng."
+    critical_items:
+      - type: date
+        value: "31 tháng 12 năm 2026"
+      - type: time
+        value: "11 giờ 45 phút sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_09
+    category: date_time
+    text: "Lịch khám của anh chị bắt đầu lúc 7 giờ 5 phút sáng."
+    critical_items:
+      - type: time
+        value: "7 giờ 5 phút sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_10
+    category: date_time
+    text: "Lịch khám bắt đầu lúc 10 giờ 50 phút sáng."
+    critical_items:
+      - type: time
+        value: "10 giờ 50 phút sáng"
+    zero_tolerance: true
+
+  - id: TTS_DT_11
+    category: date_time
+    text: "Lịch khám là ngày 14 tháng 10 năm 2026."
+    critical_items:
+      - type: date
+        value: "14 tháng 10 năm 2026"
+    zero_tolerance: true
+
+  - id: TTS_DT_12
+    category: date_time
+    text: "Thời gian khám là 9 giờ sáng, ngày 14 tháng 10."
+    critical_items:
+      - type: time
+        value: "9 giờ sáng"
+      - type: date
+        value: "14 tháng 10"
+    zero_tolerance: true
+
+
+  # ============================================================
+  # C. CLINIC / DEPARTMENT
+  # 8 cases
+  # ============================================================
+
+  - id: TTS_CLINIC_01
+    category: clinic
+    text: "Khoa Nội tổng quát."
+    critical_items:
+      - type: department
+        value: "Nội tổng quát"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_02
+    category: clinic
+    text: "Khoa Tim mạch."
+    critical_items:
+      - type: department
+        value: "Tim mạch"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_03
+    category: clinic
+    text: "Khoa Nhi."
+    critical_items:
+      - type: department
+        value: "Nhi"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_04
+    category: clinic
+    text: "Khoa Sản."
+    critical_items:
+      - type: department
+        value: "Sản"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_05
+    category: clinic
+    text: "Khoa Tai Mũi Họng."
+    critical_items:
+      - type: department
+        value: "Tai Mũi Họng"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_06
+    category: clinic
+    text: "Khoa Răng Hàm Mặt."
+    critical_items:
+      - type: department
+        value: "Răng Hàm Mặt"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_07
+    category: clinic
+    text: "Phòng khám Nội tổng quát."
+    critical_items:
+      - type: clinic
+        value: "Nội tổng quát"
+    zero_tolerance: true
+
+  - id: TTS_CLINIC_08
+    category: clinic
+    text: "Bệnh viện Đa khoa Quốc tế Vinmec."
+    critical_items:
+      - type: organization
+        value: "Vinmec"
+    zero_tolerance: true
+
+
+  # ============================================================
+  # D. CONFIRM ATTENDANCE — FULL READBACK
+  # 8 cases
+  # ============================================================
+
+  - id: TTS_CF_01
+    category: confirmation_readback
+    text: "Em xin xác nhận lại, lịch khám của anh chị là ngày 14 tháng 10 lúc 9 giờ sáng tại khoa Nội tổng quát."
+    critical_items:
+      - type: date
+        value: "14 tháng 10"
+      - type: time
+        value: "9 giờ sáng"
+      - type: department
+        value: "Nội tổng quát"
+    zero_tolerance: true
+
+  - id: TTS_CF_02
+    category: confirmation_readback
+    text: "Anh chị có xác nhận sẽ đến khám vào ngày 14 tháng 10 lúc 9 giờ sáng không ạ?"
+    critical_items:
+      - type: date
+        value: "14 tháng 10"
+      - type: time
+        value: "9 giờ sáng"
+    zero_tolerance: true
+
+  - id: TTS_CF_03
+    category: confirmation_readback
+    text: "Lịch khám là ngày 4 tháng 3 lúc 8 giờ 30 phút sáng tại khoa Tim mạch."
+    critical_items:
+      - type: date
+        value: "4 tháng 3"
+      - type: time
+        value: "8 giờ 30 phút sáng"
+      - type: department
+        value: "Tim mạch"
+    zero_tolerance: true
+
+  - id: TTS_CF_04
+    category: confirmation_readback
+    text: "Em xác nhận lịch khám ngày 15 tháng 3 lúc 2 giờ chiều tại khoa Nhi."
+    critical_items:
+      - type: date
+        value: "15 tháng 3"
+      - type: time
+        value: "2 giờ chiều"
+      - type: department
+        value: "Nhi"
+    zero_tolerance: true
+
+  - id: TTS_CF_05
+    category: confirmation_result
+    text: "Cảm ơn anh chị. Lịch khám đã được xác nhận."
+    critical_items:
+      - type: status
+        value: "đã được xác nhận"
+    zero_tolerance: true
+
+  - id: TTS_CF_06
+    category: confirmation_prompt
+    text: "Anh chị vui lòng xác nhận lại giúp em."
+    critical_items:
+      - type: intent
+        value: "xác nhận"
+    zero_tolerance: false
+
+  - id: TTS_CF_07
+    category: confirmation_readback
+    text: "Em xin nhắc lại, 9 giờ sáng ngày 14 tháng 10 tại khoa Nội tổng quát."
+    critical_items:
+      - type: time
+        value: "9 giờ sáng"
+      - type: date
+        value: "14 tháng 10"
+      - type: department
+        value: "Nội tổng quát"
+    zero_tolerance: true
+
+  - id: TTS_CF_08
+    category: confirmation_readback
+    text: "Lịch khám của anh chị là 10 giờ 15 phút sáng ngày 20 tháng 11 tại khoa Tai Mũi Họng."
+    critical_items:
+      - type: time
+        value: "10 giờ 15 phút sáng"
+      - type: date
+        value: "20 tháng 11"
+      - type: department
+        value: "Tai Mũi Họng"
+    zero_tolerance: true
+
+
+  # ============================================================
+  # E. NO ANSWER / SAFE GENERIC UTTERANCES
+  # 4 cases
+  # ============================================================
+
+  - id: TTS_NA_01
+    category: no_answer
+    text: "A lô, anh chị có nghe rõ không ạ?"
+    critical_items: []
+    zero_tolerance: false
+
+  - id: TTS_NA_02
+    category: no_answer
+    text: "A lô, em xin phép hỏi lại, anh chị có nghe thấy em không ạ?"
+    critical_items: []
+    zero_tolerance: false
+
+  - id: TTS_NA_03
+    category: no_answer
+    text: "Có vẻ đường truyền đang không ổn định."
+    critical_items: []
+    zero_tolerance: false
+
+  - id: TTS_NA_04
+    category: no_answer
+    text: "Em xin phép kết thúc cuộc gọi tại đây."
+    critical_items:
+      - type: action
+        value: "kết thúc cuộc gọi"
+    zero_tolerance: false

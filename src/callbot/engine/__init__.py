@@ -3,7 +3,6 @@
 from typing import Optional
 
 from callbot.engine.dialogue import DialogueManager
-from callbot.engine.dialogue.llm import create_llm
 from callbot.engine.errors import (
     CallBusy,
     CallConflict,
@@ -15,13 +14,29 @@ from callbot.engine.errors import (
     TurnOutOfOrder,
 )
 from callbot.engine.extraction import InformationExtractor
+from callbot.engine.extraction.ner import NameNER
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
-from callbot.engine.session import InMemorySessionStore, SessionManager, SessionStore
+from callbot.engine.session import RedisSessionStore, SessionManager, SessionStore
+from callbot.engine.session.retention import RetentionPolicy
+from callbot.engine.session.settings import SessionSettings
 from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
+from inference.llm.gateway import create_gateway
+
+
+def _default_session_store() -> SessionStore:
+    config = SessionSettings()
+    return RedisSessionStore.from_url(
+        config.redis_url,
+        retention=RetentionPolicy(config.session_idle_ttl_s, config.session_max_age_s),
+        key_prefix=config.redis_key_prefix,
+        tombstone_ttl_s=config.session_tombstone_ttl_s,
+        max_session_bytes=config.session_max_bytes,
+        lock_lease_s=config.session_lock_lease_s,
+    )
 
 
 def create_orchestrator(
@@ -30,18 +45,19 @@ def create_orchestrator(
     tracer: Optional[Tracer] = None,
     store: Optional[SessionStore] = None,
 ) -> CallOrchestrator:
-    """`store=None` dùng bộ nhớ process — chỉ cho test / công cụ một process.
-
-    Ứng dụng HTTP luôn truyền PostgreSQL store (transports/http/main.py).
-    """
+    """Use the shared Redis session store unless an explicit test/application store is supplied."""
     settings = settings or EngineSettings()
     gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id)
+    name_fallback = None
+    if settings.name_fallback_provider != "none":
+        name_fallback = NameNER(create_gateway(settings.name_fallback_provider))
     return CallOrchestrator(
-        sessions=SessionManager(store if store is not None else InMemorySessionStore()),
-        # LLM fallback chưa bật (F-04): chỉ tầng luật
-        extractor=InformationExtractor(),
+        sessions=SessionManager(store if store is not None else _default_session_store()),
+        extractor=InformationExtractor(
+            fallback=name_fallback, name_fallback=name_fallback is not None
+        ),
         policy=PolicyEngine(settings),
-        dialogue=DialogueManager(gateway, IdentityVerifier(gateway), llm=create_llm(settings)),
+        dialogue=DialogueManager(gateway, IdentityVerifier(gateway)),
         tracer=tracer,
     )
 
@@ -56,7 +72,7 @@ __all__ = [
     "CallerInput",
     "ClinicAPI",
     "EngineSettings",
-    "InMemorySessionStore",
+    "RedisSessionStore",
     "ReconciliationRequired",
     "SessionNotFound",
     "SessionStore",

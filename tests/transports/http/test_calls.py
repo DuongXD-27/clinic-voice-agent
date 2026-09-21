@@ -1,17 +1,20 @@
 from typing import Any, Optional
+from uuid import uuid4
 
+import fakeredis
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.engine.fake_clinic import FakeClinicAPI
+from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from tests.transports.http.fakes import FakeASR, FakeTTS, make_speech_bundle
 
 from callbot.engine import (
     CallBusy,
     CallConflict,
     CallEnded,
     EngineSettings,
-    InMemorySessionStore,
     ReconciliationRequired,
+    RedisSessionStore,
     SessionNotFound,
     SessionStoreUnavailable,
     TurnConflict,
@@ -19,8 +22,19 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import get_orchestrator
 from callbot.transports.http.main import create_app
+from speech.audio import encode_wav
+from speech.types import AudioSegment
+
+
+def _call_mode_factory(redis_server):
+    """Cùng fakeredis instance với redis_store_factory — không tự tạo Redis client thật."""
+    return lambda: CallModeStore(
+        fakeredis.FakeRedis(server=redis_server, decode_responses=True),
+        key_prefix=f"test:{uuid4().hex}",
+    )
 
 
 def _start(
@@ -64,6 +78,48 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_demo_page_is_served(client: TestClient) -> None:
+    response = client.get("/demo/")
+    assert response.status_code == 200
+    assert "Vinmec Callbot Console" in response.text
+    assert "/v1/calls" in response.text
+
+
+def test_demo_audio_upload_returns_public_narrowband_wav(client: TestClient) -> None:
+    source = AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=16000)
+    response = client.put(
+        "/demo-api/audio/c_browser/1.wav",
+        content=encode_wav(source),
+        headers={"Content-Type": "audio/wav"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["audio_url"] == "http://testserver/audio/demo-input/c_browser/1.wav"
+    assert body["sample_rate"] == 8000
+    assert body["duration_ms"] == 100
+    assert body["content_type"] == "audio/wav"
+    saved = client.get("/audio/demo-input/c_browser/1.wav")
+    assert saved.status_code == 200
+    assert saved.content.startswith(b"RIFF")
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "status", "code"),
+    [
+        ("/demo-api/audio/bad.id/1.wav", b"RIFF", 422, "INVALID_CALL_ID"),
+        ("/demo-api/audio/c_empty/1.wav", b"", 400, "EMPTY_AUDIO"),
+        ("/demo-api/audio/c_bad/1.wav", b"not a wav", 422, "INVALID_WAV"),
+    ],
+)
+def test_demo_audio_upload_rejects_invalid_input(
+    client: TestClient, path: str, content: bytes, status: int, code: str
+) -> None:
+    response = client.put(path, content=content)
+    assert response.status_code == status
+    assert response.json()["detail"]["code"] == code
 
 
 def test_start_call_returns_engine_opening(client: TestClient) -> None:
@@ -113,9 +169,10 @@ def test_calls_do_not_share_state(client: TestClient) -> None:
     _start(client, "c_iso_b")
     _turn(client, "c_iso_a", 1, "Nguyễn Văn A.")
 
-    # c_iso_b vẫn đang ở bước hỏi tên: câu ngày sinh không dùng được -> hỏi lại tên
+    # c_iso_b chưa có tên: giữ ngày sinh (T-02) nhưng vẫn phải hỏi tên — không dùng tên của c_iso_a
     response = _turn(client, "c_iso_b", 1, "Ngày 14 tháng 3 năm 1978.")
-    assert response.json()["utterance"] == t.ASK_NAME_AGAIN
+    assert response.json()["utterance"] == t.ASK_NAME_AFTER_DOB
+    assert response.json()["state"] == "AWAITING_IDENTITY"
     assert _turn(client, "c_iso_a", 2, "Ngày 14 tháng 3 năm 1978.").json()["state"] == (
         "AWAITING_INTENT"
     )
@@ -139,19 +196,120 @@ def test_silence_and_empty_transcript_map_differently(client: TestClient) -> Non
     assert empty.json()["utterance"] == t.ASK_NAME_AGAIN
 
 
-def test_audio_mode_is_not_implemented(client: TestClient) -> None:
-    response = _start(client, "c_audio", mode="audio")
-    assert response.status_code == 501
-    assert response.json()["detail"]["code"] == "AUDIO_NOT_IMPLEMENTED"
-    # Không mở session cho cuộc gọi audio
-    assert _turn(client, "c_audio", 1, "xin chào").status_code == 404
-
-
 def test_text_call_rejects_audio_url(client: TestClient) -> None:
     _start(client, "c_text_audio")
     response = _turn(client, "c_text_audio", 1, None, audio_url="https://harness/clip.wav")
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "AUDIO_URL_NOT_ALLOWED"
+
+
+# --- mode=audio: ZipFormer self-host nối vào đường HTTP chấm điểm (§4.1.2) ----------------
+
+
+def test_start_call_audio_mode_returns_audio_url(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    tts = FakeTTS(respond=True)
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path, tts=tts),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        response = _start(audio_client, "c_audio_1", mode="audio")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["audio_url"] == "http://test/audio/c_audio_1/0.wav"
+        assert tts.spoken == [body["utterance"]]
+
+
+def test_tts_failure_still_replies_without_audio(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    """TTS lỗi (vd. key không có quyền model TTS) không chặn cuộc gọi audio — vẫn test được STT."""
+    asr = FakeASR(transcript="Nguyễn Văn A")
+    tts = FakeTTS(error=RuntimeError("403 model_not_found"))
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path, asr=asr, tts=tts),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        start = _start(audio_client, "c_audio_tts_down", mode="audio")
+        assert start.status_code == 200
+        assert start.json()["audio_url"] is None and start.json()["utterance"]
+        turn = _turn(
+            audio_client, "c_audio_tts_down", 1, None, audio_url="https://harness/clips/1.wav"
+        )
+        assert turn.status_code == 200
+        assert turn.json()["utterance"] == t.ASK_DOB and turn.json()["audio_url"] is None
+
+
+def test_turn_with_audio_url_transcribes_and_replies_with_audio(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    asr = FakeASR(transcript="Nguyễn Văn A")
+    tts = FakeTTS(respond=True)
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path, asr=asr, tts=tts),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        _start(audio_client, "c_audio_2", mode="audio")
+        response = _turn(
+            audio_client, "c_audio_2", 1, None, audio_url="https://harness/clips/c_audio_2/1.wav"
+        )
+        assert response.status_code == 200
+        body = response.json()
+        # Transcript "Nguyễn Văn A" đi đúng đường IE như mode=text — engine không đổi
+        assert body["utterance"] == t.ASK_DOB
+        assert body["audio_url"] == "http://test/audio/c_audio_2/1.wav"
+        # asr.received[0] là warm-up lúc lifespan startup (segment câm) — không đếm ở đây
+        assert asr.received[-1].sample_rate == 8000
+
+
+def test_silence_turn_in_audio_mode_still_replies_with_audio(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    tts = FakeTTS(respond=True)
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path, tts=tts),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        _start(audio_client, "c_audio_3", mode="audio")
+        # Không audio_url, chỉ silence_ms — vẫn phải nói lại bằng audio (§1.1.7)
+        response = _turn(audio_client, "c_audio_3", 1, None, silence_ms=2000)
+        assert response.status_code == 200
+        assert response.json()["utterance"] == t.SILENCE
+        assert response.json()["audio_url"] is not None
+
+
+def test_turn_with_text_in_audio_mode_rejected(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        _start(audio_client, "c_audio_4", mode="audio")
+        response = _turn(audio_client, "c_audio_4", 1, "Nguyễn Văn A")
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "TEXT_NOT_ALLOWED"
 
 
 @pytest.mark.parametrize(
@@ -178,7 +336,9 @@ def test_turn_rejects_invalid_input(
     assert _turn(client, "c_invalid_turn", turn, text, silence_ms=silence_ms).status_code == 422
 
 
-def test_orchestrator_created_once_and_clinic_closed_on_shutdown() -> None:
+def test_orchestrator_created_once_and_clinic_closed_on_shutdown(
+    redis_store_factory, redis_server, tmp_path
+) -> None:
     created: list[FakeClinicAPI] = []
     closed: list[FakeClinicAPI] = []
 
@@ -193,8 +353,10 @@ def test_orchestrator_created_once_and_clinic_closed_on_shutdown() -> None:
 
     app = create_app(
         clinic_factory=factory,
-        engine_settings=EngineSettings(llm_provider="none"),
-        session_store_factory=InMemorySessionStore,
+        engine_settings=EngineSettings(),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path),
+        call_mode_factory=_call_mode_factory(redis_server),
     )
     with TestClient(app) as client:
         orchestrator = app.state.orchestrator
@@ -240,7 +402,7 @@ _REQUEST = httpx.Request("GET", "https://clinic-mock.example/v1/appointments/apt
         (CallEnded("c_x"), 409, "CALL_ENDED"),
         (CallBusy("c_x"), 409, "CALL_BUSY"),
         (ReconciliationRequired("c_x", 2, "sk_secret"), 409, "CALL_RECONCILIATION_REQUIRED"),
-        (SessionStoreUnavailable("postgresql://sk_secret@db"), 503, "SESSION_STORE_UNAVAILABLE"),
+        (SessionStoreUnavailable("private store details"), 503, "SESSION_STORE_UNAVAILABLE"),
     ],
 )
 def test_engine_errors_map_to_http_status(
@@ -291,26 +453,31 @@ def test_new_turn_after_end_returns_call_ended(client: TestClient) -> None:
     assert last.json()["ended"] is True
     after = _turn(client, "c_http_end", 2, "alo")
     assert (after.status_code, after.json()["detail"]["code"]) == (409, "CALL_ENDED")
-    assert _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên").json() == last.json()
+    replay = _turn(client, "c_http_end", 1, "cho tôi gặp nhân viên")
+    assert (replay.status_code, replay.json()["detail"]["code"]) == (409, "CALL_ENDED")
 
 
-def test_ready_reports_session_store(client: TestClient) -> None:
+def test_ready_reports_session_store(
+    client: TestClient, redis_store_factory, redis_server, tmp_path
+) -> None:
     assert client.get("/ready").json() == {"status": "ready"}
 
-    class Down(InMemorySessionStore):
+    class Down(RedisSessionStore):
         def check_ready(self) -> None:
-            raise SessionStoreUnavailable("db down")
+            raise SessionStoreUnavailable("redis down")
 
     app = create_app(
         clinic_factory=FakeClinicAPI,
-        engine_settings=EngineSettings(llm_provider="none"),
-        session_store_factory=Down,
+        engine_settings=EngineSettings(),
+        session_store_factory=lambda: Down(redis_store_factory()._client),
+        speech_factory=lambda: make_speech_bundle(tmp_path),
+        call_mode_factory=_call_mode_factory(redis_server),
     )
     with TestClient(app) as down:
         response = down.get("/ready")
         assert response.status_code == 503
         assert response.json()["code"] == "SESSION_STORE_UNAVAILABLE"
-        assert down.get("/health").status_code == 200  # liveness không phụ thuộc DB
+        assert down.get("/health").status_code == 200  # liveness không phụ thuộc Redis
 
 
 # --- F-04: Information Extraction mới trên đường HTTP -------------------------------------
@@ -385,46 +552,73 @@ def test_information_extraction_over_http(
 
     store = client.app.state.session_store
     last = store.get_turn(call_id, len(lines))
-    assert last.status == "COMPLETED" and last.extraction is not None
-    fields_found = [
-        (name, item["provenance"], item["span"])
-        for name, item in last.extraction.items()
-        if isinstance(item, dict) and item.get("provenance") not in (None, "NONE")
-    ]
-    assert fields_found, last.extraction
-    assert all(span for _, _, span in fields_found)
+    assert last.status == "COMPLETED" and last.extraction is None
+    assert last.input == {} and last.result == {}
+    assert store.get_session(call_id).context == {}
     [command] = store.list_commands(call_id)
     assert command.status == "SUCCEEDED"
 
 
-def test_http_app_on_postgres_replays_across_app_restart(
-    postgres_store: Any, postgres_url: str
+def test_http_app_restart_keeps_active_session_in_redis(
+    redis_store_factory, redis_server, tmp_path
 ) -> None:
-    from callbot.engine.session.postgres import PostgresSessionStore
-
     clinic = FakeClinicAPI()
 
     def new_app():
-        def store_factory():
-            store = PostgresSessionStore(postgres_url, max_size=4)
-            store.open()
-            return store
-
         return create_app(
             clinic_factory=lambda: clinic,
-            engine_settings=EngineSettings(llm_provider="none"),
-            session_store_factory=store_factory,
+            engine_settings=EngineSettings(),
+            session_store_factory=redis_store_factory,
+            speech_factory=lambda: make_speech_bundle(tmp_path),
+            call_mode_factory=_call_mode_factory(redis_server),
         )
 
     with TestClient(new_app()) as first:
-        assert first.get("/ready").json() == {"status": "ready"}
-        _start(first, "c_pg_http")
-        asked = _turn(first, "c_pg_http", 1, "Nguyễn Văn A.").json()
+        _start(first, "c_restart_http")
+        _turn(first, "c_restart_http", 1, "Nguyễn Văn A.")
+        asked = _turn(first, "c_restart_http", 1, "Nguyễn Văn A.").json()
 
     with TestClient(new_app()) as second:
-        assert _start(second, "c_pg_http").json()["utterance"] == greeting("outbound")
-        assert _turn(second, "c_pg_http", 1, "Nguyễn Văn A.").json() == asked
-        assert _turn(second, "c_pg_http", 2, "14/03/1978").json()["state"] == "AWAITING_INTENT"
-        done = _turn(second, "c_pg_http", 3, "Có, tôi đến được").json()
-        assert done["outcome"] == "CONFIRMED"
+        assert _turn(second, "c_restart_http", 1, "Nguyễn Văn A.").json() == asked
+        assert _turn(second, "c_restart_http", 2, "14/03/1978").status_code == 200
+
+
+def test_confirm_over_http_reports_confirmed_only_after_write(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """T-04: lượt đọc lại chưa ghi gì; CONFIRMED chỉ xuất hiện ở lượt Clinic đã ghi."""
+    _start(client, "c_http_confirm")
+    _turn(client, "c_http_confirm", 1, "Nguyễn Văn A.")
+    readback = _turn(client, "c_http_confirm", 2, "Ngày 14 tháng 3 năm 1978.").json()
+    assert "tại Vinmec Times City" in readback["utterance"] and readback["outcome"] is None
+    assert clinic.writes == []
+
+    body = _turn(client, "c_http_confirm", 3, "Vâng").json()
+    assert (body["ended"], body["outcome"], body["state"]) == (True, "CONFIRMED", "ENDED")
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+
+
+def _at_confirm_readback(client: TestClient, call_id: str) -> None:
+    _start(client, call_id)
+    _turn(client, call_id, 1, "Nguyễn Văn A.")
+    _turn(client, call_id, 2, "Ngày 14 tháng 3 năm 1978.")
+
+
+def test_rejected_confirm_over_http_is_transferred(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_rejected")
+    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    body = _turn(client, "c_http_rejected", 3, "Vâng").json()
+    assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
+    assert all(status != "CONFIRMED" for _, status, _ in clinic.writes)
+
+
+def test_unknown_confirm_outcome_over_http_needs_reconciliation(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_unknown")
+    clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    response = _turn(client, "c_http_unknown", 3, "Vâng")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"

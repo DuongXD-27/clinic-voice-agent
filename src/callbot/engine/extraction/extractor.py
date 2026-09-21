@@ -7,9 +7,10 @@ Thứ tự trong một lượt:
 1. line_signal  — outbound, cho tới khi xác minh xong; khác NONE thì dừng, không đọc câu hộp thư thoại thành tên.
 2. clinical     — mọi lượt, trước intent.
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
-4. full_name    — chỉ ASK_NAME.
-5. dob          — chỉ ASK_DOB.
-   OUT_OF_SCOPE ở bước danh tính — chỉ khi câu trả lời không phải tên / ngày sinh.
+4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
+5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
+   Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
+   trả lời không phải tên / ngày sinh.
 6. slot_choice  — chỉ OFFER_SLOTS.
 7. agreement    — câu hỏi xác nhận; ở OFFER_SLOTS chỉ khi không rút ra tiêu chí slot (chỉ ra REFUSE/UNCLEAR).
 8. cancel_reason — khi đang hủy.
@@ -20,9 +21,10 @@ from typing import Optional
 from callbot.engine.extraction.agreement import extract_agreement
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
-from callbot.engine.extraction.dob import extract_dob
+from callbot.engine.extraction.dob import read_dob
 from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
-from callbot.engine.extraction.full_name import extract_full_name
+from callbot.engine.extraction.full_name import name_after_dob, name_before_dob, read_full_name
+from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
 from callbot.engine.extraction.schema import (
@@ -47,10 +49,22 @@ from callbot.engine.extraction.text import clean
 # - NOT_PATIENT:   "tôi là vợ anh ấy" không phải tên; outbound phải chuyển máy, không tiết lộ.
 # - REPEAT_REQUEST: "gì cơ" không phải tên, và không tính vào §1.1.5.
 IDENTITY_SAFE_INTENTS = frozenset({Intent.REQUEST_HUMAN, Intent.NOT_PATIENT, Intent.REPEAT_REQUEST})
-# OUT_OF_SCOPE ở bước danh tính chỉ xét SAU khi không trích được tên / ngày sinh: hợp đồng §1.1.5 và
-# §1.2.3 bắt chuyển máy OUT_OF_SCOPE (không phải NOT_UNDERSTOOD sau 2 lần hỏi lại), nhưng "thanh toan"
-# trùng tên "Thanh Toàn" khi mất dấu — tên hợp lệ thì luôn thắng.
-_IDENTITY_FALLBACK_INTENTS = frozenset({Intent.OUT_OF_SCOPE})
+# Nhãn ở bước danh tính chỉ xét SAU khi không trích được tên / ngày sinh — tên hợp lệ luôn thắng
+# ("thanh toan" trùng tên "Thanh Toàn" khi mất dấu; "Lê Văn Thôi", "Trần Văn Được"):
+# - OUT_OF_SCOPE: §1.1.5, §1.2.3 bắt chuyển máy OUT_OF_SCOPE, không phải NOT_UNDERSTOOD sau 2 lần hỏi lại.
+# - Ý định nghiệp vụ: người gọi nói nhu cầu trước khi đọc tên ("tôi muốn đặt lịch", Hình 0 contract) —
+#   Dialogue hỏi lại tên, không tính là không hiểu; ý định không được dùng trước khi xác minh xong.
+# - CANNOT_PROVIDE: "tôi không nhớ ngày sinh" — xác minh không thực hiện được (§1.1.1).
+_IDENTITY_FALLBACK_INTENTS = frozenset(
+    {
+        Intent.OUT_OF_SCOPE,
+        Intent.RESCHEDULE,
+        Intent.CANCEL,
+        Intent.BOOK,
+        Intent.CONFIRM,
+        Intent.CANNOT_PROVIDE,
+    }
+)
 
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
 
@@ -72,7 +86,7 @@ class InformationExtractor:
         self, fallback: Optional[FallbackExtractor] = None, name_fallback: bool = False
     ) -> None:
         self._fallback = fallback
-        # NER cho tên chỉ bật từ tuần 3 (thiết kế §8); intent/agreement dùng tuyến sau khi có `fallback`.
+        # Factory bật NER theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
         self._name_fallback = name_fallback
 
     def extract(
@@ -100,25 +114,37 @@ class InformationExtractor:
         clinical = extract_clinical(transcript)
         intent = self._intent(ctx, transcript)
 
+        dob_reading = read_dob(transcript, ctx.today) if question in IDENTITY_QUESTIONS else None
+        dob = dob_reading.field if dob_reading is not None else skipped
+
         full_name: Field[str] = skipped
         if (
             question is QuestionId.ASK_NAME
             and intent.value is Intent.NONE
             and clinical.value not in _TRANSFER_CLINICAL
         ):
-            full_name = self._full_name(transcript)
-
-        dob = extract_dob(transcript, ctx.today) if question is QuestionId.ASK_DOB else skipped
+            if dob_reading is not None and dob_reading.zone:
+                # Câu gộp: tên chỉ nằm ngoài vùng ngày, và chỉ được lấy khi ranh giới chắc chắn.
+                # Vùng ngày cũng được nhận khi ngày không hợp lệ ("Nguyễn Văn A, sinh ngày
+                # 31/02/1978" -> giữ tên, hỏi lại ngày), nhưng câu chỉ tình cờ có chữ số
+                # ("bảo hiểm có chi trả 80% không") thì không có vùng nào để cắt.
+                zone = name_before_dob(transcript) or name_after_dob(transcript)
+                full_name = self._full_name(zone, transcript) if zone else Field.nothing()
+            else:
+                full_name = self._full_name(transcript, transcript)
 
         if (
             question in IDENTITY_QUESTIONS
             and intent.value is Intent.NONE
             and not full_name.found
-            and dob.value is None
+            # Không có vùng ngày nào được nhận ra: "bảo hiểm có chi trả 80% không" có chữ số nên
+            # dob ra INVALID, nhưng đó vẫn là câu ngoài phạm vi. Ngược lại, người gọi đã đọc một
+            # ngày (dù không dùng được) thì họ có cung cấp được — không phải CANNOT_PROVIDE.
+            and (dob_reading is None or not dob_reading.zone)
         ):
-            out_of_scope = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
-            if out_of_scope.found:
-                intent = out_of_scope
+            fallback_intent = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
+            if fallback_intent.found:
+                intent = fallback_intent
 
         slot_choice = skipped
         if question is QuestionId.OFFER_SLOTS:
@@ -168,13 +194,20 @@ class InformationExtractor:
             return Field.nothing(Intent.NONE)
         return guarded
 
-    def _full_name(self, transcript: str) -> Field[str]:
-        result = extract_full_name(transcript)
-        if result.found or not self._name_fallback or self._fallback is None:
-            return result
+    def _full_name(self, zone: str, transcript: str) -> Field[str]:
+        """`zone`: đoạn được phép chứa tên. `transcript`: cả câu, để mô hình còn ngữ cảnh."""
+        reading = read_full_name(zone)
+        # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
+        # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
+        # Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
+        if reading.field.found or reading.reason is not Reason.NO_SIGNAL:
+            return reading.field
+        if not self._name_fallback or self._fallback is None:
+            return Field.nothing()
         guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
-        # Tên do NER trả về cũng phải nằm nguyên văn trong transcript, không chỉ span
-        if guarded.found and f" {clean(guarded.value or '')} " not in f" {clean(transcript)} ":
+        # Tên do NER trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
+        # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
+        if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()
         return guarded
 
@@ -185,7 +218,9 @@ class InformationExtractor:
         intent: Field[Intent],
         clinical: Field[ClinicalLevel],
     ) -> Field[Agreement]:
-        result = extract_agreement(transcript, question)
+        # "tôi sẽ đến", "xác nhận" ở câu hỏi đến khám là đồng ý tham dự (T-04); agreement tự bỏ qua ở câu khác
+        attendance = intent.span if intent.value is Intent.CONFIRM else None
+        result = extract_agreement(transcript, question, attendance=attendance)
         if not result.found and self._fallback is not None:
             # Tuyến sau chỉ xét câu nói vòng không có tín hiệu nào ("hôm đó tôi bận mất rồi").
             result = guard_fallback(
@@ -202,3 +237,7 @@ class InformationExtractor:
         if result.value is Agreement.AGREE and contradicted:
             return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
         return result
+
+
+def _contains(text: str, words: str) -> bool:
+    return bool(words) and f" {words} " in f" {clean(text)} "

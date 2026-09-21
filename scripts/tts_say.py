@@ -1,9 +1,10 @@
-"""TTS-1.1: sinh một câu bằng provider trong .env, ghi WAV 8 kHz, in số đo.
+"""TTS-1.1: sinh một câu bằng provider trong .env (hoặc --provider), ghi WAV 8 kHz, in số đo.
 
     python scripts/tts_say.py "Dạ em xin chào anh chị."
     python scripts/tts_say.py "..." --provider elevenlabs --voice EXAVITQu4vr4xnSDxMaL --out temp/tts/x.wav
 
-`--provider` / `--voice` ghi đè TTS_PROVIDER và mã giọng của provider đó, không sửa .env.
+`--provider` / `--voice` ghi đè TTS_PROVIDER và mã giọng của provider đó, không sửa .env. Chỉ
+`elevenlabs` có `synthesize_timed`/`stream` (đo TTFA); `openai` chỉ trả PCM một lần, không streaming.
 """
 
 import argparse
@@ -11,13 +12,22 @@ import sys
 import time
 from pathlib import Path
 
-from callbot.speech.audio.codec import encode_wav
-from callbot.speech.settings import SpeechSettings
-from callbot.speech.tts import create_tts
-from callbot.speech.tts.base import TTSTiming
-from callbot.speech.tts.errors import TTSError
+from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig
+from inference.tts.providers.elevenlabs import ElevenLabsTTS
+from inference.tts.providers.openai import OpenAITTS
+from speech.audio.codec import encode_wav
+from speech.settings import SpeechSettings
+from speech.types import AudioSegment
 
-_VOICE_FIELD = {"elevenlabs": "elevenlabs_voice_id"}
+_VOICE_FIELD = {"elevenlabs": "voice_id", "openai": "voice"}
+_PROVIDER_TYPE = {
+    "elevenlabs": (ElevenLabsTTSConfig, ElevenLabsTTS),
+    "openai": (OpenAITTSConfig, OpenAITTS),
+}
+
+
+def _timing_trace(chars: int, total_ms: int) -> dict:
+    return {"chars": chars, "total_ms": total_ms}
 
 
 def main() -> int:
@@ -30,44 +40,40 @@ def main() -> int:
     parser.add_argument("--voice", default=None, help="ghi đè mã giọng của provider")
     args = parser.parse_args()
 
-    settings = SpeechSettings()
-    overrides: dict[str, object] = {}
-    if args.provider:
-        overrides["tts_provider"] = args.provider
-    provider = args.provider or settings.tts_provider
-    if args.voice:
-        if provider not in _VOICE_FIELD:
-            print(f"--voice không áp dụng cho provider {provider!r}", file=sys.stderr)
-            return 2
-        overrides[_VOICE_FIELD[provider]] = args.voice
-    settings = settings.model_copy(update=overrides)
+    provider = args.provider or SpeechSettings().tts_provider
+    if provider not in _VOICE_FIELD:
+        print(f"provider không hỗ trợ: {provider!r}", file=sys.stderr)
+        return 2
+    overrides = {_VOICE_FIELD[provider]: args.voice} if args.voice else {}
+    config_type, provider_type = _PROVIDER_TYPE[provider]
+    config = config_type(**overrides)
 
     try:
-        tts = create_tts(settings)
-        if hasattr(tts, "synthesize_timed"):
-            segment, timing = tts.synthesize_timed(args.text)
+        provider_obj = provider_type(config)
+        if hasattr(provider_obj, "synthesize_timed"):
+            result, timing_obj = provider_obj.synthesize_timed(args.text)
+            timing = timing_obj.to_trace()
         else:
             started = time.perf_counter()
-            segment = tts.synthesize(args.text)
-            timing = TTSTiming(
-                chars=len(args.text), total_ms=int((time.perf_counter() - started) * 1000)
-            )
+            result = provider_obj.synthesize(args.text)
+            timing = _timing_trace(len(args.text), int((time.perf_counter() - started) * 1000))
     except ValueError as exc:
         print(f"Cấu hình: {exc}", file=sys.stderr)
         return 2
-    except TTSError as exc:
-        print(f"TTS lỗi [{exc.code}]: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 — CLI chẩn đoán: in mọi lỗi provider, không phân loại
+        print(f"TTS lỗi [{type(exc).__name__}]: {exc}", file=sys.stderr)
         return 1
-    if segment is None:
-        print(f"provider {tts.name!r} không sinh audio", file=sys.stderr)
+    if result is None:
+        print(f"provider {provider!r} không sinh audio", file=sys.stderr)
         return 1
 
+    segment = AudioSegment(pcm=result.pcm, sample_rate=result.sample_rate)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(encode_wav(segment))
-    voice = getattr(settings, _VOICE_FIELD.get(tts.name, ""), "")
-    print(f"provider={tts.name} voice={voice} -> {out} ({segment.duration_ms} ms audio)")
-    print("timing:", timing.to_trace())
+    voice = getattr(config, _VOICE_FIELD[provider], "")
+    print(f"provider={provider} voice={voice} -> {out} ({segment.duration_ms} ms audio)")
+    print("timing:", timing)
     return 0
 
 

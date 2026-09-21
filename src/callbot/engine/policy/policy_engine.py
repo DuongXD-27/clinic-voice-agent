@@ -18,7 +18,9 @@ DecisionKind = Literal["CONTINUE", "REPROMPT", "TRANSFER", "UNREACHABLE"]
 # NOT_UNDERSTOOD không dùng được cho câu đang hỏi: tính vào bộ đếm
 # UNCLEAR        agreement mơ hồ: lần đầu hỏi lại, từ lần thứ hai liên tiếp mới tính
 # NEUTRAL        xin nhắc lại, slot khớp nhiều khung: không đổi bộ đếm
-Understanding = Literal["UNDERSTOOD", "NOT_UNDERSTOOD", "UNCLEAR", "NEUTRAL"]
+# DECLINED       bước danh tính, người gọi nói không nhớ / không cung cấp: đếm như NOT_UNDERSTOOD, nhưng
+#                đạt ngưỡng ở lượt này thì là xác minh thất bại (§1.1.1) -> IDENTITY_FAILED
+Understanding = Literal["UNDERSTOOD", "NOT_UNDERSTOOD", "UNCLEAR", "NEUTRAL", "DECLINED"]
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,15 @@ class PolicyDecision:
 
 
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
+
+# Tra cứu hồ sơ ở lượt 0 (T-01) không cho dữ liệu để xác minh -> chuyển máy ở lượt 1.
+# Cùng bảng với `verification.PrepareResult.transfer_reason` (không import để tránh vòng
+# verification -> tools -> policy); test khóa hai bảng trùng nhau.
+LOOKUP_TRANSFER_REASON: dict[str, TransferReason] = {
+    "NO_PHONE": "PATIENT_NOT_FOUND",
+    "NO_CANDIDATES": "PATIENT_NOT_FOUND",
+    "UNAVAILABLE": "SYSTEM_ERROR",
+}
 
 _UNREACHABLE_REASON: dict[Optional[LineSignal], UnreachableReason] = {
     LineSignal.VOICEMAIL: "VOICEMAIL",
@@ -68,6 +79,11 @@ class PolicyEngine:
         if call.direction == "inbound" and call.appointment_id:
             # §1.1.8: inbound không có appointment_id — dữ liệu harness bất thường
             return PolicyDecision.transfer("SYSTEM_ERROR")
+        lookup_failure = LOOKUP_TRANSFER_REASON.get(ctx.identity_lookup)
+        if lookup_failure and not ctx.identity_verified:
+            # Lượt 0 đã báo chuyển máy (Listing 1 không cho kết thúc ở lượt 0): chuyển bất kể lượt này nói gì.
+            # §1.1.9: không có hồ sơ -> PATIENT_NOT_FOUND, không tạo patient, inbound không ghi Mock.
+            return PolicyDecision.transfer(lookup_failure)
         if ctx.turn > call.max_turns:
             return PolicyDecision.transfer("NOT_UNDERSTOOD")
         return PolicyDecision.proceed()
@@ -117,5 +133,7 @@ class PolicyEngine:
             ctx.unclear_streak = 0
         ctx.failed_understandings += 1
         if ctx.failed_understandings >= self._settings.max_failed_understandings:
+            if understanding == "DECLINED":
+                return PolicyDecision.transfer("IDENTITY_FAILED")
             return PolicyDecision.transfer("NOT_UNDERSTOOD")
         return PolicyDecision("REPROMPT")

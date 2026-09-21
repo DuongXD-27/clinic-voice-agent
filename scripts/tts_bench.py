@@ -181,22 +181,22 @@ def make_telephony_wavs(prefix: str, wav_dir: Path) -> int:
 
 
 # ---------------------------------------------------------------------------------------------
-# Provider adapter: dùng đúng adapter production trong callbot.speech.tts
+# Provider adapter: dùng đúng adapter production trong inference.tts.providers
 # ---------------------------------------------------------------------------------------------
 class Bench:
     def __init__(self, provider: str, voice: Optional[str], label: str, timeout_s: float) -> None:
-        from callbot.speech.settings import SpeechSettings
-        from callbot.speech.tts import create_tts
+        from inference.tts.config import ElevenLabsTTSConfig
+        from inference.tts.providers.elevenlabs import ElevenLabsTTS
 
-        voice_field = {"elevenlabs": "elevenlabs_voice_id"}
-        timeout_field = {"elevenlabs": "elevenlabs_timeout_s"}
-        settings = SpeechSettings()
-        overrides: dict[str, Any] = {"tts_provider": provider, timeout_field[provider]: timeout_s}
+        # Chỉ elevenlabs có --provider (xem main()); streaming thô (.stream/.sample_rate) không
+        # thuộc contract TTSProvider chung nên bench dựng thẳng provider, không qua TTSGateway.
+        # voice_id không truyền khi rỗng -> đọc ELEVENLABS_VOICE_ID từ .env như settings gốc.
+        overrides: dict[str, Any] = {"timeout_s": timeout_s}
         if voice:
-            overrides[voice_field[provider]] = voice
-        settings = settings.model_copy(update=overrides)
-        self.tts = create_tts(settings)
-        self.voice = voice or getattr(settings, voice_field[provider])
+            overrides["voice_id"] = voice
+        config = ElevenLabsTTSConfig(**overrides)
+        self.tts = ElevenLabsTTS(config)
+        self.voice = voice or config.voice_id
         self.family = provider
         self.label = label
         self.sr = self.tts.sample_rate

@@ -1,41 +1,63 @@
-# Chạy trên EC2, do workflow CI/CD (.github/workflows/ci-cd.yml) chép lên /opt/callbot cùng .env.
+# Chạy trên EC2, do workflow CD (.github/workflows/cd.yml) chép lên /opt/callbot cùng .env.
 # Caddy nhận 80/443, tự xin cert Let's Encrypt cho BOT_DOMAIN và chuyển tới bot trong mạng nội bộ.
 services:
-  postgres:
-    image: postgres:16-alpine
+  redis:
+    image: redis:7.4-alpine
     restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-256mb}
+      - --maxmemory-policy
+      - noeviction
+      - --requirepass
+      - ${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}
     environment:
-      POSTGRES_USER: callbot
-      POSTGRES_PASSWORD: ${SESSION_DB_PASSWORD:?Cần SESSION_DB_PASSWORD trong .env}
-      POSTGRES_DB: callbot
-    volumes:
-      # Không xoá volume khi deploy: phiên và nhật ký lệnh cần cho đối soát
-      - pg_data:/var/lib/postgresql/data
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U callbot -d callbot"]
-      interval: 2s
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      interval: 5s
       timeout: 3s
-      retries: 30
-
-  migrate:
-    image: ${IMAGE:?Cần IMAGE trong .env}
-    command: ["python", "-m", "callbot.engine.session.postgres.migrate"]
-    environment:
-      SESSION_DATABASE_URL: postgresql://callbot:${SESSION_DB_PASSWORD}@postgres:5432/callbot
-    depends_on:
-      postgres:
-        condition: service_healthy
+      retries: 10
 
   bot:
     image: ${IMAGE:?Cần IMAGE trong .env}
     restart: unless-stopped
     env_file: .env
     environment:
-      SESSION_DATABASE_URL: postgresql://callbot:${SESSION_DB_PASSWORD}@postgres:5432/callbot
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      SESSION_IDLE_TTL_S: ${SESSION_IDLE_TTL_S:-1800}
+      SESSION_MAX_AGE_S: ${SESSION_MAX_AGE_S:-7200}
+      SESSION_TOMBSTONE_TTL_S: ${SESSION_TOMBSTONE_TTL_S:-86400}
+      SESSION_MAX_BYTES: ${SESSION_MAX_BYTES:-262144}
+      SESSION_LOCK_LEASE_S: ${SESSION_LOCK_LEASE_S:-60}
+      NAME_FALLBACK_PROVIDER: ${NAME_FALLBACK_PROVIDER:-none}
+      NAME_FALLBACK_MODEL: ${NAME_FALLBACK_MODEL:-}
+      NAME_FALLBACK_MAX_TOKENS: ${NAME_FALLBACK_MAX_TOKENS:-}
+      NAME_FALLBACK_TIMEOUT_S: ${NAME_FALLBACK_TIMEOUT_S:-3.0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # mode=audio (§4.1.2): ZipFormer 68M self-host + OpenAI TTS. Đường dẫn model khớp
+      # chỗ Dockerfile tải lúc build image (/app/models/zipformer) — không đổi theo .env,
+      # nên đặt cố định ở đây thay vì cần cd.yml ghi thêm vào deploy.env.
+      ASR_PROVIDER: ${ASR_PROVIDER:-zipformer}
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
     depends_on:
-      migrate:
-        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
   caddy:
     image: caddy:2.8-alpine
@@ -52,6 +74,5 @@ services:
       - bot
 
 volumes:
-  pg_data:
   caddy_data:
   caddy_config:

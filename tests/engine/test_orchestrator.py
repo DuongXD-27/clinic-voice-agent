@@ -4,14 +4,16 @@ from dataclasses import fields
 from datetime import date
 from typing import Optional
 
-from callbot.engine import CallerInput, CallStart, create_orchestrator
+import pytest
+
+from callbot.engine import CallEnded, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
 from callbot.engine.verification.names import normalize_name
-from tests.engine.fake_clinic import FakeClinicAPI
+from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 SILENCE = None
 
@@ -56,8 +58,9 @@ def test_opening_discloses_ai_assistant() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     openings = [
         bot.start_call(_outbound("c_greet_out")),
+        # Số dạng +84 (Hình 0 contract) chuẩn hóa về số có hồ sơ trong fake
         bot.start_call(
-            CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84987654321")
+            CallStart(call_id="c_greet_in", direction="inbound", caller_number="+84912345600")
         ),
     ]
     for opening in openings:
@@ -67,8 +70,13 @@ def test_opening_discloses_ai_assistant() -> None:
         assert opening.utterance.rstrip().endswith("?")
     assert _context(bot, "c_greet_out").question.question_id is QuestionId.ASK_NAME
 
+    # T-02: không có hồ sơ -> không hỏi tên, nhưng vẫn công bố AI ngay câu đầu
+    handoff = bot.start_call(_inbound("c_greet_unknown", "0999999999"))
+    assert AI_DISCLOSURE in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
+    assert _context(bot, "c_greet_unknown").question is None
 
-def test_confirm_attendance_in_one_readback_turn() -> None:
+
+def test_confirm_attendance_in_one_readback_turn(monkeypatch) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_confirm"))
@@ -76,13 +84,64 @@ def test_confirm_attendance_in_one_readback_turn() -> None:
     assert summary.state == "AWAITING_INTENT" and "14 tháng 10" in summary.utterance
     assert _context(bot, "c_confirm").question.question_id is QuestionId.CONFIRM_READBACK
 
+    evidence = []
+    confirm = bot._dialogue._gateway.confirm
+
+    def capture(ctx):
+        evidence.extend(ctx.evidence)
+        return confirm(ctx)
+
+    monkeypatch.setattr(bot._dialogue._gateway, "confirm", capture)
     action = _run(bot, "c_confirm", ["Có, tôi đến được."], start=3)
     assert action.outcome == "CONFIRMED"
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
-    evidence = _context(bot, "c_confirm").evidence
+    assert bot.sessions.store.get_session("c_confirm").context == {}
     assert [(e.kind, e.label, e.question_id, e.turn) for e in evidence] == [
         ("CONFIRMATION", "AGREE", QuestionId.CONFIRM_READBACK, 3)
     ]
+
+
+def test_rejected_confirm_write_does_not_report_confirmed() -> None:
+    clinic = FakeClinicAPI()
+    clinic.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    clinic.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_confirm_rejected"))
+    _run(bot, "c_confirm_rejected", ["Nguyễn Văn A", "14/03/1978"])
+
+    action = _run(bot, "c_confirm_rejected", ["Có, tôi đến được."], start=3)
+    session = bot.sessions.store.get_session("c_confirm_rejected")
+    appointment = clinic.appointments["apt_00417"]
+
+    assert not any(operation == "CONFIRMED" for _, operation, _ in clinic.writes)
+    assert appointment.get("confirmed_at") is None
+    assert appointment.get("confirmed_via") is None
+    assert (action.state, action.outcome, action.transfer_reason) == (
+        "ENDED",
+        "TRANSFERRED",
+        "SYSTEM_ERROR",
+    )
+    assert session is not None and session.ended
+    assert session.context == {}
+    assert appointment["status"] == "TRANSFERRED"
+    assert appointment["version"] == 4
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})]
+
+
+def test_ambiguous_attendance_answer_does_not_confirm() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_confirm_ambiguous"))
+    summary = _run(bot, "c_confirm_ambiguous", ["Nguyễn Văn A", "14/03/1978"])
+    assert _context(bot, "c_confirm_ambiguous").question.question_id is QuestionId.CONFIRM_READBACK
+    assert "14 tháng 10" in summary.utterance
+
+    action = _run(bot, "c_confirm_ambiguous", ["Để xem đã."], start=3)
+
+    assert clinic.appointments["apt_00417"]["status"] != "CONFIRMED"
+    assert clinic.requests == []
+    assert clinic.writes == []
+    assert action.outcome != "CONFIRMED"
 
 
 def test_reference_call_reschedule() -> None:
@@ -153,7 +212,7 @@ def test_refusing_slots_drops_pending_action_without_writing() -> None:
     assert clinic.writes == []
 
 
-def test_cancel_requires_explicit_second_confirmation() -> None:
+def test_cancel_requires_explicit_second_confirmation(monkeypatch) -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_cancel"))
@@ -164,10 +223,18 @@ def test_cancel_requires_explicit_second_confirmation() -> None:
     action = _run(bot, "c_cancel", ["Vâng"], start=4)
     assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
 
+    kinds = []
+    cancel = bot._dialogue._gateway.cancel
+
+    def capture(ctx, reason):
+        kinds.extend((e.kind, e.turn) for e in ctx.evidence)
+        return cancel(ctx, reason)
+
+    monkeypatch.setattr(bot._dialogue._gateway, "cancel", capture)
     action = _run(bot, "c_cancel", ["Hủy giúp tôi"], start=5)
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
-    kinds = [(e.kind, e.turn) for e in _context(bot, "c_cancel").evidence]
+    assert bot.sessions.store.get_session("c_cancel").context == {}
     assert kinds == [("REQUEST", 3), ("CONFIRMATION", 5)]
 
 
@@ -253,6 +320,27 @@ def test_outbound_three_silent_turns_marks_unreachable() -> None:
     assert clinic.appointments["apt_00417"]["attempt_count"] == 1
 
 
+def test_rejected_unreachable_write_does_not_report_success() -> None:
+    clinic = FakeClinicAPI()
+    clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
+    clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_unreachable_rejected"))
+
+    action = _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
+    session = bot.sessions.store.get_session("c_unreachable_rejected")
+    appointment = clinic.appointments["apt_00417"]
+
+    assert appointment["status"] == "SCHEDULED"
+    assert appointment["attempt_count"] == 0
+    assert clinic.writes == []
+    assert session is not None and session.ended
+    assert session.context == {}
+    assert action.outcome != "UNREACHABLE", (
+        f"mutation rejected but BotAction=({action.state}, {action.outcome})"
+    )
+
+
 def test_inbound_silence_transfers_without_booking() -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
@@ -275,7 +363,7 @@ def test_voicemail_ends_unreachable_without_disclosing() -> None:
 def test_two_failed_understandings_transfer() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     bot.start_call(_outbound("c_confused"))
-    action = _run(bot, "c_confused", ["alo", "alo"])
+    action = _run(bot, "c_confused", ["ờ để xem", "ờ để xem"])
     assert action.transfer_reason == "NOT_UNDERSTOOD"
 
 
@@ -326,7 +414,7 @@ def test_extractor_never_sees_patient_identity() -> None:
         assert verify["full_name"] not in dumped and verify["dob"] not in dumped
         assert "pt_3391" not in dumped
     session = bot.sessions.store.get_session("c_private")
-    assert session.context["claimed_name"] == "nguyễn văn bê"
+    assert session.context == {} and session.ended
 
 
 def test_trace_failure_does_not_rerun_committed_turn() -> None:
@@ -339,6 +427,6 @@ def test_trace_failure_does_not_rerun_committed_turn() -> None:
     bot.start_call(_outbound("c_trace_fail"))
     first = _run(bot, "c_trace_fail", ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"])
     assert first.outcome == "CONFIRMED"
-    again = bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
-    assert again == first
+    with pytest.raises(CallEnded):
+        bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

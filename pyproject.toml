@@ -7,13 +7,11 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
-    # TTS ElevenLabs qua WebSocket stream-input (speech/tts/elevenlabs.py); uvicorn[standard] cũng kéo gói này
+    # TTS ElevenLabs qua WebSocket stream-input (inference/tts/providers/elevenlabs.py); uvicorn[standard] cũng kéo gói này
     "websockets>=13",
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
-    # Session store (F-03): nhiều worker dùng chung phiên
-    "psycopg[binary]>=3.2",
-    "psycopg-pool>=3.2",
+    "redis>=5.2,<7",
 ]
 
 [project.optional-dependencies]
@@ -26,11 +24,19 @@ speech-local = [
     "transformers>=4.44",
     "torch>=2.3",
 ]
+speech-zipformer = [
+    "numpy>=1.26",
+    "sherpa-onnx>=1.13",
+    "soundfile>=0.12",
+    "openai>=1.0",
+]
 llm = [
     "google-genai>=1.0",
 ]
 dev = [
+    "fakeredis>=2.26,<3",
     "pytest>=8.0",
+    "pyyaml>=6.0",
     "ruff>=0.6",
 ]
 
@@ -39,7 +45,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/callbot"]
+packages = ["src/callbot", "src/inference", "src/speech"]
 
 [tool.hatch.build]
 # Cài -e: đưa src/ (không phải gốc repo) vào sys.path, để `import callbot` chạy được ngoài pytest
@@ -65,4 +71,4 @@ select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["callbot"]
+known-first-party = ["callbot", "inference", "speech"]

@@ -1,7 +1,8 @@
 """Luồng PDF qua orchestrator thật: tra cứu ở lượt 0, đối chiếu không gọi Mock.
 
 Các case plan T-01 §6 bước 7 định thêm vào `identity_cases.py` (TC_ID_14–17) đặt ở đây để không sửa
-test của A. Nhánh "không có ứng viên -> không hỏi tên, lượt 1 chuyển máy" thuộc T-02 (opening của A).
+test của A. Nhánh "không có ứng viên -> không hỏi tên, lượt 1 chuyển máy" thuộc T-02 (opening của A):
+hai test lượt 0 thất bại chỉ gửi một lượt, vì cuộc gọi đã kết thúc ở lượt 1.
 """
 
 from callbot.engine import CallerInput, CallStart, create_orchestrator
@@ -122,7 +123,7 @@ def test_inbound_two_full_matches_transfers_instead_of_guessing() -> None:
     action = _identity_turns(bot, "c_twin")
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_NOT_FOUND")
-    assert _ctx(bot, "c_twin").patient_id is None
+    assert bot.sessions.store.get_session("c_twin").context == {}
     assert clinic.writes == []
 
 
@@ -146,7 +147,9 @@ def test_outbound_mock_down_at_turn_zero_becomes_system_error_not_identity_faile
     opening = bot.start_call(_outbound("c_down"))
     assert opening.state == "AWAITING_IDENTITY"  # lượt 0 không kết thúc được (Listing 1)
     assert _ctx(bot, "c_down").identity_lookup == "UNAVAILABLE"
-    action = _identity_turns(bot, "c_down")
+    # T-02: không hỏi tên khi không có hồ sơ để đối chiếu; lượt 1 chuyển máy bất kể người gọi nói gì
+    assert _ctx(bot, "c_down").question is None
+    action = bot.handle_turn("c_down", CallerInput(turn=1, text=NAME))
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
 
@@ -158,7 +161,8 @@ def test_unregistered_inbound_caller_never_triggers_a_write() -> None:  # TC_ID_
     bot.start_call(_inbound("c_unreg", "0999999999"))
     ctx = _ctx(bot, "c_unreg")
     assert (ctx.identity_lookup, ctx.identity_reference) == ("NO_CANDIDATES", [])
-    action = _identity_turns(bot, "c_unreg")
+    assert ctx.question is None  # T-02: không hỏi tên
+    action = bot.handle_turn("c_unreg", CallerInput(turn=1, text=NAME))
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.patient_lookups == ["0999999999"]

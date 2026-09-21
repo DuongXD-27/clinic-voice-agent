@@ -2,11 +2,12 @@ import math
 import struct
 
 import pytest
+from pydantic import ValidationError
 
-from callbot.speech import SpeechSettings, STTPipeline
-from callbot.speech.audio import alaw_to_pcm16, decode_wav, encode_wav, mulaw_to_pcm16
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment, Transcript
-from callbot.speech.vad import EnergyFrameClassifier, StreamingVAD
+from speech import SpeechSettings, STTPipeline
+from speech.asr.vad import EnergyFrameClassifier, StreamingVAD
+from speech.audio import alaw_to_pcm16, decode_wav, encode_wav, mulaw_to_pcm16
+from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
 
 
 def _wav(format_tag: int, sample_rate: int, bits: int, frames: bytes, channels: int = 1) -> bytes:
@@ -34,8 +35,22 @@ def _tone(freq_hz: float, rate: int, seconds: float, amplitude: int = 8000) -> b
     )
 
 
-def test_settings_default_to_narrowband() -> None:
-    assert SpeechSettings().sample_rate == NARROWBAND_RATE
+def test_settings_default_to_narrowband(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SAMPLE_RATE", raising=False)
+    assert SpeechSettings(_env_file=None).sample_rate == NARROWBAND_RATE
+
+
+@pytest.mark.parametrize("rate", [8000, 16000])
+def test_settings_sample_rate_from_environment(rate: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SAMPLE_RATE", str(rate))
+    assert SpeechSettings(_env_file=None).sample_rate == rate
+
+
+@pytest.mark.parametrize("rate", ["44100", "invalid", "8000.5"])
+def test_settings_rejects_invalid_sample_rate(rate: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SAMPLE_RATE", rate)
+    with pytest.raises(ValidationError):
+        SpeechSettings(_env_file=None)
 
 
 def test_g711_silence_and_extremes() -> None:
