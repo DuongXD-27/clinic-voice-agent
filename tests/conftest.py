@@ -48,7 +48,7 @@ def client(clinic: FakeClinicAPI, redis_store_factory) -> Iterator[TestClient]:
     """App HTTP với Orchestrator thật trên clinic giả; `with` để chạy lifespan, mỗi test một session store."""
     app = create_app(
         clinic_factory=lambda: clinic,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=redis_store_factory,
     )
     with TestClient(app) as test_client:

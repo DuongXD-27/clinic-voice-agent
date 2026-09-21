@@ -5,8 +5,8 @@ WORKDIR /app
 # Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
 # trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./
-RUN mkdir -p src/callbot src/llm \
-    && touch src/callbot/__init__.py src/llm/__init__.py \
+RUN mkdir -p src/callbot src/inference \
+    && touch src/callbot/__init__.py src/inference/__init__.py \
     && pip install --no-cache-dir . \
     && rm -rf src
 

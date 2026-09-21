@@ -17,7 +17,6 @@ from datetime import date, datetime
 from typing import Any, Optional
 
 from callbot.engine.dialogue import templates as t
-from callbot.engine.dialogue.llm.base import LLMClient
 from callbot.engine.errors import TURN_ABORTING_ERRORS, ClinicWriteRejected, SlotTaken
 from callbot.engine.extraction.schema import (
     INVALID,
@@ -59,12 +58,9 @@ class DialogueManager:
         self,
         gateway: ClinicGateway,
         verifier: IdentityVerifier,
-        llm: Optional[LLMClient] = None,
     ) -> None:
         self._gateway = gateway
         self._verifier = verifier
-        # TODO: dùng LLM để diễn đạt tự nhiên hơn; mọi câu LLM sinh phải qua guardrails.assert_no_clinical_advice
-        self._llm = llm
 
     # --- Mở đầu / kết thúc -----------------------------------------------------
 

@@ -1,7 +1,6 @@
 """Name NER fallback: ground and normalize the provider result into a Field."""
 
 import logging
-from time import perf_counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
@@ -10,8 +9,9 @@ from callbot.engine.extraction.fallback import guard_fallback
 from callbot.engine.extraction.full_name import extract_full_name
 from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
-from llm.gateway import LLMGateway
-from llm.prompt.ner import PROMPT_VERSION, build_messages
+from inference.common.telemetry import InferenceTimer
+from inference.llm.gateway import LLMGateway
+from inference.llm.prompt.ner import PROMPT_VERSION, build_messages
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class NameNER:
         return None
 
     def full_name(self, transcript: str) -> Field[str]:
-        started = perf_counter()
+        timer = InferenceTimer()
         status = "invalid_response"
         reply = None
         try:
@@ -79,7 +79,7 @@ class NameNER:
                     "ner_model": self._gateway.model,
                     "ner_prompt_version": PROMPT_VERSION,
                     "ner_status": status,
-                    "ner_elapsed_ms": (perf_counter() - started) * 1000,
+                    "ner_elapsed_ms": timer.elapsed_ms,
                     "ner_prompt_tokens": reply.prompt_tokens if reply else None,
                     "ner_completion_tokens": reply.completion_tokens if reply else None,
                 },

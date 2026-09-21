@@ -1,18 +1,23 @@
 """Single entry point for configured LLM calls; no implicit retries or failover."""
 
 import json
-from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-import httpx
-
-from llm.base import ProviderName, StructuredProvider, StructuredReply
-from llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig, ProviderConfig
-from llm.providers.gemini import GeminiProvider
-from llm.providers.groq import GroqProvider
-from llm.providers.openai import OpenAIProvider
-from llm.providers.openrouter import OpenRouterProvider
+from inference.common.errors import UnsupportedProviderError
+from inference.common.transport import HttpClientFactory
+from inference.llm.config import (
+    GeminiConfig,
+    GroqConfig,
+    OpenAIConfig,
+    OpenRouterConfig,
+    ProviderConfig,
+)
+from inference.llm.providers.base import ProviderName, StructuredProvider, StructuredReply
+from inference.llm.providers.gemini import GeminiProvider
+from inference.llm.providers.groq import GroqProvider
+from inference.llm.providers.openai import OpenAIProvider
+from inference.llm.providers.openrouter import OpenRouterProvider
 
 
 class LLMGateway:
@@ -67,7 +72,7 @@ def create_gateway(
     provider_name: ProviderName,
     *,
     config: ProviderConfig | None = None,
-    client_factory: Callable[[], httpx.Client] | None = None,
+    client_factory: HttpClientFactory | None = None,
 ) -> LLMGateway:
     registry = {
         "openai": (OpenAIConfig, OpenAIProvider),
@@ -76,7 +81,7 @@ def create_gateway(
         "openrouter": (OpenRouterConfig, OpenRouterProvider),
     }
     if provider_name not in registry:
-        raise ValueError("Unsupported LLM provider")
+        raise UnsupportedProviderError("LLM", provider_name)
     config_type, provider_type = registry[provider_name]
     if config is not None and not isinstance(config, config_type):
         raise ValueError("Configuration does not match the selected provider")

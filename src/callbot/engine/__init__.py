@@ -3,7 +3,6 @@
 from typing import Optional
 
 from callbot.engine.dialogue import DialogueManager
-from callbot.engine.dialogue.llm import create_llm
 from callbot.engine.errors import (
     CallBusy,
     CallConflict,
@@ -25,7 +24,7 @@ from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
-from llm.gateway import create_gateway
+from inference.llm.gateway import create_gateway
 
 
 def _default_session_store() -> SessionStore:
@@ -58,7 +57,7 @@ def create_orchestrator(
             fallback=name_fallback, name_fallback=name_fallback is not None
         ),
         policy=PolicyEngine(settings),
-        dialogue=DialogueManager(gateway, IdentityVerifier(gateway), llm=create_llm(settings)),
+        dialogue=DialogueManager(gateway, IdentityVerifier(gateway)),
         tracer=tracer,
     )
 
