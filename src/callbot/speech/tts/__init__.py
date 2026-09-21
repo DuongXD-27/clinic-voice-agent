@@ -23,24 +23,6 @@ def create_tts(settings: SpeechSettings) -> TTSProvider:
             output_format=settings.elevenlabs_output_format,
             language_code=settings.elevenlabs_language_code or None,
         )
-    if settings.tts_provider == "vbee":
-        if not settings.vbee_access_token:
-            raise ValueError("TTS_PROVIDER=vbee cần VBEE_ACCESS_TOKEN")
-        if not settings.vbee_app_id:
-            raise ValueError("TTS_PROVIDER=vbee cần VBEE_APP_ID")
-        if not settings.vbee_voice_code:
-            raise ValueError("TTS_PROVIDER=vbee cần VBEE_VOICE_CODE")
-        from callbot.speech.tts.vbee import VbeeTTS
-
-        return VbeeTTS(
-            settings.vbee_access_token,
-            settings.vbee_app_id,
-            settings.vbee_voice_code,
-            sample_rate=settings.vbee_sample_rate,
-            speed=settings.vbee_speed,
-            timeout_s=settings.vbee_timeout_s,
-            base_url=settings.vbee_base_url,
-        )
     raise ValueError(f"TTS provider không hỗ trợ: {settings.tts_provider}")
 
 

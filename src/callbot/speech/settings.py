@@ -22,15 +22,7 @@ class SpeechSettings(BaseSettings):
         return value
 
     asr_provider: Literal["gemini", "phowhisper"] = "gemini"
-    tts_provider: Literal["none", "elevenlabs", "vbee"] = "none"
-    # Vbee Realtime API (speech/tts/vbee.py): token + app id lấy trong Vbee Studio
-    vbee_access_token: str = ""
-    vbee_app_id: str = ""
-    vbee_voice_code: str = "hn_female_ngochuyen_full_48k-fhg"
-    vbee_sample_rate: int = 8000
-    vbee_speed: float = 1.0
-    vbee_timeout_s: float = 4.0
-    vbee_base_url: str = "https://api.vbee.vn"
+    tts_provider: Literal["none", "elevenlabs"] = "none"
     # ElevenLabs qua WebSocket stream-input (speech/tts/elevenlabs.py); voice_id lấy từ tài khoản
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = ""

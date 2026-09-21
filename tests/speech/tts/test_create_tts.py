@@ -5,7 +5,6 @@ import pytest
 from callbot.speech.settings import SpeechSettings
 from callbot.speech.tts import NullTTS, create_tts
 from callbot.speech.tts.elevenlabs import ElevenLabsTTS
-from callbot.speech.tts.vbee import VbeeTTS
 
 
 def _settings(**overrides) -> SpeechSettings:
@@ -59,36 +58,6 @@ def test_elevenlabs_empty_language_code_means_autodetect() -> None:
 def test_elevenlabs_missing_config_names_the_variable(overrides: dict, missing: str) -> None:
     with pytest.raises(ValueError, match=missing):
         create_tts(_settings(tts_provider="elevenlabs", **overrides))
-
-
-def test_vbee_builds_provider_from_settings() -> None:
-    tts = create_tts(
-        _settings(
-            tts_provider="vbee",
-            vbee_access_token="tok",
-            vbee_app_id="app",
-            vbee_voice_code="hn_female_ngochuyen_full_48k-fhg",
-            vbee_sample_rate=8000,
-        )
-    )
-    assert isinstance(tts, VbeeTTS)
-    assert tts.name == "vbee" and tts.sample_rate == 8000
-
-
-@pytest.mark.parametrize(
-    "overrides, missing",
-    [
-        ({"vbee_app_id": "app"}, "VBEE_ACCESS_TOKEN"),
-        ({"vbee_access_token": "tok"}, "VBEE_APP_ID"),
-        (
-            {"vbee_access_token": "tok", "vbee_app_id": "app", "vbee_voice_code": ""},
-            "VBEE_VOICE_CODE",
-        ),
-    ],
-)
-def test_vbee_missing_config_names_the_variable(overrides: dict, missing: str) -> None:
-    with pytest.raises(ValueError, match=missing):
-        create_tts(_settings(tts_provider="vbee", **overrides))
 
 
 def test_unknown_provider_rejected_by_settings() -> None:

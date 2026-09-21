@@ -1,7 +1,6 @@
 """TTS-1.1: sinh một câu bằng provider trong .env, ghi WAV 8 kHz, in số đo.
 
     python scripts/tts_say.py "Dạ em xin chào anh chị."
-    python scripts/tts_say.py "..." --provider vbee --voice sg_female_tuongvy_call_44k-fhg
     python scripts/tts_say.py "..." --provider elevenlabs --voice EXAVITQu4vr4xnSDxMaL --out temp/tts/x.wav
 
 `--provider` / `--voice` ghi đè TTS_PROVIDER và mã giọng của provider đó, không sửa .env.
@@ -18,7 +17,7 @@ from callbot.speech.tts import create_tts
 from callbot.speech.tts.base import TTSTiming
 from callbot.speech.tts.errors import TTSError
 
-_VOICE_FIELD = {"elevenlabs": "elevenlabs_voice_id", "vbee": "vbee_voice_code"}
+_VOICE_FIELD = {"elevenlabs": "elevenlabs_voice_id"}
 
 
 def main() -> int:
