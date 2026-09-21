@@ -12,7 +12,7 @@ import pytest
 
 from callbot.engine.dialogue.manager import DialogueManager
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
-from callbot.engine.extraction.schema import VN_TZ
+from callbot.engine.extraction.schema import INVALID, VN_TZ
 from callbot.engine.session.context import CallContext
 from callbot.engine.types import CallStart
 from callbot.engine.verification.identity import (
@@ -169,11 +169,19 @@ def test_TC_IEN_45_two_dobs_without_correction_are_not_selected() -> None:
     assert not isinstance(actual, date)
 
 
-def test_TC_IEN_46_uncertain_dob_requires_product_confidence_policy() -> None:
-    pytest.skip(
-        "BLOCKED_BY_SPEC: no product confidence threshold or policy defines whether "
-        "an uncertainty phrase is sufficient identity evidence"
-    )
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Hình như là 14/03/1978",
+        "Chắc là ngày 14 tháng 3 năm 1978",
+        "14/03/1978 thì phải",
+        "Tôi không nhớ rõ, 14 tháng 3 năm 1978",
+    ],
+)
+def test_TC_IEN_46_uncertain_dob_is_asked_again_not_verified(transcript: str) -> None:
+    # Chính sách đã chốt: người gọi tự báo là không chắc thì hỏi lại, không đưa vào Verifier.
+    # Không có ngưỡng tin cậy nào ở đây — cụm phân vân là tín hiệu duy nhất, và nó không đủ.
+    assert _extract_dob(transcript) == INVALID
 
 
 def test_TC_IEN_47_extracts_the_callers_self_identified_name() -> None:

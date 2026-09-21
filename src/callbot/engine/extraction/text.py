@@ -84,9 +84,19 @@ CompiledPhrases = tuple[tuple[str, re.Pattern[str]], ...]
 class PhraseSet:
     accented: CompiledPhrases
     unaccented: CompiledPhrases
+    both: CompiledPhrases
 
-    def for_text(self, text: str, unaccented: Optional[bool] = None) -> CompiledPhrases:
-        """`unaccented=None`: tự nhận biết từ `text`. Truyền giá trị khi `text` là phần còn lại của câu gốc."""
+    def for_text(
+        self, text: str, unaccented: Optional[bool] = None, *, mixed: bool = False
+    ) -> CompiledPhrases:
+        """`unaccented=None`: tự nhận biết từ `text`. Truyền giá trị khi `text` là phần còn lại của câu gốc.
+
+        `mixed=True`: so từng cụm theo cả hai dạng, cho transcript mà ASR chỉ bỏ dấu một phần
+        ("Dạ toi la Nguyen Van A"). An toàn vì mẫu không dấu chỉ khớp được đúng chuỗi ký tự
+        không dấu; các cụm nguy hiểm khi mất dấu vẫn bị `unaccented_exclude` loại khỏi tập này.
+        """
+        if mixed:
+            return self.both
         if unaccented is None:
             unaccented = is_unaccented(text)
         return self.unaccented if unaccented else self.accented
@@ -103,7 +113,7 @@ def compile_phrases(phrases: Iterable[str], unaccented_exclude: Iterable[str] = 
     if unknown:
         raise ValueError(f"unaccented_exclude không có trong danh sách: {sorted(unknown)}")
     unaccented = {strip_diacritics(p) for p in accented - excluded}
-    return PhraseSet(_compile(accented), _compile(unaccented))
+    return PhraseSet(_compile(accented), _compile(unaccented), _compile(accented | unaccented))
 
 
 def _compile(phrases: set[str]) -> CompiledPhrases:
@@ -112,7 +122,12 @@ def _compile(phrases: set[str]) -> CompiledPhrases:
 
 
 def find_phrase(
-    text: str, phrases: PhraseSet, *, allow_negated: bool = True, unaccented: Optional[bool] = None
+    text: str,
+    phrases: PhraseSet,
+    *,
+    allow_negated: bool = True,
+    unaccented: Optional[bool] = None,
+    mixed: bool = False,
 ) -> Optional[re.Match[str]]:
     """Trả về lần khớp đầu tiên của cụm dài nhất. `text` phải đã qua `clean`.
 
@@ -120,7 +135,7 @@ def find_phrase(
     "không cần gặp nhân viên" loại "gặp nhân viên" thì "nhân viên" cũng không được tính.
     """
     negated: list[tuple[int, int]] = []
-    for _, pattern in phrases.for_text(text, unaccented):
+    for _, pattern in phrases.for_text(text, unaccented, mixed=mixed):
         for match in pattern.finditer(text):
             if allow_negated:
                 return match
@@ -134,10 +149,12 @@ def find_phrase(
 
 
 def find_last_phrase(
-    text: str, phrases: PhraseSet, unaccented: Optional[bool] = None
+    text: str, phrases: PhraseSet, unaccented: Optional[bool] = None, *, mixed: bool = False
 ) -> Optional[re.Match[str]]:
     matches = [
-        m for _, pattern in phrases.for_text(text, unaccented) for m in pattern.finditer(text)
+        m
+        for _, pattern in phrases.for_text(text, unaccented, mixed=mixed)
+        for m in pattern.finditer(text)
     ]
     return max(matches, key=lambda m: m.end()) if matches else None
 
