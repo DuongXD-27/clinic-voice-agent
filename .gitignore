@@ -11,4 +11,8 @@ traces.jsonl
 
 clinic-mock/
 
+# ZipFormer ONNX model assets (~74MB, không commit lên GitHub) — tự tải theo
+# docs/reference/zipformer-model-setup.md, hoặc Dockerfile tự tải lúc build image.
+src/inference/asr/providers/assets/zipformer/
+
 eval/stt-bench/master

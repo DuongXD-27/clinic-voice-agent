@@ -1,8 +1,8 @@
 import re
 from pathlib import Path
 
-from callbot.speech.audio.codec import encode_wav, to_sample_rate
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment
+from speech.audio.codec import encode_wav, to_sample_rate
+from speech.types import NARROWBAND_RATE, AudioSegment
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -16,7 +16,7 @@ class AudioArtifactStore:
     def __init__(
         self, audio_dir: str, public_base_url: str, sample_rate: int = NARROWBAND_RATE
     ) -> None:
-        self._dir = Path(audio_dir)
+        self.directory = Path(audio_dir)
         self._base_url = public_base_url.rstrip("/")
         self._sample_rate = sample_rate
 
@@ -29,4 +29,4 @@ class AudioArtifactStore:
     def path_for(self, call_id: str, turn: int) -> Path:
         if not _SAFE_ID.match(call_id):
             raise ValueError(f"call_id không hợp lệ: {call_id!r}")
-        return self._dir / call_id / f"{turn}.wav"
+        return self.directory / call_id / f"{turn}.wav"

@@ -241,8 +241,8 @@ def test_contract_start_call_accepts_direction_shapes(
     assert response.json()["audio_url"] is None
 
 
-def test_team_scope_start_call_audio_mode_is_not_implemented(client: TestClient) -> None:
-    """F-02 is text-only; the contract still requires audio, so this is a known gap."""
+def test_contract_start_call_audio_mode_returns_audio_url(client: TestClient) -> None:
+    """§4.1.2: mode=audio bắt buộc từ tuần 3 — bot phải trả audio_url, không phải 501."""
     response = client.post(
         "/v1/calls",
         json={
@@ -255,8 +255,9 @@ def test_team_scope_start_call_audio_mode_is_not_implemented(client: TestClient)
             "max_turns": 20,
         },
     )
-    assert response.status_code == 501
-    assert response.json()["detail"]["code"] == "AUDIO_NOT_IMPLEMENTED"
+    assert response.status_code == 200
+    _assert_start_response(response.json(), "c_contract_audio")
+    assert response.json()["audio_url"] is not None
 
 
 @pytest.mark.parametrize(

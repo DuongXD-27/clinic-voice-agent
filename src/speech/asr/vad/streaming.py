@@ -1,7 +1,7 @@
 from typing import Iterable, Iterator
 
-from callbot.speech.types import NARROWBAND_RATE, SAMPLE_WIDTH_BYTES, VadEvent
-from callbot.speech.vad.base import FrameClassifier
+from speech.asr.vad.base import FrameClassifier, VadEvent
+from speech.types import NARROWBAND_RATE, SAMPLE_WIDTH_BYTES
 
 FRAME_MS = 30  # 10/20/30 ms là các khung webrtcvad hỗ trợ ở 8 kHz
 

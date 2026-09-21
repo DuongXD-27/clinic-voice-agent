@@ -1,17 +1,24 @@
-from typing import AsyncIterator, Protocol
+"""Provider-neutral contract used by the ASR gateway."""
 
-from callbot.speech.types import AudioSegment, Transcript, TranscriptEvent
+from dataclasses import dataclass
+from typing import Literal, Protocol
+
+ProviderName = Literal["gemini", "phowhisper", "zipformer"]
+
+
+@dataclass(frozen=True)
+class ASRResult:
+    text: str
+    confidence: float | None = None
 
 
 class ASRProvider(Protocol):
-    name: str
-    # Tần số model cần; provider tự resample từ audio băng hẹp của pipeline nếu khác
+    # Tần số model cần; gateway chỉ nhận audio đã ở đúng tần số này.
     input_sample_rate: int
 
-    def transcribe(self, segment: AudioSegment) -> Transcript:
-        """Nhận dạng trọn một lượt nói — đường chấm điểm qua HTTP."""
-        ...
+    @property
+    def model(self) -> str: ...
 
-    def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
-        """Nhận dạng streaming, trả partial + final — phone leg tuần 6."""
+    def transcribe(self, pcm: bytes) -> ASRResult:
+        """PCM 16-bit little-endian mono, ở `input_sample_rate`, khác rỗng."""
         ...

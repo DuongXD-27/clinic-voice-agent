@@ -352,8 +352,8 @@ Chỉ dùng dữ liệu tổng hợp do chương trình cung cấp, kể cả ki
 | [Identity Verifier](../../src/callbot/engine/verification/identity.py) | T-01 ([evidence](../evidence/t01-identity-verifier.md)): hai pha theo luồng PDF — `prepare()` ở lượt 0 chuẩn hóa số gọi đến, đọc hồ sơ qua Gateway (lần duy nhất), giữ `{patient_id, full_name, dob}` trong `CallContext.identity_reference`; `verify()` đối chiếu không I/O, inbound đòi đúng một hồ sơ khớp cả hai. Nhánh "không có ứng viên → không hỏi tên" chờ T-02 nối `PrepareResult.transfer_reason` vào `opening()`. |
 | [Policy](../../src/callbot/engine/policy/policy_engine.py) | Bộ đếm theo thiết kế IE §6.1; im lặng: outbound `UNREACHABLE`, inbound chuyển máy. Danh tính dùng chung ngưỡng §1.1.5 (IE §6.2); không nhớ / không cung cấp hai lần → `IDENTITY_FAILED`; tra cứu lượt 0 thất bại → chuyển máy ở lượt 1. |
 | [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. F-05 ([evidence](../evidence/f05-clinic-gateway.md)): đọc hết trang, chuẩn hóa slot/patient/appointment, lỗi ba lớp không lộ `httpx`, `FakeClinicAPI` hành xử như mock, contract test fake ↔ mock thật. |
-| [Speech pipeline](../../src/callbot/speech/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
-| [TTS](../../src/inference/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
+| [Speech pipeline](../../src/speech/asr/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
+| [TTS](../../src/inference/tts/base.py) | Có interface và OpenAI TTS (`TTS_PROVIDER=openai`). |
 | Phone Adapter | Chưa có transport điện thoại trong repo. |
 | Output Guard | Là phần của thiết kế đích; chưa có một bước kiểm tra đầu ra tập trung trong Orchestrator. |
 

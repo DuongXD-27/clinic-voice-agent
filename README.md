@@ -47,8 +47,8 @@ src/callbot/               # một core, hai transport (§1.3.2)
 src/inference/             # các model inference và hạ tầng dùng chung
   common/                  # lỗi, telemetry và HTTP transport dùng chung
   llm/                     # gateway, config, prompt và provider LLM
-  asr/                     # contract ASR và provider Gemini/PhoWhisper
-  tts/                     # contract TTS và provider Null
+  asr/                     # contract ASR và provider Gemini/PhoWhisper/ZipFormer
+  tts/                     # contract TTS và provider Null/OpenAI
 tests/                     # cùng cấu trúc với src/callbot: engine/, speech/, transports/http/
 ```
 
@@ -84,6 +84,19 @@ curl -X POST http://localhost:8000/v1/calls \
   -H "Content-Type: application/json" \
   -d '{"call_id":"c_demo","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'
 ```
+
+### Giao diện demo hai endpoint
+
+Sau khi server chạy, mở `http://localhost:8000/demo/`. Trang demo gọi trực tiếp
+`POST /v1/calls` và `POST /v1/calls/{call_id}/turn`, hỗ trợ cả hai chế độ:
+
+- `text`: nhập lời người gọi rồi gửi từng turn;
+- `audio`: thu microphone trong browser, mã hóa WAV PCM16 mono 16 kHz, upload qua
+  `PUT /demo-api/audio/{call_id}/{turn}.wav`, rồi truyền URL WAV vào `audio_url`.
+
+Route `/demo-api/*` chỉ là tiện ích test thủ công vì browser tạo `blob:` URL mà
+backend không thể tải. Harness chấm điểm vẫn dùng đúng hai endpoint contract và tự
+host audio đầu vào của nó. Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
 
 ## Chạy test & lint
 
@@ -149,5 +162,5 @@ URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối)
 
 ## Trạng thái hiện tại
 
-- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04); `mode=audio` trả 501.
+- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04). `mode=audio` (§4.1.2) đã nối vào cùng đường: ASR self-host ZipFormer 68M qua `sherpa-onnx` (`ASR_PROVIDER=zipformer`), TTS qua OpenAI (`TTS_PROVIDER=openai`), audio phản hồi tự phục vụ qua `/audio/{call_id}/{turn}.wav`. Core (`engine/`) không đổi — không biết khái niệm audio/text, xem `src/speech/bundle.py`.
 - Phiên chỉ lưu tạm trên Redis không persistence, chạy được nhiều worker; nội dung khách hàng bị xóa khi Clinic ghi thành công, cuộc gọi kết thúc hoặc TTL hết hạn. Lệnh ghi Clinic có journal tạm để chặn ghi trùng khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).

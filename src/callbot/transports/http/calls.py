@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Callable
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any, Optional, TypeVar
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,12 +20,15 @@ from callbot.engine import (
     TurnConflict,
     TurnOutOfOrder,
 )
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     StartCallRequest,
     StartCallResponse,
     TurnRequest,
     TurnResponse,
 )
+from speech.bundle import SpeechBundle
+from speech.types import Transcript
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +42,17 @@ def get_orchestrator(request: Request) -> CallOrchestrator:
     return request.app.state.orchestrator
 
 
+def get_speech(request: Request) -> SpeechBundle:
+    return request.app.state.speech
+
+
+def get_call_mode(request: Request) -> CallModeStore:
+    return request.app.state.call_mode
+
+
 Orchestrator = Annotated[CallOrchestrator, Depends(get_orchestrator)]
+Speech = Annotated[SpeechBundle, Depends(get_speech)]
+CallMode = Annotated[CallModeStore, Depends(get_call_mode)]
 
 
 def _error(status_code: int, code: str, message: str, **extra: Any) -> HTTPException:
@@ -87,7 +100,8 @@ def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
         logger.warning("Clinic mock lỗi khi xử lý %s: %s", call_id, type(exc).__name__)
         raise _error(502, "UPSTREAM_ERROR", "Clinic API trả lỗi") from exc
     except Exception as exc:
-        logger.error("Lỗi ngoài dự kiến khi xử lý %s", call_id)
+        # Chỉ ghi tên lớp exception: nội dung có thể chứa transcript hoặc phản hồi của provider
+        logger.error("Lỗi ngoài dự kiến khi xử lý %s: %s", call_id, type(exc).__name__)
         raise _error(500, "INTERNAL_ERROR", "Lỗi hệ thống") from exc
 
 
@@ -95,11 +109,9 @@ def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
 def start_call(
     payload: StartCallRequest,
     orchestrator: Orchestrator,
+    speech: Speech,
+    call_mode: CallMode,
 ) -> StartCallResponse:
-    if payload.mode == "audio":
-        # Chặn trước khi mở session: chưa có STT/TTS nối vào đường HTTP
-        raise _error(501, "AUDIO_NOT_IMPLEMENTED", "mode=audio chưa được hỗ trợ")
-
     call = CallStart(
         call_id=payload.call_id,
         direction=payload.direction,
@@ -108,11 +120,20 @@ def start_call(
         locale=payload.locale,
         max_turns=payload.max_turns,
     )
-    action = _run_engine(payload.call_id, lambda: orchestrator.start_call(call))
+
+    def _open() -> tuple:
+        action = orchestrator.start_call(call)
+        audio_url = None
+        if payload.mode == "audio":
+            call_mode.set_audio(payload.call_id)
+            audio_url = _synthesize(speech, payload.call_id, 0, action.utterance)
+        return action, audio_url
+
+    action, audio_url = _run_engine(payload.call_id, _open)
     return StartCallResponse(
         call_id=payload.call_id,
         utterance=action.utterance,
-        audio_url=None,
+        audio_url=audio_url,
         state=action.state,
         turn=0,
     )
@@ -123,23 +144,55 @@ def call_turn(
     call_id: str,
     payload: TurnRequest,
     orchestrator: Orchestrator,
+    speech: Speech,
+    call_mode: CallMode,
 ) -> TurnResponse:
-    # Session audio không mở được (501 ở trên) nên mọi cuộc gọi đang có đều là text mode
-    if payload.audio_url is not None:
+    is_audio = call_mode.is_audio(call_id)
+    if is_audio and payload.text is not None:
+        raise _error(422, "TEXT_NOT_ALLOWED", "Cuộc gọi audio mode không nhận text")
+    if not is_audio and payload.audio_url is not None:
         raise _error(422, "AUDIO_URL_NOT_ALLOWED", "Cuộc gọi text mode không nhận audio_url")
 
-    # Giữ nguyên text và silence_ms: engine tự xác định im lặng và so khớp khi gửi lại lượt
-    caller = CallerInput(
-        turn=payload.turn,
-        text=payload.text,
-        silence_ms=payload.silence_ms,
-        audio_url=payload.audio_url,
-    )
-    action = _run_engine(call_id, lambda: orchestrator.handle_turn(call_id, caller))
+    def _turn() -> tuple:
+        text = payload.text
+        confidence = None
+        if payload.audio_url is not None:
+            segment = speech.audio_loader(payload.audio_url)
+            transcript: Transcript = speech.asr.transcribe(segment)
+            text = transcript.text
+            confidence = transcript.confidence
+        # silence_ms giữ nguyên giá trị harness gửi (§1.1.7) — không suy diễn lại từ ASR
+        caller = CallerInput(
+            turn=payload.turn,
+            text=text,
+            silence_ms=payload.silence_ms,
+            audio_url=payload.audio_url,
+            asr_confidence=confidence,
+        )
+        action = orchestrator.handle_turn(call_id, caller)
+        audio_url = (
+            _synthesize(speech, call_id, payload.turn, action.utterance) if is_audio else None
+        )
+        return action, audio_url
+
+    action, audio_url = _run_engine(call_id, _turn)
     return TurnResponse(
         utterance=action.utterance,
-        audio_url=None,
+        audio_url=audio_url,
         state=action.state,
         ended=action.ended,
         outcome=action.outcome,
     )
+
+
+def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:
+    # Lượt đã ghi vào session: TTS lỗi chỉ mất audio, vẫn trả utterance (audio_url=None).
+    # Trả 500 ở đây khiến client gửi lại một lượt đã được engine nhận.
+    try:
+        segment = speech.tts.synthesize(text)
+    except Exception as exc:
+        logger.warning("TTS lỗi khi xử lý %s lượt %s: %s", call_id, turn, type(exc).__name__)
+        return None
+    if segment is None:
+        return None
+    return speech.audio_store.save(call_id, turn, segment)

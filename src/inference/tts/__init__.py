@@ -1,20 +1,6 @@
-"""Text-to-speech contracts, factories, and providers."""
+"""TTS gateway: nhận text, trả PCM của provider — không xử lý audio."""
 
-from typing import Protocol
+from inference.tts.base import ProviderName, TTSProvider, TTSResult
+from inference.tts.gateway import TTSGateway, create_tts_gateway
 
-from inference.common.errors import UnsupportedProviderError
-from inference.tts.base import TTSProvider
-from inference.tts.providers.null import NullTTS
-
-
-class TTSSettings(Protocol):
-    tts_provider: str
-
-
-def create_tts(settings: TTSSettings) -> TTSProvider:
-    if settings.tts_provider == "none":
-        return NullTTS()
-    raise UnsupportedProviderError("TTS", settings.tts_provider)
-
-
-__all__ = ["NullTTS", "TTSProvider", "TTSSettings", "create_tts"]
+__all__ = ["ProviderName", "TTSGateway", "TTSProvider", "TTSResult", "create_tts_gateway"]

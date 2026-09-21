@@ -1,7 +1,5 @@
-from typing import AsyncIterator
-
-from callbot.speech.audio.codec import to_sample_rate
-from callbot.speech.types import WIDEBAND_RATE, AudioSegment, Transcript, TranscriptEvent
+from inference.asr.base import ASRResult
+from inference.asr.config import PhoWhisperConfig
 
 
 class PhoWhisperASR:
@@ -12,32 +10,26 @@ class PhoWhisperASR:
     audio điện thoại của team trước khi chốt (ZipFormer đã vượt PhoWhisper trên tiếng Việt).
     """
 
-    name = "phowhisper"
-    input_sample_rate = WIDEBAND_RATE
+    input_sample_rate = 16_000
 
-    def __init__(self, model: str) -> None:
-        self._model = model
+    def __init__(self, config: PhoWhisperConfig) -> None:
+        self._config = config
         self._pipe = None
+
+    @property
+    def model(self) -> str:
+        return self._config.model
 
     def _get_pipe(self):
         if self._pipe is None:
             from transformers import pipeline  # pip install -e ".[speech-local]"
 
-            self._pipe = pipeline("automatic-speech-recognition", model=self._model)
+            self._pipe = pipeline("automatic-speech-recognition", model=self._config.model)
         return self._pipe
 
-    def transcribe(self, segment: AudioSegment) -> Transcript:
+    def transcribe(self, pcm: bytes) -> ASRResult:
         import numpy as np
 
-        segment = to_sample_rate(segment, self.input_sample_rate)
-        samples = np.frombuffer(segment.pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        if samples.size == 0:
-            return Transcript(is_silence=True)
-        output = self._get_pipe()({"raw": samples, "sampling_rate": segment.sample_rate})
-        text = output.get("text", "").strip()
-        return Transcript(text=text, is_silence=not text)
-
-    async def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
-        # TODO: Whisper không streaming thật — gom đoạn theo VAD rồi transcribe từng đoạn
-        raise NotImplementedError
-        yield  # pragma: no cover
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        output = self._get_pipe()({"raw": samples, "sampling_rate": self.input_sample_rate})
+        return ASRResult(text=output.get("text", "").strip())

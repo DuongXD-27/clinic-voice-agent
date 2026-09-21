@@ -1,9 +1,9 @@
-from typing import Literal
-
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from callbot.speech.types import NARROWBAND_RATE, SampleRate
+from inference.asr import ProviderName as ASRProviderName
+from inference.tts import ProviderName as TTSProviderName
+from speech.types import NARROWBAND_RATE, SampleRate
 
 
 class SpeechSettings(BaseSettings):
@@ -15,17 +15,14 @@ class SpeechSettings(BaseSettings):
 
     @field_validator("sample_rate", mode="before")
     @classmethod
-    def parse_sample_rate(cls, value: object) -> object:
-        # Environment variables and dotenv values arrive as strings.
-        if isinstance(value, str) and value in {"8000", "16000"}:
-            return int(value)
-        return value
+    def _coerce_sample_rate(cls, value: object) -> object:
+        # pydantic không tự coerce string "8000" từ .env thành Literal[int] — ép tay.
+        return int(value) if isinstance(value, str) else value
 
-    asr_provider: Literal["gemini", "phowhisper"] = "gemini"
-    tts_provider: Literal["none"] = "none"
-    gemini_api_key: str = ""
-    gemini_asr_model: str = "gemini-2.5-flash"
-    phowhisper_model: str = "vinai/PhoWhisper-large"
+    # Chỉ chọn provider; model/API key của từng provider do inference.asr.config /
+    # inference.tts.config đọc từ env (GEMINI_ASR_MODEL, ZIPFORMER_*_PATH, OPENAI_TTS_MODEL...).
+    asr_provider: ASRProviderName = "gemini"
+    tts_provider: TTSProviderName = "openai"
 
     vad_rms_threshold: float = 500.0
     vad_end_silence_ms: int = 600

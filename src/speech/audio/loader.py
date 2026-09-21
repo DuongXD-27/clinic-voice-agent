@@ -1,7 +1,7 @@
 import httpx
 
-from callbot.speech.audio.codec import decode_wav
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment
+from speech.audio.codec import decode_wav
+from speech.types import NARROWBAND_RATE, AudioSegment
 
 
 def load_from_url(

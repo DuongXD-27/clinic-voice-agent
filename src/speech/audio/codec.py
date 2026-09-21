@@ -4,8 +4,8 @@ import io
 import struct
 import wave
 
-from callbot.speech.audio.g711 import alaw_to_pcm16, mulaw_to_pcm16
-from callbot.speech.types import CHANNELS, NARROWBAND_RATE, SAMPLE_WIDTH_BYTES, AudioSegment
+from speech.audio.g711 import alaw_to_pcm16, mulaw_to_pcm16
+from speech.types import CHANNELS, NARROWBAND_RATE, SAMPLE_WIDTH_BYTES, AudioSegment
 
 _FORMAT_PCM = 1
 _FORMAT_ALAW = 6

@@ -2,16 +2,16 @@
 
 from typing import AsyncIterator, Optional
 
-from callbot.speech.audio.codec import to_sample_rate
-from callbot.speech.audio.loader import load_from_url
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment, Transcript, TranscriptEvent
-from callbot.speech.vad.streaming import StreamingVAD, split_frames
-from inference.asr.base import ASRProvider
+from speech.asr.recognizer import Recognizer
+from speech.asr.vad.streaming import StreamingVAD, split_frames
+from speech.audio.codec import to_sample_rate
+from speech.audio.loader import load_from_url
+from speech.types import NARROWBAND_RATE, AudioSegment, Transcript, TranscriptEvent
 
 
 class STTPipeline:
     def __init__(
-        self, asr: ASRProvider, vad: StreamingVAD, sample_rate: int = NARROWBAND_RATE
+        self, asr: Recognizer, vad: StreamingVAD, sample_rate: int = NARROWBAND_RATE
     ) -> None:
         self._asr = asr
         self._vad = vad
@@ -43,7 +43,8 @@ class STTPipeline:
     async def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
         """Phone leg (§1.3.2): adapter giải mã G.711 (audio.g711) rồi đẩy frame PCM 8 kHz vào đây.
 
-        TODO: VAD streaming + barge-in (dừng TTS, dừng LLM, giữ partial, reset lượt).
+        TODO: VAD streaming + barge-in (dừng TTS, dừng LLM, giữ partial, reset lượt). Chưa
+        provider nào có ASR streaming (ZipFormer hiện là bản export offline).
         """
-        async for event in self._asr.stream(frames):
-            yield event
+        raise NotImplementedError
+        yield  # pragma: no cover

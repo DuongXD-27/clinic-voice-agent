@@ -24,6 +24,7 @@ from callbot.engine.errors import (
     SlotTaken,
     WriteOutcomeUnknown,
 )
+from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -176,6 +177,12 @@ class DialogueManager:
             )
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
 
+        opening = ctx.question is not None and ctx.question.turn == 0
+        if ask_name and opening and is_greeting(ex.transcript):
+            # "Alo" đáp câu chào mở đầu: chào lại, không tính §1.1.5. `_ask` đổi lượt của câu hỏi
+            # nên chỉ chào lại một lần; "alo" tiếp theo là chưa hiểu như cũ.
+            text = t.greeting_back(ctx.call.direction)
+            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         if not ask_name and dob_invalid:
             # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
             return self._not_understood(ctx, question, t.ASK_DOB_INVALID)

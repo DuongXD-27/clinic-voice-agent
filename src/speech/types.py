@@ -24,12 +24,6 @@ class AudioSegment:
 
 
 @dataclass(frozen=True)
-class VadEvent:
-    kind: Literal["speech_start", "speech", "speech_end"]
-    pcm: bytes = b""
-
-
-@dataclass(frozen=True)
 class TranscriptEvent:
     """Một event từ ASR streaming — partial (chưa chốt) hoặc final."""
 

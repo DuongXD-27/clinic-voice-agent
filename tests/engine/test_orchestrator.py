@@ -363,7 +363,7 @@ def test_voicemail_ends_unreachable_without_disclosing() -> None:
 def test_two_failed_understandings_transfer() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     bot.start_call(_outbound("c_confused"))
-    action = _run(bot, "c_confused", ["alo", "alo"])
+    action = _run(bot, "c_confused", ["ờ để xem", "ờ để xem"])
     assert action.transfer_reason == "NOT_UNDERSTOOD"
 
 

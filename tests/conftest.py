@@ -7,8 +7,10 @@ from fastapi.testclient import TestClient
 
 import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
 from tests.engine.fake_clinic import FakeClinicAPI
+from tests.transports.http.fakes import make_speech_bundle
 
 
 @pytest.fixture(autouse=True)
@@ -44,12 +46,22 @@ def clinic() -> FakeClinicAPI:
 
 
 @pytest.fixture
-def client(clinic: FakeClinicAPI, redis_store_factory) -> Iterator[TestClient]:
-    """App HTTP với Orchestrator thật trên clinic giả; `with` để chạy lifespan, mỗi test một session store."""
+def client(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> Iterator[TestClient]:
+    """App HTTP với Orchestrator thật trên clinic giả; `with` để chạy lifespan, mỗi test một session store.
+
+    speech_factory/call_mode_factory dùng fake + fakeredis — không được để một `.env`
+    dev thật (Gemini/OpenAI key) biến test thường thành gọi API thật lúc warm-up (§ cùng
+    lý do offline_name_fallback ở trên tồn tại).
+    """
+    call_mode_client = fakeredis.FakeRedis(server=redis_server, decode_responses=True)
     app = create_app(
         clinic_factory=lambda: clinic,
         engine_settings=EngineSettings(),
         session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path),
+        call_mode_factory=lambda: CallModeStore(call_mode_client, key_prefix=f"test:{uuid4().hex}"),
     )
     with TestClient(app) as test_client:
         yield test_client

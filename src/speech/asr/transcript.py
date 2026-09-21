@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from callbot.speech.types import Transcript, TranscriptEvent
+from speech.types import Transcript, TranscriptEvent
 
 
 @dataclass

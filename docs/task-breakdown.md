@@ -60,7 +60,7 @@ Nguyên tắc ranh giới:
 
 | ID | Task | Owner | Công việc chi tiết | Điều kiện hoàn thành |
 | --- | --- | --- | --- | --- |
-| S-01 | STT qua HTTP | A | Nối tải audio, chuẩn hóa và STT (`speech/pipeline.py`); đưa transcript vào core; phân biệt silence với lỗi nhận dạng; xử lý tải lỗi và timeout. | Request audio dùng **cùng core nghiệp vụ với text**. |
+| S-01 | STT qua HTTP | A | Nối tải audio, chuẩn hóa và STT (`speech/asr/pipeline.py`); đưa transcript vào core; phân biệt silence với lỗi nhận dạng; xử lý tải lỗi và timeout. | Request audio dùng **cùng core nghiệp vụ với text**. |
 | S-02 | TTS và audio response | A | Tích hợp TTS thật cho mở cuộc gọi và từng turn; sinh từ đúng utterance; lưu audio; bảo đảm `audio_url` phục vụ được **trước khi** trả response. | Audio tải được ngay, đọc đúng nội dung phản hồi. |
 | S-03 | Ngân sách latency và chi phí | A | Đo thời gian từng bước và toàn lượt gồm tải audio; đặt timeout; ghi chi phí token/audio; tối ưu các bước gây chậm. | Có số liệu p95, chi phí/phiên và kiểm tra **giới hạn phản hồi 8 giây**. |
 

@@ -1,7 +1,8 @@
-from typing import AsyncIterator
+import io
+import wave
 
-from callbot.speech.audio.codec import encode_wav
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment, Transcript, TranscriptEvent
+from inference.asr.base import ASRResult
+from inference.asr.config import GeminiASRConfig
 
 TRANSCRIBE_PROMPT = (
     "Chép lại chính xác lời người nói tiếng Việt trong đoạn ghi âm cuộc gọi điện thoại. "
@@ -9,37 +10,45 @@ TRANSCRIBE_PROMPT = (
 )
 
 
-class GeminiASR:
-    name = "gemini"
-    # Gemini nhận wav ở tần số bất kỳ — gửi thẳng 8 kHz, không upsample (payload nhỏ hơn)
-    input_sample_rate = NARROWBAND_RATE
+def _wav(pcm: bytes, sample_rate: int) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as writer:
+        writer.setnchannels(1)
+        writer.setsampwidth(2)
+        writer.setframerate(sample_rate)
+        writer.writeframes(pcm)
+    return buffer.getvalue()
 
-    def __init__(self, api_key: str, model: str) -> None:
-        self._api_key = api_key
-        self._model = model
+
+class GeminiASR:
+    # Gemini nhận wav ở tần số bất kỳ — gửi thẳng 8 kHz, không upsample (payload nhỏ hơn)
+    input_sample_rate = 8_000
+
+    def __init__(self, config: GeminiASRConfig) -> None:
+        self._config = config
         self._client = None
+
+    @property
+    def model(self) -> str:
+        return self._config.model
 
     def _get_client(self):
         if self._client is None:
             from google import genai  # pip install -e ".[speech]"
 
-            self._client = genai.Client(api_key=self._api_key)
+            self._client = genai.Client(api_key=self._config.api_key.get_secret_value())
         return self._client
 
-    def transcribe(self, segment: AudioSegment) -> Transcript:
+    def transcribe(self, pcm: bytes) -> ASRResult:
         from google.genai import types
 
         response = self._get_client().models.generate_content(
-            model=self._model,
+            model=self._config.model,
             contents=[
                 TRANSCRIBE_PROMPT,
-                types.Part.from_bytes(data=encode_wav(segment), mime_type="audio/wav"),
+                types.Part.from_bytes(
+                    data=_wav(pcm, self.input_sample_rate), mime_type="audio/wav"
+                ),
             ],
         )
-        text = (response.text or "").strip()
-        return Transcript(text=text, is_silence=not text)
-
-    async def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
-        # TODO: Gemini Live API — kiểm tra tần số PCM Live API nhận, upsample frame 8 kHz nếu cần
-        raise NotImplementedError
-        yield  # pragma: no cover
+        return ASRResult(text=(response.text or "").strip())
