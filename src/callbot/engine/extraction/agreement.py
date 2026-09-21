@@ -11,6 +11,11 @@ Ngưỡng AGREE đặt theo HÀNH ĐỘNG mà câu trả lời mở khóa, khôn
 
 CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): "dạ" đáp lễ phép không bao giờ được hủy lịch.
 Tín hiệu mâu thuẫn ("thôi hủy đi", "không, hủy đi") -> UNCLEAR, Dialogue hỏi lại bằng câu A/B.
+Ngập ngừng ("để xem", "chắc là được", "có lẽ") -> UNCLEAR ở mọi câu hỏi xác nhận, kể cả khi có "vâng" (T-04).
+
+"Giữ lịch" nghĩa ngược nhau theo câu hỏi: ở CANCEL_RECONFIRM / SLOT_READBACK là từ chối hủy / đổi;
+ở câu hỏi đến khám (CONFIRM_READBACK, ASK_ATTENDANCE) là khẳng định. "Không hủy" ở câu hỏi đến khám
+chỉ là không muốn hủy — không phải từ chối đến khám (T-04).
 
 Transcript không dấu lệch thêm về UNCLEAR: bỏ các từ đáp lễ và từ khẳng định có bản không dấu trùng
 nghĩa khác ("da" = dạ/đã, "co" = có/cô, "dung" = đúng/đừng/dùng). "dung" đứng một mình -> UNCLEAR,
@@ -34,35 +39,57 @@ from callbot.engine.extraction.text import (
 _AGREE_IDIOMS = compile_phrases(
     ["không sao", "không vấn đề gì", "không có gì", "không sao đâu", "không vấn đề"]
 )
+_REFUSE_COMMON = [
+    "không",
+    "thôi",
+    "để sau",
+    "chưa",
+    "không đồng ý",
+    "sai",
+    "sai rồi",
+    "không phải",
+    "không được",
+    "không đúng",
+    "đừng",
+    "khoan",
+    "từ từ",
+    "để tôi nghĩ",
+    "suy nghĩ lại",
+    "không muốn",
+    "nhầm",
+    "chưa được",
+    "để khi khác",
+    "thôi khỏi",
+]
+# Từ chối hủy / đổi: REFUSE ở câu hỏi hủy / chọn slot; ở câu hỏi đến khám xem _KEEP và _NOT_CANCEL
+_KEEP_WORDS = ["giữ lịch", "giữ nguyên", "giữ nguyên lịch", "vẫn giữ lịch"]
+_NOT_CANCEL_WORDS = ["không hủy", "không hủy nữa", "đừng hủy"]
+_REFUSE_UNACCENTED_EXCLUDE = ["đừng", "không đúng"]  # "dung" mơ hồ -> luật riêng bên dưới
 _REFUSE = compile_phrases(
+    [*_REFUSE_COMMON, *_KEEP_WORDS, *_NOT_CANCEL_WORDS],
+    unaccented_exclude=[*_REFUSE_UNACCENTED_EXCLUDE, "đừng hủy"],
+)
+_ATTENDANCE_REFUSE = compile_phrases(_REFUSE_COMMON, unaccented_exclude=_REFUSE_UNACCENTED_EXCLUDE)
+_KEEP = compile_phrases(_KEEP_WORDS)
+_NOT_CANCEL = compile_phrases(_NOT_CANCEL_WORDS, unaccented_exclude=["đừng hủy"])
+# Ngập ngừng: người gọi chưa quyết, dù câu có "vâng" / "được" (T-04). Không có "chắc" đứng một mình:
+# "chắc chắn" là khẳng định.
+_HEDGE = compile_phrases(
     [
-        "không",
-        "thôi",
-        "để sau",
-        "chưa",
-        "không hủy",
-        "không hủy nữa",
-        "đừng hủy",
-        "giữ lịch",
-        "giữ nguyên",
-        "không đồng ý",
-        "sai",
-        "sai rồi",
-        "không phải",
-        "không được",
-        "không đúng",
-        "đừng",
-        "khoan",
-        "từ từ",
-        "để tôi nghĩ",
-        "suy nghĩ lại",
-        "không muốn",
-        "nhầm",
-        "chưa được",
-        "để khi khác",
-        "thôi khỏi",
-    ],
-    unaccented_exclude=["đừng hủy", "đừng", "không đúng"],  # "dung" mơ hồ -> luật riêng bên dưới
+        "để xem",
+        "để tôi xem",
+        "để em xem",
+        "xem đã",
+        "xem lại",
+        "chắc là",
+        "chắc vậy",
+        "có lẽ",
+        "không chắc",
+        "chưa chắc",
+        "chưa biết",
+        "tính sau",
+        "để tôi hỏi",
+    ]
 )
 _POLITE = compile_phrases(
     ["vâng", "dạ", "ừ", "ờ", "ừm", "ạ", "à", "vâng ạ", "dạ vâng", "ừ ừ"],
@@ -132,6 +159,9 @@ _ACCENTED_WORDS = _WordSets(_TAG_FINALS, _TRAILING_PARTICLES, _POLITE_WORDS, _RE
 _UNACCENTED_WORDS = _ACCENTED_WORDS.unaccented()
 
 
+_ATTENDANCE_QUESTIONS = frozenset({QuestionId.CONFIRM_READBACK, QuestionId.ASK_ATTENDANCE})
+
+
 @dataclass(frozen=True)
 class _Cues:
     refuse: Optional[str]
@@ -140,10 +170,19 @@ class _Cues:
     polite: Optional[str]
     cancel_verb: Optional[str]
     slot_action: Optional[str]
+    not_cancel: Optional[str] = (
+        None  # "không hủy" ở câu hỏi đến khám: không phải từ chối, chưa phải đồng ý
+    )
 
 
-def extract_agreement(transcript: str, question_id: QuestionId) -> Field[Agreement]:
-    """Chỉ gọi khi `question_id` thuộc CONFIRMATION_QUESTIONS; kết quả không mang sang lượt sau."""
+def extract_agreement(
+    transcript: str, question_id: QuestionId, *, attendance: Optional[str] = None
+) -> Field[Agreement]:
+    """Chỉ gọi khi `question_id` thuộc CONFIRMATION_QUESTIONS; kết quả không mang sang lượt sau.
+
+    `attendance`: cụm intent CONFIRM trong câu ("tôi sẽ đến", "xác nhận"). Ở câu hỏi đến khám đó là
+    đồng ý (contract Bảng 1: "states or agrees they will attend") — nhưng chỉ sau mọi chặn bên dưới.
+    """
     text = clean(transcript)
     if not text:
         return Field.nothing(Agreement.UNCLEAR)
@@ -165,27 +204,39 @@ def extract_agreement(transcript: str, question_id: QuestionId) -> Field[Agreeme
     if contrast is not None:
         # "vâng, nhưng mà tôi muốn đổi giờ" — phần sau "nhưng" mới là ý chính
         return Field(Agreement.UNCLEAR, matched, span=contrast.group(0))
+    hedge = find_phrase(text, _HEDGE, unaccented=unaccented)
+    if hedge is not None:
+        # "ờ để xem", "chắc là được": người gọi chưa quyết — không mở khóa lệnh ghi
+        return Field(Agreement.UNCLEAR, matched, span=hedge.group(0))
 
-    cues = _find_cues(text, unaccented)
-    positive = cues.idiom or cues.affirm or cues.cancel_verb or cues.slot_action
+    attending = question_id in _ATTENDANCE_QUESTIONS
+    cues = _find_cues(text, unaccented, attending)
+    stated = attendance if attending else None
+    positive = cues.idiom or cues.affirm or cues.cancel_verb or cues.slot_action or stated
     if cues.refuse and positive:
         return Field(Agreement.UNCLEAR, matched, span=text)
     if cues.refuse:
         return Field(Agreement.REFUSE, matched, span=cues.refuse)
 
-    span = _agree_span(question_id, cues)
+    span = _agree_span(question_id, cues) or stated
     if span is not None:
         return Field(Agreement.AGREE, matched, span=span)
-    if cues.polite or positive:
+    signal = cues.polite or positive or cues.not_cancel
+    if signal:
         # Có tín hiệu nhưng dưới ngưỡng của hành động -> UNCLEAR có chủ đích, không gọi tuyến sau
-        return Field(Agreement.UNCLEAR, matched, span=cues.polite or positive)
+        return Field(Agreement.UNCLEAR, matched, span=signal)
     return Field.nothing(Agreement.UNCLEAR)
 
 
-def _find_cues(text: str, unaccented: bool) -> _Cues:
+def _find_cues(text: str, unaccented: bool, attending: bool = False) -> _Cues:
     idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
     rest = remove_spans(text, [idiom] if idiom else [])
-    refuse = find_phrase(rest, _REFUSE, unaccented=unaccented)
+    not_cancel = None
+    if attending:
+        # Bỏ "không hủy" trước khi tìm từ chối, để "không" trong đó không thành REFUSE
+        not_cancel = find_phrase(rest, _NOT_CANCEL, unaccented=unaccented)
+        rest = remove_spans(rest, [not_cancel] if not_cancel else [])
+    refuse = find_phrase(rest, _ATTENDANCE_REFUSE if attending else _REFUSE, unaccented=unaccented)
     rest_positive = remove_spans(rest, [refuse] if refuse else [])
 
     def positive(phrases: PhraseSet, allow_negated: bool = False) -> Optional[str]:
@@ -196,10 +247,11 @@ def _find_cues(text: str, unaccented: bool) -> _Cues:
     return _Cues(
         refuse=_group(refuse),
         idiom=_group(idiom),
-        affirm=positive(_AFFIRM),
+        affirm=positive(_AFFIRM) or (positive(_KEEP) if attending else None),
         polite=positive(_POLITE, allow_negated=True),
         cancel_verb=positive(_CANCEL_VERB),
         slot_action=positive(_SLOT_ACTION),
+        not_cancel=_group(not_cancel),
     )
 
 
