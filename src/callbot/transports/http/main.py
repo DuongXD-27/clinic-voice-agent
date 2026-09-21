@@ -24,6 +24,7 @@ from callbot.engine.tools.clinic_mock_client import ClinicMockClient
 from callbot.speech.settings import SpeechSettings
 from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.config import settings
+from callbot.transports.http.demo import router as demo_router
 from callbot.transports.http.speech import CallModeStore, SpeechBundle, build_speech_bundle, warm_up
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,9 @@ def create_app(
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
     app.include_router(calls_router)
+    app.include_router(demo_router)
+    demo_dir = Path(__file__).parent / "static"
+    app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")
 
     @app.get("/health")
     def health() -> dict[str, str]:

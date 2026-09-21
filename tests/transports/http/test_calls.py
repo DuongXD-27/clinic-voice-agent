@@ -22,6 +22,8 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
+from callbot.speech.audio import encode_wav
+from callbot.speech.types import AudioSegment
 from callbot.transports.http.calls import get_orchestrator
 from callbot.transports.http.main import create_app
 from callbot.transports.http.speech import CallModeStore
@@ -76,6 +78,48 @@ def test_health(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_demo_page_is_served(client: TestClient) -> None:
+    response = client.get("/demo/")
+    assert response.status_code == 200
+    assert "Vinmec Callbot Console" in response.text
+    assert "/v1/calls" in response.text
+
+
+def test_demo_audio_upload_returns_public_narrowband_wav(client: TestClient) -> None:
+    source = AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=16000)
+    response = client.put(
+        "/demo-api/audio/c_browser/1.wav",
+        content=encode_wav(source),
+        headers={"Content-Type": "audio/wav"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["audio_url"] == "http://testserver/audio/demo-input/c_browser/1.wav"
+    assert body["sample_rate"] == 8000
+    assert body["duration_ms"] == 100
+    assert body["content_type"] == "audio/wav"
+    saved = client.get("/audio/demo-input/c_browser/1.wav")
+    assert saved.status_code == 200
+    assert saved.content.startswith(b"RIFF")
+
+
+@pytest.mark.parametrize(
+    ("path", "content", "status", "code"),
+    [
+        ("/demo-api/audio/bad.id/1.wav", b"RIFF", 422, "INVALID_CALL_ID"),
+        ("/demo-api/audio/c_empty/1.wav", b"", 400, "EMPTY_AUDIO"),
+        ("/demo-api/audio/c_bad/1.wav", b"not a wav", 422, "INVALID_WAV"),
+    ],
+)
+def test_demo_audio_upload_rejects_invalid_input(
+    client: TestClient, path: str, content: bytes, status: int, code: str
+) -> None:
+    response = client.put(path, content=content)
+    assert response.status_code == status
+    assert response.json()["detail"]["code"] == code
 
 
 def test_start_call_returns_engine_opening(client: TestClient) -> None:

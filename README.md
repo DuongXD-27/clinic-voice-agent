@@ -81,6 +81,19 @@ curl -X POST http://localhost:8000/v1/calls \
   -d '{"call_id":"c_demo","direction":"outbound","appointment_id":"apt_00417","mode":"text"}'
 ```
 
+### Giao diện demo hai endpoint
+
+Sau khi server chạy, mở `http://localhost:8000/demo/`. Trang demo gọi trực tiếp
+`POST /v1/calls` và `POST /v1/calls/{call_id}/turn`, hỗ trợ cả hai chế độ:
+
+- `text`: nhập lời người gọi rồi gửi từng turn;
+- `audio`: thu microphone trong browser, mã hóa WAV PCM16 mono 16 kHz, upload qua
+  `PUT /demo-api/audio/{call_id}/{turn}.wav`, rồi truyền URL WAV vào `audio_url`.
+
+Route `/demo-api/*` chỉ là tiện ích test thủ công vì browser tạo `blob:` URL mà
+backend không thể tải. Harness chấm điểm vẫn dùng đúng hai endpoint contract và tự
+host audio đầu vào của nó. Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
+
 ## Chạy test & lint
 
 ```bash
