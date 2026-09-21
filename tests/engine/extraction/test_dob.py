@@ -28,6 +28,18 @@ TODAY = date(2026, 9, 15)
         ("dạ em sinh ngày 14 tháng 3 năm 1978 ạ", date(1978, 3, 14)),
         ("ngày 2 tháng 2 năm 10", date(2010, 2, 2)),  # 1910 -> 116 tuổi, chỉ 2010 hợp lệ
         ("ngày 29 tháng 2 năm 00", date(2000, 2, 29)),  # 1900 không nhuận
+        # Cụm dẫn "năm sinh" / "sinh năm" / "ngày tháng năm sinh"
+        ("14 tháng 3 sinh năm 1978", date(1978, 3, 14)),
+        ("ngày 14 tháng 3 sinh năm 1978", date(1978, 3, 14)),
+        ("14 tháng 3 năm sinh 1978", date(1978, 3, 14)),
+        ("14/3 sinh năm 1978", date(1978, 3, 14)),
+        ("14 3 sinh năm 1978", date(1978, 3, 14)),
+        ("năm sinh 14 3 1978", date(1978, 3, 14)),
+        ("sinh năm 14 3 1978", date(1978, 3, 14)),
+        ("năm sinh 14031978", date(1978, 3, 14)),
+        ("ngày tháng năm sinh 14/3/1978", date(1978, 3, 14)),
+        ("ngay thang nam sinh 14/3/1978", date(1978, 3, 14)),
+        ("14 thang 3 sinh nam 1978", date(1978, 3, 14)),
     ],
 )
 def test_valid_dates(text: str, expected: date) -> None:

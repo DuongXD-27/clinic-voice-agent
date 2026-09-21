@@ -125,6 +125,10 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     words = text.split()
     spoken, origin = _parse_stream(transcript)
     tokens = restore_number_words(spoken, _UNACCENTED_WORDS)
+    keep = _without_lead_ins(tokens)
+    spoken = [spoken[i] for i in keep]
+    origin = [origin[i] for i in keep]
+    tokens = [tokens[i] for i in keep]
     provenance = (
         Provenance.NORMALIZED
         if tokens != spoken or _uses_spoken_numbers(tokens)
@@ -196,6 +200,32 @@ def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]]]:
         tokens += parts
         origin += [here] * len(parts)
     return tokens, origin
+
+
+def _without_lead_ins(tokens: list[str]) -> list[int]:
+    """Chỉ số các token còn lại sau khi bỏ cụm dẫn "ngày tháng năm sinh", "năm sinh", "sinh năm".
+
+    Cụm dẫn không phải một phần của ngày: "tháng" trong "ngày tháng năm sinh" làm câu có hai
+    "tháng", "năm" trong "năm sinh 14 3 1978" bị đọc thành số 5, và "sinh" chặn đứng
+    "14 tháng 3 sinh năm 1978" trước phần năm. Riêng "sinh năm"/"năm sinh" đứng *sau* "tháng"
+    là từ khoá năm của chính ngày đó -> giữ lại "năm", chỉ bỏ "sinh".
+    """
+    dropped: set[int] = set()
+    for i in range(len(tokens) - 3):
+        if tokens[i : i + 4] == ["ngày", "tháng", "năm", "sinh"]:
+            dropped.update(range(i, i + 4))
+    months = [i for i, t in enumerate(tokens) if t == "tháng" and i not in dropped]
+    i = 0
+    while i < len(tokens) - 1:
+        if dropped.isdisjoint((i, i + 1)) and {tokens[i], tokens[i + 1]} == {"năm", "sinh"}:
+            year, sinh = (i, i + 1) if tokens[i] == "năm" else (i + 1, i)
+            dropped.add(sinh)
+            if not any(m < i for m in months):
+                dropped.add(year)
+            i += 2
+            continue
+        i += 1
+    return [i for i in range(len(tokens)) if i not in dropped]
 
 
 def _affirmed_start(tokens: list[str]) -> Optional[int]:
