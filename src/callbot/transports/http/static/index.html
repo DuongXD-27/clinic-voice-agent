@@ -411,7 +411,15 @@
           bubble.append(audio);
           // Chỉ tự phát câu trả lời của bot; bong bóng "user" là bản ghi âm người
           // gọi vừa gửi lên, tự phát lại ở đây nghe như giọng bị vọng lại.
-          if (role === "bot") audio.play().catch(() => {});
+          if (role === "bot") {
+            audio.play().catch((error) => {
+              // Trình duyệt (đặc biệt Safari) có thể chặn autoplay nếu lượt xử lý lâu
+              // khiến "user activation" hết hạn trước khi audio.play() được gọi. Trước
+              // đây lỗi này bị nuốt im lặng — người dùng tưởng backend không tạo audio.
+              console.warn("Không tự phát được audio bot:", error);
+              setNotice("Trình duyệt chặn tự phát audio — bấm nút play trên khung audio bên dưới.", true);
+            });
+          }
         }
         const caption = document.createElement("div");
         caption.className = "meta";
