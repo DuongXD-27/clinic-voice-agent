@@ -1,6 +1,6 @@
 # LLM gateway
 
-`src/llm/gateway.py` là điểm gọi chung cho structured generation, hiện dùng cho NER:
+`src/inference/llm/gateway.py` là điểm gọi chung cho structured generation, hiện dùng cho NER:
 
 ```text
 NameNER → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
@@ -40,7 +40,7 @@ tham số (`require_parameters=true`), tắt fallback giữa upstream endpoints.
 ## Gọi từ code
 
 ```python
-from llm.gateway import create_gateway
+from inference.llm.gateway import create_gateway
 
 gateway = create_gateway("openai")  # đọc key/model/timeout từ môi trường
 reply = gateway.generate_structured(

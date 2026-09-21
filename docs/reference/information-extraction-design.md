@@ -503,6 +503,6 @@ Loại khỏi bản này: [1] (DST 2023 — không dùng cho quyết định nà
 | `REPEAT_REQUEST`, `NOT_PATIENT` | Đã nối (đọc lại câu đang chờ / chuyển máy `IDENTITY_FAILED`) | `dialogue/manager.py`, `policy/policy_engine.py` |
 | Bộ đếm §6.1 | Đã nối (`UNCLEAR` từ lần hai liên tiếp, im lặng riêng) | `policy/policy_engine.py` |
 | Giới hạn lần thử danh tính §6.2 | Đã nối (T-02): bộ đếm §1.1.5 + quy tắc tiến triển; `CANNOT_PROVIDE` → `IDENTITY_FAILED`; tên + ngày sinh trong một câu | `dialogue/manager.py`, `policy/policy_engine.py`, `extraction/full_name.py` |
-| NER tên tuyến sau | Few-shot qua [LLM gateway](llm-gateway.md), OpenAI/Gemini/Groq/OpenRouter; tắt mặc định, chưa có evaluation model thật; xem [vận hành NER](name-ner.md) | `extraction/ner.py`, `src/llm/prompt/ner.py`, `src/llm/providers/` |
+| NER tên tuyến sau | Few-shot qua [LLM gateway](llm-gateway.md), OpenAI/Gemini/Groq/OpenRouter; tắt mặc định, chưa có evaluation model thật; xem [vận hành NER](name-ner.md) | `extraction/ner.py`, `src/inference/llm/prompt/ner.py`, `src/inference/llm/providers/` |
 | LLM tuyến sau intent/agreement | Chưa có adapter | `extraction/fallback.py` |
 | Output guard kiểm tra mốc giờ (SF-02) | Chỉ có kiểm tra SF-03 trong câu mẫu và từ khoá SF-04 | `dialogue/templates.py`, `policy/guardrails.py` |
