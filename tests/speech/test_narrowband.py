@@ -4,10 +4,10 @@ import struct
 import pytest
 from pydantic import ValidationError
 
-from callbot.speech import SpeechSettings, STTPipeline
-from callbot.speech.audio import alaw_to_pcm16, decode_wav, encode_wav, mulaw_to_pcm16
-from callbot.speech.types import NARROWBAND_RATE, AudioSegment, Transcript
-from callbot.speech.vad import EnergyFrameClassifier, StreamingVAD
+from speech import SpeechSettings, STTPipeline
+from speech.asr.vad import EnergyFrameClassifier, StreamingVAD
+from speech.audio import alaw_to_pcm16, decode_wav, encode_wav, mulaw_to_pcm16
+from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
 
 
 def _wav(format_tag: int, sample_rate: int, bits: int, frames: bytes, channels: int = 1) -> bytes:

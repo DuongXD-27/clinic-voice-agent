@@ -8,9 +8,9 @@ from pydantic import ValidationError
 from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction.ner import NameExtraction, NameNER
 from callbot.engine.types import CallerInput, CallStart
-from llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
-from llm.gateway import create_gateway
-from llm.prompt.ner import build_messages
+from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
+from inference.llm.gateway import create_gateway
+from inference.llm.prompt.ner import build_messages
 from tests.engine.fake_clinic import FakeClinicAPI
 
 CONFIGS = {
@@ -261,9 +261,7 @@ def test_ner_and_orchestrator_route_through_gateway(provider):
     with patch("callbot.engine.create_gateway", return_value=gateway) as factory:
         bot = create_orchestrator(
             FakeClinicAPI(),
-            settings=EngineSettings(
-                llm_provider="none", name_fallback_provider=provider, _env_file=None
-            ),
+            settings=EngineSettings(name_fallback_provider=provider, _env_file=None),
         )
     factory.assert_called_once_with(provider)
     bot.start_call(

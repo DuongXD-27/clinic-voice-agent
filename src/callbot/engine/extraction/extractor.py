@@ -16,15 +16,15 @@ Thứ tự trong một lượt:
 8. cancel_reason — khi đang hủy.
 """
 
-from datetime import date
 from typing import Optional
 
 from callbot.engine.extraction.agreement import extract_agreement
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
-from callbot.engine.extraction.dob import extract_dob
+from callbot.engine.extraction.dob import read_dob
 from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
-from callbot.engine.extraction.full_name import extract_full_name, name_before_dob
+from callbot.engine.extraction.full_name import name_after_dob, name_before_dob, read_full_name
+from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
 from callbot.engine.extraction.schema import (
@@ -114,7 +114,8 @@ class InformationExtractor:
         clinical = extract_clinical(transcript)
         intent = self._intent(ctx, transcript)
 
-        dob = extract_dob(transcript, ctx.today) if question in IDENTITY_QUESTIONS else skipped
+        dob_reading = read_dob(transcript, ctx.today) if question in IDENTITY_QUESTIONS else None
+        dob = dob_reading.field if dob_reading is not None else skipped
 
         full_name: Field[str] = skipped
         if (
@@ -122,21 +123,24 @@ class InformationExtractor:
             and intent.value is Intent.NONE
             and clinical.value not in _TRANSFER_CLINICAL
         ):
-            if isinstance(dob.value, date):
-                # Tên chỉ nằm trước ngày sinh; không tách chắc chắn được thì hỏi lại, không đoán.
-                # Chỉ tách khi ra một ngày hợp lệ: INVALID còn là mọi câu có chữ số ("bảo hiểm có chi trả
-                # 80% không") — tách thì phần trước thành "tên" rác, đi vào Verifier và chuyển máy sai lý do.
-                name_part = name_before_dob(transcript)
-                full_name = self._full_name(name_part) if name_part else Field.nothing()
+            if dob_reading is not None and dob_reading.zone:
+                # Câu gộp: tên chỉ nằm ngoài vùng ngày, và chỉ được lấy khi ranh giới chắc chắn.
+                # Vùng ngày cũng được nhận khi ngày không hợp lệ ("Nguyễn Văn A, sinh ngày
+                # 31/02/1978" -> giữ tên, hỏi lại ngày), nhưng câu chỉ tình cờ có chữ số
+                # ("bảo hiểm có chi trả 80% không") thì không có vùng nào để cắt.
+                zone = name_before_dob(transcript) or name_after_dob(transcript)
+                full_name = self._full_name(zone, transcript) if zone else Field.nothing()
             else:
-                full_name = self._full_name(transcript)
+                full_name = self._full_name(transcript, transcript)
 
         if (
             question in IDENTITY_QUESTIONS
             and intent.value is Intent.NONE
             and not full_name.found
-            # INVALID không chặn: "bảo hiểm có chi trả 80% không" có chữ số nên dob ra INVALID
-            and not isinstance(dob.value, date)
+            # Không có vùng ngày nào được nhận ra: "bảo hiểm có chi trả 80% không" có chữ số nên
+            # dob ra INVALID, nhưng đó vẫn là câu ngoài phạm vi. Ngược lại, người gọi đã đọc một
+            # ngày (dù không dùng được) thì họ có cung cấp được — không phải CANNOT_PROVIDE.
+            and (dob_reading is None or not dob_reading.zone)
         ):
             fallback_intent = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
             if fallback_intent.found:
@@ -190,13 +194,20 @@ class InformationExtractor:
             return Field.nothing(Intent.NONE)
         return guarded
 
-    def _full_name(self, transcript: str) -> Field[str]:
-        result = extract_full_name(transcript)
-        if result.found or not self._name_fallback or self._fallback is None:
-            return result
+    def _full_name(self, zone: str, transcript: str) -> Field[str]:
+        """`zone`: đoạn được phép chứa tên. `transcript`: cả câu, để mô hình còn ngữ cảnh."""
+        reading = read_full_name(zone)
+        # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
+        # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
+        # Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
+        if reading.field.found or reading.reason is not Reason.NO_SIGNAL:
+            return reading.field
+        if not self._name_fallback or self._fallback is None:
+            return Field.nothing()
         guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
-        # Tên do NER trả về cũng phải nằm nguyên văn trong transcript, không chỉ span
-        if guarded.found and f" {clean(guarded.value or '')} " not in f" {clean(transcript)} ":
+        # Tên do NER trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
+        # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
+        if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()
         return guarded
 
@@ -226,3 +237,7 @@ class InformationExtractor:
         if result.value is Agreement.AGREE and contradicted:
             return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
         return result
+
+
+def _contains(text: str, words: str) -> bool:
+    return bool(words) and f" {words} " in f" {clean(text)} "

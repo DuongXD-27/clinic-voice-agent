@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 
 import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
-from callbot.transports.http.speech import CallModeStore
 from tests.engine.fake_clinic import FakeClinicAPI
 from tests.transports.http.fakes import make_speech_bundle
 
@@ -58,7 +58,7 @@ def client(
     call_mode_client = fakeredis.FakeRedis(server=redis_server, decode_responses=True)
     app = create_app(
         clinic_factory=lambda: clinic,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=redis_store_factory,
         speech_factory=lambda: make_speech_bundle(tmp_path),
         call_mode_factory=lambda: CallModeStore(call_mode_client, key_prefix=f"test:{uuid4().hex}"),

@@ -4,20 +4,37 @@ Bộ trích xuất "mù" với hồ sơ: không biết tên đúng là gì, nên
 dẫn tới *từ chối nhầm* ở Verifier (hướng an toàn, SF-03). So khớp với hồ sơ nằm ở Verifier.
 
 Chỉ chạy khi `question_id == ASK_NAME`. Không chạy intent nghiệp vụ trên câu này, nên tên
-chứa từ khoá ("Lê Văn Thôi", "Trần Văn Được") vẫn lấy được.
+chứa từ khoá ("Lê Văn Thôi", "Trần Văn Được", "Nguyễn Văn Cần", "Nguyễn Thị Ái") vẫn lấy được:
+câu nghiệp vụ bị loại theo *cụm* ("hủy lịch", "bảo hiểm"), không theo từng từ, nên
+"Nguyễn Thanh Toàn" không bị nhầm thành câu hỏi về thanh toán.
 
-Transcript không dấu: tên được trả nguyên dạng không dấu ("nguyen van a"). Verifier phải so theo
-chế độ bỏ dấu thanh đã có trong thiết kế §5.1 (tuần 3+), không được đoán lại dấu cho tên.
+Không đoán dấu, không sửa lỗi ASR, không thêm họ, không đối chiếu hồ sơ ở đây. Transcript
+không dấu được trả nguyên dạng ("nguyen van a"); Verifier so theo chế độ bỏ dấu của §5.1.
+
+Kết quả đầy đủ nằm ở `read_full_name`: ngoài giá trị còn có *lý do*, để tuyến sau chỉ được
+gọi khi luật chưa hiểu câu, chứ không phải khi luật đã xác định là phủ định / phân vân /
+câu nghiệp vụ.
 """
 
+import re
 from typing import Optional
 
+from callbot.engine.extraction.identity import (
+    AFFIRMATIONS,
+    ALTERNATIVES,
+    CORRECTIONS,
+    NEGATIONS,
+    UNCERTAINTY,
+    Reading,
+    Reason,
+)
 from callbot.engine.extraction.schema import Field, Provenance
 from callbot.engine.extraction.spoken_numbers import is_number_token, parse_number
 from callbot.engine.extraction.text import (
     PhraseSet,
     clean,
     compile_phrases,
+    find_last_phrase,
     find_phrase,
     is_unaccented,
     normalize,
@@ -28,69 +45,104 @@ MIN_WORDS = 2
 # Tên tiếng Việt dài nhất thường 5 từ; câu dài hơn gần như chắc là một câu nói, không phải tên.
 MAX_WORDS = 6
 
+# Người gọi tự xưng bằng nhiều đại từ tuỳ vai vế. Sinh đủ tổ hợp thay vì liệt kê tay: thiếu
+# một dạng thì câu trả lời hoặc bị bỏ qua ("Tôi tên Nguyễn Văn A" -> NONE), hoặc tệ hơn, cả
+# cụm tự giới thiệu đi thẳng vào Verifier như một cái tên ("em tên nguyễn văn a").
+_SPEAKERS = ("tôi", "em", "mình", "con", "cháu", "anh", "chị", "cô", "chú", "bác", "ông", "bà")
+_SELF_INTRO_PHRASES = [
+    phrase
+    for speaker in _SPEAKERS
+    for phrase in (
+        f"{speaker} là",
+        f"{speaker} tên",
+        f"{speaker} tên là",
+        f"tên {speaker}",
+        f"tên {speaker} là",
+    )
+]
+# "X tôi là ...": người gọi khai tên người khác, không phải tên mình.
+_RELATIVES = (
+    "em",
+    "anh",
+    "chị",
+    "bố",
+    "mẹ",
+    "ba",
+    "má",
+    "con",
+    "vợ",
+    "chồng",
+    "ông",
+    "bà",
+    "cháu",
+    "cô",
+    "chú",
+    "bác",
+)
+
 _PREFIXES = compile_phrases(
-    [
-        "dạ",
-        "vâng",
-        "ạ",
-        "alo",
-        "a lô",
-        "vâng ạ",
-        "dạ vâng",
-        "tôi là",
-        "tên tôi là",
-        "tôi tên là",
-        "tên tôi",
-        "em là",
-        "tên em là",
-        "em tên là",
-        "tên em",
-        "mình là",
-        "tên mình là",
-        "con là",
-        "tên con là",
-        "cháu là",
-        "tên cháu là",
-        "anh là",
-        "chị là",
-        "cô là",
-        "chú là",
-        "bác là",
-        "ông là",
-        "bà là",
-        "họ tên là",
-        "họ và tên là",
-        "họ tên",
-        "họ và tên",
-    ],
+    ["dạ", "vâng", "ạ", "alo", "a lô", "vâng ạ", "dạ vâng"]
+    + _SELF_INTRO_PHRASES
+    + ["họ tên là", "họ và tên là", "họ tên", "họ và tên"],
     unaccented_exclude=["ạ"],  # "a" có thể là tên ("Nguyễn Văn A")
 )
 _SUFFIXES = compile_phrases(
     ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà"], unaccented_exclude=["ạ", "ấy ạ", "mà"]
 )
-_SELF_INTRODUCTIONS = compile_phrases(["tôi là", "tên tôi là", "tôi tên là"])
-_OTHER_PERSON_INTRODUCTIONS = compile_phrases(
-    [
-        f"còn {relative} tôi là"
-        for relative in ("em", "anh", "chị", "bố", "mẹ", "con", "vợ", "chồng")
-    ]
+_SELF_INTRODUCTIONS = compile_phrases(_SELF_INTRO_PHRASES)
+_OTHER_PERSON_INTRODUCTIONS = compile_phrases([f"còn {relative} tôi là" for relative in _RELATIVES])
+# Người gọi khai tên người khác. Không có lời tự giới thiệu nào khác trong câu -> không phải
+# tên người gọi, và tuyến sau cũng không được biến nó thành tên người gọi.
+_RELATIVE_CLAIMS = compile_phrases(
+    [f"{relative} tôi là" for relative in _RELATIVES] + ["gọi hộ", "gọi giúp", "gọi thay"]
 )
 _GREETINGS = frozenset(
     {"alo", "a lô", "xin chào", "chào", "chào em", "chào chị", "ai đấy", "ai vậy", "ai đó"}
 )
+# Câu nghiệp vụ và lời đệm bị loại theo CỤM, không theo từ đơn: một từ trùng từ khoá
+# ("Nguyễn Thanh Toàn", "Trần Văn Lịch") không đủ để kết luận đây không phải tên.
+_NOT_A_NAME_PHRASES = compile_phrases(
+    [
+        "hủy lịch",
+        "hủy hẹn",
+        "hủy cuộc hẹn",
+        "đổi lịch",
+        "đổi hẹn",
+        "dời lịch",
+        "đặt lịch",
+        "đặt hẹn",
+        "lịch hẹn",
+        "lịch khám",
+        "đi khám",
+        "tái khám",
+        "khám bệnh",
+        "bảo hiểm",
+        "thanh toán tiền",
+        "bác sĩ",
+        "nhân viên",
+        "tổng đài",
+        "bệnh viện",
+        "phòng khám",
+        "để xem",
+        "để tôi xem",
+        "đợi chút",
+        "chờ chút",
+        "từ từ",
+    ],
+    unaccented_exclude=["từ từ"],  # "tu tu" mất dấu trùng "tự tử"
+)
 # Từ chức năng không bao giờ là một phần tên: có chúng thì đây là câu nói, không phải tên.
-# Cố ý KHÔNG đưa "được", "thôi", "anh" vào — đó là tên thật (Trần Văn Được, Lê Văn Thôi, Nguyễn Thị Anh).
+# Cố ý KHÔNG đưa vào: "được", "thôi", "anh" (Trần Văn Được, Lê Văn Thôi, Nguyễn Thị Anh),
+# "ai" (Nguyễn Thị Ái), "cần" (Nguyễn Văn Cần) — những câu chứa chúng đã bị loại bằng cụm.
 _NON_NAME_WORDS = frozenset(
     {
         "là",
         "không",
         "gì",
-        "ai",
         "đâu",
         "nào",
         "của",
         "muốn",
-        "cần",
         "gọi",
         "hỏi",
         "tôi",
@@ -104,111 +156,239 @@ _NON_NAME_WORDS = frozenset(
         "chào",
     }
 )
-# Không dấu: bỏ các từ trùng tên người khi mất dấu — "ai" (Ái), "dau" (Đậu), "nao", "can" (Cần), "hoi" (Hợi),
-# "la" (La), "minh" (Minh), "day" (Đầy), "sao" (Sáo)
+# Không dấu: bỏ các từ trùng tên người khi mất dấu — "ai" (Ái), "dau" (Đậu), "nao", "can" (Cần),
+# "hoi" (Hợi), "la" (La), "minh" (Minh), "day" (Đầy), "sao" (Sáo)
 _NON_NAME_WORDS_UNACCENTED = frozenset(
     {"khong", "gi", "cua", "muon", "goi", "toi", "vay", "nhi", "chua", "xin", "chao"}
 )
-_GREETINGS_UNACCENTED = frozenset(strip_diacritics(g) for g in _GREETINGS)
+# So theo từng từ: từ có dấu tra bảng có dấu, từ không dấu tra bảng không dấu. Hai bảng
+# không giao nhau về mặt chữ, nên hợp nhất là đủ và xử lý được cả câu mất dấu một phần.
+_REJECTED_WORDS = _NON_NAME_WORDS | _NON_NAME_WORDS_UNACCENTED
+_REJECTED_NAMES = _GREETINGS | frozenset(strip_diacritics(g) for g in _GREETINGS)
+# Cách người gọi trỏ tới trường ngày sinh — dùng để biết một mệnh đề đang nói về ngày sinh
+# chứ không phải về tên.
+_DOB_REFERENCES = compile_phrases(
+    ["ngày sinh", "năm sinh", "sinh ngày", "sinh năm", "ngày tháng năm sinh"]
+)
 
 
 def extract_full_name(transcript: str) -> Field[str]:
-    name = clean(transcript)
-    unaccented = is_unaccented(name)
-    # Only isolate a first-person claim when the next clause explicitly names someone else.
-    introduction = find_phrase(name, _SELF_INTRODUCTIONS, unaccented=unaccented)
-    other_person = find_phrase(name, _OTHER_PERSON_INTRODUCTIONS, unaccented=unaccented)
-    if (
-        introduction
-        and other_person
-        and introduction.end() < other_person.start()
-        and not _strip_repeated(name[: introduction.start()].strip(), _PREFIXES, unaccented, True)
-    ):
-        name = name[: other_person.start()].strip()
-    name = _strip_repeated(name, _PREFIXES, unaccented, at_start=True)
-    name = _strip_repeated(name, _SUFFIXES, unaccented, at_start=False)
+    return read_full_name(transcript).field
 
+
+def read_full_name(transcript: str) -> Reading[str]:
+    clauses = [clause for clause in (clean(c) for c in normalize(transcript).split(",")) if clause]
+    text = " ".join(clauses)
+    if not text:
+        return Reading(Field.nothing(), Reason.NO_SIGNAL)
+    if find_phrase(text, _NOT_A_NAME_PHRASES, mixed=True) is not None:
+        return Reading(Field.nothing(), Reason.NOT_A_NAME, text)
+
+    # Lời phân vân trong một mệnh đề nói riêng về ngày sinh là phân vân về NGÀY SINH:
+    # "Nguyễn Văn A, tôi không nhớ rõ ngày sinh" vẫn khai tên rõ ràng, chỉ thiếu ngày.
+    named = " ".join(c for c in clauses if not _is_dob_aside(c))
+    if not named:
+        return Reading(Field.nothing(), Reason.UNCERTAIN, text)
+    if find_phrase(named, UNCERTAINTY, mixed=True) is not None:
+        # "chắc là Nguyễn Văn A": chưa đủ chắc để đi xác minh — hỏi lại, và mô hình cũng
+        # không được biến câu này thành một tên.
+        return Reading(Field.nothing(), Reason.UNCERTAIN, text)
+
+    segment = _affirmed_segment(named)
+    if segment is None:
+        return Reading(Field.nothing(), Reason.NEGATED, text)
+    if _competing_names(segment):
+        return Reading(Field.nothing(), Reason.AMBIGUOUS, segment)
+
+    own = _own_claim(segment)
+    if own is None:
+        return Reading(Field.nothing(), Reason.OTHER_PERSON, segment)
+    segment = own
+
+    name = _strip_repeated(segment, _PREFIXES, at_start=True)
+    name = _strip_repeated(name, _SUFFIXES, at_start=False)
     words = name.split()
-    greetings = _GREETINGS_UNACCENTED if unaccented else _GREETINGS
-    non_name_words = _NON_NAME_WORDS_UNACCENTED if unaccented else _NON_NAME_WORDS
     if (
         not name
-        or name in greetings
+        or name in _REJECTED_NAMES
         or any(c.isdigit() for c in name)
         or not MIN_WORDS <= len(words) <= MAX_WORDS
-        or any(w in non_name_words for w in words)
+        or any(w in _REJECTED_WORDS for w in words)
     ):
-        return Field.nothing()
-    return Field(name, Provenance.NORMALIZED, span=name)
+        return Reading(Field.nothing(), Reason.NO_SIGNAL, segment)
+    return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)
+
+
+def _is_dob_aside(clause: str) -> bool:
+    """Mệnh đề chỉ nói về ngày sinh, kèm lời phân vân hoặc phủ định của riêng nó.
+
+    Phạm vi phải gắn với đúng trường: "tôi không nhớ rõ ngày sinh" không nói gì về tên, nên
+    nó không được làm mất một cái tên đã khai rõ ở mệnh đề trước.
+    """
+    return find_phrase(clause, _DOB_REFERENCES, mixed=True) is not None and (
+        find_phrase(clause, UNCERTAINTY, mixed=True) is not None
+        or find_phrase(clause, NEGATIONS, mixed=True) is not None
+    )
+
+
+def _competing_names(segment: str) -> bool:
+    """ "A hay B" là hai ứng viên chỉ khi hai bên đều đủ dài để là một tên.
+
+    "Nguyễn Thị Hay", "Nguyễn Hay Anh": "Hay" là một âm trong tên, không phải từ nối giữa
+    hai cái tên đang phân vân.
+    """
+    for _, pattern in ALTERNATIVES.for_text(segment, mixed=True):
+        for match in pattern.finditer(segment):
+            before = segment[: match.start()].split()
+            after = segment[match.end() :].split()
+            if len(before) >= MIN_WORDS and len(after) >= MIN_WORDS:
+                return True
+    return False
+
+
+def _affirmed_segment(text: str) -> Optional[str]:
+    """Mệnh đề được khẳng định sau cùng; `None` nếu người gọi chỉ bác bỏ.
+
+    "A, à nhầm B" -> B. "không phải A" -> None. "không phải A mà là B" -> B.
+
+    Cụm nằm ở cuối vùng tên ("... Nguyễn Văn A, không phải" — phần ngày sinh phía sau đã bị
+    cắt đi) thuộc về trường kia: nó không còn bác bỏ tên nào nữa, nên giữ phần trước nó.
+    """
+    negation = find_last_phrase(text, NEGATIONS, mixed=True)
+    correction = find_last_phrase(text, CORRECTIONS, mixed=True)
+    marker = max(
+        (m for m in (negation, correction) if m is not None), key=lambda m: m.end(), default=None
+    )
+    if marker is None:
+        return text
+    tail = text[marker.end() :].strip()
+    if not tail:
+        return text[: marker.start()].strip()
+    if marker is not negation:
+        return tail
+    affirmation = find_phrase(tail, AFFIRMATIONS, mixed=True)
+    return tail[affirmation.end() :].strip() if affirmation is not None else None
+
+
+def _earliest(text: str, phrases: PhraseSet) -> Optional[re.Match[str]]:
+    """Lần khớp SỚM NHẤT trong câu; hoà thì lấy cụm dài hơn.
+
+    `find_phrase` duyệt cụm dài trước rồi trả ngay, nên với "Tôi tên A, còn em tôi là B" nó
+    bắt "tôi là" nằm *bên trong* "em tôi là" ở cuối câu và bỏ qua "tôi tên" ở đầu — rồi kết
+    luận nhầm rằng người gọi chỉ khai tên người khác. Thứ tự trong câu mới là thứ quyết định
+    ai đang giới thiệu ai.
+    """
+    matches = [
+        m for _, pattern in phrases.for_text(text, mixed=True) for m in pattern.finditer(text)
+    ]
+    return min(matches, key=lambda m: (m.start(), -m.end())) if matches else None
+
+
+def _own_claim(text: str) -> Optional[str]:
+    """Phần câu nói về chính người gọi; `None` nếu câu chỉ khai tên người khác."""
+    introduction = _earliest(text, _SELF_INTRODUCTIONS)
+    other = _earliest(text, _OTHER_PERSON_INTRODUCTIONS)
+    if (
+        introduction is not None
+        and other is not None
+        and introduction.end() < other.start()
+        and not _strip_repeated(text[: introduction.start()].strip(), _PREFIXES, at_start=True)
+    ):
+        # "Tôi là A, còn em tôi là B": chỉ lấy vế đầu
+        return text[: other.start()].strip()
+    relative = _earliest(text, _RELATIVE_CLAIMS)
+    if relative is not None and (introduction is None or relative.start() < introduction.start()):
+        return None
+    return text
 
 
 # Dấu hiệu phần ngày sinh bắt đầu trong câu trả lời gộp "tên + ngày sinh" (T-02)
-_DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
-_DATE_WORDS_UNACCENTED = frozenset({"ngay", "thang", "nam", "mung", "mong"})
-_DAY_STARTS = frozenset({"ngày", "mùng", "mồng"})
-_DAY_STARTS_UNACCENTED = frozenset({"ngay", "mung", "mong"})
+_DATE_WORDS = frozenset(
+    {"ngày", "tháng", "năm", "mùng", "mồng", "ngay", "thang", "nam", "mung", "mong"}
+)
+_DAY_STARTS = frozenset({"ngày", "mùng", "mồng", "ngay", "mung", "mong"})
 # Từ nối còn sót ở cuối phần tên: "Nguyễn Văn A và ngày sinh là ...". Không có "năm" / "sinh":
 # vị trí cắt đã bỏ chúng, còn sót lại thì là tên ("Trần Văn Năm", "Nguyễn Văn Sinh").
-_TRAILING_LINKS = frozenset({"là", "và", "thì"})
-_TRAILING_LINKS_UNACCENTED = frozenset({"la", "va", "thi"})
+_TRAILING_LINKS = frozenset({"là", "và", "thì", "la", "va", "thi"})
 _MONTH = frozenset({"tháng", "thang"})
 _MAX_SPOKEN_DAY = 3  # "hai mươi mốt"
-# Cắt ở "sinh" mà trước đó dưới 3 từ thì "Sinh" có thể là tên: "Nguyễn Văn Sinh ngày 14 ...", "Lê Na sinh ..."
+# Cắt ở "sinh" mà trước đó dưới 3 từ TÊN thì "Sinh" có thể là tên: "Nguyễn Văn Sinh ngày 14 ...",
+# "Lê Na sinh ...". Đếm sau khi bỏ tiền tố, nếu không "Tôi là" sẽ làm câu trông đủ dài.
 _MIN_WORDS_BEFORE_SINH = 3
 
 
 def name_before_dob(transcript: str) -> Optional[str]:
     """Phần tên đứng trước ngày sinh trong một câu, vd. "Nguyễn Văn A, sinh ngày 14/3/1978".
 
-    Chỉ gọi khi đã trích được ngày sinh trong câu (span của `dob` là cả câu, không dùng để cắt được).
-    Không tìm được ranh giới chắc chắn -> None: thà hỏi lại tên còn hơn đưa một tên bị cắt nhầm
-    vào Verifier (tên sai -> chuyển máy ngay). Tên có thể là từ chỉ số ("Nguyễn Văn Tám", "Trần Văn
-    Năm"), nên chỉ cắt ở dãy số đọc bằng chữ khi dãy đó không dính vào cuối tên.
+    Chỉ gọi khi đã nhận ra một vùng ngày trong câu. Không tìm được ranh giới chắc chắn -> None:
+    thà hỏi lại tên còn hơn đưa một tên bị cắt nhầm vào Verifier (tên sai -> chuyển máy ngay).
+    Tên có thể là từ chỉ số ("Nguyễn Văn Tám", "Trần Văn Năm"), nên chỉ cắt ở dãy số đọc bằng
+    chữ khi dãy đó không dính vào cuối tên.
     """
-    unaccented = is_unaccented(clean(transcript))
-    links = _TRAILING_LINKS_UNACCENTED if unaccented else _TRAILING_LINKS
-
-    # Dấu phẩy là ranh giới rõ nhất (text mode): "Dạ, Nguyễn Văn Sinh, sinh năm 1978" — ghép các đoạn
-    # cho tới đoạn có ngày sinh, rồi cắt trong đoạn đó.
     name: list[str] = []
     for segment in normalize(transcript).split(","):
         tokens = clean(segment).split()
-        found = _date_start(tokens, unaccented)
+        found = _date_start(tokens)
         if found is None:
             name += tokens
             continue
         cut, at_sinh = found
-        if cut < 0 or (at_sinh and 0 < cut < _MIN_WORDS_BEFORE_SINH):
-            # "Nguyễn Văn Sinh ngày 14 ...": "Sinh" là tên hay từ nối? Không đoán.
+        if cut < 0:
+            return None
+        if at_sinh and 0 < _claim_length(name + tokens[:cut]) < _MIN_WORDS_BEFORE_SINH:
+            # "Tôi là Nguyễn Văn Sinh ngày 14/3/1978": "Sinh" là tên hay từ nối? Không đoán,
+            # và tuyệt đối không trả về "nguyễn văn".
             return None
         name += tokens[:cut]
         break
     else:
         return None  # không thấy phần ngày sinh
 
-    while name and name[-1] in links:
+    while name and name[-1] in _TRAILING_LINKS:
         name.pop()
     return " ".join(name) or None
 
 
-def _date_start(tokens: list[str], unaccented: bool) -> Optional[tuple[int, bool]]:
+def name_after_dob(transcript: str) -> Optional[str]:
+    """Phần tên đứng SAU ngày sinh: "14/3/1978, tôi là Nguyễn Văn A".
+
+    Chỉ nhận khi có lời tự giới thiệu rõ ràng. Không có nó thì phần đuôi câu có thể là bất
+    cứ thứ gì ("14/3/1978 nhé em"), và đoán sẽ đưa rác vào Verifier.
+    """
+    text = clean(transcript)
+    match = find_phrase(text, _SELF_INTRODUCTIONS, mixed=True)
+    if match is None:
+        return None
+    tail = text[match.start() :].strip()
+    if not tail or _date_start(tail.split()) is not None:
+        return None  # còn phần ngày tháng phía sau: đây không phải đuôi tên thuần
+    return tail
+
+
+def _claim_length(words: list[str]) -> int:
+    """Số từ còn lại sau khi bỏ tiền tố tự giới thiệu.
+
+    "Tôi là Nguyễn Văn Sinh" chỉ có hai từ tên, nên "Sinh" vẫn có thể là âm cuối của tên.
+    """
+    return len(_strip_repeated(" ".join(words), _PREFIXES, at_start=True).split())
+
+
+def _date_start(tokens: list[str]) -> Optional[tuple[int, bool]]:
     """(vị trí từ đầu tiên của phần ngày sinh, có cắt ở "sinh" không); None nếu không có phần ngày sinh.
 
     Vị trí -1: có phần ngày sinh nhưng không cắt được chắc chắn.
     """
-    date_words = _DATE_WORDS_UNACCENTED if unaccented else _DATE_WORDS
-    day_starts = _DAY_STARTS_UNACCENTED if unaccented else _DAY_STARTS
     for i, token in enumerate(tokens):
         following = tokens[i + 1] if i + 1 < len(tokens) else ""
-        if any(c.isdigit() for c in token) or token in day_starts:
+        if any(c.isdigit() for c in token) or token in _DAY_STARTS:
             return i, False
-        if token == "sinh" and (following in date_words or any(c.isdigit() for c in following)):
-            # "năm sinh 1978": phần ngày bắt đầu từ "năm". Nhưng "Nam sinh năm 1978" (không dấu, tên Nam):
-            # sau "sinh" đã là từ ngày tháng nên "nam" thuộc tên.
-            if following not in date_words and i > 0 and tokens[i - 1] in date_words:
+        if token == "sinh" and (following in _DATE_WORDS or any(c.isdigit() for c in following)):
+            # "năm sinh 1978": phần ngày bắt đầu từ "năm". Nhưng "Nam sinh năm 1978" (không dấu,
+            # tên Nam): sau "sinh" đã là từ ngày tháng nên "nam" thuộc tên.
+            if following not in _DATE_WORDS and i > 0 and tokens[i - 1] in _DATE_WORDS:
                 return i - 1, True
             return i, True
-        if not unaccented and is_number_token(token):
+        if not is_unaccented(token) and is_number_token(token):
             run = i
             while run < len(tokens) and is_number_token(tokens[run]):
                 run += 1
@@ -220,12 +400,16 @@ def _date_start(tokens: list[str], unaccented: bool) -> Optional[tuple[int, bool
     return None
 
 
-def _strip_repeated(text: str, phrases: PhraseSet, unaccented: bool, at_start: bool) -> str:
-    """Bỏ lặp lại: "dạ vâng tên tôi là ..." -> bỏ lần lượt "dạ", "vâng", "tên tôi là"."""
+def _strip_repeated(text: str, phrases: PhraseSet, at_start: bool) -> str:
+    """Bỏ lặp lại: "dạ vâng tên tôi là ..." -> bỏ lần lượt "dạ", "vâng", "tên tôi là".
+
+    So theo từng cụm ở chế độ `mixed` để câu mất dấu một phần ("Dạ toi la Nguyen Van A")
+    cũng sạch tiền tố, mà chữ "A" cuối tên không dấu vẫn được giữ.
+    """
     changed = True
     while changed and text:
         changed = False
-        for phrase, _ in phrases.for_text(text, unaccented):
+        for phrase, _ in phrases.for_text(text, mixed=True):
             if at_start and (text == phrase or text.startswith(phrase + " ")):
                 text = text[len(phrase) :].strip()
                 changed = True

@@ -13,8 +13,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
-from callbot.speech.audio.codec import decode_wav, encode_wav
-from callbot.speech.types import NARROWBAND_RATE
+from speech.audio.codec import decode_wav, encode_wav
+from speech.types import NARROWBAND_RATE
 
 router = APIRouter(prefix="/demo-api", tags=["demo"])
 

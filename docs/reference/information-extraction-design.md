@@ -139,11 +139,34 @@ Quy tắc bắt buộc với `FALLBACK`: `span` phải là chuỗi con của tra
 ```
 transcript
   → chuẩn hoá Unicode NFC, lowercase, gộp khoảng trắng, bỏ dấu câu
-  → bỏ tiền tố lễ phép lặp lại: "dạ", "vâng", "tôi là", "tên tôi là", "em là", "anh/chị/cô/chú là"
-  → loại nếu: rỗng, là lời chào ("alo", "ai đấy"), chứa chữ số, < 2 từ
+  → loại theo CỤM: câu nghiệp vụ ("hủy lịch", "đặt lịch", "bảo hiểm"), lời đệm ("để xem")
+  → loại nếu người gọi tự báo là không chắc: "hình như", "có lẽ", "chắc là", "thì phải"
+  → chọn mệnh đề khẳng định sau cùng: "A, à nhầm B" → B; "không phải A" → NONE;
+    "không phải A mà là B" → B
+  → loại nếu còn hai ứng viên: "A hay B", "A hoặc B"
+  → loại nếu chỉ là tên người khác: "mẹ tôi là ...", "gọi hộ ..."
+  → bỏ tiền tố lễ phép lặp lại, so TỪNG CỤM theo cả dạng có dấu và không dấu:
+    "dạ", "vâng", "tôi là", "tên tôi là", "em là", "anh/chị/cô/chú là"
+  → loại nếu: rỗng, là lời chào ("alo", "ai đấy"), chứa chữ số, < 2 từ, > 6 từ,
+    hoặc chứa từ chức năng ("là", "không", "gì", "của", ...)
   → Field(value, NORMALIZED)  |  Field(None, NONE)
-  → [tuần 3+] NONE → NER fallback, span bắt buộc
+  → [tuần 3+] chỉ khi lý do là "luật chưa hiểu" → NER fallback, span bắt buộc
 ```
+
+**Lý do từ chối là một phần kết quả** (`Reading.reason`, `extraction/identity.py`). Chỉ
+`NO_SIGNAL` ("không luật nào khớp") mới được hỏi tuyến sau. Các lý do đã xác định —
+`NEGATED`, `UNCERTAIN`, `AMBIGUOUS`, `NOT_A_NAME`, `OTHER_PERSON` — chặn NER: nếu không,
+"không phải Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
+
+**Từ khoá không loại được tên.** Loại theo cụm chứ không theo từ đơn, nên "Nguyễn Thanh
+Toàn", "Trần Văn Lịch", "Nguyễn Văn Cần", "Nguyễn Thị Ái", "Lê Văn Thôi", "Trần Văn Được"
+vẫn lấy được. Giới hạn 2–6 từ là quyết định sản phẩm cho tập tên ở đây, không phải quy luật
+của mọi tên người ([W3C][w3c-names]).
+
+Khi một câu bị loại vì là câu nghiệp vụ, bộ điều phối trả nó về đúng nhãn intent
+(`hủy lịch đi` → `CANCEL`) thay vì để `claimed_name` nhận một câu nói.
+
+[w3c-names]: https://www.w3.org/International/questions/qa-personal-names
 
 **So khớp** (trong Verifier, không phải trong bộ trích xuất):
 
@@ -167,7 +190,12 @@ Mọi quy tắc nới lỏng (3–6) bật/tắt bằng cấu hình, không hard
 - Ngày không tồn tại (31/02) → `INVALID`. **Không** tự sửa về ngày gần nhất.
 - Thiếu năm → `INVALID`. **Không** điền năm hiện tại.
 - Người gọi nói tuổi thay năm sinh, hoặc ngày âm lịch → `INVALID`, hỏi lại theo dương lịch.
-- Người gọi tự sửa trong câu ("14... à không, 15 tháng 3") → lấy giá trị **sau cùng**; nếu không xác định được giá trị sau cùng → `INVALID`.
+- Người gọi tự sửa trong câu ("14... à không, 15 tháng 3") → lấy giá trị **sau cùng**; nếu phần sửa không đủ ngày/tháng/năm → `INVALID`.
+- **Phủ định khác tự sửa.** "không phải 14/3/1978" → `INVALID` (bác bỏ mà không có gì thay thế). Chỉ "không phải A **mà là** B" mới lấy B.
+- **Hai giá trị cùng được nêu** mà không có lời sửa → `INVALID`: "14 hay 15 tháng 3 năm 1978", "14 tháng 3 năm 1978 hoặc 1979", hai ngày khác nhau trong một câu.
+- **Người gọi tự báo là không chắc** → `INVALID`, hỏi lại: "hình như", "có lẽ", "chắc là", "không chắc", "không nhớ rõ/lắm", "thì phải". Không dùng riêng từ "chắc" (nằm được trong tên). Lời đệm ngập ngừng ("à ừ…") **không** phải dấu hiệu không chắc.
+- Không có ngày nào trong câu thì cụm phân vân không tạo ra `INVALID` — đó là `CANNOT_PROVIDE` (§1.1.1), không phải một ngày sai.
+- **`span` là đoạn có thật** trong transcript sau chuẩn hoá. "14/3/1978" báo `span = "14 3 1978"`, không bao giờ báo đoạn "ngày 14 tháng 3 năm 1978" mà bộ trích xuất tự dựng để dùng chung ngữ pháp với dạng nói.
 
 ### 5.3. Số điện thoại — hoãn
 
@@ -299,7 +327,16 @@ Chạy trước mọi bộ khác ở **mọi lượt outbound trước khi xác 
 
 ### 5.10. Transcript không dấu (audio mode)
 
-Câu **không có ký tự mang dấu nào** được so với bản không dấu của từ khoá, `provenance = NORMALIZED`. Câu có dấu một phần vẫn so có dấu.
+Câu **không có ký tự mang dấu nào** được so với bản không dấu của từ khoá, `provenance = NORMALIZED`.
+
+**Dấu pha trộn.** ASR hay bỏ dấu một phần ("Dạ toi la Nguyen Van A", "ngày 14 thang 3 nam 1978"). Hai bộ danh tính so **theo từng cụm / từng token** ở cả hai dạng, thay vì quyết định một lần cho cả câu:
+
+- tên: mỗi tiền tố lễ phép được thử cả hai dạng, nên "toi la" bị bỏ dù câu có chữ "Dạ" mang dấu; "ạ" vẫn nằm ngoài dạng không dấu để giữ chữ "A" cuối tên;
+- ngày sinh: khôi phục dấu cho **từng token** mất dấu thuộc bảng từ đóng, token đã có dấu giữ nguyên.
+
+Mẫu không dấu chỉ khớp đúng chuỗi ký tự không dấu, nên chế độ này không làm câu có dấu khớp nhầm; các cụm nguy hiểm khi mất dấu vẫn bị `unaccented_exclude` loại (vd. "à không", vì "a" là một tên thật).
+
+Các bộ còn lại giữ nguyên: câu có dấu một phần vẫn so có dấu.
 
 Bỏ dấu làm nhiều từ trùng nhau, nên mỗi danh sách tự khai báo cụm bị loại ở chế độ này. Hướng xử lý theo nguyên tắc 3 (mục 2): trùng nghĩa ở chỗ mở khóa hành động thì lệch về **không mở khóa**.
 
@@ -472,6 +509,6 @@ Loại khỏi bản này: [1] (DST 2023 — không dùng cho quyết định nà
 | `REPEAT_REQUEST`, `NOT_PATIENT` | Đã nối (đọc lại câu đang chờ / chuyển máy `IDENTITY_FAILED`) | `dialogue/manager.py`, `policy/policy_engine.py` |
 | Bộ đếm §6.1 | Đã nối (`UNCLEAR` từ lần hai liên tiếp, im lặng riêng) | `policy/policy_engine.py` |
 | Giới hạn lần thử danh tính §6.2 | Đã nối (T-02): bộ đếm §1.1.5 + quy tắc tiến triển; `CANNOT_PROVIDE` → `IDENTITY_FAILED`; tên + ngày sinh trong một câu | `dialogue/manager.py`, `policy/policy_engine.py`, `extraction/full_name.py` |
-| NER tên tuyến sau | Few-shot qua [LLM gateway](llm-gateway.md), OpenAI/Gemini/Groq/OpenRouter; tắt mặc định, chưa có evaluation model thật; xem [vận hành NER](name-ner.md) | `extraction/ner.py`, `src/llm/prompt/ner.py`, `src/llm/providers/` |
+| NER tên tuyến sau | Few-shot qua [LLM gateway](llm-gateway.md), OpenAI/Gemini/Groq/OpenRouter; tắt mặc định, chưa có evaluation model thật; xem [vận hành NER](name-ner.md) | `extraction/ner.py`, `src/inference/llm/prompt/ner.py`, `src/inference/llm/providers/` |
 | LLM tuyến sau intent/agreement | Chưa có adapter | `extraction/fallback.py` |
 | Output guard kiểm tra mốc giờ (SF-02) | Chỉ có kiểm tra SF-03 trong câu mẫu và từ khoá SF-04 | `dialogue/templates.py`, `policy/guardrails.py` |

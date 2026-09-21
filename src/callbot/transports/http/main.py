@@ -21,11 +21,12 @@ from callbot.engine import (
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
 from callbot.engine.tools.clinic_mock_client import ClinicMockClient
-from callbot.speech.settings import SpeechSettings
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.config import settings
 from callbot.transports.http.demo import router as demo_router
-from callbot.transports.http.speech import CallModeStore, SpeechBundle, build_speech_bundle, warm_up
+from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
+from speech.settings import SpeechSettings
 
 logger = logging.getLogger(__name__)
 

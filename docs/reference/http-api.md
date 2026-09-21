@@ -18,7 +18,7 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
-| `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `transports/http/speech.py` |
+| `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `src/speech/bundle.py` |
 
 ## `POST /v1/calls/{call_id}/turn`
 

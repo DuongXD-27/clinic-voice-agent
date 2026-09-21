@@ -22,11 +22,11 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
-from callbot.speech.audio import encode_wav
-from callbot.speech.types import AudioSegment
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import get_orchestrator
 from callbot.transports.http.main import create_app
-from callbot.transports.http.speech import CallModeStore
+from speech.audio import encode_wav
+from speech.types import AudioSegment
 
 
 def _call_mode_factory(redis_server):
@@ -329,7 +329,7 @@ def test_orchestrator_created_once_and_clinic_closed_on_shutdown(
 
     app = create_app(
         clinic_factory=factory,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=redis_store_factory,
         speech_factory=lambda: make_speech_bundle(tmp_path),
         call_mode_factory=_call_mode_factory(redis_server),
@@ -444,7 +444,7 @@ def test_ready_reports_session_store(
 
     app = create_app(
         clinic_factory=FakeClinicAPI,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=lambda: Down(redis_store_factory()._client),
         speech_factory=lambda: make_speech_bundle(tmp_path),
         call_mode_factory=_call_mode_factory(redis_server),
@@ -543,7 +543,7 @@ def test_http_app_restart_keeps_active_session_in_redis(
     def new_app():
         return create_app(
             clinic_factory=lambda: clinic,
-            engine_settings=EngineSettings(llm_provider="none"),
+            engine_settings=EngineSettings(),
             session_store_factory=redis_store_factory,
             speech_factory=lambda: make_speech_bundle(tmp_path),
             call_mode_factory=_call_mode_factory(redis_server),

@@ -1,6 +1,6 @@
 # Setup model ZipFormer (ASR)
 
-`ZipFormerASR` (`src/callbot/speech/asr/zipformer.py`) cần 4 file asset không
+`ZipFormerASR` (`src/inference/asr/providers/zipformer.py`) cần 4 file asset không
 nằm trong repo (đã gitignore vì nặng ~74MB — xem `.gitignore`). Sau khi
 `git clone`/`git pull` về máy mới, phải tự tải các file này trước khi chạy
 test/bot local, nếu không `ZipFormerASR` sẽ lỗi `FileNotFoundError` khi khởi tạo.
@@ -22,7 +22,7 @@ Repo Hugging Face: [`csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20`](https
 ## Nơi đặt file
 
 ```
-src/callbot/speech/asr/assets/zipformer/
+src/inference/asr/providers/assets/zipformer/
 ```
 
 ## Cách tải
@@ -59,7 +59,7 @@ print(snapshot_download(
 ))
 ")
 
-DEST=src/callbot/speech/asr/assets/zipformer
+DEST=src/inference/asr/providers/assets/zipformer
 mkdir -p "$DEST"
 cp "$SRC"/encoder-epoch-12-avg-8.int8.onnx \
    "$SRC"/decoder-epoch-12-avg-8.onnx \
@@ -72,8 +72,9 @@ cp "$SRC"/encoder-epoch-12-avg-8.int8.onnx \
 
 ```bash
 python -c "
-from callbot.speech.asr.zipformer import ZipFormerASR, default_paths
-ZipFormerASR(**default_paths())
+from inference.asr import create_asr_gateway
+gateway = create_asr_gateway('zipformer')
+print(gateway.transcribe(b'\x00\x00' * 1600, gateway.input_sample_rate))
 print('OK — model load được')
 "
 ```
@@ -82,7 +83,7 @@ print('OK — model load được')
 
 `Dockerfile` tự tải 4 file này lúc build image, vào `/app/models/zipformer/`
 (không phải `src/...` — sau `pip install .` gói bị copy vào site-packages nên
-`default_paths()` tính theo `__file__` sẽ trỏ sai chỗ). `docker-compose.yml` /
+đường dẫn mặc định tính theo `__file__` trong `ZipFormerConfig` sẽ trỏ sai chỗ). `docker-compose.yml` /
 `docker-compose.prod.yml` set 4 biến `ZIPFORMER_*_PATH` trỏ đúng vào đó, dùng
-đúng cơ chế override đã có sẵn trong `create_asr()` (`settings.zipformer_encoder_path
-or paths[...]`). Hướng dẫn copy tay ở trên chỉ còn cần khi chạy local ngoài Docker.
+đúng cơ chế override của `ZipFormerConfig` ([inference/asr/config.py](../../src/inference/asr/config.py):
+biến env bỏ trống thì dùng asset đi kèm repo). Hướng dẫn copy tay ở trên chỉ còn cần khi chạy local ngoài Docker.

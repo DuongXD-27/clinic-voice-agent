@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
-from callbot.speech.tts.storage import AudioArtifactStore
-from callbot.speech.types import AudioSegment, Transcript, TranscriptEvent
-from callbot.transports.http.speech import SpeechBundle
+from speech.bundle import SpeechBundle
+from speech.tts.storage import AudioArtifactStore
+from speech.types import AudioSegment, Transcript, TranscriptEvent
 
 _SILENT_SEGMENT = AudioSegment(pcm=b"\x00\x00" * 100, sample_rate=8000)
 

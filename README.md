@@ -26,7 +26,7 @@ src/callbot/               # một core, hai transport (§1.3.2)
       identity.py          # LookupStatus/PrepareResult, MatchDetail/VerificationResult, match_record
       phone.py             # normalize_phone: caller_number -> 0xxxxxxxxx (dạng mock nhận) hoặc None
       names.py             # normalize_name: khóa so khớp tên (bỏ dấu, hoa/thường, khoảng trắng)
-    dialogue/              # Dialogue Manager, templates, prompts, llm/
+    dialogue/              # Dialogue Manager, templates và prompts nghiệp vụ
     tools/                 # Clinic Gateway: kiểm soát đọc/ghi và retry (F-05)
       ports.py             # Protocol ClinicAPI 1:1 với mock (Page phân trang, ClinicAPIError)
       clinic_gateway.py    # ClinicGateway: guardrail + FSM + nhật ký lệnh, đọc hết trang, chuẩn hóa
@@ -40,11 +40,15 @@ src/callbot/               # một core, hai transport (§1.3.2)
   speech/                  # Realtime STT pipeline + TTS
     audio/                 # codec wav/G.711, chuẩn hoá về PCM 8 kHz băng hẹp, tải audio_url
     vad/                   # FrameClassifier (energy baseline) + StreamingVAD
-    asr/                   # ASRProvider: gemini.py, phowhisper.py
-    tts/                   # TTSProvider + AudioArtifactStore (sinh audio_url)
+    storage.py             # AudioArtifactStore sinh audio_url cho TTS
     transcript.py          # gộp partial/final
     pipeline.py            # STTPipeline: Audio -> VAD -> ASR -> Transcript
   tracing/                 # JsonlLogger: trace mỗi lượt ra JSONL
+src/inference/             # các model inference và hạ tầng dùng chung
+  common/                  # lỗi, telemetry và HTTP transport dùng chung
+  llm/                     # gateway, config, prompt và provider LLM
+  asr/                     # contract ASR và provider Gemini/PhoWhisper/ZipFormer
+  tts/                     # contract TTS và provider Null/OpenAI
 tests/                     # cùng cấu trúc với src/callbot: engine/, speech/, transports/http/
 ```
 
@@ -61,7 +65,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
-pip install -e ".[speech,llm]"      # tuỳ chọn: numpy + Gemini (ASR/LLM)
+pip install -e ".[speech]"          # tuỳ chọn: numpy + Gemini ASR
 pip install -e ".[speech-local]"    # tuỳ chọn: PhoWhisper self-hosted
 
 cp .env.example .env   # chỉnh CLINIC_MOCK_BASE_URL, REDIS_URL
@@ -158,5 +162,5 @@ URL nộp cho chương trình (khóa cứng suốt batch, không có `/` cuối)
 
 ## Trạng thái hiện tại
 
-- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04). `mode=audio` (§4.1.2) đã nối vào cùng đường: ASR self-host ZipFormer 68M qua `sherpa-onnx` (`ASR_PROVIDER=zipformer`), TTS qua OpenAI (`TTS_PROVIDER=openai`), audio phản hồi tự phục vụ qua `/audio/{call_id}/{turn}.wav`. Core (`engine/`) không đổi — không biết khái niệm audio/text, xem `transports/http/speech.py`.
+- HTTP text mode chạy engine thật với Information Extraction mới (F-02, F-04). `mode=audio` (§4.1.2) đã nối vào cùng đường: ASR self-host ZipFormer 68M qua `sherpa-onnx` (`ASR_PROVIDER=zipformer`), TTS qua OpenAI (`TTS_PROVIDER=openai`), audio phản hồi tự phục vụ qua `/audio/{call_id}/{turn}.wav`. Core (`engine/`) không đổi — không biết khái niệm audio/text, xem `src/speech/bundle.py`.
 - Phiên chỉ lưu tạm trên Redis không persistence, chạy được nhiều worker; nội dung khách hàng bị xóa khi Clinic ghi thành công, cuộc gọi kết thúc hoặc TTL hết hạn. Lệnh ghi Clinic có journal tạm để chặn ghi trùng khi kết quả không xác định (F-03). Xem evidence [F-03](docs/evidence/f03-session-store.md) và [F-04](docs/evidence/f04-information-extraction-http.md).

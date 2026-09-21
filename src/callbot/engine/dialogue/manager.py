@@ -18,7 +18,6 @@ from datetime import date, datetime
 from typing import Any, Optional
 
 from callbot.engine.dialogue import templates as t
-from callbot.engine.dialogue.llm.base import LLMClient
 from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
     ClinicWriteRejected,
@@ -65,12 +64,9 @@ class DialogueManager:
         self,
         gateway: ClinicGateway,
         verifier: IdentityVerifier,
-        llm: Optional[LLMClient] = None,
     ) -> None:
         self._gateway = gateway
         self._verifier = verifier
-        # TODO: dùng LLM để diễn đạt tự nhiên hơn; mọi câu LLM sinh phải qua guardrails.assert_no_clinical_advice
-        self._llm = llm
 
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
@@ -110,6 +106,13 @@ class DialogueManager:
             raise
         except (ClinicWriteRejected, SevereFailureBlocked):
             logger.error("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
+            return BotAction(
+                t.TRANSFER,
+                "ENDED",
+                ended=True,
+                outcome="TRANSFERRED",
+                transfer_reason="SYSTEM_ERROR",
+            )
         return BotAction(
             t.GOODBYE_UNREACHABLE,
             "ENDED",

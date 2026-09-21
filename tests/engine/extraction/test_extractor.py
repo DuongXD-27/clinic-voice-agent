@@ -53,7 +53,9 @@ def test_identity_step_does_not_run_business_intents() -> None:
     assert result.full_name.value == "lê văn thôi"
     assert result.agreement.value is None and result.dob.value is None
 
-    assert extractor.extract(ctx(QuestionId.ASK_NAME), "hủy lịch đi").intent.value is Intent.NONE
+    # Câu nghiệp vụ bị loại khỏi tên theo cụm -> quay về đúng nhãn ý định, không thành "tên"
+    business = extractor.extract(ctx(QuestionId.ASK_NAME), "hủy lịch đi")
+    assert business.full_name.found is False and business.intent.value is Intent.CANCEL
 
 
 def test_identity_step_keeps_safety_labels_and_does_not_read_them_as_names() -> None:
@@ -118,9 +120,14 @@ def test_ambiguous_name_before_dob_is_not_guessed(transcript: str) -> None:
     assert result.dob.found
 
 
-def test_name_is_only_split_from_a_valid_dob() -> None:
-    # INVALID cũng là mọi câu có chữ số; tách ở đó thì "bảo hiểm có chi trả" thành tên -> không tách
+def test_name_is_split_from_a_recognised_date_even_when_the_date_is_unusable() -> None:
+    # Ngày không tồn tại vẫn là một vùng ngày có thật -> giữ tên, chỉ hỏi lại ngày sinh
     result = extractor.extract(ctx(QuestionId.ASK_NAME), "Nguyễn Văn A, 31/02/1978")
+    assert result.full_name.value == "nguyễn văn a" and result.dob.value == INVALID
+
+    # Câu chỉ tình cờ có chữ số thì không có vùng ngày -> không được cắt "bảo hiểm có chi trả"
+    # thành tên và đẩy vào Verifier
+    result = extractor.extract(ctx(QuestionId.ASK_NAME), "bảo hiểm có chi trả 80% không")
     assert result.full_name.found is False and result.dob.value == INVALID
 
 
@@ -142,8 +149,9 @@ def test_cannot_provide_never_leaves_identity_step() -> None:
     assert (
         extractor.extract(ctx(QuestionId.ASK_INTENT), "tôi không nhớ").intent.value is Intent.NONE
     )
+    # Người gọi tự báo là không chắc: ngày không đi tiếp vào Verifier, bot hỏi lại
     result = extractor.extract(ctx(QuestionId.ASK_DOB), "không nhớ lắm, 14/3/1978 thì phải")
-    assert result.dob.value == date(1978, 3, 14) and result.intent.value is Intent.NONE
+    assert result.dob.value == INVALID and result.intent.value is Intent.NONE
 
 
 @pytest.mark.parametrize(

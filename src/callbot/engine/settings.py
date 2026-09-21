@@ -6,10 +6,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class EngineSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    llm_provider: Literal["none", "gemini"] = "none"
-    gemini_api_key: str = ""
-    gemini_llm_model: str = "gemini-2.5-flash"
-
     name_fallback_provider: Literal["none", "openai", "gemini", "groq", "openrouter"] = "none"
 
     clinic_id: str = "cl_vinmec"

@@ -63,7 +63,7 @@ Ba nhóm rõ rệt:
 
 RTP nghe đơn giản (chỉ là gói UDP chứa byte âm thanh), nhưng thực tế xử lý đúng cần: đồng bộ timestamp, xử lý gói đến trễ/mất/sai thứ tự (jitter buffer), thương lượng codec qua SDP, xuyên NAT, DTMF (bấm phím), giữ máy/chuyển máy... Đây là lý do hợp đồng (Appendix B.2) liệt kê LiveKit Agents/Pipecat như điểm khởi đầu gợi ý thay vì tự viết. LiveKit SIP là cầu nối: một đầu nói SIP/RTP truyền thống với nhà mạng, đầu kia đưa ra audio sạch cho code bạn qua API hiện đại (WebRTC nội bộ, nhưng bạn không cần biết chi tiết WebRTC — chỉ cần dùng SDK Agents của họ).
 
-**Việc bạn cần làm ở lớp này**: cấu hình LiveKit (tài khoản, số điện thoại, trunk), viết một "agent" nhỏ theo SDK của họ — về bản chất là một hàm callback nhận audio, y hệt như `STTPipeline.stream(frames: AsyncIterator[bytes])` đã có sẵn khung ở [pipeline.py:43-49](../../src/callbot/speech/pipeline.py#L43-L49). `frames` chính là thứ LiveKit đưa cho bạn.
+**Việc bạn cần làm ở lớp này**: cấu hình LiveKit (tài khoản, số điện thoại, trunk), viết một "agent" nhỏ theo SDK của họ — về bản chất là một hàm callback nhận audio, y hệt như `STTPipeline.stream(frames: AsyncIterator[bytes])` đã có sẵn khung ở [pipeline.py:43-49](../../src/speech/asr/pipeline.py#L43-L49). `frames` chính là thứ LiveKit đưa cho bạn.
 
 ## 3. ZipFormer qua sherpa-onnx: gửi gì, nhận gì, khác PhoWhisper thế nào
 
@@ -97,7 +97,7 @@ Phần này mô tả cách một checkpoint ZipFormer **được export đúng c
 
 **Bạn nhận gì**: sau mỗi vài chunk, session trả về partial hypothesis (câu đang hình thành, có thể còn đổi) rồi final segment khi endpointing xác định người nói đã dừng.
 
-`speech/types.py` đã có sẵn kiểu dữ liệu đúng cho việc này — [`TranscriptEvent(text, is_final, confidence, start_ms, end_ms)`](../../src/callbot/speech/types.py#L32-L40), và [`TranscriptAggregator`](../../src/callbot/speech/transcript.py) đã viết sẵn logic gộp partial/final thành `Transcript` hoàn chỉnh — vẫn hữu ích nếu sau này có checkpoint streaming thật.
+`speech/types.py` đã có sẵn kiểu dữ liệu đúng cho việc này — [`TranscriptEvent(text, is_final, confidence, start_ms, end_ms)`](../../src/speech/types.py#L26-L34), và [`TranscriptAggregator`](../../src/speech/asr/transcript.py) đã viết sẵn logic gộp partial/final thành `Transcript` hoàn chỉnh — vẫn hữu ích nếu sau này có checkpoint streaming thật.
 
 ### 3.3 So sánh cập nhật (dựa trên model thật đang có, không phải lý thuyết)
 
@@ -142,10 +142,10 @@ Mở [docker-compose.yml](../../docker-compose.yml): `bot` (Core Agent) và Clin
 | Model ZipFormer (kiến trúc, huấn luyện) | Không | Dùng checkpoint có sẵn (`hynt/ZipFormer-150M` hoặc tương đương) |
 | Runtime chạy ZipFormer | Không (dùng sherpa-onnx) | Tự host, tự triển khai, nhưng không tự viết vòng lặp suy luận. `hynt/ZipFormer-150M` đã kiểm chứng chỉ nạp được qua `OfflineRecognizer` (batch), không phải `OnlineRecognizer` — xem §3.1 |
 | Đóng gói ASR thành service riêng (nếu chọn tách) | Có, nhưng ít — chủ yếu cấu hình + Dockerfile | |
-| Cầu nối "frame audio (VAD cắt đoạn) → gửi vào sherpa-onnx → nhận text → đẩy vào Core Agent" | **Có, đây là phần việc thật của bạn** | Với checkpoint `hynt` hiện tại, tương đương cách `PhoWhisperASR.transcribe()` đã hoạt động, không phải `ASRProvider.stream()` |
+| Cầu nối "frame audio (VAD cắt đoạn) → gửi vào sherpa-onnx → nhận text → đẩy vào Core Agent" | **Có, đây là phần việc thật của bạn** | Với checkpoint `hynt` hiện tại, tương đương cách `PhoWhisperASR.transcribe()` đã hoạt động, không phải `STTPipeline.stream()` |
 | VAD (để cắt đoạn trước khi gọi model) | Có thể tái dùng `vad/streaming.py` đã có | **Bắt buộc** với checkpoint `hynt` hiện tại (batch, không tự endpoint) |
 | Core Agent (dialogue, FSM, extraction, policy) | **Có, toàn bộ** | Đã có trong `src/callbot/engine/`, không đổi bất kể chọn ASR nào |
-| TTS phát lại | Có (tích hợp provider) | Hiện là `NullTTS`, cần thay bằng provider thật |
+| TTS phát lại | Có (tích hợp provider) | Dùng OpenAI TTS cho demo |
 
 ---
 

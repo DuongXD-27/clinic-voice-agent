@@ -20,14 +20,15 @@ from callbot.engine import (
     TurnConflict,
     TurnOutOfOrder,
 )
-from callbot.speech.types import Transcript
+from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     StartCallRequest,
     StartCallResponse,
     TurnRequest,
     TurnResponse,
 )
-from callbot.transports.http.speech import CallModeStore, SpeechBundle
+from speech.bundle import SpeechBundle
+from speech.types import Transcript
 
 logger = logging.getLogger(__name__)
 
