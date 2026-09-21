@@ -188,7 +188,8 @@ def test_silence_and_empty_transcript_map_differently(client: TestClient) -> Non
     _start(client, "c_silence")
     silence = _turn(client, "c_silence", 1, None, silence_ms=1500)
     assert silence.status_code == 200
-    assert silence.json()["utterance"] == t.SILENCE
+    # T-08: nhắc im lặng rồi hỏi lại câu đang chờ (câu chào hỏi tên)
+    assert silence.json()["utterance"] == f"{t.SILENCE} {t.GREETING_OUTBOUND}"
 
     _start(client, "c_empty")
     empty = _turn(client, "c_empty", 1, "", silence_ms=0)
@@ -291,7 +292,7 @@ def test_silence_turn_in_audio_mode_still_replies_with_audio(
         # Không audio_url, chỉ silence_ms — vẫn phải nói lại bằng audio (§1.1.7)
         response = _turn(audio_client, "c_audio_3", 1, None, silence_ms=2000)
         assert response.status_code == 200
-        assert response.json()["utterance"] == t.SILENCE
+        assert response.json()["utterance"].startswith(t.SILENCE)
         assert response.json()["audio_url"] is not None
 
 
@@ -620,5 +621,59 @@ def test_unknown_confirm_outcome_over_http_needs_reconciliation(
     _at_confirm_readback(client, "c_http_unknown")
     clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
     response = _turn(client, "c_http_unknown", 3, "Vâng")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
+
+
+# --- T-08: silence và tín hiệu đường dây qua HTTP ----------------------------------------------
+
+_APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "Times City")
+
+
+def test_outbound_three_silences_over_http_mark_unreachable(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    bodies = _conversation(client, "c_http_silent", [None, None, None])
+    assert [body["ended"] for body in bodies] == [False, False, True]
+    # Listing 2 không có trường lý do: lý do nằm ở writelog Mock (và trace)
+    assert bodies[-1]["outcome"] == "UNREACHABLE"
+    assert clinic.writes == [("apt_00417", "UNREACHABLE", {"unreachable_reason": "SILENCE"})]
+
+
+def test_inbound_three_silences_over_http_transfer_without_write(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    bodies = _conversation(
+        client,
+        "c_http_in_silent",
+        [None, None, None],
+        direction="inbound",
+        appointment_id=None,
+        caller_number="0912345600",
+    )
+    assert (bodies[-1]["outcome"], bodies[-1]["ended"]) == ("TRANSFERRED", True)
+    assert clinic.writes == []
+
+
+def test_voicemail_over_http_marks_unreachable_without_disclosing(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    bodies = _conversation(
+        client,
+        "c_http_vm",
+        ["Nguyễn Văn A", "Xin chào, bạn đã gọi đến số của Lan. Hiện không thể nghe máy"],
+    )
+    assert (bodies[-1]["outcome"], bodies[-1]["ended"]) == ("UNREACHABLE", True)
+    assert clinic.writes == [("apt_00417", "UNREACHABLE", {"unreachable_reason": "VOICEMAIL"})]
+    spoken = " ".join(body["utterance"] for body in bodies)
+    assert not any(fact in spoken for fact in _APPOINTMENT_FACTS)
+
+
+def test_unknown_unreachable_outcome_over_http_needs_reconciliation(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    clinic.fail_next("mark_unreachable", outcome_unknown=True, apply_first=True)
+    _conversation(client, "c_http_vm_unknown", [None, None])
+    response = _turn(client, "c_http_vm_unknown", 3, None, silence_ms=2000)
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"

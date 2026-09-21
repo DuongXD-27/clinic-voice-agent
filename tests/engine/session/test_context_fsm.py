@@ -179,6 +179,19 @@ def test_confirmation_must_be_from_current_turn_and_right_question() -> None:
         assert_action_confirmed(ctx, "RESCHEDULE", "slot_b")
 
 
+def test_confirmation_must_answer_question_asked_on_the_previous_turn() -> None:
+    """T-08: câu hỏi từ hai lượt trước (xen câu nhắc chung) không nhận "vâng" của lượt này."""
+    ctx = _verified_resched(turn=6)
+    ctx.question = Question(QuestionId.SLOT_READBACK, "chốt?", 4, "RESCHEDULE", "slot_b")
+    ctx.add_evidence(
+        _evidence(
+            "CONFIRMATION", "RESCHEDULE", 6, QuestionId.SLOT_READBACK, "slot_b", question_turn=4
+        )
+    )
+    with pytest.raises(SevereFailureBlocked):
+        assert_action_confirmed(ctx, "RESCHEDULE", "slot_b")
+
+
 def _cancel_ctx(turn: int) -> CallContext:
     ctx = _ctx(identity_step="VERIFIED", state="AWAITING_CONFIRMATION", turn=turn)
     ctx.set_pending("CANCEL")

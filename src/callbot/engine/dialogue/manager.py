@@ -4,8 +4,8 @@ Nhận thẳng `ExtractionResult` (thiết kế IE v1.1). Mỗi phản hồi kè
 Dialogue không tự quyết chuyển máy vì không hiểu.
 
 Quy ước:
-- Mỗi câu hỏi nghiệp vụ đi qua `_ask`, lưu `question_id` + nội dung + lượt. Câu nhắc chung
-  (im lặng, "em chưa hiểu") không đổi câu hỏi đang chờ, nên không tạo được bằng chứng xác nhận.
+- Mỗi câu hỏi nghiệp vụ đi qua `_ask`, lưu `question_id` + nội dung + lượt. Câu "em chưa hiểu" không
+  đổi câu hỏi đang chờ; nhắc im lặng và xin nhắc lại thì hỏi lại nguyên văn câu đó ở lượt hiện tại.
 - Chỉ `agreement == AGREE` cho đúng câu hỏi xác nhận mới tạo bằng chứng và gọi lệnh ghi;
   REFUSE bỏ hành động chờ; UNCLEAR hỏi lại — câu đến khám thì đọc lại ngày, giờ, cơ sở bằng câu
   có / không (T-04), câu hủy / chọn slot thì bằng câu lựa chọn A/B.
@@ -83,8 +83,15 @@ class DialogueManager:
         )
 
     def silence(self, ctx: CallContext) -> BotAction:
-        # Không đổi câu hỏi đang chờ: "Alo, còn nghe máy không" không phải câu hỏi xác nhận
-        return BotAction(utterance=t.SILENCE, state=ctx.state)
+        """Kiến trúc §3.3: nhắc rồi hỏi lại câu đang chờ ở bước hiện tại (T-08).
+
+        Câu hỏi được hỏi lại ở lượt này, nên câu trả lời lượt sau ứng với câu hỏi vừa nhắc nguyên văn,
+        không phải với "còn nghe máy không" (guardrail chỉ nhận xác nhận cho câu hỏi ở lượt ngay trước).
+        """
+        if ctx.question is None:
+            return BotAction(utterance=t.SILENCE, state=ctx.state)
+        ctx.question = replace(ctx.question, turn=ctx.turn)
+        return BotAction(utterance=f"{t.SILENCE} {ctx.question.text}", state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
         # Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None), chỉ trả outcome
@@ -126,7 +133,8 @@ class DialogueManager:
 
     def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
         if extraction.intent.value is Intent.REPEAT_REQUEST and ctx.question is not None:
-            # Đọc lại đúng câu đang chờ; không tính là không hiểu (thiết kế §6.1)
+            # Đọc lại đúng câu đang chờ, hỏi lại ở lượt này; không tính là không hiểu (thiết kế §6.1)
+            ctx.question = replace(ctx.question, turn=ctx.turn)
             return Reply(BotAction(ctx.question.text, ctx.state), "NEUTRAL")
 
         question = ctx.question.question_id if ctx.question else None
@@ -177,10 +185,10 @@ class DialogueManager:
             )
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
 
-        opening = ctx.question is not None and ctx.question.turn == 0
+        opening = ctx.question is not None and ctx.question.text == t.greeting(ctx.call.direction)
         if ask_name and opening and is_greeting(ex.transcript):
-            # "Alo" đáp câu chào mở đầu: chào lại, không tính §1.1.5. `_ask` đổi lượt của câu hỏi
-            # nên chỉ chào lại một lần; "alo" tiếp theo là chưa hiểu như cũ.
+            # "Alo" đáp câu chào mở đầu (kể cả khi câu chào được nhắc lại sau im lặng): chào lại, không
+            # tính §1.1.5. `_ask` đổi nội dung câu hỏi nên chỉ chào lại một lần; "alo" tiếp theo là chưa hiểu.
             text = t.greeting_back(ctx.call.direction)
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         if not ask_name and dob_invalid:
@@ -237,7 +245,7 @@ class DialogueManager:
             return self._start(ctx, intent, ex, now)
 
         agreement = ex.agreement.value
-        if agreement is Agreement.AGREE:
+        if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             ctx.set_pending("CONFIRM")
             self._record_confirmation(ctx, ex)
             written = self._gateway.confirm(ctx)
@@ -354,7 +362,7 @@ class DialogueManager:
         assert action in ("RESCHEDULE", "BOOK") and slot is not None and slot_id is not None
 
         agreement = ex.agreement.value
-        if agreement is Agreement.AGREE:
+        if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             self._record_confirmation(ctx, ex)
             try:
                 if action == "RESCHEDULE":
@@ -393,7 +401,7 @@ class DialogueManager:
 
     def _cancel_reconfirm(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         agreement = ex.agreement.value
-        if agreement is Agreement.AGREE:
+        if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             # IE chỉ trả AGREE ở đây khi có động từ hủy tường minh (SF-05); "vâng" là UNCLEAR
             self._record_confirmation(ctx, ex)
             if ctx.cancel_reason is None and ex.cancel_reason.found:
@@ -480,6 +488,15 @@ class DialogueManager:
             # Hỏi lại cùng một câu hỏi danh tính bằng lời khác
             return Reply(self._ask(ctx, question_id, text, ctx.state), "NOT_UNDERSTOOD")
         return Reply(BotAction(text, ctx.state), "NOT_UNDERSTOOD")
+
+    @staticmethod
+    def _answers_last_question(ctx: CallContext) -> bool:
+        """AGREE chỉ mở khóa lệnh ghi khi câu hỏi xác nhận được nói ở lượt ngay trước (T-08).
+
+        Sau câu "em chưa hiểu" (không nhắc lại câu hỏi), "vâng" trả lời câu nhắc đó: đi nhánh chưa rõ,
+        hỏi lại câu xác nhận — không gọi lệnh ghi để guardrail chặn thành SYSTEM_ERROR.
+        """
+        return ctx.question is not None and ctx.question.turn == ctx.turn - 1
 
     def _record_confirmation(self, ctx: CallContext, ex: ExtractionResult) -> None:
         ctx.add_evidence(self._evidence(ctx, ex, "CONFIRMATION", ex.agreement))

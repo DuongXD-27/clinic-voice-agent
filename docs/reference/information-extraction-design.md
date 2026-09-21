@@ -316,10 +316,12 @@ Giá trị **trùng tên** `unreachable_reason` ở Phụ lục A rev 1.1, để
 | Mẫu | Giá trị | Hành động (Policy) |
 |---|---|---|
 | "để lại lời nhắn", "sau tiếng bíp", "hộp thư thoại", "leave a message", "after the tone" | `VOICEMAIL` | `POST /unreachable` với `VOICEMAIL`; **không** để lại chi tiết lịch hẹn (§1.1.7) |
+| Lời chào hộp thư cá nhân (T-08): "bạn đã gọi đến số", "cảm ơn bạn đã gọi", "hiện không thể nghe máy", "hiện không nghe máy được", "you've reached", "can't take your call", "please leave your name" | `VOICEMAIL` | như trên |
 | Dấu hiệu tổng đài + "bận" ("số máy quý khách vừa gọi hiện đang bận", "the number you are calling is busy") | `LINE_BUSY` | `POST /unreachable` với `LINE_BUSY` |
 | Dấu hiệu tổng đài, không nói bận ("thuê bao … tạm thời không liên lạc được", "ngoài vùng phủ sóng", "không có thực") | `NO_ANSWER` | `POST /unreachable` với `NO_ANSWER` |
 
 - `VOICEMAIL` xét trước: "thuê bao không liên lạc được, vui lòng để lại lời nhắn" là đã vào hộp thư.
+- Mẫu lời chào cá nhân chỉ gồm cụm người đã nghe máy gần như không nói. **Không** nhận "không nghe máy được", "sẽ gọi lại cho bạn", "gọi lại sau": người thật đang bận vẫn nói các câu đó (bẫy ở `test_human_speech_is_not_a_line_signal`).
 - `LINE_BUSY` / `NO_ANSWER` **bắt buộc có dấu hiệu tổng đài** ("thuê bao", "số máy quý khách", "ngoài vùng phủ sóng", "the number you have dialed"…). Người nghe máy nói "tôi đang bận" hay "không liên lạc được với anh ấy" là người thật; kết thúc `UNREACHABLE` với họ là case fail.
 - Theo §4.2.5, trên đường chấm chỉ có `SILENCE` và `VOICEMAIL`; `LINE_BUSY` / `NO_ANSWER` chỉ xuất hiện ở cuộc gọi thật tuần 6. Nếu clip lời chào của harness nghe giống thông báo tổng đài, IE vẫn báo đúng điều nó nghe; Policy quyết định mã (mục 6.4, mục 10 câu 9).
 
