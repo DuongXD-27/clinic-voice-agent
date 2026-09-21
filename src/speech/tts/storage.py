@@ -1,4 +1,6 @@
 import re
+import shutil
+import time
 from pathlib import Path
 
 from speech.audio.codec import encode_wav, to_sample_rate
@@ -30,3 +32,26 @@ class AudioArtifactStore:
         if not _SAFE_ID.match(call_id):
             raise ValueError(f"call_id không hợp lệ: {call_id!r}")
         return self.directory / call_id / f"{turn}.wav"
+
+    def purge_older_than(self, max_age_s: float) -> int:
+        """Xoá thư mục cuộc gọi không được ghi thêm trong `max_age_s` giây; trả về số đã xoá.
+
+        Quét cả `demo-input/<call_id>` (clip upload từ trang demo). Dùng mtime của thư mục —
+        cập nhật mỗi khi có lượt mới ghi file vào — nên cuộc gọi đang diễn ra không bị xoá.
+        """
+        cutoff = time.time() - max_age_s
+        removed = 0
+        for root in (self.directory, self.directory / "demo-input"):
+            if not root.is_dir():
+                continue
+            for call_dir in root.iterdir():
+                if not call_dir.is_dir() or call_dir.name == "demo-input":
+                    continue
+                try:
+                    if call_dir.stat().st_mtime < cutoff:
+                        shutil.rmtree(call_dir)
+                        removed += 1
+                except FileNotFoundError:
+                    # Worker khác vừa xoá cùng thư mục.
+                    continue
+        return removed

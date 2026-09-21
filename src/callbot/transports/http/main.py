@@ -68,9 +68,12 @@ def create_app(
     speech_factory: Callable[[], SpeechBundle] = _default_speech,
     call_mode_factory: Callable[[], CallModeStore] = _default_call_mode,
     cleanup_interval_s: float = 30.0,
+    audio_retention_s: Optional[float] = None,
 ) -> FastAPI:
     if cleanup_interval_s <= 0:
         raise ValueError("cleanup_interval_s must be positive")
+    if audio_retention_s is not None and audio_retention_s <= 0:
+        raise ValueError("audio_retention_s must be positive")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -80,6 +83,8 @@ def create_app(
         call_mode = None
         stop = asyncio.Event()
         app.state.cleanup_healthy = True
+        # Wav giữ đủ lâu để harness tải `audio_url` trong suốt cuộc gọi dài nhất có thể.
+        retention_s = audio_retention_s or SessionSettings().session_max_age_s
 
         async def cleanup() -> None:
             while not stop.is_set():
@@ -90,6 +95,13 @@ def create_app(
                     # Không ghi exception chứa transcript hoặc nội dung API vào log.
                     logger.error("Không dọn được session hết hạn")
                     app.state.cleanup_healthy = False
+                try:
+                    await asyncio.to_thread(
+                        app.state.speech.audio_store.purge_older_than, retention_s
+                    )
+                except Exception:
+                    # Lỗi dọn file không ảnh hưởng xử lý cuộc gọi — không đánh dấu /ready fail.
+                    logger.exception("Không dọn được audio cũ")
                 try:
                     await asyncio.wait_for(stop.wait(), timeout=cleanup_interval_s)
                 except TimeoutError:

@@ -1,4 +1,8 @@
-# Chạy trên EC2, do workflow CD (.github/workflows/cd.yml) chép lên /opt/callbot cùng .env.
+# Chạy trên EC2, do workflow CD (.github/workflows/cd.yml) chép lên /opt/callbot.
+# .env do người vận hành quản lý (CD chỉ tạo lần đầu); IMAGE nằm ở image.env do CD ghi mỗi lần deploy:
+#   docker compose --env-file .env --env-file image.env up -d
+# Rollback về bản deploy trước (CD lưu SHA cũ ở image.env.prev; image kéo lại từ GHCR nếu đã bị dọn):
+#   cp image.env.prev image.env && docker compose --env-file .env --env-file image.env up -d
 # Caddy nhận 80/443, tự xin cert Let's Encrypt cho BOT_DOMAIN và chuyển tới bot trong mạng nội bộ.
 services:
   redis:
@@ -25,9 +29,13 @@ services:
       retries: 10
 
   bot:
-    image: ${IMAGE:?Cần IMAGE trong .env}
+    image: ${IMAGE:?Cần IMAGE trong image.env}
     restart: unless-stopped
     env_file: .env
+    # Wav của TTS/demo là dữ liệu tạm (app tự dọn sau SESSION_MAX_AGE_S): để trong RAM có trần,
+    # không phình lớp ghi của container giữa các lần deploy.
+    tmpfs:
+      - /app/audio_cache:size=${AUDIO_CACHE_SIZE:-512m}
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}

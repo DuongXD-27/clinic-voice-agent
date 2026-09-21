@@ -98,16 +98,6 @@ jobs:
           : "${EC2_HOST:?Missing secret EC2_HOST}"
           : "${EC2_SSH_KEY:?Missing secret EC2_SSH_KEY}"
           : "${BOT_DOMAIN:?Missing variable BOT_DOMAIN}"
-          : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
-          : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
-          case "$NAME_FALLBACK_PROVIDER" in
-            none) ;;
-            openai) : "${OPENAI_API_KEY:?Missing secret OPENAI_API_KEY}" ;;
-            gemini) : "${GEMINI_API_KEY:?Missing secret GEMINI_API_KEY}" ;;
-            groq) : "${GROQ_API_KEY:?Missing secret GROQ_API_KEY}" ;;
-            openrouter) : "${OPENROUTER_API_KEY:?Missing secret OPENROUTER_API_KEY}" ;;
-            *) echo "Invalid NAME_FALLBACK_PROVIDER" >&2; exit 1 ;;
-          esac
 
       - name: Configure SSH
         shell: bash
@@ -118,42 +108,60 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
-      - name: Create production environment file
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          {
-            echo "IMAGE=$IMAGE:$DEPLOY_SHA"
-            echo "BOT_DOMAIN=$BOT_DOMAIN"
-            echo "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
-            echo "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
-            echo "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
-            echo "REDIS_PASSWORD=$REDIS_PASSWORD"
-            echo "REDIS_MAXMEMORY=256mb"
-            echo "WEB_CONCURRENCY=2"
-            echo "GEMINI_API_KEY=$GEMINI_API_KEY"
-            echo "OPENAI_API_KEY=$OPENAI_API_KEY"
-            echo "GROQ_API_KEY=$GROQ_API_KEY"
-            echo "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
-            echo "NAME_FALLBACK_PROVIDER=$NAME_FALLBACK_PROVIDER"
-            echo "NAME_FALLBACK_MODEL=$NAME_FALLBACK_MODEL"
-            echo "NAME_FALLBACK_MAX_TOKENS=$NAME_FALLBACK_MAX_TOKENS"
-            echo "NAME_FALLBACK_TIMEOUT_S=$NAME_FALLBACK_TIMEOUT_S"
-          } > deploy.env
-
-      - name: Upload deployment files
+      - name: Prepare production environment over SSH
         shell: bash
         run: |
           set -euo pipefail
           SSH_TARGET="$EC2_USER@$EC2_HOST"
-          ssh -o BatchMode=yes "$SSH_TARGET" "install -d -m 700 '$REMOTE_DIR'"
-          scp docker-compose.prod.yml "$SSH_TARGET:$REMOTE_DIR/docker-compose.yml.next"
-          scp deploy.env "$SSH_TARGET:$REMOTE_DIR/.env.next"
           ssh -o BatchMode=yes "$SSH_TARGET" \
-            "chmod 600 '$REMOTE_DIR/.env.next' \
-            && mv '$REMOTE_DIR/docker-compose.yml.next' '$REMOTE_DIR/docker-compose.yml' \
-            && mv '$REMOTE_DIR/.env.next' '$REMOTE_DIR/.env'"
+            "sudo install -d -o '$EC2_USER' -g '$EC2_USER' -m 700 '$REMOTE_DIR'"
+          scp docker-compose.prod.yml "$SSH_TARGET:$REMOTE_DIR/docker-compose.yml.next"
+
+          # .env trên server do người vận hành quản lý: CD chỉ tạo khi chưa có (lần deploy đầu),
+          # không bao giờ ghi đè. Muốn đổi cấu hình thì sửa trực tiếp /opt/callbot/.env.
+          if ssh -o BatchMode=yes "$SSH_TARGET" "test -f '$REMOTE_DIR/.env'"; then
+            echo "Keeping existing $REMOTE_DIR/.env"
+          else
+            : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
+            : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
+            case "$NAME_FALLBACK_PROVIDER" in
+              none) ;;
+              openai) : "${OPENAI_API_KEY:?Missing secret OPENAI_API_KEY}" ;;
+              gemini) : "${GEMINI_API_KEY:?Missing secret GEMINI_API_KEY}" ;;
+              groq) : "${GROQ_API_KEY:?Missing secret GROQ_API_KEY}" ;;
+              openrouter) : "${OPENROUTER_API_KEY:?Missing secret OPENROUTER_API_KEY}" ;;
+              *) echo "Invalid NAME_FALLBACK_PROVIDER" >&2; exit 1 ;;
+            esac
+            # Stream the generated env over SSH; do not leave a secrets file on the runner.
+            {
+              printf '%s\n' "BOT_DOMAIN=$BOT_DOMAIN"
+              printf '%s\n' "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
+              printf '%s\n' "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
+              printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+              printf '%s\n' "REDIS_PASSWORD=$REDIS_PASSWORD"
+              printf '%s\n' "REDIS_MAXMEMORY=256mb"
+              printf '%s\n' "WEB_CONCURRENCY=2"
+              printf '%s\n' "GEMINI_API_KEY=$GEMINI_API_KEY"
+              printf '%s\n' "OPENAI_API_KEY=$OPENAI_API_KEY"
+              printf '%s\n' "GROQ_API_KEY=$GROQ_API_KEY"
+              printf '%s\n' "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
+              printf '%s\n' "NAME_FALLBACK_PROVIDER=$NAME_FALLBACK_PROVIDER"
+              printf '%s\n' "NAME_FALLBACK_MODEL=$NAME_FALLBACK_MODEL"
+              printf '%s\n' "NAME_FALLBACK_MAX_TOKENS=$NAME_FALLBACK_MAX_TOKENS"
+              printf '%s\n' "NAME_FALLBACK_TIMEOUT_S=$NAME_FALLBACK_TIMEOUT_S"
+            } | ssh -o BatchMode=yes "$SSH_TARGET" \
+              "umask 077; cat > '$REMOTE_DIR/.env.next' && mv '$REMOTE_DIR/.env.next' '$REMOTE_DIR/.env'"
+          fi
+
+          # IMAGE đổi mỗi lần deploy nên nằm ở file riêng, để không phải đụng tới .env.
+          # Bản đang chạy được giữ ở image.env.prev để rollback (xem docker-compose.prod.yml).
+          printf '%s\n' "IMAGE=$IMAGE:$DEPLOY_SHA" | ssh -o BatchMode=yes "$SSH_TARGET" \
+            "cat > '$REMOTE_DIR/image.env.next'"
+          ssh -o BatchMode=yes "$SSH_TARGET" \
+            "set -eu; cd '$REMOTE_DIR'; \
+            if [ -f image.env ] && ! cmp -s image.env image.env.next; then cp image.env image.env.prev; fi; \
+            mv docker-compose.yml.next docker-compose.yml; \
+            mv image.env.next image.env"
 
       - name: Pull and restart services
         shell: bash
@@ -166,10 +174,9 @@ jobs:
             "set -eu; \
             trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT; \
             cd '$REMOTE_DIR'; \
-            docker compose config --quiet; \
-            docker compose pull; \
-            docker compose up -d --remove-orphans; \
-            docker image prune -f"
+            docker compose --env-file .env --env-file image.env config --quiet; \
+            docker compose --env-file .env --env-file image.env pull; \
+            docker compose --env-file .env --env-file image.env up -d --remove-orphans"
 
       - name: Smoke test
         shell: bash
@@ -189,3 +196,14 @@ jobs:
           curl -fsS --connect-timeout 5 -X POST "https://$BOT_DOMAIN/v1/calls" \
             -H "Content-Type: application/json" \
             -d '{"call_id":"'"$CALL_ID"'","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'
+
+      # Chỉ dọn khi bản mới đã qua smoke test. `prune -f` cũ chỉ xoá image dangling nên image
+      # tag SHA của mọi lần deploy trước nằm lại mãi. `-a` xoá image không container nào dùng;
+      # filter `until` giữ các bản gần đây để rollback không phải pull lại (GHCR vẫn còn đủ).
+      # Không prune volume: caddy_data giữ chứng chỉ Let's Encrypt.
+      - name: Clean up old images
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+            "docker image prune -af --filter 'until=72h' && docker builder prune -f && docker system df"
