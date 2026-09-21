@@ -237,13 +237,19 @@ Nguyên tắc phân lớp: `ADVICE_REQUEST` cần **hành vi hỏi** (từ nghi 
 
 Figure 0 rev 1.1 gộp tóm tắt lịch, đọc lại ngày/giờ/khoa và câu hỏi "Anh chị đến được không ạ?" vào **một lượt**; câu trả lời "Có, tôi đến được." ghi `CONFIRMED` ngay. Câu gộp đó mang `question_id = CONFIRM_READBACK`. `ASK_ATTENDANCE` chỉ dùng khi Dialogue hỏi "có đến được không" **trước** khi đọc lại.
 
+**Câu hỏi đến khám (`CONFIRM_READBACK`, `ASK_ATTENDANCE`) — T-04:**
+- "Vâng" / "dạ" / "ừ" là xác nhận, kể cả khi kèm lời khác ("vâng, cảm ơn em").
+- Câu **khẳng định sẽ đến** không có từ đồng ý ("tôi sẽ đến", "vẫn đến", "xác nhận") là `AGREE` — contract Bảng 1 "states or agrees they will attend". IE truyền cụm intent `CONFIRM` vào `extract_agreement(attendance=...)`; cụm này chỉ được xét **sau** mọi chặn (câu hỏi đuôi, "nhưng", ngập ngừng, từ chối) và chỉ ở câu hỏi đến khám.
+- "Giữ lịch", "giữ nguyên lịch" → `AGREE`; "không hủy", "đừng hủy" không phải từ chối đến khám (chỉ còn `UNCLEAR` nếu không có gì khác). Ở `CANCEL_RECONFIRM` / `SLOT_READBACK` các cụm này vẫn là `REFUSE`.
+
 **Bẫy phủ định:**
 - "không sao", "không vấn đề gì", "không có gì" → `AGREE` (khi đang hỏi xác nhận).
 - "… được **không**?" (câu hỏi đuôi) → `UNCLEAR`, không phải `REFUSE`.
-- "thôi", "để sau", "chưa", "không hủy nữa", "giữ lịch" → `REFUSE`.
+- "thôi", "để sau", "chưa", "không hủy nữa", "giữ lịch" → `REFUSE` (trừ "giữ lịch", "không hủy" ở câu hỏi đến khám — xem trên).
+- **Ngập ngừng** ("để xem", "chắc là", "có lẽ", "chưa chắc", "để tôi hỏi") → `UNCLEAR` ở mọi câu hỏi xác nhận, kể cả khi có "vâng" / "được" ("chắc là được"). Không có "chắc" đứng một mình: "chắc chắn" là khẳng định.
 - Nói vòng ("hôm đó tôi bận mất rồi") → luật cho `UNCLEAR`, tuyến sau xét.
 
-**Khi `UNCLEAR`:** hỏi lại bằng **câu lựa chọn A/B** để từ đáp lễ phép không còn là câu trả lời hợp lệ:
+**Khi `UNCLEAR`:** ở câu hỏi đến khám, Dialogue **đọc lại** ngày, giờ, cơ sở bằng câu có / không ("vâng" là câu trả lời hợp lệ — kiến trúc §3.2 "Chưa rõ → O_READ"). Ở hủy / chọn slot, hỏi lại bằng **câu lựa chọn A/B** để từ đáp lễ phép không còn là câu trả lời hợp lệ:
 - "Anh chị muốn **hủy** lịch hay **giữ** lịch ạ?"
 - "Anh chị chọn khung **14 giờ 30** hay muốn **nghe khung khác** ạ?"
 
