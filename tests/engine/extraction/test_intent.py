@@ -69,6 +69,21 @@ def test_direction_only_labels() -> None:
     assert extract_intent("tôi sẽ đến", "inbound").value is Intent.NONE
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("tôi muốn xác nhận lịch khám", Intent.CONFIRM),
+        ("xac nhan lich hen", Intent.CONFIRM),
+        ("tôi không xác nhận lịch", Intent.NONE),
+        ("sáng mai tôi đến được không", Intent.NONE),  # nhu cầu đặt lịch, không phải lịch có sẵn
+        ("tôi muốn đặt lịch, xác nhận lịch giúp", Intent.BOOK),
+    ],
+)
+def test_inbound_confirm_only_on_existing_appointment_wording(text: str, expected: Intent) -> None:
+    """T-04: inbound "xác nhận lịch" là việc ngoài kịch bản -> Dialogue chuyển máy (§1.1.5)."""
+    assert extract_intent(text, "inbound").value is expected
+
+
 def test_allowed_restricts_labels() -> None:
     allowed = {Intent.REQUEST_HUMAN, Intent.NOT_PATIENT, Intent.REPEAT_REQUEST}
     assert extract_intent("tôi muốn hủy", "outbound", allowed).value is Intent.NONE

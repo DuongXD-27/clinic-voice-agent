@@ -1,0 +1,485 @@
+version: "1.0"
+
+suite:
+  name: "STT Golden Audio Suite"
+  language: "vi-VN"
+  description: >
+    Golden dataset phục vụ đánh giá STT cho MVP AI Callbot.
+    Scope hiện tại gồm Verify Identity, Confirm Attendance và No Answer.
+  total_cases: 40
+
+audio_spec:
+  sample_rate_hz: 8000
+  channels: 1
+  format: "wav"
+  encoding: "pcm_s16le"
+
+scoring:
+  wer:
+    enabled: true
+
+  critical_entity_check:
+    enabled: true
+    description: >
+      Các entity nghiệp vụ quan trọng phải được nhận dạng đúng.
+      WER thấp không đủ để PASS nếu model làm sai critical entity.
+
+  silence_hallucination_check:
+    enabled: true
+    description: >
+      Audio silence/noise không có speech không được sinh transcript giả.
+
+cases:
+
+  # ============================================================
+  # A. VERIFY IDENTITY — FULL NAME
+  # 10 cases
+  # ============================================================
+
+  - id: STT_ID_01
+    audio: "audio-8k/STT_ID_01.wav"
+    category: identity_name
+    reference: "Tôi là Nguyễn Văn A."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Văn A"
+    critical: true
+
+  - id: STT_ID_02
+    audio: "audio-8k/STT_ID_02.wav"
+    category: identity_name
+    reference: "Nguyễn Văn A."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Văn A"
+    critical: true
+
+  - id: STT_ID_03
+    audio: "audio-8k/STT_ID_03.wav"
+    category: identity_name
+    reference: "Dạ, em tên là Trần Thị Mai."
+    critical_entities:
+      - type: person_name
+        value: "Trần Thị Mai"
+    critical: true
+
+  - id: STT_ID_04
+    audio: "audio-8k/STT_ID_04.wav"
+    category: identity_name
+    reference: "Tôi tên Nguyễn Hoàng Minh."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Hoàng Minh"
+    critical: true
+
+  - id: STT_ID_05
+    audio: "audio-8k/STT_ID_05.wav"
+    category: identity_name
+    reference: "Tôi là Nguyễn Văn A, còn em tôi là Nguyễn Văn B."
+    critical_entities:
+      - type: caller_name
+        value: "Nguyễn Văn A"
+      - type: mentioned_person_name
+        value: "Nguyễn Văn B"
+    critical: true
+    notes: >
+      STT phải giữ được cả hai tên. Việc xác định Nguyễn Văn A là caller
+      thuộc trách nhiệm của Identity Extraction, không phải STT.
+
+  - id: STT_ID_06
+    audio: "audio-8k/STT_ID_06.wav"
+    category: identity_name
+    reference: "Em tôi là Nguyễn Văn B, còn tôi là Nguyễn Văn A."
+    critical_entities:
+      - type: caller_name
+        value: "Nguyễn Văn A"
+      - type: mentioned_person_name
+        value: "Nguyễn Văn B"
+    critical: true
+
+  - id: STT_ID_07
+    audio: "audio-8k/STT_ID_07.wav"
+    category: identity_name
+    reference: "Tôi là Nguyễn Văn Anh."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Văn Anh"
+    critical: true
+    notes: "Dùng để kiểm tra phân biệt Anh và An."
+
+  - id: STT_ID_08
+    audio: "audio-8k/STT_ID_08.wav"
+    category: identity_name
+    reference: "Tôi là Nguyễn Văn An."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Văn An"
+    critical: true
+    notes: "Dùng để kiểm tra phân biệt An và Anh."
+
+  - id: STT_ID_09
+    audio: "audio-8k/STT_ID_09.wav"
+    category: identity_name
+    reference: "Tôi là Đỗ Đức Dũng."
+    critical_entities:
+      - type: person_name
+        value: "Đỗ Đức Dũng"
+    critical: true
+
+  - id: STT_ID_10
+    audio: "audio-8k/STT_ID_10.wav"
+    category: identity_name
+    reference: "Tôi là Nguyễn Hoàng Gia Bảo."
+    critical_entities:
+      - type: person_name
+        value: "Nguyễn Hoàng Gia Bảo"
+    critical: true
+
+
+  # ============================================================
+  # B. VERIFY IDENTITY — DATE OF BIRTH
+  # 10 cases
+  # ============================================================
+
+  - id: STT_DOB_01
+    audio: "audio-8k/STT_DOB_01.wav"
+    category: identity_dob
+    reference: "Ngày 14 tháng 3 năm 1978."
+    critical_entities:
+      - type: dob
+        value: "14 tháng 3 năm 1978"
+    critical: true
+
+  - id: STT_DOB_02
+    audio: "audio-8k/STT_DOB_02.wav"
+    category: identity_dob
+    reference: "Mười bốn tháng ba năm một nghìn chín trăm bảy mươi tám."
+    critical_entities:
+      - type: dob
+        value: "14 tháng 3 năm 1978"
+    critical: true
+
+  - id: STT_DOB_03
+    audio: "audio-8k/STT_DOB_03.wav"
+    category: identity_dob
+    reference: "Ngày 4 tháng 3 năm 1978."
+    critical_entities:
+      - type: day
+        value: "4"
+      - type: month
+        value: "3"
+      - type: year
+        value: "1978"
+    critical: true
+    notes: "Kiểm tra phân biệt ngày 4 và ngày 14."
+
+  - id: STT_DOB_04
+    audio: "audio-8k/STT_DOB_04.wav"
+    category: identity_dob
+    reference: "Ngày 14 tháng 8 năm 1978."
+    critical_entities:
+      - type: day
+        value: "14"
+      - type: month
+        value: "8"
+      - type: year
+        value: "1978"
+    critical: true
+
+  - id: STT_DOB_05
+    audio: "audio-8k/STT_DOB_05.wav"
+    category: identity_dob
+    reference: "Ngày 14 tháng 3 năm 1987."
+    critical_entities:
+      - type: day
+        value: "14"
+      - type: month
+        value: "3"
+      - type: year
+        value: "1987"
+    critical: true
+    notes: "Kiểm tra phân biệt 1978 và 1987."
+
+  - id: STT_DOB_06
+    audio: "audio-8k/STT_DOB_06.wav"
+    category: identity_dob
+    reference: "À không, ngày 15 tháng 3 năm 1978."
+    critical_entities:
+      - type: correction_marker
+        value: "À không"
+      - type: dob
+        value: "15 tháng 3 năm 1978"
+    critical: true
+    notes: "STT phải giữ được thông tin caller tự sửa."
+
+  - id: STT_DOB_07
+    audio: "audio-8k/STT_DOB_07.wav"
+    category: identity_dob
+    reference: "Hình như ngày 14 tháng 3 năm 1978."
+    critical_entities:
+      - type: uncertainty_marker
+        value: "Hình như"
+      - type: dob
+        value: "14 tháng 3 năm 1978"
+    critical: true
+    notes: >
+      STT phải giữ được uncertainty marker. Việc chấp nhận hay hỏi lại DOB
+      là policy phía sau, không thuộc STT.
+
+  - id: STT_DOB_08
+    audio: "audio-8k/STT_DOB_08.wav"
+    category: identity_dob
+    reference: "Ngày mười bốn tháng ba năm bảy tám."
+    critical_entities:
+      - type: spoken_dob
+        value: "mười bốn tháng ba năm bảy tám"
+    critical: true
+
+  - id: STT_DOB_09
+    audio: "audio-8k/STT_DOB_09.wav"
+    category: identity_dob
+    reference: "Ngày 29 tháng 2 năm 2000."
+    critical_entities:
+      - type: dob
+        value: "29 tháng 2 năm 2000"
+    critical: true
+
+  - id: STT_DOB_10
+    audio: "audio-8k/STT_DOB_10.wav"
+    category: identity_dob
+    reference: "Ngày 31 tháng 2 năm 1978."
+    critical_entities:
+      - type: spoken_dob
+        value: "31 tháng 2 năm 1978"
+    critical: true
+    notes: >
+      STT phải transcribe đúng câu caller nói, không tự sửa ngày không hợp lệ.
+      Validation thuộc DOB parser phía sau.
+
+
+  # ============================================================
+  # C. CONFIRM ATTENDANCE
+  # 10 cases
+  # ============================================================
+
+  - id: STT_CF_01
+    audio: "audio-8k/STT_CF_01.wav"
+    category: confirmation
+    reference: "Có, tôi đến được."
+    expected_semantic: explicit_agree
+    critical_entities:
+      - type: agreement
+        value: "Có"
+    critical: true
+
+  - id: STT_CF_02
+    audio: "audio-8k/STT_CF_02.wav"
+    category: confirmation
+    reference: "Vâng, tôi sẽ đến."
+    expected_semantic: explicit_agree
+    critical_entities:
+      - type: agreement
+        value: "Vâng"
+    critical: true
+
+  - id: STT_CF_03
+    audio: "audio-8k/STT_CF_03.wav"
+    category: confirmation
+    reference: "Được, tôi đến."
+    expected_semantic: explicit_agree
+    critical_entities:
+      - type: agreement
+        value: "Được"
+    critical: true
+
+  - id: STT_CF_04
+    audio: "audio-8k/STT_CF_04.wav"
+    category: confirmation
+    reference: "Ừ, chắc tôi đến được."
+    expected_semantic: uncertain_agree
+    critical_entities:
+      - type: uncertainty_marker
+        value: "chắc"
+    critical: true
+
+  - id: STT_CF_05
+    audio: "audio-8k/STT_CF_05.wav"
+    category: confirmation
+    reference: "Để xem đã."
+    expected_semantic: unclear
+    critical_entities: []
+    critical: true
+    notes: "Không được biến thành explicit agreement."
+
+  - id: STT_CF_06
+    audio: "audio-8k/STT_CF_06.wav"
+    category: confirmation
+    reference: "Tôi chưa chắc."
+    expected_semantic: unclear
+    critical_entities:
+      - type: uncertainty_marker
+        value: "chưa chắc"
+    critical: true
+
+  - id: STT_CF_07
+    audio: "audio-8k/STT_CF_07.wav"
+    category: confirmation
+    reference: "Không, tôi không đến được."
+    expected_semantic: explicit_disagree
+    critical_entities:
+      - type: negation
+        value: "Không"
+      - type: negation
+        value: "không đến được"
+    critical: true
+    notes: "Critical negation case."
+
+  - id: STT_CF_08
+    audio: "audio-8k/STT_CF_08.wav"
+    category: confirmation
+    reference: "Dạ không."
+    expected_semantic: explicit_disagree
+    critical_entities:
+      - type: negation
+        value: "không"
+    critical: true
+
+  - id: STT_CF_09
+    audio: "audio-8k/STT_CF_09.wav"
+    category: confirmation
+    reference: "Tôi không nói là tôi không đến, tôi vẫn đến."
+    expected_semantic: explicit_agree
+    critical_entities:
+      - type: final_intent
+        value: "tôi vẫn đến"
+    critical: true
+    notes: "Negation trap."
+
+  - id: STT_CF_10
+    audio: "audio-8k/STT_CF_10.wav"
+    category: confirmation
+    reference: "Có, nhưng là 9 giờ sáng đúng không?"
+    expected_semantic: agree_with_question
+    critical_entities:
+      - type: agreement
+        value: "Có"
+      - type: time
+        value: "9 giờ sáng"
+    critical: true
+
+
+  # ============================================================
+  # D. BUSINESS ENTITIES — DATE / TIME / DEPARTMENT
+  # 4 cases
+  # ============================================================
+
+  - id: STT_ENT_01
+    audio: "audio-8k/STT_ENT_01.wav"
+    category: business_entity
+    reference: "Ngày 14 tháng 10 đúng không?"
+    critical_entities:
+      - type: date
+        value: "14 tháng 10"
+    critical: true
+
+  - id: STT_ENT_02
+    audio: "audio-8k/STT_ENT_02.wav"
+    category: business_entity
+    reference: "9 giờ sáng."
+    critical_entities:
+      - type: time
+        value: "9 giờ sáng"
+    critical: true
+
+  - id: STT_ENT_03
+    audio: "audio-8k/STT_ENT_03.wav"
+    category: business_entity
+    reference: "Khoa Nội tổng quát."
+    critical_entities:
+      - type: department
+        value: "Nội tổng quát"
+    critical: true
+
+  - id: STT_ENT_04
+    audio: "audio-8k/STT_ENT_04.wav"
+    category: business_entity
+    reference: "Lịch khám Nội tổng quát ngày 14 tháng 10 lúc 9 giờ sáng."
+    critical_entities:
+      - type: department
+        value: "Nội tổng quát"
+      - type: date
+        value: "14 tháng 10"
+      - type: time
+        value: "9 giờ sáng"
+    critical: true
+
+
+  # ============================================================
+  # E. SILENCE / VOICEMAIL / LINE SIGNAL
+  # 6 cases
+  # ============================================================
+
+  - id: STT_SIG_01
+    audio: "audio-8k/STT_SIG_01.wav"
+    category: silence
+    reference: ""
+    expected_signal: silence
+    should_produce_text: false
+    critical: true
+    notes: "Khoảng 5 giây im lặng hoàn toàn."
+
+  - id: STT_SIG_02
+    audio: "audio-8k/STT_SIG_02.wav"
+    category: background_noise
+    reference: ""
+    expected_signal: noise_only
+    should_produce_text: false
+    critical: true
+    notes: >
+      Có background noise nhưng không có speech.
+      Model không được hallucinate transcript.
+
+  - id: STT_SIG_03
+    audio: "audio-8k/STT_SIG_03.wav"
+    category: speech_after_silence
+    reference: "Alo?"
+    expected_signal: speech
+    should_produce_text: true
+    critical_entities:
+      - type: speech
+        value: "Alo"
+    critical: false
+    notes: "Có khoảng 2 giây silence trước khi caller nói Alo."
+
+  - id: STT_SIG_04
+    audio: "audio-8k/STT_SIG_04.wav"
+    category: voicemail
+    reference: "Xin vui lòng để lại lời nhắn sau tiếng bíp."
+    expected_signal: voicemail
+    should_produce_text: true
+    critical_entities:
+      - type: voicemail_phrase
+        value: "để lại lời nhắn"
+    critical: true
+
+  - id: STT_SIG_05
+    audio: "audio-8k/STT_SIG_05.wav"
+    category: automated_line_message
+    reference: "Thuê bao quý khách vừa gọi hiện không liên lạc được."
+    expected_signal: no_answer
+    should_produce_text: true
+    critical_entities:
+      - type: line_message
+        value: "không liên lạc được"
+    critical: true
+
+  - id: STT_SIG_06
+    audio: "audio-8k/STT_SIG_06.wav"
+    category: line_signal
+    reference: ""
+    expected_signal: busy_or_ringing
+    should_produce_text: false
+    critical: true
+    notes: >
+      Chỉ có busy tone hoặc ringing, không có human speech.
+      STT không được hallucinate transcript.

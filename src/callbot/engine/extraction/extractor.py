@@ -218,7 +218,9 @@ class InformationExtractor:
         intent: Field[Intent],
         clinical: Field[ClinicalLevel],
     ) -> Field[Agreement]:
-        result = extract_agreement(transcript, question)
+        # "tôi sẽ đến", "xác nhận" ở câu hỏi đến khám là đồng ý tham dự (T-04); agreement tự bỏ qua ở câu khác
+        attendance = intent.span if intent.value is Intent.CONFIRM else None
+        result = extract_agreement(transcript, question, attendance=attendance)
         if not result.found and self._fallback is not None:
             # Tuyến sau chỉ xét câu nói vòng không có tín hiệu nào ("hôm đó tôi bận mất rồi").
             result = guard_fallback(

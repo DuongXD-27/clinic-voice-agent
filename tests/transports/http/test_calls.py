@@ -3,7 +3,7 @@ from typing import Any, Optional
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.engine.fake_clinic import FakeClinicAPI
+from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 from callbot.engine import (
     CallBusy,
@@ -412,3 +412,44 @@ def test_http_app_restart_keeps_active_session_in_redis(redis_store_factory) -> 
     with TestClient(new_app()) as second:
         assert _turn(second, "c_restart_http", 1, "Nguyễn Văn A.").json() == asked
         assert _turn(second, "c_restart_http", 2, "14/03/1978").status_code == 200
+
+
+def test_confirm_over_http_reports_confirmed_only_after_write(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """T-04: lượt đọc lại chưa ghi gì; CONFIRMED chỉ xuất hiện ở lượt Clinic đã ghi."""
+    _start(client, "c_http_confirm")
+    _turn(client, "c_http_confirm", 1, "Nguyễn Văn A.")
+    readback = _turn(client, "c_http_confirm", 2, "Ngày 14 tháng 3 năm 1978.").json()
+    assert "tại Vinmec Times City" in readback["utterance"] and readback["outcome"] is None
+    assert clinic.writes == []
+
+    body = _turn(client, "c_http_confirm", 3, "Vâng").json()
+    assert (body["ended"], body["outcome"], body["state"]) == (True, "CONFIRMED", "ENDED")
+    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+
+
+def _at_confirm_readback(client: TestClient, call_id: str) -> None:
+    _start(client, call_id)
+    _turn(client, call_id, 1, "Nguyễn Văn A.")
+    _turn(client, call_id, 2, "Ngày 14 tháng 3 năm 1978.")
+
+
+def test_rejected_confirm_over_http_is_transferred(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_rejected")
+    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    body = _turn(client, "c_http_rejected", 3, "Vâng").json()
+    assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
+    assert all(status != "CONFIRMED" for _, status, _ in clinic.writes)
+
+
+def test_unknown_confirm_outcome_over_http_needs_reconciliation(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_unknown")
+    clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    response = _turn(client, "c_http_unknown", 3, "Vâng")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"

@@ -177,6 +177,17 @@ _UNACCENTED_EXCLUDE: dict[Intent, list[str]] = {
     Intent.CONFIRM: ["tôi đến", "đúng lịch"],  # "toi den" = tối đến; "dung lich" = dùng lịch
     Intent.CANNOT_PROVIDE: ["quên mất", "quên rồi"],  # "quen mat" = quen mặt; "quen roi" = quen rồi
 }
+# Nhãn chỉ-một-hướng vẫn nhận ở hướng kia với cụm hẹp, để Dialogue chuyển máy vì ngoài kịch bản
+# (§1.1.5) thay vì hỏi lại. Inbound "xác nhận lịch khám" nói về lịch có sẵn; "tôi đến được" thì không —
+# inbound "sáng mai tôi đến được không" là nhu cầu đặt lịch (T-04).
+_CROSS_DIRECTION_KEYWORDS: dict[tuple[Intent, Direction], list[str]] = {
+    (Intent.CONFIRM, "inbound"): [
+        "xác nhận lịch",
+        "xác nhận lịch hẹn",
+        "xác nhận lịch khám",
+        "xác nhận cuộc hẹn",
+    ],
+}
 _COMPILED = {
     intent: compile_phrases(words, _UNACCENTED_EXCLUDE.get(intent, ()))
     for intent, words in _KEYWORDS.items()
@@ -191,6 +202,7 @@ _NOT_PATIENT_SOURCES = [
     rf"(?<!\w)(?:tôi|em|mình|con|cháu) là {_RELATIVE}(?: của)? (?:{_THIRD_PERSON}|bệnh nhân|người đó)(?!\w)",
     rf"(?<!\w){_THIRD_PERSON} (?:đi làm|ra ngoài|không nghe máy|đang bận|không có ở đây|đi công tác)(?!\w)",
 ]
+_CROSS_DIRECTION = {key: compile_phrases(words) for key, words in _CROSS_DIRECTION_KEYWORDS.items()}
 _NOT_PATIENT_PATTERNS = [re.compile(source) for source in _NOT_PATIENT_SOURCES]
 _NOT_PATIENT_PATTERNS_UNACCENTED = [
     re.compile(strip_diacritics(source)) for source in _NOT_PATIENT_SOURCES
@@ -211,9 +223,20 @@ def extract_intent(
     provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
     allowed_set = frozenset(allowed) if allowed is not None else frozenset(PRIORITY)
     for intent in (*PRIORITY, *IDENTITY_ONLY):
-        if intent not in allowed_set or not allowed_in_direction(intent, direction):
+        if intent not in allowed_set:
             continue
-        span = _match(intent, text, unaccented)
+        if allowed_in_direction(intent, direction):
+            span = _match(intent, text, unaccented)
+        elif (intent, direction) in _CROSS_DIRECTION:
+            found = find_phrase(
+                text,
+                _CROSS_DIRECTION[(intent, direction)],
+                allow_negated=False,
+                unaccented=unaccented,
+            )
+            span = found.group(0) if found else None
+        else:
+            continue
         if span is not None:
             return Field(intent, provenance, span=span)
     return Field.nothing(Intent.NONE)

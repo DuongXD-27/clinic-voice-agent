@@ -10,3 +10,5 @@ test-results/
 traces.jsonl
 
 clinic-mock/
+
+eval/stt-bench/master

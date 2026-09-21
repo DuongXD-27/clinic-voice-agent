@@ -356,3 +356,29 @@ def test_trace_is_json_ready() -> None:
         "span": "mười bốn tháng ba năm bảy tám",
     }
     assert trace["question_id"] == "ASK_DOB"
+
+
+@pytest.mark.parametrize(
+    "text, span",
+    [("tôi sẽ đến", "sẽ đến"), ("xác nhận", "xác nhận"), ("không hủy đâu, tôi vẫn đến", "vẫn đến")],
+)
+def test_stated_attendance_is_agreement_at_readback(text: str, span: str) -> None:
+    """T-04, contract Bảng 1: "states or agrees they will attend"."""
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.intent.value is Intent.CONFIRM
+    assert (result.agreement.value, result.agreement.span) == (Agreement.AGREE, span)
+
+
+@pytest.mark.parametrize(
+    "text, intent",
+    [("tôi sẽ đến được không", Intent.CONFIRM), ("không đến được", Intent.CANCEL)],
+)
+def test_attendance_wording_that_is_not_agreement(text: str, intent: Intent) -> None:
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.intent.value is intent and result.agreement.value is not Agreement.AGREE
+
+
+def test_stated_attendance_does_not_unlock_other_writes() -> None:
+    for question in (QuestionId.SLOT_READBACK, QuestionId.CANCEL_RECONFIRM):
+        result = InformationExtractor().extract(ctx(question), "tôi sẽ đến")
+        assert result.agreement.value is not Agreement.AGREE
