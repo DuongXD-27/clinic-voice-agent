@@ -12,9 +12,9 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction import InformationExtractor, Intent, Provenance, QuestionId
 from callbot.engine.extraction.ner import NameNER
 from callbot.engine.types import CallerInput, CallStart
-from llm.config import OpenAIConfig
-from llm.gateway import create_gateway
-from llm.prompt.ner import FEW_SHOTS, PROMPT_VERSION, build_messages
+from inference.llm.config import OpenAIConfig
+from inference.llm.gateway import create_gateway
+from inference.llm.prompt.ner import FEW_SHOTS, PROMPT_VERSION, build_messages
 from tests.engine.extraction.test_extractor import ctx
 from tests.engine.fake_clinic import FakeClinicAPI
 
@@ -217,7 +217,7 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, monkeypatch):
         lambda _: httpx.Response(200, json=completion()) if success else httpx.Response(503)
     )
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
-    settings = EngineSettings(llm_provider="none", name_fallback_provider="openai", _env_file=None)
+    settings = EngineSettings(name_fallback_provider="openai", _env_file=None)
     with patch("callbot.engine.create_gateway", return_value=adapter._gateway) as factory:
         bot = create_orchestrator(FakeClinicAPI(), settings=settings)
     factory.assert_called_once_with("openai")
@@ -248,14 +248,12 @@ def test_disabled_provider_does_not_construct_adapter():
     with patch("callbot.engine.create_gateway") as factory:
         create_orchestrator(
             FakeClinicAPI(),
-            settings=EngineSettings(
-                llm_provider="none", name_fallback_provider="none", _env_file=None
-            ),
+            settings=EngineSettings(name_fallback_provider="none", _env_file=None),
         )
     factory.assert_not_called()
 
 
 def test_enabled_provider_requires_key_at_orchestrator_startup():
-    settings = EngineSettings(llm_provider="none", name_fallback_provider="openai", _env_file=None)
+    settings = EngineSettings(name_fallback_provider="openai", _env_file=None)
     with pytest.raises(ValidationError, match="requires OPENAI_API_KEY"):
         create_orchestrator(FakeClinicAPI(), settings=settings)

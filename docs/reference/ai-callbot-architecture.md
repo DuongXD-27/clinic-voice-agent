@@ -353,7 +353,7 @@ Chỉ dùng dữ liệu tổng hợp do chương trình cung cấp, kể cả ki
 | [Policy](../../src/callbot/engine/policy/policy_engine.py) | Bộ đếm theo thiết kế IE §6.1; im lặng: outbound `UNREACHABLE`, inbound chuyển máy. Danh tính dùng chung ngưỡng §1.1.5 (IE §6.2); không nhớ / không cung cấp hai lần → `IDENTITY_FAILED`; tra cứu lượt 0 thất bại → chuyển máy ở lượt 1. |
 | [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. F-05 ([evidence](../evidence/f05-clinic-gateway.md)): đọc hết trang, chuẩn hóa slot/patient/appointment, lỗi ba lớp không lộ `httpx`, `FakeClinicAPI` hành xử như mock, contract test fake ↔ mock thật. |
 | [Speech pipeline](../../src/callbot/speech/pipeline.py) | Có STT pipeline; xử lý streaming và ngắt lời còn TODO. |
-| [TTS](../../src/callbot/speech/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
+| [TTS](../../src/inference/tts/base.py) | Có interface và `NullTTS`, chưa sinh tiếng nói thật. |
 | Phone Adapter | Chưa có transport điện thoại trong repo. |
 | Output Guard | Là phần của thiết kế đích; chưa có một bước kiểm tra đầu ra tập trung trong Orchestrator. |
 

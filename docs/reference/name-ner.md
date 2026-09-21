@@ -11,16 +11,15 @@ model mặc định của từng provider và cấu hình token budget.
 
 - `extraction/fallback.py`: protocol và kiểm tra span chung cho các phương pháp fallback.
 - `callbot/engine/extraction/ner.py`: `NameNER`, gọi gateway, kiểm tra tên/span và chuyển thành `Field`.
-- `llm/prompt/ner.py`: prompt `name_ner_v1` và 10 cặp few-shot với tên tổng hợp.
-- `llm/gateway.py`: `LLMGateway` và `create_gateway()`, chọn provider và kiểm tra JSON trả về.
-- `llm/base.py`: interface `StructuredProvider` và kết quả `StructuredReply` dùng chung.
-- `llm/providers/`: `openai.py`, `gemini.py`, `groq.py`, `openrouter.py`; HTTP, lỗi và usage riêng từng dịch vụ.
-- `llm/config.py`: cấu hình API key, model, timeout và token budget; chỉ đọc cấu hình provider được chọn.
+- `inference/llm/prompt/ner.py`: prompt `name_ner_v1` và 10 cặp few-shot với tên tổng hợp.
+- `inference/llm/gateway.py`: `LLMGateway` và `create_gateway()`, chọn provider và kiểm tra JSON trả về.
+- `inference/llm/providers/base.py`: interface `StructuredProvider` và kết quả `StructuredReply` dùng chung.
+- `inference/llm/providers/`: adapter OpenAI, Gemini, Groq và OpenRouter.
+- `inference/llm/config.py`: cấu hình API key, model, timeout và token budget.
 - `EngineSettings.name_fallback_provider`: lựa chọn bật/tắt NER.
 
-`src/llm/` ngang cấp `src/callbot/`, được đóng gói cùng ứng dụng. Provider và prompt
-không import các kiểu dữ liệu của callbot. Provider Gemini lời thoại hiện có vẫn
-thuộc module dialogue; thay đổi này tập trung vào NER mới.
+`src/inference/` ngang cấp `src/callbot/`, gom adapter LLM, ASR và TTS nhưng giữ contract
+riêng cho từng capability. Module dialogue chọn lời thoại theo luật và câu mẫu, không gọi LLM.
 
 ## Bật và tắt
 
@@ -34,8 +33,7 @@ OPENAI_API_KEY=<key>
 ```
 
 Khởi động lại ứng dụng sau khi thay cấu hình. Thiếu key khi bật NER là lỗi khởi tạo;
-tắt NER không cần key. Các API key dùng `SecretStr`. `LLM_PROVIDER` điều khiển
-LLM lời thoại riêng, không bật/tắt NER.
+tắt NER không cần key. Các API key dùng `SecretStr`.
 
 Workflow deploy nhận API key tương ứng từ GitHub Secret; các biến `NAME_FALLBACK_*`
 từ GitHub Variables. Docker Compose truyền các biến tới bot. Tắt/rollback bằng

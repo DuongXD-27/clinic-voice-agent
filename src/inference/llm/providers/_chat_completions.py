@@ -1,13 +1,13 @@
 """Synchronous Structured Outputs transport, independent of callbot domain types."""
 
-from collections.abc import Callable
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from llm.base import ReplyStatus, StructuredReply
-from llm.config import ProviderConfig
+from inference.common.transport import HttpClientFactory, build_http_timeout
+from inference.llm.config import ProviderConfig
+from inference.llm.providers.base import ReplyStatus, StructuredReply
 
 
 class _Message(BaseModel):
@@ -39,10 +39,10 @@ class ChatCompletionsProvider:
         self,
         config: ProviderConfig,
         *,
-        client_factory: Callable[[], httpx.Client] | None = None,
+        client_factory: HttpClientFactory | None = None,
     ) -> None:
         self._config = config
-        self._timeout = httpx.Timeout(config.timeout_s, connect=config.connect_timeout_s)
+        self._timeout = build_http_timeout(config.timeout_s, config.connect_timeout_s)
         self._client_factory = client_factory or httpx.Client
 
     @property

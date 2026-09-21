@@ -168,12 +168,12 @@ def test_inbound_invalid_dob_twice_transfers_without_write() -> None:
     assert clinic.writes == []
 
 
-def test_name_with_invalid_dob_asks_again_then_verifies() -> None:
-    # Ngày sinh không hợp lệ thì không tách tên (tránh "tên" rác); hỏi lại, rồi xác minh bình thường
-    actions, _ = _call(_outbound("c_name_bad_dob"), ["Nguyễn Văn A, 31/02/1978", NAME, DOB])
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
-    assert actions[2].utterance == t.ASK_DOB
-    assert actions[3].state == "AWAITING_INTENT"
+def test_name_with_invalid_dob_keeps_the_name_and_asks_the_dob_again() -> None:
+    # Hai mệnh đề tách rõ: phần tên vẫn chắc chắn, chỉ ngày sinh là không dùng được.
+    # Hỏi lại đúng phần thiếu, không bắt người gọi đọc lại cả hai.
+    actions, _ = _call(_outbound("c_name_bad_dob"), ["Nguyễn Văn A, 31/02/1978", DOB])
+    assert actions[1].utterance == t.ASK_DOB_INVALID
+    assert actions[2].state == "AWAITING_INTENT"
 
 
 def test_out_of_scope_at_name_step_transfers_even_with_digits() -> None:

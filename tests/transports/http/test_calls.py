@@ -194,7 +194,7 @@ def test_orchestrator_created_once_and_clinic_closed_on_shutdown(redis_store_fac
 
     app = create_app(
         clinic_factory=factory,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=redis_store_factory,
     )
     with TestClient(app) as client:
@@ -305,7 +305,7 @@ def test_ready_reports_session_store(client: TestClient, redis_store_factory) ->
 
     app = create_app(
         clinic_factory=FakeClinicAPI,
-        engine_settings=EngineSettings(llm_provider="none"),
+        engine_settings=EngineSettings(),
         session_store_factory=lambda: Down(redis_store_factory()._client),
     )
     with TestClient(app) as down:
@@ -400,7 +400,7 @@ def test_http_app_restart_keeps_active_session_in_redis(redis_store_factory) -> 
     def new_app():
         return create_app(
             clinic_factory=lambda: clinic,
-            engine_settings=EngineSettings(llm_provider="none"),
+            engine_settings=EngineSettings(),
             session_store_factory=redis_store_factory,
         )
 

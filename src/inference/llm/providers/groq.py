@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from llm.providers._chat_completions import ChatCompletionsProvider
+from inference.llm.providers._chat_completions import ChatCompletionsProvider
 
 
 class GroqProvider(ChatCompletionsProvider):

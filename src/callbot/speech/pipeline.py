@@ -2,11 +2,11 @@
 
 from typing import AsyncIterator, Optional
 
-from callbot.speech.asr.base import ASRProvider
 from callbot.speech.audio.codec import to_sample_rate
 from callbot.speech.audio.loader import load_from_url
 from callbot.speech.types import NARROWBAND_RATE, AudioSegment, Transcript, TranscriptEvent
 from callbot.speech.vad.streaming import StreamingVAD, split_frames
+from inference.asr.base import ASRProvider
 
 
 class STTPipeline:
