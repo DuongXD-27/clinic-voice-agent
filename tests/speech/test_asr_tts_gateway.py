@@ -5,6 +5,7 @@ from inference.asr.config import GeminiASRConfig, ZipFormerConfig
 from inference.asr.providers.zipformer import ZipFormerASR
 from inference.common.errors import UnsupportedProviderError
 from inference.tts import TTSGateway, TTSResult, create_tts_gateway
+from inference.tts.config import ElevenLabsTTSConfig
 from speech.asr.recognizer import SpeechRecognizer
 from speech.tts.synthesizer import SpeechSynthesizer
 from speech.types import WIDEBAND_RATE, AudioSegment
@@ -127,3 +128,18 @@ def test_tts_gateway_skips_blank_text_and_synthesizer_wraps_pcm() -> None:
 def test_create_tts_gateway_rejects_unknown_provider() -> None:
     with pytest.raises(UnsupportedProviderError):
         create_tts_gateway("none")  # type: ignore[arg-type]
+
+
+def test_create_tts_gateway_builds_elevenlabs_provider() -> None:
+    gateway = create_tts_gateway(
+        "elevenlabs",
+        config=ElevenLabsTTSConfig(
+            api_key="sk_x", voice_id="v1", model="eleven_flash_v2_5", _env_file=None
+        ),
+    )
+    assert (gateway.provider_name, gateway.model) == ("elevenlabs", "eleven_flash_v2_5")
+
+
+def test_create_tts_gateway_rejects_mismatched_config() -> None:
+    with pytest.raises(ValueError):
+        create_tts_gateway("openai", config=ElevenLabsTTSConfig(_env_file=None))

@@ -4,7 +4,7 @@ from typing import Optional
 
 from inference.common.errors import UnsupportedProviderError
 from inference.tts.base import ProviderName, TTSProvider, TTSResult
-from inference.tts.config import OpenAITTSConfig, TTSConfig
+from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig, TTSConfig
 
 
 class TTSGateway:
@@ -24,9 +24,13 @@ class TTSGateway:
 
 
 def _provider_types() -> dict[str, tuple[type[TTSConfig], type]]:
+    from inference.tts.providers.elevenlabs import ElevenLabsTTS
     from inference.tts.providers.openai import OpenAITTS
 
-    return {"openai": (OpenAITTSConfig, OpenAITTS)}
+    return {
+        "openai": (OpenAITTSConfig, OpenAITTS),
+        "elevenlabs": (ElevenLabsTTSConfig, ElevenLabsTTS),
+    }
 
 
 def create_tts_gateway(

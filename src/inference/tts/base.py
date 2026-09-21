@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-ProviderName = Literal["openai"]
+ProviderName = Literal["openai", "elevenlabs"]
 
 
 @dataclass(frozen=True)

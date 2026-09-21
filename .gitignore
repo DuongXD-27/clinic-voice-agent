@@ -16,3 +16,6 @@ clinic-mock/
 src/inference/asr/providers/assets/zipformer/
 
 eval/stt-bench/master
+
+# Kết quả đo TTS (CSV, phiếu nghe, ma trận sinh tự động) — không commit, lặp lại bằng scripts/tts_bench.py
+docs/evidence/tts-bench/
