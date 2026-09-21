@@ -197,6 +197,27 @@ def test_missing_name_twice_transfers_not_understood() -> None:
     _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
+# --- "Alo" đáp câu chào mở đầu --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+def test_alo_after_opening_is_greeted_back(direction) -> None:
+    start = _outbound("c_alo") if direction == "outbound" else _inbound("c_alo")
+    actions, _ = _call(start, ["alo", NAME, DOB])
+    assert actions[1].utterance == t.greeting_back(direction)
+    assert t.AI_DISCLOSURE in actions[1].utterance
+    assert actions[1].state == "AWAITING_IDENTITY"
+    assert actions[2].utterance == t.ASK_DOB
+    assert actions[3].state != "AWAITING_IDENTITY" and not actions[3].ended
+
+
+def test_alo_is_greeted_back_only_once() -> None:
+    actions, _ = _call(_outbound("c_alo_twice"), ["alo", "alo", "alo"])
+    assert actions[1].utterance == t.greeting_back("outbound")
+    assert actions[2].utterance == t.ASK_NAME_AGAIN
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
 # --- Xin nhắc lại ---------------------------------------------------------------------------------
 
 

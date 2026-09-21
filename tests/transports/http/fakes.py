@@ -30,12 +30,15 @@ class FakeASR:
 class FakeTTS:
     name = "fake"
 
-    def __init__(self, respond: bool = True) -> None:
+    def __init__(self, respond: bool = True, error: Optional[Exception] = None) -> None:
         self.respond = respond
+        self.error = error
         self.spoken: list[str] = []
 
     def synthesize(self, text: str) -> Optional[AudioSegment]:
         self.spoken.append(text)
+        if self.error is not None:
+            raise self.error
         if not self.respond or not text.strip():
             return None
         return _SILENT_SEGMENT

@@ -100,7 +100,8 @@ def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
         logger.warning("Clinic mock lỗi khi xử lý %s: %s", call_id, type(exc).__name__)
         raise _error(502, "UPSTREAM_ERROR", "Clinic API trả lỗi") from exc
     except Exception as exc:
-        logger.error("Lỗi ngoài dự kiến khi xử lý %s", call_id)
+        # Chỉ ghi tên lớp exception: nội dung có thể chứa transcript hoặc phản hồi của provider
+        logger.error("Lỗi ngoài dự kiến khi xử lý %s: %s", call_id, type(exc).__name__)
         raise _error(500, "INTERNAL_ERROR", "Lỗi hệ thống") from exc
 
 
@@ -185,7 +186,13 @@ def call_turn(
 
 
 def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:
-    segment = speech.tts.synthesize(text)
+    # Lượt đã ghi vào session: TTS lỗi chỉ mất audio, vẫn trả utterance (audio_url=None).
+    # Trả 500 ở đây khiến client gửi lại một lượt đã được engine nhận.
+    try:
+        segment = speech.tts.synthesize(text)
+    except Exception as exc:
+        logger.warning("TTS lỗi khi xử lý %s lượt %s: %s", call_id, turn, type(exc).__name__)
+        return None
     if segment is None:
         return None
     return speech.audio_store.save(call_id, turn, segment)

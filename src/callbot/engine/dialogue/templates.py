@@ -29,6 +29,15 @@ GREETING_HANDOFF_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
 )
+# Người nghe máy chỉ nói "alo" sau câu chào: chào lại, nhắc lại AI [R-26] và hỏi tên
+GREETING_BACK_OUTBOUND = (
+    f"Dạ em chào anh chị ạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
+    "Cho em hỏi em đang nói chuyện với anh chị nào ạ?"
+)
+GREETING_BACK_INBOUND = (
+    f"Dạ em chào anh chị ạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
+    "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
+)
 ASK_NAME_AGAIN = "Dạ, anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
 # Đã có ngày sinh, còn thiếu tên. §1.1.2: không nhắc lại ngày sinh người gọi vừa nói.
 ASK_NAME_AFTER_DOB = "Dạ, anh chị cho em xin thêm họ và tên đầy đủ ạ."
@@ -86,6 +95,11 @@ def greeting(direction: str) -> str:
     [R-26] công bố là trợ lý ảo AI ngay câu đầu + [R-02] hỏi tên bằng câu hỏi mở.
     """
     return GREETING_OUTBOUND if direction == "outbound" else GREETING_INBOUND
+
+
+def greeting_back(direction: str) -> str:
+    """Trả lời "alo" ngay sau câu chào mở đầu."""
+    return GREETING_BACK_OUTBOUND if direction == "outbound" else GREETING_BACK_INBOUND
 
 
 def greeting_handoff(direction: str) -> str:

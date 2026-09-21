@@ -225,6 +225,30 @@ def test_start_call_audio_mode_returns_audio_url(
         assert tts.spoken == [body["utterance"]]
 
 
+def test_tts_failure_still_replies_without_audio(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    """TTS lỗi (vd. key không có quyền model TTS) không chặn cuộc gọi audio — vẫn test được STT."""
+    asr = FakeASR(transcript="Nguyễn Văn A")
+    tts = FakeTTS(error=RuntimeError("403 model_not_found"))
+    app = create_app(
+        clinic_factory=lambda: clinic,
+        engine_settings=EngineSettings(llm_provider="none"),
+        session_store_factory=redis_store_factory,
+        speech_factory=lambda: make_speech_bundle(tmp_path, asr=asr, tts=tts),
+        call_mode_factory=_call_mode_factory(redis_server),
+    )
+    with TestClient(app) as audio_client:
+        start = _start(audio_client, "c_audio_tts_down", mode="audio")
+        assert start.status_code == 200
+        assert start.json()["audio_url"] is None and start.json()["utterance"]
+        turn = _turn(
+            audio_client, "c_audio_tts_down", 1, None, audio_url="https://harness/clips/1.wav"
+        )
+        assert turn.status_code == 200
+        assert turn.json()["utterance"] == t.ASK_DOB and turn.json()["audio_url"] is None
+
+
 def test_turn_with_audio_url_transcribes_and_replies_with_audio(
     clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
 ) -> None:
