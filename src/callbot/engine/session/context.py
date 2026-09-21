@@ -39,7 +39,8 @@ class HistoryItem:
 class Question:
     """Câu hỏi nghiệp vụ gần nhất bot đã hỏi — IE diễn giải lượt sau theo `question_id`.
 
-    Câu nhắc chung (im lặng, "em chưa hiểu") không thay câu hỏi này.
+    Câu "em chưa hiểu" không thay câu hỏi này. Nhắc im lặng / xin nhắc lại hỏi lại nguyên văn câu này
+    và đổi `turn` sang lượt nhắc (T-08).
     """
 
     question_id: QuestionId

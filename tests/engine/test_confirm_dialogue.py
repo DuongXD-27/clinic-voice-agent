@@ -219,8 +219,10 @@ def test_exceptions_at_readback_transfer_without_confirming(answer: str, reason:
 def test_silence_and_repeat_request_keep_the_readback_question() -> None:
     bot, clinic, summary = _at_readback("c_t04_silence")
     action = _run(bot, "c_t04_silence", [SILENCE], start=3)
-    assert action.utterance == t.SILENCE
-    assert _context(bot, "c_t04_silence").question.text == summary.utterance
+    # T-08: nhắc rồi đọc lại nguyên văn câu tóm tắt, hỏi lại ở lượt 3
+    assert action.utterance == f"{t.SILENCE} {summary.utterance}"
+    question = _context(bot, "c_t04_silence").question
+    assert (question.text, question.turn) == (summary.utterance, 3)
 
     action = _run(bot, "c_t04_silence", ["gì cơ"], start=4)
     assert action.utterance == summary.utterance

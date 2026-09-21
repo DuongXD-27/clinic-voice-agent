@@ -6,6 +6,7 @@ Kết quả khác NONE -> Policy kết thúc `UNREACHABLE` với `unreachable_re
 Dialogue KHÔNG để lại chi tiết lịch hẹn trên hộp thư thoại.
 
 - VOICEMAIL xét trước: "thuê bao không liên lạc được, vui lòng để lại lời nhắn" là đã vào hộp thư.
+  Lời chào cá nhân ("bạn đã gọi đến số của Lan, hiện không thể nghe máy") cũng là VOICEMAIL (T-08).
 - LINE_BUSY / NO_ANSWER chỉ nhận khi có dấu hiệu TỔNG ĐÀI ("thuê bao", "số máy quý khách", "ngoài vùng
   phủ sóng"...). Người nghe máy nói "tôi đang bận" hay "không liên lạc được với anh ấy" là người thật —
   kết thúc UNREACHABLE với họ là case fail.
@@ -30,6 +31,23 @@ _VOICEMAIL = compile_phrases(
         "voicemail",
         "voice mail",
         "record your message",
+        # T-08: lời chào hộp thư cá nhân không nói "để lại lời nhắn". Chỉ nhận cụm người đã nghe máy
+        # gần như không nói: xưng "bạn đã gọi đến số", "hiện không ... nghe máy" dạng thông báo.
+        # KHÔNG nhận "không nghe máy được", "sẽ gọi lại cho bạn", "gọi lại sau": người thật đang bận
+        # vẫn nói các câu đó, kết thúc UNREACHABLE với họ là case fail.
+        "bạn đã gọi đến số",
+        "bạn vừa gọi đến số",
+        "cảm ơn bạn đã gọi",
+        "hiện không thể nghe máy",
+        "hiện không nghe máy được",
+        "hiện không thể trả lời cuộc gọi",
+        "you have reached",
+        "you've reached",
+        "can't take your call",
+        "cannot take your call",
+        "unable to take your call",
+        "can't come to the phone",
+        "please leave your name",
     ]
 )
 # Chỉ tổng đài mới nói những câu này

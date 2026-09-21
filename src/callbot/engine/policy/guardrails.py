@@ -48,7 +48,8 @@ def assert_no_clinical_advice(utterance: str) -> None:
 def assert_action_confirmed(
     ctx: CallContext, action: PendingAction, slot_id: Optional[str] = None
 ) -> None:
-    """Lệnh ghi cần câu trả lời AGREE ở chính lượt này, cho đúng câu hỏi, hành động và slot.
+    """Lệnh ghi cần câu trả lời AGREE ở chính lượt này, cho đúng câu hỏi vừa hỏi ở lượt trước,
+    đúng hành động và slot.
 
     SF-05: hủy lịch cần thêm yêu cầu hủy ở một lượt TRƯỚC lượt xác nhận — hai lượt khác nhau.
     """
@@ -63,7 +64,9 @@ def assert_action_confirmed(
         and question is not None
         and item.question_id is question.question_id
         and item.question_turn == question.turn
-        and question.turn < item.turn
+        # Câu hỏi phải được nói ở lượt NGAY TRƯỚC: "vâng" sau câu nhắc chung (im lặng, "em chưa hiểu")
+        # trả lời câu nhắc đó, không phải câu hỏi xác nhận của vài lượt trước (T-08)
+        and question.turn == item.turn - 1
         and question.action == action
         and question.slot_id == slot_id
     ]

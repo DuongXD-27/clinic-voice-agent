@@ -19,6 +19,14 @@ from callbot.engine.extraction.schema import LineSignal
             "The person you are calling is not available, please leave a message after the tone",
             LineSignal.VOICEMAIL,
         ),
+        # T-08: lời chào hộp thư cá nhân, không có "để lại lời nhắn"
+        ("Xin chào, bạn đã gọi đến số của Lan. Hiện không thể nghe máy", LineSignal.VOICEMAIL),
+        ("Xin chào, tôi là Lan, hiện không nghe máy được", LineSignal.VOICEMAIL),
+        ("Cảm ơn bạn đã gọi, tôi hiện không thể trả lời cuộc gọi", LineSignal.VOICEMAIL),
+        ("xin chao, ban da goi den so cua Lan", LineSignal.VOICEMAIL),
+        ("Hi, you've reached Lan, I can't take your call right now", LineSignal.VOICEMAIL),
+        ("You have reached the voicemail box of 0912345600", LineSignal.VOICEMAIL),
+        ("Sorry I can't come to the phone, please leave your name", LineSignal.VOICEMAIL),
         ("Số máy quý khách vừa gọi hiện đang bận, xin vui lòng gọi lại sau", LineSignal.LINE_BUSY),
         ("Thuê bao đang bận", LineSignal.LINE_BUSY),
         ("The number you are calling is busy", LineSignal.LINE_BUSY),
@@ -41,6 +49,16 @@ def test_line_signal(text: str, expected: LineSignal) -> None:
         "tôi không liên lạc được với anh ấy",  # người thật -> không phải NO_ANSWER
         "anh ấy không trả lời điện thoại",
         "Hello, who is this?",
+        # T-08: người thật đang bận nói với bot — không phải hộp thư
+        "giờ tôi không nghe máy được lâu, em nói nhanh nhé",
+        "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi",
+        "tôi sẽ gọi lại cho bạn sau",
+        "bạn gọi đến có việc gì thế",
+        "bạn gọi nhầm số rồi",
+        "hiện tại tôi không nghe rõ",
+        "cảm ơn em",
+        "I can't talk right now, call me later",
+        "yes, you reached the right person",
     ],
 )
 def test_human_speech_is_not_a_line_signal(text: str) -> None:

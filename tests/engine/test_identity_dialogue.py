@@ -250,7 +250,7 @@ def test_inbound_silence_during_identity_transfers_without_write() -> None:
 
 def test_silence_between_failures_neither_resets_nor_counts() -> None:
     actions, _ = _call(_outbound("c_silent_fail"), [NAME, "ờ để xem", SILENCE, "ờ để xem"])
-    assert actions[3].utterance == t.SILENCE
+    assert actions[3].utterance.startswith(t.SILENCE)
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
