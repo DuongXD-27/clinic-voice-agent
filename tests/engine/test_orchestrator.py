@@ -13,7 +13,7 @@ from callbot.engine.extraction import InformationExtractor, QuestionId, TurnCont
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
 from callbot.engine.verification.names import normalize_name
-from tests.engine.fake_clinic import FakeClinicAPI
+from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 SILENCE = None
 
@@ -99,6 +99,49 @@ def test_confirm_attendance_in_one_readback_turn(monkeypatch) -> None:
     assert [(e.kind, e.label, e.question_id, e.turn) for e in evidence] == [
         ("CONFIRMATION", "AGREE", QuestionId.CONFIRM_READBACK, 3)
     ]
+
+
+def test_rejected_confirm_write_does_not_report_confirmed() -> None:
+    clinic = FakeClinicAPI()
+    clinic.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    clinic.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_confirm_rejected"))
+    _run(bot, "c_confirm_rejected", ["Nguyễn Văn A", "14/03/1978"])
+
+    action = _run(bot, "c_confirm_rejected", ["Có, tôi đến được."], start=3)
+    session = bot.sessions.store.get_session("c_confirm_rejected")
+    appointment = clinic.appointments["apt_00417"]
+
+    assert not any(operation == "CONFIRMED" for _, operation, _ in clinic.writes)
+    assert appointment.get("confirmed_at") is None
+    assert appointment.get("confirmed_via") is None
+    assert (action.state, action.outcome, action.transfer_reason) == (
+        "ENDED",
+        "TRANSFERRED",
+        "SYSTEM_ERROR",
+    )
+    assert session is not None and session.ended
+    assert session.context == {}
+    assert appointment["status"] == "TRANSFERRED"
+    assert appointment["version"] == 4
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})]
+
+
+def test_ambiguous_attendance_answer_does_not_confirm() -> None:
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_confirm_ambiguous"))
+    summary = _run(bot, "c_confirm_ambiguous", ["Nguyễn Văn A", "14/03/1978"])
+    assert _context(bot, "c_confirm_ambiguous").question.question_id is QuestionId.CONFIRM_READBACK
+    assert "14 tháng 10" in summary.utterance
+
+    action = _run(bot, "c_confirm_ambiguous", ["Để xem đã."], start=3)
+
+    assert clinic.appointments["apt_00417"]["status"] != "CONFIRMED"
+    assert clinic.requests == []
+    assert clinic.writes == []
+    assert action.outcome != "CONFIRMED"
 
 
 def test_reference_call_reschedule() -> None:
@@ -275,6 +318,27 @@ def test_outbound_three_silent_turns_marks_unreachable() -> None:
     assert action.outcome == "UNREACHABLE"
     assert clinic.writes == [("apt_00417", "UNREACHABLE", {"unreachable_reason": "SILENCE"})]
     assert clinic.appointments["apt_00417"]["attempt_count"] == 1
+
+
+def test_rejected_unreachable_write_does_not_report_success() -> None:
+    clinic = FakeClinicAPI()
+    clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
+    clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_unreachable_rejected"))
+
+    action = _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
+    session = bot.sessions.store.get_session("c_unreachable_rejected")
+    appointment = clinic.appointments["apt_00417"]
+
+    assert appointment["status"] == "SCHEDULED"
+    assert appointment["attempt_count"] == 0
+    assert clinic.writes == []
+    assert session is not None and session.ended
+    assert session.context == {}
+    assert action.outcome != "UNREACHABLE", (
+        f"mutation rejected but BotAction=({action.state}, {action.outcome})"
+    )
 
 
 def test_inbound_silence_transfers_without_booking() -> None:
