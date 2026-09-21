@@ -37,6 +37,10 @@ services:
     tmpfs:
       - /app/audio_cache:size=${AUDIO_CACHE_SIZE:-512m}
     environment:
+      # Caddy chạy ở container khác nên IP nguồn không phải loopback. Cho Uvicorn tin
+      # X-Forwarded-Proto để request.url_for() sinh URL https:// cho audio demo.
+      # Bot không publish port ra host trong production; chỉ Caddy truy cập được service này.
+      FORWARDED_ALLOW_IPS: "*"
       REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
