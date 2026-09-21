@@ -409,7 +409,9 @@
           audio.controls = true;
           audio.src = audioUrl;
           bubble.append(audio);
-          audio.play().catch(() => {});
+          // Chỉ tự phát câu trả lời của bot; bong bóng "user" là bản ghi âm người
+          // gọi vừa gửi lên, tự phát lại ở đây nghe như giọng bị vọng lại.
+          if (role === "bot") audio.play().catch(() => {});
         }
         const caption = document.createElement("div");
         caption.className = "meta";
