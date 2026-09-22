@@ -155,7 +155,13 @@ class ClinicGateway:
             lambda _version, key: self._api.create_appointment(patient_id, slot_id, key),
             read_version=False,
         )
-        ctx.created_appointment_id = created["appointment_id"]
+        appointment_id = created.get("appointment_id")
+        status = created.get("status")
+        if not appointment_id or status != "BOOKED":
+            raise WriteOutcomeUnknown(
+                f"{ctx.call_id}: book trả status {status}, appointment_id {appointment_id}"
+            )
+        ctx.created_appointment_id = appointment_id
         return created
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> Optional[dict[str, Any]]:
