@@ -236,8 +236,19 @@ def test_silence_and_repeat_request_keep_the_readback_question() -> None:
 def test_rejected_write_is_system_error_not_confirmed() -> None:
     clinic = FakeClinicAPI()
     bot, _, _ = _at_readback("c_t04_rejected", clinic)
-    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
     action = _run(bot, "c_t04_rejected", ["vâng"], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
+    assert "xác nhận lịch khám" not in action.utterance
+    assert _confirm_writes(clinic) == []
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+
+
+def test_invalid_state_transition_on_confirm_is_transferred() -> None:
+    clinic = FakeClinicAPI()
+    bot, _, _ = _at_readback("c_t04_invalid_state", clinic)
+    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    action = _run(bot, "c_t04_invalid_state", ["vâng"], start=3)
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
     assert "xác nhận lịch khám" not in action.utterance
     assert _confirm_writes(clinic) == []

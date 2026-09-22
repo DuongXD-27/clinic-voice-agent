@@ -192,9 +192,15 @@ def test_repeating_known_dob_does_not_reset_the_counter() -> None:
 
 
 def test_missing_name_twice_transfers_not_understood() -> None:
-    actions, _ = _call(_outbound("c_noname"), ["tôi không rõ", "alo"])
+    actions, _ = _call(_outbound("c_noname"), ["tôi không rõ", "tôi cũng không biết"])
     assert actions[1].utterance == t.ASK_NAME_AGAIN
     _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_a_greeting_between_failures_does_not_count() -> None:
+    actions, _ = _call(_outbound("c_noname_alo"), ["tôi không rõ", "alo", "tôi không rõ"])
+    assert actions[2].utterance == t.ASK_NAME_AGAIN and not actions[2].ended
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
 # --- "Alo" đáp câu chào mở đầu --------------------------------------------------------------------
@@ -213,10 +219,31 @@ def test_alo_after_opening_is_greeted_back(direction, greeting) -> None:
 
 
 def test_alo_is_greeted_back_only_once() -> None:
-    actions, _ = _call(_outbound("c_alo_twice"), ["alo", "alo", "alo"])
+    actions, _ = _call(_outbound("c_alo_twice"), ["alo", "alo"])
     assert actions[1].utterance == t.greeting_back("outbound")
     assert actions[2].utterance == t.ASK_NAME_AGAIN
-    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_greetings_up_to_the_limit_do_not_transfer() -> None:
+    """Demo 22-09: "alo", "hi em", "hi" từng chuyển NOT_UNDERSTOOD ở lượt 3 và ghi TRANSFERRED."""
+    actions, clinic = _call(_outbound("c_hi_hi"), ["alo", "hi em", "hi", NAME, DOB])
+    assert [a.state for a in actions[1:4]] == ["AWAITING_IDENTITY"] * 3
+    assert actions[3].utterance == t.ASK_NAME_AGAIN  # lời chào thứ ba: chưa hiểu lần 1
+    assert actions[4].utterance == t.ASK_DOB
+    assert actions[5].state == "AWAITING_INTENT" and clinic.writes == []
+
+
+def test_greetings_past_the_limit_count_as_not_understood() -> None:
+    actions, _ = _call(_outbound("c_alo_many"), ["alo", "alo", "alo", "alo"])
+    assert not actions[3].ended
+    _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_a_greeting_while_asking_dob_rereads_the_dob_question() -> None:
+    actions, _ = _call(_outbound("c_alo_dob"), [NAME, "alo", "tôi không rõ", DOB])
+    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[3].state == "AWAITING_IDENTITY"  # chưa hiểu lần 1, chưa chuyển máy
+    assert actions[4].state == "AWAITING_INTENT"
 
 
 def test_english_greeting_after_reprompt_does_not_advance_to_dob() -> None:

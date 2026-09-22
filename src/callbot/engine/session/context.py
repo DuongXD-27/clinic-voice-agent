@@ -108,6 +108,8 @@ class CallContext:
     failed_understandings: int = 0
     unclear_streak: int = 0
     silent_turns: int = 0
+    # Lời chào ở bước danh tính đã được hỏi lại mà không tính §1.1.5 (MAX_NEUTRAL_GREETINGS)
+    neutral_greetings: int = 0
 
     outcome: Optional[Outcome] = None
     transfer_reason: Optional[TransferReason] = None
@@ -213,6 +215,7 @@ class CallContext:
             "failed_understandings": self.failed_understandings,
             "unclear_streak": self.unclear_streak,
             "silent_turns": self.silent_turns,
+            "neutral_greetings": self.neutral_greetings,
             "outcome": self.outcome,
             "transfer_reason": self.transfer_reason,
             "unreachable_reason": self.unreachable_reason,
@@ -249,6 +252,8 @@ class CallContext:
             failed_understandings=data["failed_understandings"],
             unclear_streak=data["unclear_streak"],
             silent_turns=data["silent_turns"],
+            # Khóa thêm sau T-05: phiên lưu trước đó chưa có
+            neutral_greetings=data.get("neutral_greetings", 0),
             outcome=data["outcome"],
             transfer_reason=data["transfer_reason"],
             unreachable_reason=data["unreachable_reason"],
