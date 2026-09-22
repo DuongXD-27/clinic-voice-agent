@@ -25,6 +25,8 @@ from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.config import settings
 from callbot.transports.http.demo import router as demo_router
+from callbot.transports.http.livekit_token import router as livekit_router
+from callbot.transports.livekit.settings import LiveKitSettings
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
@@ -61,12 +63,17 @@ def _default_call_mode() -> CallModeStore:
     return CallModeStore(client, key_prefix=config.redis_key_prefix, ttl_s=config.session_max_age_s)
 
 
+def _default_livekit_settings() -> LiveKitSettings:
+    return LiveKitSettings()
+
+
 def create_app(
     clinic_factory: Callable[[], ClinicAPI] = _default_clinic,
     engine_settings: Optional[EngineSettings] = None,
     session_store_factory: Callable[[], SessionStore] = _default_session_store,
     speech_factory: Callable[[], SpeechBundle] = _default_speech,
     call_mode_factory: Callable[[], CallModeStore] = _default_call_mode,
+    livekit_settings_factory: Callable[[], LiveKitSettings] = _default_livekit_settings,
     cleanup_interval_s: float = 30.0,
     audio_retention_s: Optional[float] = None,
 ) -> FastAPI:
@@ -139,8 +146,10 @@ def create_app(
                 store.close()
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
+    app.state.livekit_settings = livekit_settings_factory()
     app.include_router(calls_router)
     app.include_router(demo_router)
+    app.include_router(livekit_router)
     demo_dir = Path(__file__).parent / "static"
     app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")
 

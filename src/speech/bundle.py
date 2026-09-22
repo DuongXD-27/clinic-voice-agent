@@ -6,15 +6,23 @@ Tầng transport của callbot chỉ nối bundle này vào request.
 
 import logging
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
 from inference.asr import create_asr_gateway
 from inference.tts import create_tts_gateway
+from speech.asr.evidence import TranscriptEvidenceTracker
+from speech.asr.pipeline import STTPipeline
 from speech.asr.recognizer import Recognizer, SpeechRecognizer
+from speech.asr.vad.async_stream import AsyncStreamingVAD
+from speech.asr.vad.base import FrameClassifier
+from speech.asr.vad.energy import EnergyFrameClassifier
+from speech.asr.vad.streaming import StreamingVAD
 from speech.audio.loader import load_from_url
+from speech.audio.noise_tracker import NoiseTracker
 from speech.settings import SpeechSettings
 from speech.tts.storage import AudioArtifactStore
 from speech.tts.synthesizer import SpeechSynthesizer, Synthesizer
+from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
 
 logger = logging.getLogger(__name__)
@@ -37,6 +45,111 @@ def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
         asr=asr,
         tts=tts,
         audio_store=AudioArtifactStore(settings.audio_dir, settings.public_base_url),
+    )
+
+
+@dataclass
+class StreamingSpeechBundle:
+    stt_pipeline: STTPipeline
+    tts: SpeechSynthesizer
+    # Turn Validator (docs/reference/livekit-architecture.md §5.4, §6) — None khi
+    # turn_validator_enabled=False (mặc định). worker.py truyền `validator` vào
+    # TurnController(); call_bridge.py truyền evidence_tracker/noise_tracker/
+    # noise_classifier vào stt_pipeline.stream() để cấp dữ liệu cho validator đó.
+    validator: Optional[TurnValidator] = None
+    evidence_tracker: Optional[TranscriptEvidenceTracker] = None
+    noise_tracker: Optional[NoiseTracker] = None
+    noise_classifier: Optional[FrameClassifier] = None
+
+
+def _build_vad_classifier(settings: SpeechSettings) -> FrameClassifier:
+    if settings.vad_provider == "webrtc":
+        from speech.asr.vad.webrtc import WebRtcVadClassifier
+
+        return WebRtcVadClassifier(
+            aggressiveness=settings.vad_webrtc_aggressiveness, sample_rate=settings.sample_rate
+        )
+    return EnergyFrameClassifier(settings.vad_rms_threshold)
+
+
+def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
+    """Dùng RIÊNG cho NoiseTracker (Speech Admission + TurnValidator) — LUÔN Silero VAD,
+    KHÔNG theo `vad_provider` (bug thật đã gặp: WebRTC báo speech=True gần như liên tục
+    trên noise phòng thuần, khiến noise_floor không cập nhật đúng và SNR dao động hỗn
+    loạn, xem docstring `SpeechSettings.silero_vad_model_path`)."""
+    from speech.asr.vad.silero import SileroVadClassifier
+
+    return SileroVadClassifier(settings.silero_vad_model_path, sample_rate=settings.sample_rate)
+
+
+def build_streaming_bundle(
+    settings: SpeechSettings,
+    *,
+    asr: Optional[Recognizer] = None,
+    frame_ms: int = 30,
+    queue_max_frames: int = 50,
+    barge_in_preroll_ms: int = 500,
+) -> StreamingSpeechBundle:
+    """Bundle cho đường LiveKit streaming (transports/livekit/worker.py) — khác
+    `build_speech_bundle` (HTTP batch `mode="audio"`): cần cả VAD sync/async cùng
+    classifier và ASR provider có `stream()` (chỉ ZipFormer hỗ trợ hiện tại)."""
+    classifier = _build_vad_classifier(settings)
+    # ASR endpointing cần classifier riêng: WebRTC VAD có state nội bộ, không được cho
+    # hai consumer đồng thời dùng chung một instance.
+    asr_endpoint_classifier = _build_vad_classifier(settings)
+    vad = StreamingVAD(classifier, end_silence_ms=settings.vad_end_silence_ms)
+    async_vad = AsyncStreamingVAD(classifier, end_silence_ms=settings.vad_end_silence_ms)
+    asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
+    admission = None
+    admission_classifier = None
+    if settings.speech_admission_enabled:
+        from speech.asr.admission import SpeechAdmission
+
+        admission = SpeechAdmission(
+            min_snr_db=settings.speech_admission_min_snr_db,
+            min_speech_ms=settings.speech_admission_min_speech_ms,
+        )
+        # Classifier riêng thứ 3 — cùng lý do asr_endpoint_classifier ở trên, không share
+        # instance stateful giữa 3 consumer (VAD chính, ASR endpoint, Admission). Silero
+        # (không phải _build_vad_classifier/WebRTC) — xem _build_noise_classifier.
+        admission_classifier = _build_noise_classifier(settings)
+    stt_pipeline = STTPipeline(
+        asr,
+        vad,
+        settings.sample_rate,
+        async_vad=async_vad,
+        queue_max_frames=queue_max_frames,
+        barge_in_preroll_frames=max(1, barge_in_preroll_ms // frame_ms),
+        asr_stream_options={
+            "audio_sample_rate": settings.sample_rate,
+            "silence_classifier": asr_endpoint_classifier,
+            "end_silence_ms": settings.vad_end_silence_ms,
+        },
+        admission=admission,
+        admission_classifier=admission_classifier,
+    )
+    tts = SpeechSynthesizer(create_tts_gateway(settings.tts_provider))
+
+    validator = None
+    evidence_tracker = None
+    noise_tracker = None
+    noise_classifier = None
+    if settings.turn_validator_enabled:
+        validator = TurnValidator(min_snr_db=settings.turn_validator_min_snr_db)
+        evidence_tracker = TranscriptEvidenceTracker()
+        noise_tracker = NoiseTracker()
+        # Classifier riêng thứ 4 (độc lập Admission's admission_classifier) — TurnValidator
+        # và Speech Admission là 2 tính năng tách biệt, không share tracker/state. Silero
+        # (không phải _build_vad_classifier/WebRTC) — xem _build_noise_classifier.
+        noise_classifier = _build_noise_classifier(settings)
+
+    return StreamingSpeechBundle(
+        stt_pipeline=stt_pipeline,
+        tts=tts,
+        validator=validator,
+        evidence_tracker=evidence_tracker,
+        noise_tracker=noise_tracker,
+        noise_classifier=noise_classifier,
     )
 
 
