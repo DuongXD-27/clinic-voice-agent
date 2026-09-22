@@ -69,8 +69,17 @@ ASK_ATTENDANCE = "Anh chị có đến khám được theo lịch này không �
 NOT_UNDERSTOOD = "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
 SILENCE = "Alo, anh chị còn nghe máy không ạ?"
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
-# Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ
-CANCEL_CHOICE = "Dạ, anh chị muốn hủy lịch khám hay giữ lịch ạ?"
+# Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ.
+# Nói luôn cụm cần nói, vì ngưỡng AGREE ở đây đòi động từ hủy tường minh (SF-05).
+CANCEL_CHOICE = (
+    "Dạ, anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị xác nhận “hủy lịch” giúp em ạ."
+)
+# Đã hiểu lý do nhưng người gọi chưa xác nhận hủy (T-05 §3.3). Chỉ đọc tiền tố ghi nhận khi lý do
+# đã xác định — không đọc lại lý do phỏng đoán, và ghi nhận lý do KHÔNG phải đã đồng ý hủy.
+CANCEL_REASON_NOTED = (
+    "Dạ, em đã ghi nhận lý do. Anh chị xác nhận hủy lịch khám này chứ ạ? "
+    "Nếu muốn hủy, anh chị nói “hủy lịch” giúp em ạ."
+)
 BOOKING_ABANDONED = "Dạ, em chưa đặt lịch nào cho anh chị. Anh chị cần em hỗ trợ gì thêm ạ?"
 SLOT_TAKEN = "Dạ, khung giờ đó vừa có người đặt. "
 SLOT_NO_MATCH = "Dạ, em chưa thấy khung giờ đó. "

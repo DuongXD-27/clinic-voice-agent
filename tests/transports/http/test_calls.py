@@ -6,6 +6,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from tests.engine.test_cancel_dialogue import BrokenSemantic, FakeSemantic
 from tests.transports.http.fakes import FakeASR, FakeTTS, make_speech_bundle
 
 from callbot.engine import (
@@ -22,6 +23,7 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
+from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import _extraction_debug, get_orchestrator
 from callbot.transports.http.main import create_app
@@ -86,6 +88,27 @@ def test_demo_page_is_served(client: TestClient) -> None:
     assert "Vinmec Callbot Console" in response.text
     assert "/v1/calls" in response.text
     assert "Extraction:" in response.text
+
+
+def test_extraction_debug_does_not_credit_ner_for_a_semantic_reading() -> None:
+    debug = _extraction_debug(
+        {
+            "question_id": "CANCEL_RECONFIRM",
+            "transcript": "ngày đó tôi phải có mặt ở cơ quan",
+            "full_name": {"value": None, "provenance": None, "span": None},
+            "cancel_reason": {
+                "value": "PATIENT_UNAVAILABLE",
+                "provenance": "FALLBACK",
+                "span": "phải có mặt ở cơ quan",
+            },
+        }
+    ).model_dump()
+
+    assert debug == {
+        "question_id": "CANCEL_RECONFIRM",
+        "source": "LLM",
+        "provenance": "FALLBACK",
+    }
 
 
 def test_extraction_debug_reports_ner_without_pii() -> None:
@@ -181,7 +204,18 @@ def test_demo_header_exposes_rule_source_without_pii(client: TestClient) -> None
     )
 
     assert response.status_code == 200
-    debug = response.json()["extraction_debug"]
+    assert response.json() == {
+        "utterance": t.ASK_DOB,
+        "audio_url": None,
+        "state": "AWAITING_IDENTITY",
+        "ended": False,
+        "outcome": None,
+    }
+    debug = {
+        "question_id": response.headers["X-Demo-Extraction-Question-Id"],
+        "source": response.headers["X-Demo-Extraction-Source"],
+        "provenance": response.headers["X-Demo-Extraction-Provenance"],
+    }
     assert debug == {
         "question_id": "ASK_NAME",
         "source": "RULE",
@@ -666,6 +700,181 @@ def test_unknown_confirm_outcome_over_http_needs_reconciliation(
     response = _turn(client, "c_http_unknown", 3, "Vâng")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
+
+
+# --- T-05: hội thoại Cancel qua HTTP ------------------------------------------------------------
+
+
+def _at_cancel_reconfirm(client: TestClient, call_id: str, request: str = "Tôi muốn hủy lịch"):
+    """Đã xác minh và đã nêu yêu cầu hủy ở lượt 3; lượt kế tiếp là 4."""
+    _start(client, call_id)
+    _turn(client, call_id, 1, "Nguyễn Văn A.")
+    _turn(client, call_id, 2, "Ngày 14 tháng 3 năm 1978.")
+    body = _turn(client, call_id, 3, request).json()
+    assert (body["state"], body["ended"]) == ("AWAITING_CONFIRMATION", False)
+    return body
+
+
+def test_cancel_over_http_reports_cancelled_only_after_the_second_turn(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel", "Tôi muốn hủy lịch vì hôm đó tôi bận")
+    assert clinic.writes == []
+
+    body = _turn(client, "c_http_cancel", 4, "Hủy giúp tôi").json()
+    assert (body["ended"], body["outcome"], body["state"]) == (True, "CANCELLED", "ENDED")
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+
+
+def test_unclear_then_clear_cancel_over_http_writes_once_with_the_reason(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel_unclear")
+    assert _turn(client, "c_http_cancel_unclear", 4, "Vâng").json()["ended"] is False
+    # Lượt chỉ nêu lý do: ghi nhận lý do, hỏi lại câu xác nhận, vẫn chưa ghi
+    body = _turn(client, "c_http_cancel_unclear", 5, "Hôm đó tôi đi công tác").json()
+    assert body["ended"] is False and clinic.writes == []
+
+    body = _turn(client, "c_http_cancel_unclear", 6, "Hủy giúp tôi").json()
+    assert (body["ended"], body["outcome"]) == (True, "CANCELLED")
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+
+
+def test_changing_mind_to_reschedule_over_http_does_not_cancel(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel_mind", "Tôi muốn hủy lịch vì bận")
+    body = _turn(client, "c_http_cancel_mind", 4, "Không hủy nữa, tôi muốn đổi lịch").json()
+    assert (body["state"], body["ended"]) == ("OFFERING_SLOTS", False)
+    assert clinic.writes == []
+
+
+def test_rejected_cancel_over_http_is_transferred(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel_rejected")
+    clinic.fail_next("cancel_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    body = _turn(client, "c_http_cancel_rejected", 4, "Hủy giúp tôi").json()
+    assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
+    assert all(status != "CANCELLED" for _, status, _ in clinic.writes)
+
+
+def test_unknown_cancel_outcome_over_http_needs_reconciliation(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel_unknown")
+    clinic.fail_next("cancel_appointment", outcome_unknown=True, apply_first=True)
+    response = _turn(client, "c_http_cancel_unknown", 4, "Hủy giúp tôi")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
+
+
+def test_cancel_with_a_wrong_status_over_http_needs_reconciliation(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """2xx nhưng bản ghi không ở CANCELLED: chặn đối soát, không ghi thêm lệnh nào."""
+    _at_cancel_reconfirm(client, "c_http_cancel_status")
+    clinic.cancel_appointment = lambda *args, **kwargs: {
+        **clinic.appointments["apt_00417"],
+        "status": "SCHEDULED",
+    }
+    response = _turn(client, "c_http_cancel_status", 4, "Hủy giúp tôi")
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
+    assert clinic.writes == []
+
+
+def test_resent_cancel_turn_over_http_does_not_write_twice(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_cancel_reconfirm(client, "c_http_cancel_replay")
+    assert _turn(client, "c_http_cancel_replay", 4, "Hủy giúp tôi").json()["outcome"] == "CANCELLED"
+    replay = _turn(client, "c_http_cancel_replay", 4, "Hủy giúp tôi")
+    assert (replay.status_code, replay.json()["detail"]["code"]) == (409, "CALL_ENDED")
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "UNSPECIFIED"})]
+
+
+# --- T-05 §8: tầng ngữ nghĩa qua HTTP ------------------------------------------------------
+
+
+def _use_semantic(client: TestClient, semantic) -> None:
+    """Gắn `SemanticExtractor` giả vào Orchestrator của app — không có request mạng nào."""
+    client.app.state.orchestrator._extractor._semantic = semantic
+
+
+def test_semantic_reason_over_http_needs_a_second_turn_before_cancelling(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """Model đọc ra lý do từ câu không có từ khóa nào; vẫn phải xác nhận ở lượt riêng."""
+    line = "Ngày đó tôi phải có mặt ở cơ quan"
+    _use_semantic(
+        client,
+        FakeSemantic(
+            {
+                line.lower(): SemanticOutcome(
+                    ReplyKind.INFORM_REASON,
+                    cancel_reason="PATIENT_UNAVAILABLE",
+                    reason_span="phải có mặt ở cơ quan",
+                )
+            }
+        ),
+    )
+    _at_cancel_reconfirm(client, "c_http_sem_reason")
+
+    body = _turn(client, "c_http_sem_reason", 4, line).json()
+    assert body["ended"] is False and clinic.writes == []
+
+    body = _turn(client, "c_http_sem_reason", 5, "Hủy giúp tôi").json()
+    assert (body["ended"], body["outcome"]) == (True, "CANCELLED")
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+
+
+def test_semantic_cannot_cancel_without_a_real_confirmation_over_http(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """Model khẳng định CONFIRM_ACTION cho một câu mâu thuẫn: HTTP vẫn không trả CANCELLED."""
+    line = "Không, hủy đi"
+    _use_semantic(
+        client,
+        FakeSemantic(
+            {line.lower(): SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="hủy đi")}
+        ),
+    )
+    _at_cancel_reconfirm(client, "c_http_sem_promote")
+
+    body = _turn(client, "c_http_sem_promote", 4, line).json()
+    assert (body["ended"], body["outcome"]) == (False, None)
+    assert clinic.writes == []
+
+
+def test_a_broken_semantic_layer_does_not_break_the_http_turn(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """Lỗi provider không được thành lỗi Clinic hay 5xx; lượt đi nhánh hỏi lại."""
+    _use_semantic(client, BrokenSemantic())
+    _at_cancel_reconfirm(client, "c_http_sem_broken")
+
+    response = _turn(client, "c_http_sem_broken", 4, "Tôi không đủ tiền")
+    assert response.status_code == 200
+    assert response.json()["ended"] is False and clinic.writes == []
+
+    body = _turn(client, "c_http_sem_broken", 5, "Hủy giúp tôi").json()
+    assert (body["ended"], body["outcome"]) == (True, "CANCELLED")
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "COST"})]
+
+
+def test_the_http_response_shape_is_unchanged_by_the_semantic_layer(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """T-05 §8.4: không thêm khóa vào response chuẩn chỉ để debug semantic."""
+    _use_semantic(client, FakeSemantic({}))
+    _at_cancel_reconfirm(client, "c_http_sem_shape")
+    plain = _turn(client, "c_http_sem_shape", 4, "Ừ thì cũng tùy em thôi").json()
+
+    _use_semantic(client, None)
+    _at_cancel_reconfirm(client, "c_http_sem_shape2")
+    without = _turn(client, "c_http_sem_shape2", 4, "Ừ thì cũng tùy em thôi").json()
+    assert set(plain) == set(without)
 
 
 # --- T-08: silence và tín hiệu đường dây qua HTTP ----------------------------------------------

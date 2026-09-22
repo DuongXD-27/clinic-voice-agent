@@ -128,6 +128,8 @@ class ExtractionResult:
 
 Quy tắc bắt buộc với `FALLBACK`: `span` phải là chuỗi con của transcript (sau chuẩn hoá). Không phải chuỗi con → coi như `NONE`. Đây là chốt chặn chống bịa đặt, không phụ thuộc vào điểm tin cậy của mô hình.
 
+`TurnContext` còn có `pending_action` và `question_turn` (thêm ở tầng ngữ nghĩa T-05, đều có mặc định). Cả hai là **trạng thái hội thoại**, không phải hồ sơ bệnh nhân hay trạng thái lịch hẹn — nguyên tắc 2 không đổi. `tests/engine/test_orchestrator.py::test_extractor_never_sees_patient_identity` khoá danh sách trường của `TurnContext` để thêm trường mới phải cân nhắc lại ranh giới này.
+
 ---
 
 ## 5. Đặc tả từng trường
@@ -278,8 +280,10 @@ Figure 0 rev 1.1 gộp tóm tắt lịch, đọc lại ngày/giờ/khoa và câu
 - Nói vòng ("hôm đó tôi bận mất rồi") → luật cho `UNCLEAR`, tuyến sau xét.
 
 **Khi `UNCLEAR`:** ở câu hỏi đến khám, Dialogue **đọc lại** ngày, giờ, cơ sở bằng câu có / không ("vâng" là câu trả lời hợp lệ — kiến trúc §3.2 "Chưa rõ → O_READ"). Ở hủy / chọn slot, hỏi lại bằng **câu lựa chọn A/B** để từ đáp lễ phép không còn là câu trả lời hợp lệ:
-- "Anh chị muốn **hủy** lịch hay **giữ** lịch ạ?"
+- "Anh chị muốn **hủy** hay **giữ** lịch khám ạ? Nếu muốn hủy, anh chị xác nhận 'hủy lịch' giúp em ạ."
 - "Anh chị chọn khung **14 giờ 30** hay muốn **nghe khung khác** ạ?"
+
+Câu hủy nói luôn cụm cần nói, vì ngưỡng `AGREE` ở `CANCEL_RECONFIRM` đòi động từ hủy tường minh (T-05).
 
 `UNCLEAR` lần đầu ở bước xác nhận **không** tính vào §1.1.5; lần thứ hai liên tiếp mới tính.
 
@@ -305,9 +309,23 @@ Figure 0 rev 1.1 gộp tóm tắt lịch, đọc lại ngày/giờ/khoa và câu
 | "khám chỗ khác rồi", "đi viện khác" | `WENT_ELSEWHERE` |
 | "đắt quá", "không đủ tiền" | `COST` |
 | không nêu / không khớp | `UNSPECIFIED` |
+| nêu nhiều lý do khác nhau trong một câu | `UNSPECIFIED` |
 
 - Không suy diễn lý do từ ngữ cảnh; đây là trường ghi vào hồ sơ.
 - Không bắt buộc hỏi lý do. Nếu hỏi, chỉ hỏi **một lần**, sau khi đã có xác nhận hủy lần hai.
+- Cụm bị phủ định không phải lý do: "tôi **không** bận nhưng muốn hủy" → không có tín hiệu lý do.
+
+**Hai cách ra `UNSPECIFIED` phải phân biệt được (T-05).** Cả hai đều trả `value = "UNSPECIFIED"`, nhưng
+`provenance` khác nhau vì Dialogue xử lý khác nhau:
+
+| Trường hợp | `provenance` | `span` | Dialogue làm gì |
+|---|---|---|---|
+| Lượt không có nội dung lý do nào | `NONE` | rỗng | Giữ nguyên lý do đã ghi nhận ở lượt trước |
+| Nêu nhiều lý do không chọn được | `EXACT` / `NORMALIZED` | các cụm đã khớp, nối bằng " + " theo thứ tự bảng trên | Thay lý do cũ bằng `UNSPECIFIED`, **không** giữ ngầm giá trị cũ |
+
+**Vòng đời trong nhánh hủy (T-05).** Lý do được nhận ở **mọi** lượt có nội dung lý do, không riêng lượt
+đồng ý; nhận lý do **không** đồng nghĩa đã xác nhận hủy. Lý do mới rõ ràng thay lý do cũ. Rời nhánh hủy
+(bỏ hủy hoặc chuyển sang đổi lịch / đặt lịch) xoá lý do; quay lại hủy phải nêu lại, mặc định `UNSPECIFIED`.
 
 ### 5.9. Tín hiệu đường dây
 
@@ -352,6 +370,52 @@ Bỏ dấu làm nhiều từ trùng nhau, nên mỗi danh sách tự khai báo c
 | dob, slot_choice | Khôi phục dấu cho **bảng từ đóng** (số, ngày/tháng/năm, giờ/buổi/thứ) rồi parse như thường | "muoi" = mười / mươi theo từ đứng trước; "sang"/"toi" chỉ thành sáng/tối sau "giờ"/"buổi" |
 
 Đo trên transcript ASR 8 kHz của nhóm: tỉ lệ `NONE` của intent / agreement, và mọi ca `AGREE` ở `CANCEL_RECONFIRM` có `provenance = NORMALIZED`.
+
+### 5.11. Tầng ngữ nghĩa (`gpt-4o-mini`) — T-05
+
+Luật từ khoá không thấy được ranh giới mệnh đề. Hai lỗi đo được trên baseline:
+
+| Câu ở `CANCEL_RECONFIRM` | Luật đọc thành | Đúng phải là |
+|---|---|---|
+| "tôi không đủ tiền" | `REFUSE` (chữ "không") → bỏ hủy, **mất luôn lý do** | nêu lý do `COST`, vẫn chờ xác nhận |
+| "không, hủy đi" | `clean` bỏ dấu phẩy → khớp "không hủy" → giữ lịch | mâu thuẫn, phải hỏi lại |
+
+Hai chốt chặn ở **tầng luật** (chạy cả khi tắt model, `extraction/extractor.py`, `agreement.py`):
+- Đoạn làm nên `REFUSE` nằm **gọn trong** đoạn làm nên `cancel_reason` → lượt này là lượt chỉ nêu lý do. Lời từ chối tường minh không nằm trong lý do ("không hủy nữa, dù tôi không đủ tiền") vẫn là `REFUSE`.
+- Cụm từ chối hủy bị **dấu câu cắt đôi** → `UNCLEAR`. Dấu câu của ASR chỉ là một tín hiệu; câu mâu thuẫn không có dấu câu do tầng ngữ nghĩa xử lý.
+
+**Router** (`extraction/semantic_router.py`) quyết định gọi model, trả `None` hoặc một mã lý do. Không dùng `found` như điểm tin cậy.
+
+| Tình huống | Gọi model? |
+|---|---|
+| Im lặng, transcript rỗng, bước tên / ngày sinh, `OFFER_SLOTS`, `SLOT_READBACK` | Không |
+| Lâm sàng, xin người thật, sai danh tính, ngoài phạm vi, xin nhắc lại | Không — Policy đã đủ căn cứ |
+| Câu khớp **toàn câu** trong tập rõ ("hủy giúp tôi", "không hủy nữa", "vâng") | Không |
+| `CANCEL_RECONFIRM`, từ chối kèm lý do | `CANCEL_REFUSAL_WITH_REASON` |
+| `CANCEL_RECONFIRM`, tín hiệu ngược nhau / ngập ngừng | `CANCEL_CONTRADICTION` |
+| `CANCEL_RECONFIRM`, các câu còn lại | `CANCEL_UNRESOLVED` |
+| `ASK_INTENT` / `CONFIRM_READBACK`, không có ý định dùng được và cũng không có có/không dứt khoát | `INTENT_UNCLEAR` |
+
+**Kết quả** `SemanticReading` (Structured Outputs, schema đóng): `intent`, `intent_span`, `reply_kind`, `reply_span`, `cancel_reason`, `reason_span`. Không có `outcome`, `appointment_id`, `slot_id`, lời thoại hay trường "được phép ghi". `reply_kind` ∈ {`CONFIRM_ACTION`, `DECLINE_ACTION`, `INFORM_REASON`, `CHANGE_INTENT`, `QUESTION`, `AMBIGUOUS`}.
+
+Span được đối chiếu trên bản **còn dấu câu** (`normalize`), phải liền mạch, không nhận đoạn ghép bằng " + " hay "…".
+
+**Bảng quyền hợp nhất** — model làm rõ, không mở khóa ghi:
+
+| Kết quả | Core làm gì |
+|---|---|
+| `INFORM_REASON` | Cập nhật lý do; `agreement = Field.nothing(UNCLEAR)` để Dialogue ghi nhận lý do rồi hỏi lại |
+| `DECLINE_ACTION` | `REFUSE` cho hành động đang chờ; không mang lý do hủy sang |
+| `CHANGE_INTENT` | Đổi ý định (trong tập cho phép); nhu cầu mới cần xác nhận riêng |
+| `QUESTION` / `AMBIGUOUS` | `UNCLEAR`, hỏi lại, Policy đếm như thường |
+| `CONFIRM_ACTION` | **Giữ nguyên kết luận luật.** Model không nâng `NONE`/`UNCLEAR`/`REFUSE` thành `AGREE`; câu đã bị router đánh dấu mâu thuẫn thì hạ `UNCLEAR` |
+| Không có kết quả dùng được (tắt, timeout, lỗi, span không có căn cứ) | Giữ luật rõ; `AGREE` trong câu mâu thuẫn hạ `UNCLEAR` |
+
+**Ranh giới prompt** (`SemanticContext`): transcript, `question_id`, hướng gọi, hành động đang chờ, câu hỏi có ở lượt ngay trước không, tập ý định cho phép, và nhãn luật của chính lượt này (ghi rõ "có thể sai"). **Không** gửi tên / ngày sinh chuẩn, `identity_reference`, object patient / appointment / slot, câu bot đọc lịch, hay lịch sử cuộc gọi. Mục đích câu hỏi được mô tả bằng `QUESTION_PURPOSE`, không gửi nguyên văn.
+
+Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật); thiếu `OPENAI_API_KEY` thì tự về chỉ-luật. Tắt bằng `SEMANTIC_FALLBACK_ENABLED=false`. SF-01 / SF-03 / SF-05 vẫn do core và Gateway kiểm — prompt không phải lớp bảo vệ.
+
+---
 
 ---
 
