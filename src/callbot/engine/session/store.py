@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, Optional, Protocol
 
-TurnStatus = Literal["PROCESSING", "COMPLETED", "RECONCILIATION_REQUIRED"]
+# FAILED: lượt dừng vì lỗi xác định (`CallTerminated`) — không có kết quả hội thoại để replay
+TurnStatus = Literal["PROCESSING", "COMPLETED", "RECONCILIATION_REQUIRED", "FAILED"]
 CommandStatus = Literal["PENDING", "SUCCEEDED", "FAILED", "UNKNOWN"]
 
 
@@ -22,6 +23,9 @@ class SessionRecord:
     last_completed_turn: int = 0
     ended: bool = False
     purged_reason: Optional[str] = None
+    # Dấu kết thúc do lỗi (purged_reason FAILED): chỉ http_status, code, diagnostics đã lọc.
+    # Bản ghi cũ không có khóa này vẫn đọc được (mặc định None).
+    failure: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +85,8 @@ class SessionStore(Protocol):
     ) -> None: ...
 
     def mark_reconciliation_required(self, call_id: str, turn: int, detail: str) -> None: ...
+
+    def fail_turn(self, call_id: str, turn: int, failure: dict[str, Any]) -> None: ...
 
     def list_commands(self, call_id: str, turn: Optional[int] = None) -> list[CommandRecord]: ...
 

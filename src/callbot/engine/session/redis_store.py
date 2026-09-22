@@ -31,6 +31,15 @@ from callbot.engine.session.store import (
 _STATE_SCHEMA = 1
 
 
+def _failure_record(failure: dict[str, Any]) -> dict[str, Any]:
+    """Chỉ giữ ba khóa của dấu kết thúc; diagnostics đã được lọc ở `TurnDiagnostics`."""
+    return {
+        "http_status": int(failure["http_status"]),
+        "code": str(failure["code"]),
+        "diagnostics": failure.get("diagnostics"),
+    }
+
+
 class RedisSessionStore:
     """Shared, bounded session store. Redis persistence must be disabled by deployment config."""
 
@@ -236,6 +245,22 @@ class RedisSessionStore:
         if raw is not None and raw["status"] != "COMPLETED":
             raw.update(status="RECONCILIATION_REQUIRED", detail=detail)
         self._purge_state(state, "RECONCILIATION_REQUIRED")
+        self._save(call_id, state, retired=True)
+
+    def fail_turn(self, call_id: str, turn: int, failure: dict[str, Any]) -> None:
+        """Một lần ghi: lượt FAILED + phiên kết thúc do lỗi + xóa nội dung khách hàng (TTL tombstone).
+
+        Phiên đã bị khóa (lệnh ghi đã tới Clinic / chưa rõ kết quả) thì không ghi đè: đối soát.
+        """
+        state = self._required(call_id)
+        if state["session"].get("purged_reason"):
+            raise ReconciliationRequired(call_id, turn)
+        raw = state["turns"].get(str(turn))
+        if raw is None or raw["status"] != "PROCESSING":
+            raise ValueError(f"Lượt {call_id}/{turn} không ở trạng thái PROCESSING")
+        raw["status"] = "FAILED"
+        self._purge_state(state, "FAILED")
+        state["session"]["failure"] = _failure_record(failure)
         self._save(call_id, state, retired=True)
 
     def list_commands(self, call_id: str, turn: Optional[int] = None) -> list[CommandRecord]:

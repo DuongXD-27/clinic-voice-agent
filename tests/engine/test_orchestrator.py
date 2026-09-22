@@ -9,6 +9,7 @@ import pytest
 from callbot.engine import CallEnded, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE
+from callbot.engine.errors import ClinicTerminationFailed
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
@@ -327,18 +328,19 @@ def test_rejected_unreachable_write_does_not_report_success() -> None:
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_unreachable_rejected"))
 
-    action = _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
+    with pytest.raises(ClinicTerminationFailed):
+        _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
     session = bot.sessions.store.get_session("c_unreachable_rejected")
     appointment = clinic.appointments["apt_00417"]
 
     assert appointment["status"] == "SCHEDULED"
     assert appointment["attempt_count"] == 0
+    # Không tự báo TRANSFERRED, không gọi /transfer thay thế
     assert clinic.writes == []
-    assert session is not None and session.ended
+    assert "TRANSFERRED" not in [op for _, op in clinic.requests]
+    assert session is not None and session.ended and session.purged_reason == "FAILED"
     assert session.context == {}
-    assert action.outcome != "UNREACHABLE", (
-        f"mutation rejected but BotAction=({action.state}, {action.outcome})"
-    )
+    assert session.failure["code"] == "CLINIC_TERMINATION_FAILED"
 
 
 def test_inbound_silence_transfers_without_booking() -> None:

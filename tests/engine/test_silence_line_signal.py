@@ -10,6 +10,7 @@ import pytest
 
 from callbot.engine import CallerInput, CallStart, ReconciliationRequired, create_orchestrator
 from callbot.engine.dialogue import templates as t
+from callbot.engine.errors import AppointmentNotActionable, ClinicTerminationFailed
 from callbot.engine.extraction import QuestionId
 from callbot.engine.session import CallContext
 from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
@@ -254,21 +255,28 @@ def test_human_who_is_busy_is_not_voicemail() -> None:
 
 
 @pytest.mark.parametrize(
-    "failures",
+    ("failures", "error"),
     [
-        [clinic_error(409, "INVALID_STATE_TRANSITION")],
-        [clinic_error(409, "VERSION_CONFLICT"), clinic_error(409, "VERSION_CONFLICT")],
+        ([clinic_error(409, "INVALID_STATE_TRANSITION")], AppointmentNotActionable),
+        (
+            [clinic_error(409, "VERSION_CONFLICT"), clinic_error(409, "VERSION_CONFLICT")],
+            ClinicTerminationFailed,
+        ),
+        ([clinic_error(422, "IDEMPOTENCY_CONFLICT")], ClinicTerminationFailed),
     ],
-    ids=["invalid_state", "version_conflict_twice"],
+    ids=["invalid_state", "version_conflict_twice", "idempotency_conflict"],
 )
-def test_rejected_unreachable_is_never_reported(failures) -> None:
+def test_rejected_unreachable_is_never_reported(failures, error) -> None:
+    """Không báo UNREACHABLE, cũng không tự đổi thành TRANSFERRED: lỗi kết thúc, không outcome."""
     clinic = FakeClinicAPI()
     for failure in failures:
         clinic.fail_next("mark_unreachable", failure)
-    _, clinic, actions = _call("c_t08_rejected", "outbound", [SILENCE, SILENCE, SILENCE], clinic)
-    assert actions[-1].ended and actions[-1].outcome != "UNREACHABLE"
-    assert actions[-1].utterance != t.GOODBYE_UNREACHABLE
+    bot, clinic, actions = _start("c_t08_rejected", "outbound", clinic)
+    with pytest.raises(error):
+        _run(bot, "c_t08_rejected", [SILENCE, SILENCE, SILENCE], actions, start=1)
+    assert len(actions) == 3  # lời chào + hai lời nhắc; lượt 3 không có phản hồi hội thoại
     assert clinic.writes == []
+    assert "TRANSFERRED" not in [op for _, op in clinic.requests]
 
 
 def test_version_conflict_once_retries_same_key_and_marks_once() -> None:

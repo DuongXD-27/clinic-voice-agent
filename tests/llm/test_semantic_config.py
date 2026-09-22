@@ -79,3 +79,12 @@ def test_changing_the_ner_provider_does_not_build_a_semantic_layer(
     )
     assert bot._extractor._fallback is not None  # NER bật
     assert bot._extractor._semantic is None  # semantic vẫn tắt
+
+
+def test_the_semantic_timeout_is_three_seconds_everywhere() -> None:
+    """Mặc định trong code và `.env.example` là cùng một giá trị."""
+    from pathlib import Path
+
+    assert EngineSettings.model_fields["semantic_fallback_timeout_s"].default == 3.0
+    example = Path(__file__).resolve().parents[2] / ".env.example"
+    assert "SEMANTIC_FALLBACK_TIMEOUT_S=3.0" in example.read_text(encoding="utf-8").splitlines()

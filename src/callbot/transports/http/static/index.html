@@ -166,6 +166,9 @@
       .message.bot { align-self: flex-start; }
       .bubble { padding: 11px 14px; border-radius: 15px; line-height: 1.45; white-space: pre-wrap; }
       .bot .bubble { border: 1px solid var(--line); border-bottom-left-radius: 4px; background: white; }
+      .message.system { align-self: center; }
+      .system .bubble { border: 1px solid var(--red); background: #f8e5e3; color: var(--red); }
+      .system .meta { text-align: center; }
       .user .bubble { border-bottom-right-radius: 4px; background: var(--green); color: white; }
       .meta { margin: 5px 4px 0; color: var(--muted); font-size: 0.7rem; }
       .user .meta { text-align: right; }
@@ -187,6 +190,13 @@
 
       details { border-top: 1px solid var(--line); }
       summary { padding: 14px 20px; cursor: pointer; color: var(--muted); font-size: 0.82rem; font-weight: 700; }
+      .extraction { padding: 0 20px 18px; font-size: 0.8rem; }
+      .extraction .said { margin: 0 0 10px; line-height: 1.5; }
+      .extraction mark { padding: 0 2px; border-radius: 3px; background: #d8ecdf; color: inherit; }
+      .extraction table { width: 100%; border-collapse: collapse; }
+      .extraction th, .extraction td { padding: 5px 6px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+      .extraction th { color: var(--muted); font-weight: 700; font-size: 0.72rem; }
+      .extraction .empty-note { color: var(--muted); }
       pre { max-height: 260px; margin: 0; padding: 0 20px 20px; overflow: auto; color: #24433a; font: 0.75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 
       .hidden { display: none !important; }
@@ -274,6 +284,13 @@
           </section>
 
           <section class="card">
+            <details open>
+              <summary>Extraction lượt gần nhất</summary>
+              <div id="extractionView" class="extraction"><p class="empty-note">Chưa có lượt nào.</p></div>
+            </details>
+          </section>
+
+          <section class="card">
             <details>
               <summary>Request / response gần nhất</summary>
               <pre id="debug">Chưa có request.</pre>
@@ -325,7 +342,7 @@
         conversation: $("conversation"), textInput: $("textInput"), recordBox: $("recordBox"),
         recordBtn: $("recordBtn"), recordTitle: $("recordTitle"), recordHint: $("recordHint"),
         recordPreview: $("recordPreview"), sendBtn: $("sendBtn"), silenceBtn: $("silenceBtn"),
-        debug: $("debug"),
+        debug: $("debug"), extractionView: $("extractionView"),
       };
 
       const session = {
@@ -379,6 +396,103 @@
         ].join("\n");
       }
 
+      // Lỗi khiến cuộc gọi dừng hẳn: request sau với cùng call_id chỉ nhận lại đúng lỗi này
+      const TERMINAL_ERRORS = new Set([
+        "CLINIC_INVALID_RESPONSE",
+        "CLINIC_TERMINATION_FAILED",
+      ]);
+
+      function readDemoDebug(response) {
+        // Header demo có trên cả response lỗi: đọc TRƯỚC khi xét response.ok
+        const source = response.headers.get("X-Demo-Extraction-Source");
+        return {
+          extraction: source ? {
+            source,
+            provenance: response.headers.get("X-Demo-Extraction-Provenance") || "NONE",
+            question_id: response.headers.get("X-Demo-Extraction-Question-Id"),
+          } : null,
+          fields: parseExtractionFields(response.headers.get("X-Demo-Extraction-Fields")),
+          transfer_reason: response.headers.get("X-Demo-Transfer-Reason"),
+          error_type: response.headers.get("X-Demo-Error-Type"),
+          error_code: response.headers.get("X-Demo-Error-Code"),
+        };
+      }
+
+      function parseExtractionFields(header) {
+        if (!header) return null;
+        try { return JSON.parse(decodeURIComponent(header)); } catch { return null; }
+      }
+
+      const FIELD_LABELS = {
+        full_name: "Họ tên", dob: "Ngày sinh", intent: "Ý định", clinical: "Lâm sàng",
+        agreement: "Đồng ý", slot_choice: "Chọn khung", cancel_reason: "Lý do hủy",
+        line_signal: "Tín hiệu đường dây",
+      };
+
+      function cell(tag, text) {
+        const element = document.createElement(tag);
+        element.textContent = text;
+        return element;
+      }
+
+      function highlighted(transcript, spans) {
+        // Đánh dấu các cụm đã trích trong câu gốc (so không phân biệt hoa thường; span có thể đã chuẩn hóa)
+        const paragraph = document.createElement("p");
+        paragraph.className = "said";
+        const lower = transcript.toLowerCase();
+        const ranges = [];
+        for (const span of spans) {
+          const at = span ? lower.indexOf(span.toLowerCase()) : -1;
+          if (at >= 0 && !ranges.some(([s, e]) => at < e && at + span.length > s)) ranges.push([at, at + span.length]);
+        }
+        ranges.sort((a, b) => a[0] - b[0]);
+        let cursor = 0;
+        paragraph.append(cell("strong", "Câu: "));
+        for (const [start, end] of ranges) {
+          paragraph.append(transcript.slice(cursor, start), cell("mark", transcript.slice(start, end)));
+          cursor = end;
+        }
+        paragraph.append(transcript.slice(cursor));
+        return paragraph;
+      }
+
+      function renderExtraction(turn, data) {
+        const view = ui.extractionView;
+        view.innerHTML = "";
+        if (!data) {
+          view.append(cell("p", `Turn ${turn}: không có dữ liệu extraction (lượt không qua bước trích xuất).`));
+          view.lastChild.className = "empty-note";
+          return;
+        }
+        if (data.silent) {
+          view.append(cell("p", `Turn ${turn}: im lặng — không trích xuất.`));
+          view.lastChild.className = "empty-note";
+          return;
+        }
+        view.append(highlighted(data.transcript || "", data.fields.map((f) => f.span)));
+        if (!data.fields.length) {
+          view.append(cell("p", "Không trích được trường nào từ câu này."));
+          view.lastChild.className = "empty-note";
+          return;
+        }
+        const table = document.createElement("table");
+        const head = document.createElement("tr");
+        ["Trường", "Giá trị", "Từ trong câu", "Nguồn"].forEach((h) => head.append(cell("th", h)));
+        table.append(head);
+        for (const field of data.fields) {
+          const row = document.createElement("tr");
+          const value = typeof field.value === "object" && field.value !== null ? JSON.stringify(field.value) : String(field.value ?? "—");
+          row.append(
+            cell("td", FIELD_LABELS[field.field] || field.field),
+            cell("td", value),
+            cell("td", field.span ? `“${field.span}”` : "—"),
+            cell("td", field.provenance),
+          );
+          table.append(row);
+        }
+        view.append(table);
+      }
+
       async function jsonRequest(method, path, body) {
         const started = performance.now();
         const response = await fetch(apiBase() + path, {
@@ -387,22 +501,22 @@
           body: body === undefined ? undefined : JSON.stringify(body),
         });
         const requestElapsedMs = Math.round(performance.now() - started);
+        const demoDebug = readDemoDebug(response);
         let data;
         try { data = await response.json(); } catch { data = { detail: await response.text() }; }
         debugExchange(method, path, body, response.status, data);
         if (!response.ok) {
           const detail = data?.detail;
           const message = detail?.message || detail?.[0]?.msg || data?.message || `HTTP ${response.status}`;
-          throw new Error(message);
+          const error = new Error(message);
+          error.code = typeof detail?.code === "string" ? detail.code : null;
+          error.status = response.status;
+          error.demoDebug = demoDebug;
+          error.elapsedMs = requestElapsedMs;
+          throw error;
         }
-        const extractionSource = response.headers.get("X-Demo-Extraction-Source");
-        if (extractionSource) {
-          data.demo_extraction_debug = {
-            source: extractionSource,
-            provenance: response.headers.get("X-Demo-Extraction-Provenance") || "NONE",
-            question_id: response.headers.get("X-Demo-Extraction-Question-Id"),
-          };
-        }
+        data.demo_extraction_debug = demoDebug.extraction;
+        data.demo_debug = demoDebug;
         data.demo_request_elapsed_ms = requestElapsedMs;
         return data;
       }
@@ -440,18 +554,26 @@
         ui.conversation.scrollTop = ui.conversation.scrollHeight;
       }
 
+      function debugMeta(debug, elapsedMs) {
+        const extraction = debug?.extraction;
+        const parts = [];
+        if (extraction) {
+          parts.push(`Extraction: ${extraction.source} (${extraction.provenance})${extraction.question_id ? ` · ${extraction.question_id}` : ""}`);
+        }
+        // Lý do chuyển máy đã yêu cầu — không phải bằng chứng Clinic đã ghi
+        if (debug?.transfer_reason) parts.push(`Transfer yêu cầu: ${debug.transfer_reason}`);
+        if (debug?.error_type) parts.push(`Lỗi: ${debug.error_type}${debug.error_code ? ` (${debug.error_code})` : ""}`);
+        if (Number.isFinite(elapsedMs)) parts.push(`HTTP: ${elapsedMs} ms`);
+        return parts.map((part) => ` · ${part}`).join("");
+      }
+
       function applyBotResponse(data, turn) {
-        const extraction = data.demo_extraction_debug;
-        const extractionMeta = extraction
-          ? ` · Extraction: ${extraction.source} (${extraction.provenance})${extraction.question_id ? ` · ${extraction.question_id}` : ""}`
-          : "";
-        const timingMeta = Number.isFinite(data.demo_request_elapsed_ms)
-          ? ` · HTTP: ${data.demo_request_elapsed_ms} ms`
-          : "";
+        const debug = data.demo_debug || { extraction: data.demo_extraction_debug };
+        if (turn > 0) renderExtraction(turn, debug.fields);
         addMessage(
           "bot",
           data.utterance,
-          `BOT · turn ${turn} · ${data.state}${extractionMeta}${timingMeta}`,
+          `BOT · turn ${turn} · ${data.state}${debugMeta(debug, data.demo_request_elapsed_ms)}`,
           data.audio_url,
         );
         ui.stateValue.textContent = data.state;
@@ -539,8 +661,8 @@
         }
 
         setBusy(true, audioMode && !silence ? "Đang upload WAV" : "Đang gửi turn");
+        let audioUrl = null;
         try {
-          let audioUrl = null;
           if (audioMode && !silence) audioUrl = await uploadWav(session.audioBlob, turn);
           const body = {
             turn,
@@ -557,9 +679,32 @@
           ui.textInput.value = "";
           clearRecording();
         } catch (error) {
+          if (TERMINAL_ERRORS.has(error.code)) {
+            stopOnTerminalError(error, turn, userText, audioUrl);
+            return;
+          }
           setBusy(false);
           setNotice(error.message, true);
         }
+      }
+
+      function stopOnTerminalError(error, turn, userText, audioUrl) {
+        // Không dựng câu bot "đã xong": cuộc gọi dừng, không có outcome nghiệp vụ
+        session.ended = true;
+        cancelRecording();
+        clearRecording();
+        addMessage("user", userText || "(audio)", `CALLER · turn ${turn}${audioUrl ? " · WAV" : ""}`,
+          audioUrl);
+        addMessage(
+          "system",
+          `Cuộc gọi dừng do lỗi: ${error.message}`,
+          `HỆ THỐNG · turn ${turn} · HTTP ${error.status} ${error.code}${debugMeta(error.demoDebug, error.elapsedMs)}`,
+        );
+        renderExtraction(turn, error.demoDebug?.fields);
+        ui.outcomeValue.textContent = "—";
+        ui.textInput.disabled = true;
+        setBusy(false);
+        setNotice(`Cuộc gọi đã dừng (${error.code}). Tạo Call ID mới để gọi lại.`, true);
       }
 
       function lockConfig(locked) {
@@ -589,6 +734,7 @@
         ui.stateValue.textContent = "—";
         ui.turnValue.textContent = "1";
         ui.outcomeValue.textContent = "—";
+        ui.extractionView.innerHTML = '<p class="empty-note">Chưa có lượt nào.</p>';
         ui.conversation.innerHTML = '<div class="empty">Cấu hình rồi bấm “Bắt đầu cuộc gọi”. Bot sẽ trả câu chào ở turn 0.</div>';
         lockConfig(false);
         updateDirection();
@@ -622,6 +768,19 @@
         } catch (error) {
           setNotice(`Không mở được microphone: ${error.message}`, true);
         }
+      }
+
+      function cancelRecording() {
+        // Bỏ bản đang ghi, không tạo WAV để gửi
+        const recording = session.recording;
+        if (!recording) return;
+        recording.processor.disconnect();
+        recording.source.disconnect();
+        recording.stream.getTracks().forEach((track) => track.stop());
+        recording.context.close();
+        session.recording = null;
+        ui.recordBox.classList.remove("recording");
+        ui.recordBtn.textContent = "Ghi âm";
       }
 
       function stopRecording() {

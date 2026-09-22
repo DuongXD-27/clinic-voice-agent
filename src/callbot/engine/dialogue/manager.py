@@ -20,7 +20,9 @@ from typing import Any, Optional
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
+    ClinicTerminationFailed,
     ClinicWriteRejected,
+    EngineError,
     SlotTaken,
     WriteOutcomeUnknown,
 )
@@ -51,6 +53,9 @@ from callbot.engine.verification.identity import IdentityVerifier, VerificationS
 logger = logging.getLogger(__name__)
 
 MAX_SLOTS_PRESENTED = 3
+# Lời chào ("alo", "hi em") ở bước danh tính không tính §1.1.5 tới mức này: đường truyền kém hay bot
+# nói chồng làm người nghe chào lại nhiều lần. Quá mức thì mới là chưa hiểu, để bước này không lặp mãi.
+MAX_NEUTRAL_GREETINGS = 2
 # Nhu cầu người gọi nói ở bước danh tính: chỉ để trả lời "cần xác minh trước", không dùng sau xác minh
 _BUSINESS_INTENTS = frozenset({Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK})
 
@@ -73,7 +78,8 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
-        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Không ném lỗi.
+        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Chỉ ném
+        # `CallTerminated` (lịch không thao tác được / phản hồi hỏng) — phiên chưa được tạo.
         prepare = self._verifier.prepare(ctx)
         if prepare.transfer_reason is not None:
             # Không có hồ sơ để đối chiếu: không hỏi tên. Listing 1 không cho kết thúc ở lượt 0,
@@ -95,32 +101,45 @@ class DialogueManager:
         return BotAction(utterance=f"{t.SILENCE} {ctx.question.text}", state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
-        # Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None), chỉ trả outcome
+        """Chỉ trả TRANSFERRED khi Clinic xác nhận đúng trạng thái.
+
+        Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None) — ngoại lệ duy nhất.
+        Từ chối xác định -> `ClinicTerminationFailed`;
+        2xx nhưng sai trạng thái -> chưa rõ, đối soát. Không lỗi nào thành "đã chuyển máy".
+        """
         if not ctx.ended:
             try:
-                self._gateway.transfer(ctx, reason)
-            except TURN_ABORTING_ERRORS:
+                written = self._gateway.transfer(ctx, reason)
+            except TURN_ABORTING_ERRORS as exc:
+                if isinstance(exc, EngineError) and exc.transfer_reason is None:
+                    exc.transfer_reason = reason
                 raise
-            except (ClinicWriteRejected, SevereFailureBlocked):
+            except (ClinicWriteRejected, SevereFailureBlocked) as exc:
                 logger.error("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
+                raise ClinicTerminationFailed(exc.code, transfer_reason=reason) from exc
+            if written is not None and written.get("status") != "TRANSFERRED":
+                raise WriteOutcomeUnknown(
+                    f"{ctx.call_id}: transfer trả status {written.get('status')}"
+                )
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
         )
 
     def unreachable(self, ctx: CallContext, reason: UnreachableReason) -> BotAction:
-        """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail."""
+        """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail.
+
+        Ghi thất bại không tự thành TRANSFERRED: cuộc gọi dừng với lỗi kết thúc, không có outcome.
+        """
         try:
-            self._gateway.mark_unreachable(ctx, reason)
+            written = self._gateway.mark_unreachable(ctx, reason)
         except TURN_ABORTING_ERRORS:
             raise
-        except (ClinicWriteRejected, SevereFailureBlocked):
+        except (ClinicWriteRejected, SevereFailureBlocked) as exc:
             logger.error("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
-            return BotAction(
-                t.TRANSFER,
-                "ENDED",
-                ended=True,
-                outcome="TRANSFERRED",
-                transfer_reason="SYSTEM_ERROR",
+            raise ClinicTerminationFailed(exc.code) from exc
+        if written.get("status") != "UNREACHABLE":
+            raise WriteOutcomeUnknown(
+                f"{ctx.call_id}: unreachable trả status {written.get('status')}"
             )
         return BotAction(
             t.GOODBYE_UNREACHABLE,
@@ -186,11 +205,19 @@ class DialogueManager:
             )
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
 
-        opening = ctx.question is not None and ctx.question.text == t.greeting(ctx.call.direction)
-        if ask_name and opening and is_greeting(ex.transcript):
-            # "Alo" đáp câu chào mở đầu (kể cả khi câu chào được nhắc lại sau im lặng): chào lại, không
-            # tính §1.1.5. `_ask` đổi nội dung câu hỏi nên chỉ chào lại một lần; "alo" tiếp theo là chưa hiểu.
-            text = t.greeting_back(ctx.call.direction)
+        if is_greeting(ex.transcript) and ctx.neutral_greetings < MAX_NEUTRAL_GREETINGS:
+            # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
+            # được nhắc lại sau im lặng) thì chào lại; `_ask` đổi nội dung câu hỏi nên chỉ chào lại một lần.
+            ctx.neutral_greetings += 1
+            opening = ctx.question is not None and ctx.question.text == t.greeting(
+                ctx.call.direction
+            )
+            if not ask_name:
+                text = t.ASK_DOB_AGAIN
+            elif opening:
+                text = t.greeting_back(ctx.call.direction)
+            else:
+                text = t.ASK_NAME_AGAIN
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         if not ask_name and dob_invalid:
             # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
@@ -222,7 +249,7 @@ class DialogueManager:
             return Reply(
                 self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT")
             )
-        appointment = self._gateway.get_appointment(ctx)
+        appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
             self._ask(
                 ctx,
@@ -264,7 +291,7 @@ class DialogueManager:
             )
         if ex.agreement.found or intent is Intent.CONFIRM:
             # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
-            appointment = self._gateway.get_appointment(ctx)
+            appointment = self._gateway.get_actionable_appointment(ctx)
             return Reply(
                 self._ask(
                     ctx,
@@ -284,7 +311,7 @@ class DialogueManager:
         if ctx.call.direction == "outbound":
             if intent is Intent.CONFIRM:
                 ctx.set_pending("CONFIRM")
-                appointment = self._gateway.get_appointment(ctx)
+                appointment = self._gateway.get_actionable_appointment(ctx)
                 return Reply(
                     self._ask(
                         ctx,
@@ -472,7 +499,7 @@ class DialogueManager:
             return Reply(
                 self._ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT")
             )
-        appointment = self._gateway.get_appointment(ctx)
+        appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
             self._ask(
                 ctx,

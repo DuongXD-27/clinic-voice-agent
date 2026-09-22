@@ -24,7 +24,13 @@ from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import read_dob
 from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
-from callbot.engine.extraction.full_name import name_after_dob, name_before_dob, read_full_name
+from callbot.engine.extraction.full_name import (
+    MIN_WORDS_AFTER_HONORIFIC,
+    name_after_dob,
+    name_before_dob,
+    read_full_name,
+)
+from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
@@ -278,6 +284,10 @@ class InformationExtractor:
         # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
         if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()
+        if guarded.found and guarded.value:
+            # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
+            name = strip_honorific(guarded.value, MIN_WORDS_AFTER_HONORIFIC)
+            return Field(name, guarded.provenance, span=guarded.span)
         return guarded
 
     def _agreement(

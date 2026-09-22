@@ -19,6 +19,7 @@ from enum import Enum
 from typing import Any, Optional
 
 from callbot.engine.errors import ClinicAPIError
+from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.tools.normalize import parse_iso_date
@@ -119,7 +120,13 @@ def match_record(claimed_name: str, claimed_dob: date, ref: dict[str, Any]) -> M
     record_dob = parse_iso_date(ref.get("dob"))
     if record_dob is None:
         return MatchDetail.RECORD_UNVERIFIABLE
-    name_ok = normalize_name(claimed_name) == normalize_name(ref["full_name"])
+    record_name = normalize_name(ref["full_name"])
+    # Danh xưng đứng trước tên ("bà Lê Na") không thuộc hồ sơ; vẫn so cả dạng nguyên văn vì từ
+    # đầu có thể là họ thật (Chu, Ông). Chỉ bỏ một từ, và ngày sinh vẫn phải khớp.
+    name_ok = record_name in {
+        normalize_name(claimed_name),
+        normalize_name(strip_honorific(claimed_name, 2)),
+    }
     dob_ok = claimed_dob == record_dob
     if name_ok and dob_ok:
         return MatchDetail.NAME_AND_DOB_MATCH
@@ -188,7 +195,9 @@ class IdentityVerifier:
         return PrepareResult(LookupStatus.LOADED, candidates=len(candidates))
 
     def _prepare_outbound(self, ctx: CallContext) -> PrepareResult:
-        appointment = self._gateway.get_appointment(ctx)
+        # Phản hồi hỏng: lỗi đi thẳng ra, không mở phiên (không phải ClinicAPIError nên không thành
+        # UNAVAILABLE rồi chuyển máy ở lượt 1)
+        appointment = self._gateway.get_actionable_appointment(ctx)
         ctx.identity_lookup = "LOADED"
         ctx.identity_reference = [_reference_from_appointment(appointment)]
         return PrepareResult(LookupStatus.LOADED, candidates=1)

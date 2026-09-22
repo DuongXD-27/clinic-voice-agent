@@ -16,7 +16,9 @@ from datetime import datetime, timedelta
 from typing import Any, Optional
 
 from callbot.engine.errors import (
+    AppointmentNotActionable,
     ClinicAPIError,
+    ClinicInvalidResponse,
     ClinicWriteRejected,
     SessionStoreUnavailable,
     SlotTaken,
@@ -41,6 +43,7 @@ logger = logging.getLogger(__name__)
 SLOT_WINDOW_DAYS = 14
 # Trần số trang một lần đọc: 20 × 100 bản ghi — vượt là mock trả cursor hỏng, không phải dữ liệu thật
 MAX_PAGES = 20
+ACTIONABLE_APPOINTMENT_STATUSES = frozenset({"SCHEDULED", "BOOKED", "CONFIRMED"})
 
 
 class ClinicGateway:
@@ -54,7 +57,21 @@ class ClinicGateway:
         """Appointment của cuộc gọi (SF-01). Đọc được ngay lượt 0 — SF-03 cấm tiết lộ, không cấm đọc."""
         guardrails.assert_target_appointment(ctx, ctx.target_appointment_id)
         assert ctx.target_appointment_id is not None
-        return normalize_appointment(self._api.get_appointment(ctx.target_appointment_id))
+        appointment = normalize_appointment(self._api.get_appointment(ctx.target_appointment_id))
+        if appointment["appointment_id"] != ctx.target_appointment_id:
+            raise ClinicInvalidResponse("BAD_RESPONSE")
+        return appointment
+
+    def get_actionable_appointment(
+        self,
+        ctx: CallContext,
+        allowed_statuses: frozenset[str] = ACTIONABLE_APPOINTMENT_STATUSES,
+    ) -> dict[str, Any]:
+        """Đọc lịch và chặn fail-closed nếu lifecycle không còn cho phép thao tác."""
+        appointment = self.get_appointment(ctx)
+        if appointment["status"] not in allowed_statuses:
+            raise AppointmentNotActionable()
+        return appointment
 
     def find_patients_by_phone(self, phone: str) -> list[dict[str, Any]]:
         """Ứng viên inbound theo số đã chuẩn hóa (Verifier lo, T-01) — mọi trang, mỗi phần tử
@@ -192,6 +209,7 @@ class ClinicGateway:
             f"/appointments/{appointment_id}/unreachable",
             {"unreachable_reason": reason},
             lambda version, key: self._api.mark_unreachable(appointment_id, reason, version, key),
+            allowed_statuses=frozenset({"SCHEDULED", "BOOKED", "UNREACHABLE"}),
         )
 
     # --- Thực thi lệnh ghi qua nhật ký --------------------------------------------
@@ -204,17 +222,23 @@ class ClinicGateway:
         payload: dict[str, Any],
         send: Callable[[Optional[int], str], dict[str, Any]],
         read_version: bool = True,
+        allowed_statuses: frozenset[str] = ACTIONABLE_APPOINTMENT_STATUSES,
     ) -> dict[str, Any]:
         journal = current_journal()
         key = f"{ctx.call_id}:{ctx.turn}:{operation}"
         # VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần với cùng Idempotency-Key
+        kind = operation.split(":")[0]
         for attempt in (1, 2):
             try:
-                version = self._current_version(ctx) if read_version else None
+                version = (
+                    self.get_actionable_appointment(ctx, allowed_statuses)["version"]
+                    if read_version
+                    else None
+                )
             except ClinicAPIError as exc:
                 # Chưa gửi lệnh ghi nào: từ chối xác định, có thể thử lại nếu lỗi tạm thời
                 raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
-            command = ClinicCommand(operation.split(":")[0], endpoint, payload, version, key)
+            command = ClinicCommand(kind, endpoint, payload, version, key)
             # Không lưu được nhật ký -> SessionStoreUnavailable, lệnh không được gửi
             journal.begin(command)
             try:
@@ -227,6 +251,8 @@ class ClinicGateway:
                     continue
                 if exc.code == "SLOT_TAKEN":
                     raise SlotTaken(exc.status, exc.code) from exc
+                if exc.code == "INVALID_STATE_TRANSITION":
+                    raise AppointmentNotActionable(exc.code) from exc
                 raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
             except Exception as exc:
                 # Lỗi ngoài hợp đồng cổng (bug, ngoại lệ transport lạ): không biết Clinic đã áp dụng chưa
@@ -243,9 +269,6 @@ class ClinicGateway:
             # Lệnh vẫn PENDING trong nhật ký — lần xử lý sau cũng bị chặn đối soát
             logger.error("Không ghi được trạng thái UNKNOWN cho %s", command.idempotency_key)
         return WriteOutcomeUnknown(f"{command.idempotency_key}: {error}")
-
-    def _current_version(self, ctx: CallContext) -> int:
-        return self.get_appointment(ctx)["version"]
 
     @staticmethod
     def _target(ctx: CallContext) -> str:

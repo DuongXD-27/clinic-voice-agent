@@ -13,7 +13,9 @@ class EngineSettings(BaseSettings):
     # Tắt: SEMANTIC_FALLBACK_ENABLED=false. Cấu hình riêng, không dùng chung `NAME_FALLBACK_*`.
     semantic_fallback_enabled: bool = True
     semantic_fallback_model: str = "gpt-4o-mini"
-    semantic_fallback_timeout_s: float = 2.0
+    # httpx.Timeout theo PHA (connect riêng 1 giây; đọc / ghi / chờ pool mỗi pha tối đa 3 giây), không
+    # phải trần tổng của request. Một request, không retry model. Đồng bộ với `.env` / `.env.example`.
+    semantic_fallback_timeout_s: float = 3.0
     semantic_fallback_max_tokens: int = 400
     # Câu dài hơn mức này thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định).
     semantic_fallback_max_input_chars: int = 1500

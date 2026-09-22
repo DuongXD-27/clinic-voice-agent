@@ -9,6 +9,7 @@ from typing import Any, Optional
 import pytest
 
 from callbot.engine import (
+    AppointmentNotActionable,
     CallEnded,
     CallerInput,
     CallStart,
@@ -17,8 +18,14 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import Intent, QuestionId
-from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
+from callbot.engine.extraction.semantic import (
+    LLMSemanticExtractor,
+    ReplyKind,
+    SemanticContext,
+    SemanticOutcome,
+)
 from callbot.engine.session import CallContext
+from inference.llm.providers.base import StructuredReply
 from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 SILENCE = None
@@ -471,12 +478,23 @@ def test_silence_then_agreement_replays_the_cancel_question_first() -> None:
 
 def test_rejected_cancel_is_a_system_error_not_a_cancellation() -> None:
     bot, clinic = _requesting("c_t05_rejected")
-    clinic.fail_next("cancel_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    clinic.fail_next("cancel_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
     action = _run(bot, "c_t05_rejected", ["Hủy giúp tôi"], start=4)
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
     assert action.utterance != t.done("CANCELLED")
     assert _cancel_writes(clinic) == []
+    # Chỉ báo TRANSFERRED vì /transfer thật sự thành công
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+
+
+def test_invalid_state_transition_on_cancel_stops_without_transfer() -> None:
+    bot, clinic = _requesting("c_t05_invalid_state")
+    clinic.fail_next("cancel_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    with pytest.raises(AppointmentNotActionable):
+        _run(bot, "c_t05_invalid_state", ["Hủy giúp tôi"], start=4)
+    assert clinic.writes == []
+    assert [op for _, op in clinic.requests].count("CANCELLED") == 1  # không retry
 
 
 def test_timeout_before_the_write_blocks_the_turn_for_reconciliation() -> None:
@@ -899,3 +917,64 @@ def test_changing_to_keep_the_appointment_abandons_the_cancel_instead_of_not_und
     assert clinic.writes == []
     ctx = _context(bot, "c_sem_keep")
     assert (ctx.pending_action, ctx.cancel_reason, ctx.failed_understandings) == (None, None, 0)
+
+
+# --- Demo 22-09: "Dạo này kẹt tiền quá em ạ" -------------------------------------------------------
+
+KET_TIEN = "Dạo này kẹt tiền quá em ạ"
+
+
+class _TimeoutGateway:
+    """LLM gateway luôn hết thời gian — đi qua adapter thật, không gọi mạng."""
+
+    provider_name = "fake"
+    model = "fake-model"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_structured(self, messages, **kwargs) -> StructuredReply:
+        self.calls += 1
+        return StructuredReply("timeout")
+
+
+def test_a_cost_reason_read_by_the_model_is_kept_until_the_cancel() -> None:
+    semantic = FakeSemantic(
+        {
+            KET_TIEN.lower(): SemanticOutcome(
+                ReplyKind.INFORM_REASON, cancel_reason="COST", reason_span="kẹt tiền"
+            )
+        }
+    )
+    bot, clinic = _requesting_with(semantic, "c_sem_ket_tien")
+
+    action = _run(bot, "c_sem_ket_tien", [KET_TIEN], start=4)
+    assert action.utterance == t.CANCEL_REASON_NOTED and clinic.writes == []
+    assert _context(bot, "c_sem_ket_tien").cancel_reason == "COST"
+
+    action = _run(bot, "c_sem_ket_tien", ["Hủy giúp tôi"], start=5)
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [_cancelled("apt_00417", "COST")]
+
+
+def test_a_semantic_timeout_asks_again_instead_of_a_contradiction() -> None:
+    """Luật chưa nhận ra "kẹt tiền"; "ạ" cuối câu không còn là tín hiệu mâu thuẫn -> nhánh chưa hiểu.
+
+    Từ điển lý do giữ nguyên, nên lượt xác nhận sau ghi UNSPECIFIED — giới hạn đã chấp nhận.
+    """
+    gateway = _TimeoutGateway()
+    semantic = LLMSemanticExtractor(gateway, max_input_chars=1500, max_completion_tokens=400)
+    bot, clinic = _requesting_with(semantic, "c_sem_ket_tien_timeout")
+
+    action = _run(bot, "c_sem_ket_tien_timeout", [KET_TIEN], start=4)
+    assert gateway.calls == 1
+    assert action.utterance == t.NOT_UNDERSTOOD and action.utterance != t.CANCEL_CHOICE
+    assert not action.ended and clinic.writes == []
+    assert _context(bot, "c_sem_ket_tien_timeout").pending_action == "CANCEL"
+
+    # "Em chưa hiểu" không nhắc lại câu xác nhận (T-08): lượt này hỏi lại, lượt sau mới là xác nhận
+    action = _run(bot, "c_sem_ket_tien_timeout", ["Hủy giúp tôi"], start=5)
+    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+    action = _run(bot, "c_sem_ket_tien_timeout", ["Hủy lịch"], start=6)
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]

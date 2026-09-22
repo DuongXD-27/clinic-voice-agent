@@ -20,6 +20,7 @@ import re
 from typing import Optional
 
 from callbot.engine.extraction.greeting import is_greeting
+from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import (
     AFFIRMATIONS,
     ALTERNATIVES,
@@ -81,21 +82,47 @@ _RELATIVES = (
     "bác",
 )
 
+# Tiếng đệm đầu câu ("à thì tôi là ...", "ừm, tôi tên ...") bỏ như lời đáp lễ. Không dấu thì giữ:
+# "a", "u", "o", "thi" có thể là một phần tên.
+_FILLERS = ["à", "ừ", "ờ", "ừm", "thì"]
 _PREFIXES = compile_phrases(
     ["dạ", "vâng", "ạ", "alo", "a lô", "vâng ạ", "dạ vâng"]
+    + _FILLERS
     + _SELF_INTRO_PHRASES
     + ["họ tên là", "họ và tên là", "họ tên", "họ và tên"],
-    unaccented_exclude=["ạ"],  # "a" có thể là tên ("Nguyễn Văn A")
+    unaccented_exclude=["ạ", *_FILLERS],  # "a" có thể là tên ("Nguyễn Văn A")
 )
+# Họ tên đầy đủ tối thiểu còn lại sau khi bỏ danh xưng ("ông Nguyễn Văn A" -> 3 từ). Tên ngắn hơn
+# giữ nguyên danh xưng ("Chu Văn An" có thể là họ Chu); Verifier tự so cả hai dạng.
+MIN_WORDS_AFTER_HONORIFIC = 3
+# Tự nhận ở CUỐI câu: "Nguyễn Văn A là tên chú", "Trần Thị Mai, đấy là tên bà". Người lớn tuổi hay
+# tự xưng ông / bà / chú / bác thay cho "tôi"; không kèm "tôi / của tôi" thì là chính người gọi —
+# có từ sở hữu ("là tên ông tôi") là người thân, xem `_RELATIVE_CLAIMS`.
+_SELF_OUTRO_PHRASES = [
+    f"{lead}là tên {speaker}"
+    for speaker in _SPEAKERS
+    for lead in ("", "đấy ", "đó ", "đây ", "thì ")
+]
 _SUFFIXES = compile_phrases(
-    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà"], unaccented_exclude=["ạ", "ấy ạ", "mà"]
+    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES],
+    unaccented_exclude=["ạ", "ấy ạ", "mà"],
 )
 _SELF_INTRODUCTIONS = compile_phrases(_SELF_INTRO_PHRASES)
 _OTHER_PERSON_INTRODUCTIONS = compile_phrases([f"còn {relative} tôi là" for relative in _RELATIVES])
 # Người gọi khai tên người khác. Không có lời tự giới thiệu nào khác trong câu -> không phải
 # tên người gọi, và tuyến sau cũng không được biến nó thành tên người gọi.
 _RELATIVE_CLAIMS = compile_phrases(
-    [f"{relative} tôi là" for relative in _RELATIVES] + ["gọi hộ", "gọi giúp", "gọi thay"]
+    [
+        phrase
+        for relative in _RELATIVES
+        for phrase in (
+            f"{relative} tôi là",
+            f"tên {relative} tôi",  # "... là tên ông tôi"
+            f"{relative} của tôi",
+            f"tên {relative} của tôi",  # "tên chú của tôi là ...": trùng vị trí với "tên chú"
+        )
+    ]
+    + ["gọi hộ", "gọi giúp", "gọi thay"]
 )
 _GREETINGS = frozenset(
     {"alo", "a lô", "xin chào", "chào", "chào em", "chào chị", "ai đấy", "ai vậy", "ai đó"}
@@ -212,6 +239,7 @@ def read_full_name(transcript: str) -> Reading[str]:
 
     name = _strip_repeated(segment, _PREFIXES, at_start=True)
     name = _strip_repeated(name, _SUFFIXES, at_start=False)
+    name = strip_honorific(name, MIN_WORDS_AFTER_HONORIFIC)
     words = name.split()
     if (
         not name
@@ -302,7 +330,8 @@ def _own_claim(text: str) -> Optional[str]:
         # "Tôi là A, còn em tôi là B": chỉ lấy vế đầu
         return text[: other.start()].strip()
     relative = _earliest(text, _RELATIVE_CLAIMS)
-    if relative is not None and (introduction is None or relative.start() < introduction.start()):
+    # Cùng vị trí bắt đầu ("tên chú" / "tên chú của tôi"): cụm người thân dài hơn mới là nghĩa đúng
+    if relative is not None and (introduction is None or relative.start() <= introduction.start()):
         return None
     return text
 

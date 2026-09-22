@@ -7,9 +7,13 @@ from pydantic import ValidationError
 
 from callbot.engine.dialogue import DialogueManager
 from callbot.engine.errors import (
+    AppointmentNotActionable,
     CallBusy,
     CallConflict,
     CallEnded,
+    CallTerminated,
+    ClinicInvalidResponse,
+    ClinicTerminationFailed,
     ReconciliationRequired,
     SessionNotFound,
     SessionStoreUnavailable,
@@ -100,14 +104,18 @@ def create_orchestrator(
 
 
 __all__ = [
+    "AppointmentNotActionable",
     "BotAction",
     "CallBusy",
     "CallConflict",
     "CallEnded",
     "CallOrchestrator",
     "CallStart",
+    "CallTerminated",
     "CallerInput",
     "ClinicAPI",
+    "ClinicInvalidResponse",
+    "ClinicTerminationFailed",
     "EngineSettings",
     "RedisSessionStore",
     "ReconciliationRequired",
