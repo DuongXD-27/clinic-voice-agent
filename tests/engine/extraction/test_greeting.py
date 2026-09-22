@@ -20,6 +20,12 @@ from callbot.engine.extraction.greeting import is_greeting
         "chào em",
         "alo em",
         "a lo",
+        "hello em",
+        "hi em",
+        "Hello, chị ạ!",
+        "dạ hi anh",
+        "hello bạn",
+        "hi cô",
     ],
 )
 def test_greeting(text: str) -> None:
@@ -36,6 +42,9 @@ def test_greeting(text: str) -> None:
         "Nguyễn Văn A",
         "chào em, tôi tên Hoa",
         "gì cơ",
+        "hello em, tôi tên Nguyễn Văn A",
+        "hi em tôi muốn hủy lịch",
+        "Nguyễn Văn Hi",
     ],
 )
 def test_not_greeting(text: str) -> None:

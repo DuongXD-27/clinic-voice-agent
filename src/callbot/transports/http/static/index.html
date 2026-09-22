@@ -395,6 +395,14 @@
           const message = detail?.message || detail?.[0]?.msg || data?.message || `HTTP ${response.status}`;
           throw new Error(message);
         }
+        const extractionSource = response.headers.get("X-Demo-Extraction-Source");
+        if (extractionSource) {
+          data.demo_extraction_debug = {
+            source: extractionSource,
+            provenance: response.headers.get("X-Demo-Extraction-Provenance") || "NONE",
+            question_id: response.headers.get("X-Demo-Extraction-Question-Id"),
+          };
+        }
         data.demo_request_elapsed_ms = requestElapsedMs;
         return data;
       }
@@ -433,7 +441,7 @@
       }
 
       function applyBotResponse(data, turn) {
-        const extraction = data.extraction_debug;
+        const extraction = data.demo_extraction_debug;
         const extractionMeta = extraction
           ? ` · Extraction: ${extraction.source} (${extraction.provenance})${extraction.question_id ? ` · ${extraction.question_id}` : ""}`
           : "";

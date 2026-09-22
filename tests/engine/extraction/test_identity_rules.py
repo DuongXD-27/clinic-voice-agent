@@ -70,6 +70,18 @@ class FakeNER:
 
 
 @pytest.mark.parametrize(
+    "transcript", ["hello em", "hi em", "Hello, chị ạ!", "dạ hi anh", "alo em", "chào em"]
+)
+def test_greeting_is_not_a_name_even_with_ner_enabled(transcript: str) -> None:
+    ner = FakeNER(clean(transcript))
+    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), transcript
+    )
+    assert not result.full_name.found
+    assert ner.calls == 0
+
+
+@pytest.mark.parametrize(
     "transcript",
     [
         "không phải 14 tháng 3 năm 1978",

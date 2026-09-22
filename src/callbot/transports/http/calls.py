@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Annotated, Any, Optional, TypeVar
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from callbot.engine import (
     CallBusy,
@@ -143,6 +143,7 @@ def start_call(
 @router.post("/{call_id}/turn", response_model=TurnResponse, response_model_exclude_unset=True)
 def call_turn(
     request: Request,
+    response: Response,
     call_id: str,
     payload: TurnRequest,
     orchestrator: Orchestrator,
@@ -179,17 +180,14 @@ def call_turn(
         return action, audio_url, run.extraction
 
     action, audio_url, extraction = _run_engine(call_id, _turn)
-    response_fields: dict[str, Any] = {
-        "utterance": action.utterance,
-        "audio_url": audio_url,
-        "state": action.state,
-        "ended": action.ended,
-        "outcome": action.outcome,
-    }
     if request.headers.get("X-Demo-Debug") == "1":
-        response_fields["extraction_debug"] = _extraction_debug(extraction)
+        _set_extraction_debug_headers(response, _extraction_debug(extraction))
     return TurnResponse(
-        **response_fields,
+        utterance=action.utterance,
+        audio_url=audio_url,
+        state=action.state,
+        ended=action.ended,
+        outcome=action.outcome,
     )
 
 
@@ -211,6 +209,14 @@ def _extraction_debug(extraction: Optional[dict[str, Any]]) -> ExtractionDebug:
         if provenance in provenances:
             return ExtractionDebug(question_id=question_id, source="RULE", provenance=provenance)
     return ExtractionDebug(question_id=question_id, source="NONE", provenance="NONE")
+
+
+def _set_extraction_debug_headers(response: Response, debug: ExtractionDebug) -> None:
+    """Expose demo-only diagnostics without extending the public JSON response contract."""
+    response.headers["X-Demo-Extraction-Source"] = debug.source
+    response.headers["X-Demo-Extraction-Provenance"] = debug.provenance
+    if debug.question_id is not None:
+        response.headers["X-Demo-Extraction-Question-Id"] = debug.question_id
 
 
 def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:

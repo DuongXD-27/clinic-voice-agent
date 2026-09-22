@@ -80,4 +80,3 @@ class TurnResponse(BaseModel):
     state: CallState
     ended: bool
     outcome: Optional[Outcome]
-    extraction_debug: Optional[ExtractionDebug] = None

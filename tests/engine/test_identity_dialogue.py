@@ -201,9 +201,10 @@ def test_missing_name_twice_transfers_not_understood() -> None:
 
 
 @pytest.mark.parametrize("direction", ["outbound", "inbound"])
-def test_alo_after_opening_is_greeted_back(direction) -> None:
+@pytest.mark.parametrize("greeting", ["alo", "hello em", "hi em", "Hello, chị ạ!"])
+def test_alo_after_opening_is_greeted_back(direction, greeting) -> None:
     start = _outbound("c_alo") if direction == "outbound" else _inbound("c_alo")
-    actions, _ = _call(start, ["alo", NAME, DOB])
+    actions, _ = _call(start, [greeting, NAME, DOB])
     assert actions[1].utterance == t.greeting_back(direction)
     assert t.AI_DISCLOSURE in actions[1].utterance
     assert actions[1].state == "AWAITING_IDENTITY"
@@ -216,6 +217,15 @@ def test_alo_is_greeted_back_only_once() -> None:
     assert actions[1].utterance == t.greeting_back("outbound")
     assert actions[2].utterance == t.ASK_NAME_AGAIN
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_english_greeting_after_reprompt_does_not_advance_to_dob() -> None:
+    actions, clinic = _call(_outbound("c_hello_again"), ["hello em", "hi em", NAME, DOB])
+    assert actions[1].utterance == t.greeting_back("outbound")
+    assert actions[2].utterance == t.ASK_NAME_AGAIN
+    assert actions[3].utterance == t.ASK_DOB
+    assert actions[4].state == "AWAITING_INTENT"
+    assert clinic.writes == []
 
 
 # --- Xin nhắc lại ---------------------------------------------------------------------------------

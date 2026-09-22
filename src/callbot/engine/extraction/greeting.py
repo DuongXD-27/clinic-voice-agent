@@ -9,7 +9,7 @@ import re
 
 from callbot.engine.extraction.text import clean, strip_diacritics
 
-_HELLO = r"(?:a ?lo|xin chao|chao(?: (?:em|anh|chi|ban|co|chu|bac))?)"
+_HELLO = r"(?:a ?lo|xin chao|chao|hello|hi)(?: (?:em|anh|chi|ban|co|chu|bac))?"
 _FILLER = (
     r"(?:da|vang|u|um|o|a|oi|nghe|day|em|anh|chi|toi nghe|nghe day|"
     r"ai (?:day|do|vay|the)|ai goi (?:day|do|vay|the)|ai the|ai a)"

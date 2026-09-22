@@ -19,6 +19,7 @@ câu nghiệp vụ.
 import re
 from typing import Optional
 
+from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.identity import (
     AFFIRMATIONS,
     ALTERNATIVES,
@@ -181,6 +182,10 @@ def read_full_name(transcript: str) -> Reading[str]:
     text = " ".join(clauses)
     if not text:
         return Reading(Field.nothing(), Reason.NO_SIGNAL)
+    # Dùng chung nhận diện với Dialogue. Lời chào đã rõ nghĩa không phải tên,
+    # nên không mở tuyến NER để nhận lại "hello em" / "hi em" thành tên người gọi.
+    if is_greeting(text):
+        return Reading(Field.nothing(), Reason.NOT_A_NAME, text)
     if find_phrase(text, _NOT_A_NAME_PHRASES, mixed=True) is not None:
         return Reading(Field.nothing(), Reason.NOT_A_NAME, text)
 

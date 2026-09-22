@@ -204,7 +204,18 @@ def test_demo_header_exposes_rule_source_without_pii(client: TestClient) -> None
     )
 
     assert response.status_code == 200
-    debug = response.json()["extraction_debug"]
+    assert response.json() == {
+        "utterance": t.ASK_DOB,
+        "audio_url": None,
+        "state": "AWAITING_IDENTITY",
+        "ended": False,
+        "outcome": None,
+    }
+    debug = {
+        "question_id": response.headers["X-Demo-Extraction-Question-Id"],
+        "source": response.headers["X-Demo-Extraction-Source"],
+        "provenance": response.headers["X-Demo-Extraction-Provenance"],
+    }
     assert debug == {
         "question_id": "ASK_NAME",
         "source": "RULE",
