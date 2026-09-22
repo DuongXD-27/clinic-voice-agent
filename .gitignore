@@ -8,6 +8,7 @@ __pycache__/
 .pytest_cache/
 .pytest-run/
 test-results/
+outputs/eval/
 .test-tmp*/
 traces.jsonl
 
