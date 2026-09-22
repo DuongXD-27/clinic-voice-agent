@@ -58,28 +58,23 @@ def downmix_to_mono(pcm: bytes, channels: int) -> bytes:
 
 
 def resample(pcm: bytes, src_rate: int, dst_rate: int) -> bytes:
-    """Resample có lọc thông thấp khi hạ tần số (16k -> 8k), tránh aliasing trên dải thoại."""
+    """Resample bằng soxr (polyphase + lowpass FIR chuẩn công nghiệp, tự chống aliasing
+    khi hạ tần và không làm méo phổ tần khi nâng tần).
+
+    Trước đây dùng lowpass FIR tay + np.interp (nội suy tuyến tính) — đã xác nhận qua
+    benchmark ZipFormer (docs/evidence/zipformer-stt-benchmark.md) rằng nội suy tuyến
+    tính khi upsample 8kHz->16kHz làm méo phổ tần đủ để gây lỗi ASR rõ rệt trên tên
+    riêng/số liệu (model train ở 16kHz thật, không phải 8kHz nội suy lên). Đổi sang soxr
+    sửa được phần lớn các lỗi đó mà không cần đổi model.
+    """
     import numpy as np
+    import soxr
 
     samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
     if samples.size == 0:
         return b""
-    if dst_rate < src_rate:
-        samples = _lowpass(samples, cutoff_hz=dst_rate / 2 * 0.9, rate=src_rate)
-    # TODO: thay bằng soxr nếu cần chất lượng cao hơn khi đo WER
-    dst_len = int(samples.size * dst_rate / src_rate)
-    src_x = np.linspace(0, samples.size - 1, num=dst_len)
-    resampled = np.interp(src_x, np.arange(samples.size), samples)
+    resampled = soxr.resample(samples, src_rate, dst_rate, quality="HQ")
     return np.clip(resampled, -32768, 32767).astype(np.int16).tobytes()
-
-
-def _lowpass(samples, cutoff_hz: float, rate: int, taps: int = 63):
-    import numpy as np
-
-    n = np.arange(taps) - (taps - 1) / 2
-    kernel = np.sinc(2 * cutoff_hz / rate * n) * np.hamming(taps)
-    kernel /= kernel.sum()
-    return np.convolve(samples, kernel, mode="same")
 
 
 def _parse_wav(data: bytes) -> tuple[int, int, int, int, bytes]:

@@ -16,6 +16,15 @@ class TTSGateway:
     def model(self) -> str:
         return self._provider.model
 
+    @property
+    def provider(self) -> TTSProvider:
+        """Escape hatch cho caller cần method mở rộng ngoài Protocol (vd.
+        `synthesize_stream()`/`cancel()` của OpenAITTS cho LiveKit) — KHÔNG dùng cho
+        `synthesize()` thường, chỉ khi caller đã biết trước provider nào đang chạy và
+        kiểm tra bằng `hasattr`/`getattr`. Không phá lazy-loading: registry vẫn resolve
+        qua `create_tts_gateway()` như cũ, property này chỉ expose instance đã tạo."""
+        return self._provider
+
     def synthesize(self, text: str) -> Optional[TTSResult]:
         text = text.strip()
         if not text:

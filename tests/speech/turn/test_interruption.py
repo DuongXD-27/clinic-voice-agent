@@ -1,0 +1,267 @@
+import pytest
+
+from speech.asr.vad.base import VadEvent
+from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.types import TranscriptEvent
+
+
+class _FakeTTS:
+    def __init__(self) -> None:
+        self.cancel_calls = 0
+
+    async def cancel(self) -> None:
+        self.cancel_calls += 1
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+async def test_idle_ignores_speech_events() -> None:
+    tts = _FakeTTS()
+    controller = InterruptionController(tts)
+
+    interrupted = await controller.on_speech_started(VadEvent("speech_start"))
+
+    assert interrupted is False
+    assert controller.state == InterruptionState.IDLE
+    assert tts.cancel_calls == 0
+
+
+async def test_speech_start_while_bot_speaking_becomes_candidate_not_interrupted_yet() -> None:
+    tts = _FakeTTS()
+    controller = InterruptionController(tts)
+    controller.on_bot_started_speaking()
+
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0  # chưa đủ điều kiện — chỉ mới là ứng viên
+
+
+async def test_partial_transcript_confirms_interruption_after_min_duration() -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    clock.advance(0.25)  # vượt ngưỡng 200ms
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại", is_final=False)
+    )
+
+    assert confirmed is True
+    assert controller.state == InterruptionState.INTERRUPTED
+    assert tts.cancel_calls == 1
+
+
+async def test_empty_partial_does_not_confirm() -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(TranscriptEvent(text="   ", is_final=False))
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_short_noise_reverts_to_bot_speaking_without_cancelling() -> None:
+    """Backchannel/noise ngắn: speech_start rồi speech_end ngay, không có partial nào,
+    chưa đủ min_speech_ms -> không được cancel TTS, quay lại BOT_SPEAKING."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    clock.advance(0.05)  # chỉ 50ms — chưa đủ 200ms
+    await controller.on_speech_ended_without_confirmation()
+
+    assert controller.state == InterruptionState.BOT_SPEAKING
+    assert tts.cancel_calls == 0
+
+
+async def test_partial_before_min_duration_does_not_confirm() -> None:
+    """Bug thật đã gặp: ASR trả về text (kể cả hợp lệ) NGAY khi vừa mới thành candidate,
+    trước khi đủ min_speech_ms, không được confirm ngay — text có thể là hallucination
+    từ vài frame noise đầu tiên (quạt máy, tiếng ồn phòng)."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    clock.advance(0.05)  # chỉ 50ms — chưa đủ 200ms
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại", is_final=False)
+    )
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_sustained_duration_alone_without_transcript_does_not_confirm() -> None:
+    """Bug thật đã gặp: tiếng quạt/noise nền kéo dài liên tục (VAD báo "speech" nhiều
+    lần) không được tự cắt lời bot chỉ vì đủ duration — phải có ASR partial có nghĩa
+    thật sự đi kèm. Không còn đường xác nhận thuần-duration (confirm_if_sustained đã bị
+    xoá), nên duration một mình sẽ không bao giờ tự confirm."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    clock.advance(5.0)  # noise kéo dài rất lâu, vượt xa ngưỡng duration
+
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_meaningless_partial_does_not_confirm_even_after_min_duration() -> None:
+    """Filler word ("ờm") mà ASR decode đúng (không phải hallucination) từ audio đủ dài
+    vẫn không được coi là barge-in thật — không mang nội dung ngắt lời."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(TranscriptEvent(text="ờm", is_final=False))
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_partial_below_min_confidence_does_not_confirm() -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, min_confidence=0.6, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại", is_final=False, confidence=0.3)
+    )
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_partial_with_no_confidence_ignores_min_confidence_threshold() -> None:
+    """Provider không cung cấp confidence (None, như ZipFormer hiện tại) không được bị
+    chặn bởi min_confidence — ngưỡng chỉ áp dụng khi có giá trị thật để so sánh."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, min_confidence=0.6, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại", is_final=False, confidence=None)
+    )
+
+    assert confirmed is True
+    assert controller.state == InterruptionState.INTERRUPTED
+
+
+async def test_bot_stopped_speaking_resets_to_idle() -> None:
+    tts = _FakeTTS()
+    controller = InterruptionController(tts)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    controller.on_bot_stopped_speaking()
+
+    assert controller.state == InterruptionState.IDLE
+
+
+async def test_validator_drops_hallucination_pattern_during_barge_in() -> None:
+    """Tái hiện đúng bug thật đã gặp qua LiveKit demo: WebRTC VAD nhận nhầm noise phòng
+    thành speech_start GIỮA LÚC bot đang nói -> ASR hallucinate ra "ĐÂY" (SNR thấp, text
+    ngắn) -> KHÔNG được confirm barge-in nếu có TurnValidator cấu hình (trước khi sửa,
+    _passes_gate() không có SNR check nên vẫn confirm bất kể noise)."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    validator = TurnValidator(min_snr_db=6.0)
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock, validator=validator)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=60.0, noise_floor=50.0, snr_db=1.6),
+        stability=StabilityVerdict.UNKNOWN,
+    )
+
+    confirmed = await controller.on_partial_transcript(TranscriptEvent(text="đây", is_final=False))
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_validator_allows_real_speech_with_high_snr_during_barge_in() -> None:
+    """Barge-in thật (SNR cao, câu dài rõ ràng) vẫn phải hoạt động bình thường dù có
+    TurnValidator cấu hình — validator chỉ CHẶN THÊM, không được chặn nhầm barge-in thật."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    validator = TurnValidator(min_snr_db=6.0)
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock, validator=validator)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=5000.0, noise_floor=50.0, snr_db=40.0),
+        stability=StabilityVerdict.CONVERGING,
+    )
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại đi", is_final=False)
+    )
+
+    assert confirmed is True
+    assert controller.state == InterruptionState.INTERRUPTED
+    assert tts.cancel_calls == 1
+
+
+async def test_no_validator_keeps_old_behavior() -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(TranscriptEvent(text="đây", is_final=False))
+
+    assert confirmed is True
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])
