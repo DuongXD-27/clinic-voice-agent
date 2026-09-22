@@ -2,6 +2,11 @@
 
 Đây là trường GHI VÀO HỒ SƠ: chỉ ánh xạ cụm từ tường minh, không suy diễn lý do từ ngữ cảnh.
 Nêu nhiều lý do khác nhau trong cùng câu -> UNSPECIFIED (không chọn hộ người gọi).
+
+`provenance` phân biệt hai cách ra UNSPECIFIED, vì Dialogue xử lý khác nhau (T-05 §3.2):
+- `NONE`  — lượt này không có nội dung lý do nào: giữ nguyên lý do đã ghi nhận trước đó.
+- khác NONE, `value == "UNSPECIFIED"` — người gọi CÓ nói lý do nhưng nêu nhiều lý do không chọn
+  được; `span` là các cụm đã khớp. Lý do cũ bị thay bằng UNSPECIFIED, không giữ ngầm.
 """
 
 from callbot.engine.extraction.schema import Field, Provenance
@@ -72,7 +77,13 @@ def extract_cancel_reason(transcript: str) -> Field[CancelReason]:
         if match is not None:
             hits[reason] = match.group(0)
 
-    if len(hits) != 1:
+    if not hits:
         return Field.nothing(DEFAULT)
+    provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
+    if len(hits) > 1:
+        # Có tín hiệu lý do nhưng mâu thuẫn: báo là đã thấy (provenance != NONE) với giá trị mặc định,
+        # để Dialogue biết phải bỏ lý do cũ chứ không phải bỏ qua lượt này.
+        # `hits` theo thứ tự `_PHRASES`, nên span không đổi theo thứ tự người gọi nói
+        return Field(DEFAULT, provenance, span=" + ".join(hits.values()))
     reason, span = next(iter(hits.items()))
-    return Field(reason, Provenance.NORMALIZED if unaccented else Provenance.EXACT, span=span)
+    return Field(reason, provenance, span=span)

@@ -1,6 +1,9 @@
 """AI Callbot Engine: Session Manager, Information Extraction, Policy, Verification, Dialogue & LLM."""
 
+import logging
 from typing import Optional
+
+from pydantic import ValidationError
 
 from callbot.engine.dialogue import DialogueManager
 from callbot.engine.errors import (
@@ -15,6 +18,7 @@ from callbot.engine.errors import (
 )
 from callbot.engine.extraction import InformationExtractor
 from callbot.engine.extraction.ner import NameNER
+from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticExtractor
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
 from callbot.engine.session import RedisSessionStore, SessionManager, SessionStore
@@ -24,6 +28,7 @@ from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
+from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
 
 
@@ -36,6 +41,36 @@ def _default_session_store() -> SessionStore:
         tombstone_ttl_s=config.session_tombstone_ttl_s,
         max_session_bytes=config.session_max_bytes,
         lock_lease_s=config.session_lock_lease_s,
+    )
+
+
+logger = logging.getLogger(__name__)
+
+
+def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]:
+    """Tầng ngữ nghĩa dùng cấu hình RIÊNG, không đọc `NAME_FALLBACK_*`.
+
+    Giá trị truyền tường minh nên thắng alias env của `ProviderConfig` (pydantic-settings ưu tiên
+    init kwargs); `tests/llm/test_semantic_config.py` khóa hành vi đó. Provider cố định OpenAI
+    trong đợt này — đổi provider là thay đổi phạm vi, không phải đổi biến môi trường.
+    """
+    if not settings.semantic_fallback_enabled:
+        return None
+    try:
+        config = OpenAIConfig(
+            model=settings.semantic_fallback_model,
+            timeout_s=settings.semantic_fallback_timeout_s,
+            max_completion_tokens=settings.semantic_fallback_max_tokens,
+        )
+    except ValidationError:
+        # Bật mặc định nhưng máy này không có OPENAI_API_KEY: chạy chỉ-luật (vẫn an toàn — hai chốt
+        # chặn ca review nằm ở tầng luật), không để cả server không khởi động được.
+        logger.warning("Tầng ngữ nghĩa đang bật nhưng thiếu OPENAI_API_KEY; chạy chỉ bằng luật")
+        return None
+    return LLMSemanticExtractor(
+        create_gateway("openai", config=config),
+        max_input_chars=settings.semantic_fallback_max_input_chars,
+        max_completion_tokens=settings.semantic_fallback_max_tokens,
     )
 
 
@@ -54,7 +89,9 @@ def create_orchestrator(
     return CallOrchestrator(
         sessions=SessionManager(store if store is not None else _default_session_store()),
         extractor=InformationExtractor(
-            fallback=name_fallback, name_fallback=name_fallback is not None
+            fallback=name_fallback,
+            name_fallback=name_fallback is not None,
+            semantic=_semantic_extractor(settings),
         ),
         policy=PolicyEngine(settings),
         dialogue=DialogueManager(gateway, IdentityVerifier(gateway)),

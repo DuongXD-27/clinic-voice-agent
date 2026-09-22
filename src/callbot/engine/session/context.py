@@ -13,6 +13,7 @@ from callbot.engine.types import (
     CallState,
     CancelReason,
     Outcome,
+    PendingAction,
     TransferReason,
     UnreachableReason,
 )
@@ -22,7 +23,6 @@ SCHEMA_VERSION = 1
 IdentityStep = Literal["ASK_NAME", "ASK_DOB", "VERIFIED"]
 # Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu
 IdentityLookup = Literal["PENDING", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"]
-PendingAction = Literal["CONFIRM", "CANCEL", "RESCHEDULE", "BOOK"]
 # REQUEST: người gọi yêu cầu hành động (chỉ dùng cho hủy lịch, SF-05)
 # CONFIRMATION: người gọi đồng ý câu hỏi xác nhận của hành động đang chờ
 EvidenceKind = Literal["REQUEST", "CONFIRMATION"]
@@ -146,9 +146,15 @@ class CallContext:
     # --- Hành động chờ và bằng chứng --------------------------------------------
 
     def set_pending(self, action: PendingAction, slot_id: Optional[str] = None) -> None:
-        """Đổi hành động hoặc slot làm mất hiệu lực mọi bằng chứng cũ."""
+        """Đổi hành động hoặc slot làm mất hiệu lực mọi bằng chứng cũ.
+
+        Đổi hành động còn xoá `cancel_reason`: lý do chỉ thuộc yêu cầu hủy đang chờ, không được
+        đi theo người gọi sang nhánh khác rồi quay lại nhánh hủy (T-05 §3.2.5).
+        """
         if action != self.pending_action or slot_id != self.selected_slot_id:
             self.evidence = []
+        if action != self.pending_action:
+            self.cancel_reason = None
         self.pending_action = action
         self.selected_slot_id = slot_id
 

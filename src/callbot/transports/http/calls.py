@@ -196,14 +196,17 @@ def call_turn(
 def _extraction_debug(extraction: Optional[dict[str, Any]]) -> ExtractionDebug:
     """Summarize the extraction path without returning transcript values or spans."""
     question_id = extraction.get("question_id") if extraction else None
-    provenances = [
-        field.get("provenance")
+    fields = {
+        name: field.get("provenance")
         for name, field in (extraction or {}).items()
-        if name not in {"turn", "question_id", "transcript", "silent"}
-        and isinstance(field, dict)
-    ]
-    if "FALLBACK" in provenances:
+        if name not in {"turn", "question_id", "transcript", "silent"} and isinstance(field, dict)
+    }
+    provenances = list(fields.values())
+    if any(fields.get(name) == "FALLBACK" for name in ("full_name", "dob")):
         return ExtractionDebug(question_id=question_id, source="NER", provenance="FALLBACK")
+    if "FALLBACK" in provenances:
+        # Ý định / đồng ý / lý do hủy từ tầng ngữ nghĩa hoặc fallback LLM — không phải NER tên
+        return ExtractionDebug(question_id=question_id, source="LLM", provenance="FALLBACK")
     for provenance in ("EXACT", "NORMALIZED"):
         if provenance in provenances:
             return ExtractionDebug(question_id=question_id, source="RULE", provenance=provenance)

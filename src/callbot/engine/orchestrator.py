@@ -37,6 +37,8 @@ def build_turn_context(ctx: CallContext, turn: int, received_at: datetime) -> Tu
         now=to_local(received_at),
         slots=tuple(dict(slot) for slot in ctx.slots),
         presented_slot_ids=tuple(ctx.presented_slot_ids),
+        pending_action=ctx.pending_action,
+        question_turn=question.turn if question else None,
     )
 
 

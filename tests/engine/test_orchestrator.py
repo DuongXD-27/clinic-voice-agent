@@ -400,6 +400,9 @@ def test_extractor_never_sees_patient_identity() -> None:
     # Người gọi nói sai tên: không được "sửa" theo hồ sơ
     _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
 
+    # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
+    # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
+    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn.
     assert {f.name for f in fields(TurnContext)} == {
         "turn",
         "question_id",
@@ -407,6 +410,8 @@ def test_extractor_never_sees_patient_identity() -> None:
         "now",
         "slots",
         "presented_slot_ids",
+        "pending_action",
+        "question_turn",
     }
     verify = clinic.appointments["apt_00417"]["patient"]["verify"]
     for seen in spy.contexts:

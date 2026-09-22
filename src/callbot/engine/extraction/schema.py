@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Generic, Literal, Optional, TypeVar, Union
 
-from callbot.engine.types import CancelReason, Direction
+from callbot.engine.types import CancelReason, Direction, PendingAction
 
 T = TypeVar("T")
 
@@ -165,6 +165,10 @@ class TurnContext:
     now: datetime  # thời điểm cuộc gọi, có múi giờ; dùng cho năm 2 chữ số và ngày tương đối
     slots: tuple[dict[str, Any], ...] = ()  # toàn bộ GET /slots của cuộc gọi
     presented_slot_ids: tuple[str, ...] = ()  # thứ tự bot đã đọc, cho "khung thứ hai"
+    # Hai trường dưới thêm ở tầng ngữ nghĩa (T-05 §8.3.2), có mặc định để mọi bộ dựng
+    # TurnContext cũ vẫn chạy. Đều là dữ liệu hội thoại, KHÔNG phải hồ sơ hay trạng thái lịch hẹn.
+    pending_action: Optional[PendingAction] = None
+    question_turn: Optional[int] = None  # lượt bot hỏi câu đang chờ; None nếu chưa hỏi câu nào
 
     @property
     def today(self) -> date:

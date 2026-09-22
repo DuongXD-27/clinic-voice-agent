@@ -24,6 +24,7 @@ from callbot.engine.errors import (
     SlotTaken,
     WriteOutcomeUnknown,
 )
+from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.schema import (
     INVALID,
@@ -308,10 +309,11 @@ class DialogueManager:
         self, ctx: CallContext, intent: Intent, ex: ExtractionResult, now: datetime
     ) -> Reply:
         if intent is Intent.CANCEL:
+            # `set_pending` xóa bằng chứng VÀ lý do của hành động cũ: yêu cầu hủy mới bắt đầu từ
+            # trắng, mặc định UNSPECIFIED nếu lượt này không nêu lý do (T-05 §3.2.1)
             ctx.set_pending("CANCEL")
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
-            if ex.cancel_reason.found:
-                ctx.cancel_reason = ex.cancel_reason.value
+            self._update_cancel_reason(ctx, ex)
             return Reply(
                 self._ask(
                     ctx,
@@ -404,26 +406,62 @@ class DialogueManager:
         if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             # IE chỉ trả AGREE ở đây khi có động từ hủy tường minh (SF-05); "vâng" là UNCLEAR
             self._record_confirmation(ctx, ex)
-            if ctx.cancel_reason is None and ex.cancel_reason.found:
-                ctx.cancel_reason = ex.cancel_reason.value
-            self._gateway.cancel(ctx, ctx.cancel_reason or "UNSPECIFIED")
+            self._update_cancel_reason(ctx, ex)
+            written = self._gateway.cancel(ctx, ctx.cancel_reason or DEFAULT_CANCEL_REASON)
+            if written.get("status") != "CANCELLED":
+                # Như T-04: Mock nhận lệnh (2xx) nhưng bản ghi không ở CANCELLED thì không báo đã hủy,
+                # cũng không ghi /transfer thay thế — chặn lượt để đối soát.
+                raise WriteOutcomeUnknown(
+                    f"{ctx.call_id}: cancel trả status {written.get('status')}"
+                )
             return Reply(self._finish("CANCELLED", t.done("CANCELLED")))
+        if ex.intent.value is Intent.RESCHEDULE:
+            # Xét TRƯỚC nhánh REFUSE chung: "không hủy nữa, tôi muốn đổi lịch" là từ chối hủy kèm
+            # yêu cầu đổi lịch, không phải muốn giữ lịch (T-05 §3.3). `_start` xóa dữ liệu hủy.
+            return self._start(ctx, Intent.RESCHEDULE, ex, now)
         if agreement is Agreement.REFUSE:
             return self._abandon(ctx)
-        if ex.intent.value is Intent.RESCHEDULE:
-            return self._start(ctx, Intent.RESCHEDULE, ex, now)
+
+        # Chưa xác nhận: lý do vẫn được ghi nhận ở mọi lượt, nhưng ghi nhận lý do không phải đồng ý hủy
+        had_reason = ctx.cancel_reason not in (None, DEFAULT_CANCEL_REASON)
+        noted = self._update_cancel_reason(ctx, ex)
         if ex.agreement.found:
+            # Có tín hiệu đồng ý / mâu thuẫn / ngập ngừng nhưng dưới ngưỡng hủy: hỏi lại bằng câu
+            # lựa chọn, kể cả khi lượt đó có nêu lý do (§3.2.6)
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CHOICE), "UNCLEAR")
+        if noted:
+            # Chỉ lý do đầu tiên là tiến triển. Đổi sang lý do khác mà vẫn né xác nhận thì tính
+            # UNCLEAR, nếu không "bận" / "hết tiền" luân phiên sẽ reset bộ đếm mãi, không bao giờ
+            # chuyển máy. Lý do mới vẫn được ghi nhận.
             return Reply(
-                self._ask(
-                    ctx,
-                    QuestionId.CANCEL_RECONFIRM,
-                    t.CANCEL_CHOICE,
-                    "AWAITING_CONFIRMATION",
-                    action="CANCEL",
-                ),
-                "UNCLEAR",
+                self._ask_cancel_again(ctx, t.CANCEL_REASON_NOTED),
+                "UNCLEAR" if had_reason else "UNDERSTOOD",
             )
+        if ex.cancel_reason.found:
+            # Lặp lại lý do cũ, hoặc nhiều lý do không chọn được, mà vẫn né xác nhận: hỏi lại rõ
+            # hủy / giữ và tính UNCLEAR để Policy không để vòng lặp kéo dài
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CHOICE), "UNCLEAR")
         return self._not_understood(ctx)
+
+    def _ask_cancel_again(self, ctx: CallContext, text: str) -> BotAction:
+        return self._ask(
+            ctx, QuestionId.CANCEL_RECONFIRM, text, "AWAITING_CONFIRMATION", action="CANCEL"
+        )
+
+    @staticmethod
+    def _update_cancel_reason(ctx: CallContext, ex: ExtractionResult) -> bool:
+        """Ghi nhận lý do hủy của lượt này; trả về True khi xác định được MỘT lý do mới (§3.2.3).
+
+        `cancel_reason.found` nghĩa là lượt này có nội dung lý do. Nêu nhiều lý do không chọn được
+        thì IE trả `UNSPECIFIED` kèm provenance: thay lý do cũ (không giữ ngầm) nhưng chưa xác định
+        được gì nên không tính là tiến triển. Lượt không nói lý do giữ nguyên giá trị hiện tại.
+        """
+        if not ex.cancel_reason.found:
+            return False
+        reason = ex.cancel_reason.value or DEFAULT_CANCEL_REASON
+        determined = reason != DEFAULT_CANCEL_REASON and reason != ctx.cancel_reason
+        ctx.cancel_reason = reason
+        return determined
 
     # --- Helpers ---------------------------------------------------------------------------
 
