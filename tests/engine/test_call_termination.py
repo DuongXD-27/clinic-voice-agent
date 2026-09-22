@@ -1,25 +1,20 @@
-"""Lỗi kết thúc cuộc gọi: lifecycle lịch hẹn, ghi trạng thái kết thúc, lưu lỗi vào phiên và chẩn đoán.
+"""Clinic lỗi hoặc lịch không còn thao tác được: cuộc gọi luôn chuyển cho nhân viên.
 
-Không lỗi nào được báo thành công giả: không TRANSFERRED khi /transfer không thành công, không
-UNREACHABLE khi /unreachable bị từ chối, và lỗi lifecycle không chuyển thành một lần gọi /transfer.
+Không báo thành công giả cho lệnh nghiệp vụ (CONFIRMED / CANCELLED / UNREACHABLE). Khi chính lệnh ghi
+TRANSFERRED thất bại, bot vẫn trả TRANSFERRED để nhân viên xử lý; chỉ lệnh ghi chưa rõ kết quả mới
+chặn lượt để đối soát.
 """
 
-import json
-from typing import Any, Optional
+from typing import Optional
 
 import pytest
 
 from callbot.engine import (
-    AppointmentNotActionable,
     CallerInput,
     CallStart,
-    ClinicInvalidResponse,
-    ClinicTerminationFailed,
     ReconciliationRequired,
-    SessionStoreUnavailable,
     create_orchestrator,
 )
-from callbot.engine.errors import CallTerminated
 from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -50,27 +45,26 @@ def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
     return actions[-1]
 
 
-def _raw_state(bot, call_id: str) -> str:
-    store = bot.sessions.store
-    return store._client.get(store._state_key(call_id))
-
-
 def _set_status(clinic: FakeClinicAPI, status: str) -> None:
     clinic.appointments["apt_00417"]["status"] = status
+
+
+def _transferred(action, reason: str = "SYSTEM_ERROR") -> None:
+    assert action.ended
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", reason)
 
 
 # --- Mở cuộc gọi --------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("status", ["CANCELLED", "RESCHEDULED", "TRANSFERRED", "UNREACHABLE"])
-def test_opening_a_call_on_a_non_actionable_appointment_creates_no_session(status: str) -> None:
+def test_non_actionable_appointment_is_transferred_at_turn_one(status: str) -> None:
     clinic = FakeClinicAPI()
     _set_status(clinic, status)
-    bot = create_orchestrator(clinic)
-    call = CallStart(call_id="c_open_blocked", direction="outbound", appointment_id="apt_00417")
-    with pytest.raises(AppointmentNotActionable):
-        bot.start_call(call)
-    assert bot.sessions.store.get_session("c_open_blocked") is None
+    bot, _, _ = _bot("c_open_blocked", clinic)
+
+    _transferred(_run(bot, "c_open_blocked", [NAME]))
+    # Clinic không cho /transfer từ trạng thái này: không gửi lệnh ghi nào
     assert clinic.requests == []
 
 
@@ -79,17 +73,17 @@ def test_actionable_appointments_open_normally(status: str) -> None:
     clinic = FakeClinicAPI()
     _set_status(clinic, status)
     bot, _, _ = _bot("c_open_ok", clinic)
-    assert bot.sessions.store.get_session("c_open_ok").context != {}
+    assert not _run(bot, "c_open_ok", [NAME]).ended
 
 
-def test_opening_on_an_invalid_read_creates_no_session() -> None:
+def test_invalid_read_at_opening_is_transferred_at_turn_one() -> None:
     clinic = FakeClinicAPI()
     del clinic.appointments["apt_00417"]["starts_at"]
-    bot = create_orchestrator(clinic)
-    call = CallStart(call_id="c_open_invalid", direction="outbound", appointment_id="apt_00417")
-    with pytest.raises(ClinicInvalidResponse):
-        bot.start_call(call)
-    assert bot.sessions.store.get_session("c_open_invalid") is None
+    bot, _, _ = _bot("c_open_invalid", clinic)
+
+    run = bot.handle_turn_with_details("c_open_invalid", _caller(1, NAME))
+    _transferred(run.action)
+    assert clinic.requests == []
 
 
 # --- Lịch đổi trạng thái giữa cuộc gọi ------------------------------------------------------------
@@ -107,152 +101,120 @@ def test_opening_on_an_invalid_read_creates_no_session() -> None:
     ],
     ids=["after_verify", "before_confirm", "reread", "readback", "before_cancel", "keep"],
 )
-def test_appointment_cancelled_elsewhere_mid_call_stops_without_any_write(
+def test_appointment_cancelled_elsewhere_mid_call_is_transferred_without_any_write(
     before: list[str], line: str
 ) -> None:
     bot, clinic, _ = _bot("c_mid_call")
     _run(bot, "c_mid_call", before)
     _set_status(clinic, "CANCELLED")
-    writes_before = len(clinic.requests)
 
-    with pytest.raises(AppointmentNotActionable):
-        bot.handle_turn("c_mid_call", _caller(len(before) + 1, line))
+    run = bot.handle_turn_with_details("c_mid_call", _caller(len(before) + 1, line))
 
-    # Không lệnh ghi nào sau từ chối lifecycle, kể cả /transfer
-    assert len(clinic.requests) == writes_before == 0
-    session = bot.sessions.store.get_session("c_mid_call")
-    assert session.purged_reason == "FAILED" and session.ended
-    assert session.failure["code"] == "APPOINTMENT_NOT_ACTIONABLE"
-    assert session.failure["http_status"] == 409
+    _transferred(run.action)
+    assert clinic.requests == []
+    assert run.diagnostics.error_type == "APPOINTMENT_NOT_ACTIONABLE"
 
 
-# --- Phiên đã dừng vì lỗi: không xử lý lại ---------------------------------------------------------
-
-
-def _failed_call(call_id: str):
-    bot, clinic, call = _bot(call_id)
-    _run(bot, call_id, [NAME, DOB])
+def test_invalid_state_on_a_business_write_is_transferred() -> None:
+    bot, clinic, _ = _bot("c_confirm_state")
+    _run(bot, "c_confirm_state", [NAME, DOB])
     clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-    with pytest.raises(AppointmentNotActionable) as exc:
-        bot.handle_turn_with_details(call_id, _caller(3, "Vâng"))
-    return bot, clinic, call, exc.value
 
+    run = bot.handle_turn_with_details("c_confirm_state", _caller(3, "Vâng"))
 
-def test_a_failed_call_keeps_the_extraction_in_its_diagnostics() -> None:
-    _, _, _, error = _failed_call("c_failed_diag")
-    diagnostics = error.diagnostics
-    assert diagnostics is not None
-    assert (diagnostics.question_id, diagnostics.extraction_source) == ("CONFIRM_READBACK", "RULE")
-    assert (diagnostics.error_type, diagnostics.error_code) == (
+    _transferred(run.action)
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+    assert (run.diagnostics.question_id, run.diagnostics.extraction_source) == (
+        "CONFIRM_READBACK",
+        "RULE",
+    )
+    assert (run.diagnostics.error_type, run.diagnostics.error_code) == (
         "APPOINTMENT_NOT_ACTIONABLE",
         "INVALID_STATE_TRANSITION",
     )
-    assert diagnostics.transfer_reason is None
-
-
-def test_resending_to_a_failed_call_replays_the_error_without_processing() -> None:
-    bot, clinic, call, _ = _failed_call("c_failed_replay")
-    calls_before = len(clinic.calls)
-    for attempt in (
-        lambda: bot.handle_turn("c_failed_replay", _caller(3, "Vâng")),  # gửi lại cùng lượt
-        lambda: bot.handle_turn("c_failed_replay", _caller(4, "Vâng")),  # lượt tiếp theo
-        lambda: bot.start_call(call),  # mở lại cùng call_id
-    ):
-        with pytest.raises(AppointmentNotActionable) as exc:
-            attempt()
-        assert exc.value.diagnostics.question_id == "CONFIRM_READBACK"
-    # Không extract lại, không gọi Clinic lại
-    assert len(clinic.calls) == calls_before
-
-
-def test_a_failed_call_keeps_only_the_technical_tombstone() -> None:
-    bot, _, _, _ = _failed_call("c_failed_pii")
-    raw = _raw_state(bot, "c_failed_pii")
-    state = json.loads(raw)
-    assert NAME not in raw and "Vâng" not in raw and "1978" not in raw
-    assert state["session"]["context"] == {} and state["session"]["start_config"] == {}
-    assert state["turns"]["3"]["status"] == "FAILED" and state["turns"]["3"]["input"] == {}
-    assert set(state["session"]["failure"]) == {"http_status", "code", "diagnostics"}
-    # Tombstone dùng TTL hiện có
-    ttl = bot.sessions.store._client.ttl(bot.sessions.store._state_key("c_failed_pii"))
-    assert 0 < ttl <= bot.sessions.store._tombstone_ttl_s
-
-
-def test_failure_that_cannot_be_saved_surfaces_the_store_error(monkeypatch) -> None:
-    bot, clinic, _ = _bot("c_failed_store")
-    _run(bot, "c_failed_store", [NAME, DOB])
-    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-
-    def unavailable(*args: Any, **kwargs: Any) -> None:
-        raise SessionStoreUnavailable("down")
-
-    monkeypatch.setattr(bot.sessions.store, "fail_turn", unavailable)
-    with pytest.raises(SessionStoreUnavailable) as exc:
-        bot.handle_turn("c_failed_store", _caller(3, "Vâng"))
-    assert exc.value.diagnostics.error_type == "APPOINTMENT_NOT_ACTIONABLE"
-    assert clinic.writes == []
-
-
-def test_sessions_saved_before_the_failure_field_still_load() -> None:
-    bot, _, _ = _bot("c_old_record")
-    store = bot.sessions.store
-    state = json.loads(_raw_state(bot, "c_old_record"))
-    state["session"].pop("failure")
-    store._client.set(store._state_key("c_old_record"), json.dumps(state, ensure_ascii=False))
-
-    assert store.get_session("c_old_record").failure is None
-    action = _run(bot, "c_old_record", [NAME])
-    assert not action.ended
-
-
-def test_restored_failures_drop_unknown_codes() -> None:
-    error = CallTerminated.restore(
-        {
-            "http_status": 409,
-            "code": "APPOINTMENT_NOT_ACTIONABLE",
-            "diagnostics": {
-                "question_id": "Nguyễn Văn A",
-                "extraction_source": "RULE",
-                "error_code": "secret",
-            },
-        }
-    )
-    assert isinstance(error, AppointmentNotActionable)
-    assert error.diagnostics.question_id is None and error.diagnostics.error_code == "UNKNOWN"
 
 
 # --- Ghi trạng thái kết thúc --------------------------------------------------------------------
 
 
-def test_transfer_reports_transferred_only_after_clinic_records_it() -> None:
+def test_transfer_is_recorded_on_clinic_when_it_can_be() -> None:
     bot, clinic, _ = _bot("c_transfer_ok")
     run = bot.handle_turn_with_details("c_transfer_ok", _caller(1, "cho tôi gặp nhân viên"))
-    assert (run.action.outcome, run.action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    _transferred(run.action, "PATIENT_REQUEST")
     assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
     assert run.diagnostics.transfer_reason == "PATIENT_REQUEST"
 
 
 @pytest.mark.parametrize(
     "error",
-    [clinic_error(422, "IDEMPOTENCY_CONFLICT"), clinic_error(404, "NOT_FOUND")],
-    ids=["idempotency", "not_found"],
+    [
+        clinic_error(422, "IDEMPOTENCY_CONFLICT"),
+        clinic_error(404, "NOT_FOUND"),
+        clinic_error(409, "INVALID_STATE_TRANSITION"),
+        clinic_error(503, "UPSTREAM"),
+    ],
+    ids=["idempotency", "not_found", "invalid_state", "upstream"],
 )
-def test_rejected_transfer_is_a_termination_failure(error) -> None:
+def test_rejected_transfer_still_hands_the_call_to_staff(error) -> None:
     bot, clinic, _ = _bot("c_transfer_rejected")
     clinic.fail_next("transfer_appointment", error)
-    with pytest.raises(ClinicTerminationFailed) as exc:
-        bot.handle_turn("c_transfer_rejected", _caller(1, "cho tôi gặp nhân viên"))
-    assert exc.value.diagnostics.transfer_reason == "PATIENT_REQUEST"
-    assert exc.value.diagnostics.error_code == error.code
+
+    action = bot.handle_turn("c_transfer_rejected", _caller(1, "cho tôi gặp nhân viên"))
+
+    _transferred(action, "PATIENT_REQUEST")
     assert clinic.writes == []
 
 
-def test_invalid_state_on_transfer_is_not_actionable() -> None:
-    bot, clinic, _ = _bot("c_transfer_state")
-    clinic.fail_next("transfer_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-    with pytest.raises(AppointmentNotActionable):
-        bot.handle_turn("c_transfer_state", _caller(1, "cho tôi gặp nhân viên"))
-    assert [op for _, op in clinic.requests].count("TRANSFERRED") == 1
+def test_unreadable_clinic_still_hands_the_call_to_staff() -> None:
+    bot, clinic, _ = _bot("c_transfer_down")
+    _run(bot, "c_transfer_down", [NAME])
+    clinic.fail_next("get_appointment", clinic_error(None, "CONNECT_ERROR"))
+
+    action = bot.handle_turn("c_transfer_down", _caller(2, "cho tôi gặp nhân viên"))
+
+    _transferred(action, "PATIENT_REQUEST")
+    assert clinic.requests == []
+
+
+def test_rejected_unreachable_transfers_instead() -> None:
+    """Clinic chỉ cho /unreachable từ SCHEDULED/BOOKED: lịch CONFIRMED thì ghi /transfer thay thế."""
+    clinic = FakeClinicAPI()
+    _set_status(clinic, "CONFIRMED")
+    bot, _, _ = _bot("c_unreachable_rejected", clinic)
+
+    action = _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
+
+    _transferred(action)
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+
+
+def test_rejected_unreachable_and_transfer_still_hands_the_call_to_staff() -> None:
+    bot, clinic, _ = _bot("c_unreachable_double")
+    clinic.fail_next("mark_unreachable", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
+    clinic.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+
+    action = _run(bot, "c_unreachable_double", [SILENCE, SILENCE, SILENCE])
+
+    _transferred(action)
+    assert clinic.writes == []
+
+
+def test_a_business_write_error_is_transferred_even_when_the_transfer_is_rejected() -> None:
+    bot, clinic, _ = _bot("c_double_reject")
+    _run(bot, "c_double_reject", [NAME, DOB])
+    clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
+    clinic.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+
+    run = bot.handle_turn_with_details("c_double_reject", _caller(3, "Vâng"))
+
+    _transferred(run.action)
+    assert clinic.writes == []
+    # Chẩn đoán giữ lỗi gốc của lượt (lệnh xác nhận bị từ chối)
+    assert (run.diagnostics.error_type, run.diagnostics.error_code) == (
+        "CLINIC_REJECTED",
+        "IDEMPOTENCY_CONFLICT",
+    )
+    assert run.diagnostics.question_id == "CONFIRM_READBACK"
 
 
 def test_transfer_timeout_needs_reconciliation() -> None:
@@ -275,37 +237,6 @@ def test_a_2xx_with_the_wrong_status_needs_reconciliation(operation: str, lines)
     setattr(clinic, operation, lambda *a, **k: {**clinic.appointments["apt_00417"]})
     with pytest.raises(ReconciliationRequired):
         _run(bot, "c_wrong_status", lines)
-
-
-def test_a_business_write_error_transfers_only_when_the_transfer_succeeds() -> None:
-    """Confirm bị từ chối -> SYSTEM_ERROR; /transfer cũng bị từ chối -> lỗi kết thúc, không TRANSFERRED."""
-    bot, clinic, _ = _bot("c_double_reject")
-    _run(bot, "c_double_reject", [NAME, DOB])
-    clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
-    clinic.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
-    with pytest.raises(ClinicTerminationFailed) as exc:
-        bot.handle_turn("c_double_reject", _caller(3, "Vâng"))
-    diagnostics = exc.value.diagnostics
-    assert diagnostics.transfer_reason == "SYSTEM_ERROR"
-    assert diagnostics.question_id == "CONFIRM_READBACK"
-    assert (diagnostics.error_type, diagnostics.error_code) == (
-        "CLINIC_TERMINATION_FAILED",
-        "RATE_LIMITED",
-    )
-    assert clinic.writes == []
-
-
-def test_a_handled_write_error_is_visible_in_the_turn_diagnostics() -> None:
-    bot, clinic, _ = _bot("c_handled")
-    _run(bot, "c_handled", [NAME, DOB])
-    clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
-    run = bot.handle_turn_with_details("c_handled", _caller(3, "Vâng"))
-    assert run.action.outcome == "TRANSFERRED"
-    assert (run.diagnostics.error_type, run.diagnostics.error_code) == (
-        "CLINIC_REJECTED",
-        "IDEMPOTENCY_CONFLICT",
-    )
-    assert run.diagnostics.question_id == "CONFIRM_READBACK"
 
 
 def test_inbound_transfer_without_a_booking_still_needs_no_clinic_write() -> None:

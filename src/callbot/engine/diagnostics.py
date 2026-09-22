@@ -22,7 +22,6 @@ ERROR_TYPES = frozenset(
     {
         "APPOINTMENT_NOT_ACTIONABLE",
         "CLINIC_INVALID_RESPONSE",
-        "CLINIC_TERMINATION_FAILED",
         "RECONCILIATION_REQUIRED",
         "SESSION_STORE",
         "GUARDRAIL",
@@ -63,7 +62,6 @@ ERROR_CODES = frozenset(
         # Engine
         "APPOINTMENT_NOT_ACTIONABLE",
         "CLINIC_INVALID_RESPONSE",
-        "CLINIC_TERMINATION_FAILED",
         "CALL_RECONCILIATION_REQUIRED",
         "SESSION_STORE_UNAVAILABLE",
         "UNKNOWN",
@@ -147,7 +145,7 @@ def build_diagnostics(
 def classify_error(error: BaseException) -> tuple[str, str]:
     """(nhóm lỗi, mã lỗi) — chỉ dựa vào kiểu và mã có kiểm soát, không đọc message."""
     from callbot.engine.errors import (
-        CallTerminated,
+        AppointmentUnusable,
         ClinicAPIError,
         ClinicWriteRejected,
         ReconciliationRequired,
@@ -156,7 +154,7 @@ def classify_error(error: BaseException) -> tuple[str, str]:
     )
     from callbot.engine.policy.guardrails import SevereFailureBlocked
 
-    if isinstance(error, CallTerminated):
+    if isinstance(error, AppointmentUnusable):
         return error.code, error.cause_code or error.code
     if isinstance(error, (WriteOutcomeUnknown, ReconciliationRequired)):
         return "RECONCILIATION_REQUIRED", "CALL_RECONCILIATION_REQUIRED"

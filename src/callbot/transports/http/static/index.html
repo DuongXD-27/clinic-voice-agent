@@ -396,12 +396,6 @@
         ].join("\n");
       }
 
-      // Lỗi khiến cuộc gọi dừng hẳn: request sau với cùng call_id chỉ nhận lại đúng lỗi này
-      const TERMINAL_ERRORS = new Set([
-        "CLINIC_INVALID_RESPONSE",
-        "CLINIC_TERMINATION_FAILED",
-      ]);
-
       function readDemoDebug(response) {
         // Header demo có trên cả response lỗi: đọc TRƯỚC khi xét response.ok
         const source = response.headers.get("X-Demo-Extraction-Source");
@@ -679,32 +673,9 @@
           ui.textInput.value = "";
           clearRecording();
         } catch (error) {
-          if (TERMINAL_ERRORS.has(error.code)) {
-            stopOnTerminalError(error, turn, userText, audioUrl);
-            return;
-          }
           setBusy(false);
           setNotice(error.message, true);
         }
-      }
-
-      function stopOnTerminalError(error, turn, userText, audioUrl) {
-        // Không dựng câu bot "đã xong": cuộc gọi dừng, không có outcome nghiệp vụ
-        session.ended = true;
-        cancelRecording();
-        clearRecording();
-        addMessage("user", userText || "(audio)", `CALLER · turn ${turn}${audioUrl ? " · WAV" : ""}`,
-          audioUrl);
-        addMessage(
-          "system",
-          `Cuộc gọi dừng do lỗi: ${error.message}`,
-          `HỆ THỐNG · turn ${turn} · HTTP ${error.status} ${error.code}${debugMeta(error.demoDebug, error.elapsedMs)}`,
-        );
-        renderExtraction(turn, error.demoDebug?.fields);
-        ui.outcomeValue.textContent = "—";
-        ui.textInput.disabled = true;
-        setBusy(false);
-        setNotice(`Cuộc gọi đã dừng (${error.code}). Tạo Call ID mới để gọi lại.`, true);
       }
 
       function lockConfig(locked) {
@@ -768,19 +739,6 @@
         } catch (error) {
           setNotice(`Không mở được microphone: ${error.message}`, true);
         }
-      }
-
-      function cancelRecording() {
-        // Bỏ bản đang ghi, không tạo WAV để gửi
-        const recording = session.recording;
-        if (!recording) return;
-        recording.processor.disconnect();
-        recording.source.disconnect();
-        recording.stream.getTracks().forEach((track) => track.stop());
-        recording.context.close();
-        session.recording = null;
-        ui.recordBox.classList.remove("recording");
-        ui.recordBtn.textContent = "Ghi âm";
       }
 
       function stopRecording() {

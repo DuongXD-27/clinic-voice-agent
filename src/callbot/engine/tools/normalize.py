@@ -68,7 +68,7 @@ def normalize_appointment(raw: Any) -> dict[str, Any]:
     """Listing 3 giữ nguyên khóa; ép `version`/`attempt_count` về int; `patient.verify` là dict hoặc None.
 
     Thiếu / sai dữ liệu bắt buộc để nói hoặc ghi (mã, trạng thái, version, giờ khám) là phản hồi hỏng:
-    `ClinicInvalidResponse` — cuộc gọi dừng, không đoán giá trị, không chuyển máy thay.
+    `ClinicInvalidResponse` — không đoán giá trị; orchestrator chuyển máy SYSTEM_ERROR.
     """
     if not isinstance(raw, dict):
         raise ClinicInvalidResponse("BAD_RESPONSE")

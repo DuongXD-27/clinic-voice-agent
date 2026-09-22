@@ -20,7 +20,7 @@ from typing import Any, Optional
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
-    ClinicTerminationFailed,
+    AppointmentUnusable,
     ClinicWriteRejected,
     EngineError,
     SlotTaken,
@@ -58,6 +58,8 @@ MAX_SLOTS_PRESENTED = 3
 MAX_NEUTRAL_GREETINGS = 2
 # Nhu cầu người gọi nói ở bước danh tính: chỉ để trả lời "cần xác minh trước", không dùng sau xác minh
 _BUSINESS_INTENTS = frozenset({Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK})
+# Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
+_CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
 
 @dataclass(frozen=True)
@@ -78,8 +80,7 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
-        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Chỉ ném
-        # `CallTerminated` (lịch không thao tác được / phản hồi hỏng) — phiên chưa được tạo.
+        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Không ném lỗi.
         prepare = self._verifier.prepare(ctx)
         if prepare.transfer_reason is not None:
             # Không có hồ sơ để đối chiếu: không hỏi tên. Listing 1 không cho kết thúc ở lượt 0,
@@ -101,11 +102,11 @@ class DialogueManager:
         return BotAction(utterance=f"{t.SILENCE} {ctx.question.text}", state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
-        """Chỉ trả TRANSFERRED khi Clinic xác nhận đúng trạng thái.
+        """Luôn chuyển máy: Clinic lỗi thì nhân viên vẫn xử lý được cuộc gọi.
 
-        Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None) — ngoại lệ duy nhất.
-        Từ chối xác định -> `ClinicTerminationFailed`;
-        2xx nhưng sai trạng thái -> chưa rõ, đối soát. Không lỗi nào thành "đã chuyển máy".
+        Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None).
+        Không ghi được TRANSFERRED (từ chối, lịch không còn thao tác được, phản hồi hỏng) -> vẫn trả
+        TRANSFERRED, ghi log để vận hành đối soát. Chỉ lỗi chưa rõ kết quả mới chặn lượt.
         """
         if not ctx.ended:
             try:
@@ -114,9 +115,13 @@ class DialogueManager:
                 if isinstance(exc, EngineError) and exc.transfer_reason is None:
                     exc.transfer_reason = reason
                 raise
-            except (ClinicWriteRejected, SevereFailureBlocked) as exc:
-                logger.error("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
-                raise ClinicTerminationFailed(exc.code, transfer_reason=reason) from exc
+            except _CLINIC_FAILURES as exc:
+                logger.error(
+                    "Ghi TRANSFERRED thất bại cho %s (%s), vẫn chuyển máy",
+                    ctx.call_id,
+                    type(exc).__name__,
+                )
+                written = None
             if written is not None and written.get("status") != "TRANSFERRED":
                 raise WriteOutcomeUnknown(
                     f"{ctx.call_id}: transfer trả status {written.get('status')}"
@@ -128,15 +133,17 @@ class DialogueManager:
     def unreachable(self, ctx: CallContext, reason: UnreachableReason) -> BotAction:
         """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail.
 
-        Ghi thất bại không tự thành TRANSFERRED: cuộc gọi dừng với lỗi kết thúc, không có outcome.
+        Không ghi được UNREACHABLE -> chuyển máy SYSTEM_ERROR (có ghi /transfer), không báo UNREACHABLE.
         """
         try:
             written = self._gateway.mark_unreachable(ctx, reason)
         except TURN_ABORTING_ERRORS:
             raise
-        except (ClinicWriteRejected, SevereFailureBlocked) as exc:
-            logger.error("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
-            raise ClinicTerminationFailed(exc.code) from exc
+        except _CLINIC_FAILURES as exc:
+            logger.error(
+                "Ghi UNREACHABLE thất bại cho %s (%s), chuyển máy", ctx.call_id, type(exc).__name__
+            )
+            return self.transfer(ctx, "SYSTEM_ERROR")
         if written.get("status") != "UNREACHABLE":
             raise WriteOutcomeUnknown(
                 f"{ctx.call_id}: unreachable trả status {written.get('status')}"

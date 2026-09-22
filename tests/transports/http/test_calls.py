@@ -933,9 +933,10 @@ def test_unknown_unreachable_outcome_over_http_needs_reconciliation(
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
 
 
-# --- Lỗi kết thúc cuộc gọi qua HTTP ---------------------------------------------------------------
+# --- Clinic lỗi qua HTTP: vẫn chuyển máy ----------------------------------------------------------
 
 DEBUG = {"X-Demo-Debug": "1"}
+TRANSFER_SYSTEM = ("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})
 
 
 def _debug_turn(client: TestClient, call_id: str, turn: int, text: Optional[str], **kwargs):
@@ -954,44 +955,49 @@ def _demo_headers(response) -> dict[str, str]:
     return {k: v for k, v in response.headers.items() if k.lower().startswith("x-demo-")}
 
 
+def _transferred(response) -> None:
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
+    assert body["utterance"] == t.TRANSFER
+
+
 @pytest.mark.parametrize("status", ["CANCELLED", "TRANSFERRED", "UNREACHABLE", "RESCHEDULED"])
-def test_start_on_a_non_actionable_appointment_is_409_before_any_session_or_audio(
+def test_non_actionable_appointment_over_http_is_transferred_at_turn_one(
     client: TestClient, clinic: FakeClinicAPI, status: str
 ) -> None:
     clinic.appointments["apt_00417"]["status"] = status
-    response = _start(client, "c_http_open_blocked", mode="audio")
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["code"] == "APPOINTMENT_NOT_ACTIONABLE"
-    assert status not in detail["message"]  # message cố định, không lộ trạng thái lịch
-    assert client.app.state.session_store.get_session("c_http_open_blocked") is None
-    assert client.app.state.speech.tts.spoken == []
+    assert _start(client, "c_http_open_blocked").status_code == 200
+    response = _debug_turn(client, "c_http_open_blocked", 1, "Nguyễn Văn A")
+    _transferred(response)
+    assert response.headers["X-Demo-Transfer-Reason"] == "SYSTEM_ERROR"
+    assert clinic.writes == []
 
 
-def test_start_on_an_invalid_appointment_read_is_502(
+def test_invalid_appointment_read_over_http_is_transferred_at_turn_one(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     del clinic.appointments["apt_00417"]["starts_at"]
-    response = _start(client, "c_http_open_invalid")
-    assert response.status_code == 502
-    assert response.json()["detail"]["code"] == "CLINIC_INVALID_RESPONSE"
+    assert _start(client, "c_http_open_invalid").status_code == 200
+    _transferred(_turn(client, "c_http_open_invalid", 1, "Nguyễn Văn A"))
+    assert clinic.writes == []
 
 
-def test_invalid_state_transition_over_http_is_409_with_extraction_headers(
+def test_invalid_state_transition_over_http_is_transferred_with_extraction_headers(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _at_confirm_readback(client, "c_http_not_actionable")
     clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
     response = _debug_turn(client, "c_http_not_actionable", 3, "Vâng")
 
-    assert response.status_code == 409
-    assert response.json()["detail"]["code"] == "APPOINTMENT_NOT_ACTIONABLE"
+    _transferred(response)
     headers = _demo_headers(response)
     fields = _extraction_fields(headers.pop("x-demo-extraction-fields"))
     assert headers == {
         "x-demo-extraction-source": "RULE",
         "x-demo-extraction-provenance": "EXACT",
         "x-demo-extraction-question-id": "CONFIRM_READBACK",
+        "x-demo-transfer-reason": "SYSTEM_ERROR",
         "x-demo-error-type": "APPOINTMENT_NOT_ACTIONABLE",
         "x-demo-error-code": "INVALID_STATE_TRANSITION",
     }
@@ -1001,40 +1007,17 @@ def test_invalid_state_transition_over_http_is_409_with_extraction_headers(
     assert fields["fields"] == [
         {"field": "agreement", "value": "AGREE", "span": "vâng", "provenance": "EXACT"}
     ]
-    assert clinic.writes == []
+    assert clinic.writes == [TRANSFER_SYSTEM]
 
 
-def test_a_failed_call_returns_the_saved_error_to_every_later_request(
-    client: TestClient, clinic: FakeClinicAPI
-) -> None:
-    _at_confirm_readback(client, "c_http_failed_replay")
-    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-    first = _debug_turn(client, "c_http_failed_replay", 3, "Vâng")
-    calls_before = len(clinic.calls)
-
-    for response in (
-        _debug_turn(client, "c_http_failed_replay", 3, "Vâng"),
-        _debug_turn(client, "c_http_failed_replay", 4, "Tôi muốn hủy lịch"),
-        _start(client, "c_http_failed_replay"),
-    ):
-        assert response.status_code == first.status_code == 409
-        assert response.json() == first.json()
-    assert _demo_headers(first)["x-demo-error-type"] == "APPOINTMENT_NOT_ACTIONABLE"
-    assert len(clinic.calls) == calls_before
-
-
-def test_rejected_transfer_over_http_is_502_and_never_transferred(
+def test_rejected_transfer_over_http_still_hands_the_call_to_staff(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _start(client, "c_http_transfer_rejected")
     clinic.fail_next("transfer_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
     response = _debug_turn(client, "c_http_transfer_rejected", 1, "cho tôi gặp nhân viên")
-    assert response.status_code == 502
-    assert response.json()["detail"]["code"] == "CLINIC_TERMINATION_FAILED"
-    headers = _demo_headers(response)
-    assert headers["x-demo-transfer-reason"] == "PATIENT_REQUEST"
-    assert headers["x-demo-error-type"] == "CLINIC_TERMINATION_FAILED"
-    assert headers["x-demo-error-code"] == "IDEMPOTENCY_CONFLICT"
+    _transferred(response)
+    assert response.headers["X-Demo-Transfer-Reason"] == "PATIENT_REQUEST"
     assert clinic.writes == []
 
 
@@ -1049,7 +1032,7 @@ def test_successful_transfer_over_http_exposes_the_requested_reason(
     assert set(response.json()) == {"utterance", "audio_url", "state", "ended", "outcome"}
 
 
-def test_rejected_unreachable_over_http_is_502_not_transferred(
+def test_rejected_unreachable_over_http_is_transferred_not_unreachable(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _start(client, "c_http_unreachable_rejected")
@@ -1061,10 +1044,8 @@ def test_rejected_unreachable_over_http_is_502_not_transferred(
             ]
             is False
         )
-    response = _turn(client, "c_http_unreachable_rejected", 3, None, silence_ms=2000)
-    assert response.status_code == 502
-    assert response.json()["detail"]["code"] == "CLINIC_TERMINATION_FAILED"
-    assert clinic.writes == []
+    _transferred(_turn(client, "c_http_unreachable_rejected", 3, None, silence_ms=2000))
+    assert clinic.writes == [TRANSFER_SYSTEM]
 
 
 def test_debug_headers_are_absent_without_the_debug_request_header(
@@ -1073,7 +1054,7 @@ def test_debug_headers_are_absent_without_the_debug_request_header(
     _at_confirm_readback(client, "c_http_no_debug")
     clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
     response = _turn(client, "c_http_no_debug", 3, "Vâng")
-    assert response.status_code == 409 and _demo_headers(response) == {}
+    assert response.status_code == 200 and _demo_headers(response) == {}
 
 
 def test_demo_header_lists_the_words_each_field_was_read_from(client: TestClient) -> None:

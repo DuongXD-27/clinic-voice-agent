@@ -8,8 +8,6 @@ Một lượt đi qua các bước:
    có thể đã tới Clinic; ngược lại chặn đối soát.
 3. Lượt mới: phải đúng `last_completed_turn + 1`; đặt chỗ lượt (commit) với thời điểm tiếp nhận.
 4. Chạy xử lý với nhật ký lệnh gắn vào lượt; commit context + history + kết quả trong một transaction.
-5. Lỗi xác định (`CallTerminated`): ghi nguyên tử lượt FAILED + dấu phiên kết thúc do lỗi, không có
-   business outcome. Mọi request sau với cùng call_id nhận lại đúng lỗi đó, không xử lý lại.
 """
 
 import logging
@@ -22,10 +20,8 @@ from callbot.engine.diagnostics import TurnDiagnostics, build_diagnostics
 from callbot.engine.errors import (
     CallConflict,
     CallEnded,
-    CallTerminated,
     ReconciliationRequired,
     SessionNotFound,
-    SessionStoreUnavailable,
     TurnConflict,
     TurnOutOfOrder,
     WriteOutcomeUnknown,
@@ -146,9 +142,6 @@ class SessionManager:
                 # Nhật ký phát hiện khóa lệnh đã tồn tại với kết quả chưa rõ
                 self._block(call_id, caller.turn, str(exc))
                 raise
-            except CallTerminated as exc:
-                self._fail(call_id, caller.turn, exc)
-                raise
 
             self._store.complete_turn(
                 call_id,
@@ -165,24 +158,7 @@ class SessionManager:
                 diagnostics=outcome.diagnostics,
             )
 
-    def _fail(self, call_id: str, turn: int, error: CallTerminated) -> None:
-        """Lưu dấu kết thúc do lỗi; không lưu được thì lỗi lưu trữ thắng (lượt vẫn PROCESSING)."""
-        try:
-            self._store.fail_turn(call_id, turn, error.failure_record())
-        except ReconciliationRequired as exc:
-            # Phiên đã bị khóa bởi một lệnh ghi đã tới Clinic trong lượt này: đối soát, không ghi đè
-            self._block(call_id, turn, error.code)
-            exc.diagnostics, exc.extraction = error.diagnostics, error.extraction
-            raise
-        except SessionStoreUnavailable as exc:
-            logger.error("Không lưu được lỗi kết thúc %s cho %s/%s", error.code, call_id, turn)
-            exc.diagnostics, exc.extraction = error.diagnostics, error.extraction
-            raise
-
     def _check_retired(self, session: SessionRecord) -> None:
-        if session.purged_reason == "FAILED" and session.failure:
-            # Trả lại đúng lỗi đã lưu: không extract, không gọi Clinic lại
-            raise CallTerminated.restore(session.failure)
         if session.purged_reason in ("RECONCILIATION_REQUIRED", "CLINIC_COMMITTED"):
             commands = self._store.list_commands(session.call_id)
             turn = max((c.turn for c in commands), default=session.last_completed_turn + 1)

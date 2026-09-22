@@ -8,7 +8,6 @@ from typing import Any, Optional
 import pytest
 
 from callbot.engine import (
-    AppointmentNotActionable,
     CallEnded,
     CallerInput,
     CallStart,
@@ -245,14 +244,14 @@ def test_rejected_write_is_system_error_not_confirmed() -> None:
     assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
 
 
-def test_invalid_state_transition_on_confirm_stops_without_transfer() -> None:
+def test_invalid_state_transition_on_confirm_is_transferred() -> None:
     clinic = FakeClinicAPI()
     bot, _, _ = _at_readback("c_t04_invalid_state", clinic)
     clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-    with pytest.raises(AppointmentNotActionable):
-        _run(bot, "c_t04_invalid_state", ["vâng"], start=3)
-    assert clinic.writes == []
-    assert "TRANSFERRED" not in [op for _, op in clinic.requests]
+    action = _run(bot, "c_t04_invalid_state", ["vâng"], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
+    assert "xác nhận lịch khám" not in action.utterance
+    assert _confirm_writes(clinic) == []
 
 
 def test_unknown_write_outcome_blocks_the_turn_instead_of_reporting() -> None:

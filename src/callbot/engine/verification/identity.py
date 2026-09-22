@@ -18,7 +18,7 @@ from datetime import date
 from enum import Enum
 from typing import Any, Optional
 
-from callbot.engine.errors import ClinicAPIError
+from callbot.engine.errors import AppointmentUnusable, ClinicAPIError
 from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
@@ -177,6 +177,10 @@ class IdentityVerifier:
         except ClinicAPIError as exc:
             ctx.identity_lookup, ctx.identity_reference = "UNAVAILABLE", []
             result = PrepareResult(LookupStatus.UNAVAILABLE, error_code=exc.code)
+        except AppointmentUnusable as exc:
+            # Lịch không còn thao tác được / phản hồi hỏng: như Mock lỗi, chuyển máy ở lượt 1
+            ctx.identity_lookup, ctx.identity_reference = "UNAVAILABLE", []
+            result = PrepareResult(LookupStatus.UNAVAILABLE, error_code=exc.code)
         logger.info("%s: tra cứu hồ sơ %s", ctx.call_id, result.to_trace())
         return result
 
@@ -195,8 +199,6 @@ class IdentityVerifier:
         return PrepareResult(LookupStatus.LOADED, candidates=len(candidates))
 
     def _prepare_outbound(self, ctx: CallContext) -> PrepareResult:
-        # Phản hồi hỏng: lỗi đi thẳng ra, không mở phiên (không phải ClinicAPIError nên không thành
-        # UNAVAILABLE rồi chuyển máy ở lượt 1)
         appointment = self._gateway.get_actionable_appointment(ctx)
         ctx.identity_lookup = "LOADED"
         ctx.identity_reference = [_reference_from_appointment(appointment)]

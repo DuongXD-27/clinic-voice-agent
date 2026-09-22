@@ -447,7 +447,7 @@ def test_actionable_read_accepts_only_scheduled_booked_confirmed(status: str) ->
     else:
         with pytest.raises(AppointmentNotActionable) as exc:
             gateway.get_actionable_appointment(_outbound())
-        assert status not in str(exc.value) and status not in exc.value.message
+        assert status not in str(exc.value)
 
 
 @pytest.mark.parametrize("status", ALL_STATUSES)

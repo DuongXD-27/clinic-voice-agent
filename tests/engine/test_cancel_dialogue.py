@@ -9,7 +9,6 @@ from typing import Any, Optional
 import pytest
 
 from callbot.engine import (
-    AppointmentNotActionable,
     CallEnded,
     CallerInput,
     CallStart,
@@ -488,12 +487,12 @@ def test_rejected_cancel_is_a_system_error_not_a_cancellation() -> None:
     assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
 
 
-def test_invalid_state_transition_on_cancel_stops_without_transfer() -> None:
+def test_invalid_state_transition_on_cancel_is_transferred() -> None:
     bot, clinic = _requesting("c_t05_invalid_state")
     clinic.fail_next("cancel_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
-    with pytest.raises(AppointmentNotActionable):
-        _run(bot, "c_t05_invalid_state", ["Hủy giúp tôi"], start=4)
-    assert clinic.writes == []
+    action = _run(bot, "c_t05_invalid_state", ["Hủy giúp tôi"], start=4)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
+    assert _cancel_writes(clinic) == []
     assert [op for _, op in clinic.requests].count("CANCELLED") == 1  # không retry
 
 

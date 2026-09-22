@@ -16,14 +16,13 @@ from callbot.engine import (
     CallerInput,
     CallOrchestrator,
     CallStart,
-    CallTerminated,
     ReconciliationRequired,
     SessionNotFound,
     SessionStoreUnavailable,
     TurnConflict,
     TurnOutOfOrder,
 )
-from callbot.engine.diagnostics import TurnDiagnostics, build_diagnostics, summarize_extraction
+from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -74,8 +73,6 @@ def _run_engine(call_id: str, operation: Callable[[], T], *, debug: bool = False
         if debug:
             cause = exc.__cause__
             diagnostics = getattr(cause, "diagnostics", None)
-            if diagnostics is None and isinstance(cause, CallTerminated):
-                diagnostics = build_diagnostics(None, error=cause)
             if diagnostics is not None:
                 headers = _debug_headers(diagnostics, getattr(cause, "extraction", None))
                 exc.headers = {**(exc.headers or {}), **headers}
@@ -103,10 +100,6 @@ def _translate_errors(call_id: str, operation: Callable[[], T]) -> T:
         raise _error(409, "CALL_ENDED", "Cuộc gọi đã kết thúc") from exc
     except CallBusy as exc:
         raise _error(409, "CALL_BUSY", "Cuộc gọi đang xử lý một lượt khác") from exc
-    except CallTerminated as exc:
-        # Message cố định theo mã: không lộ trạng thái / chi tiết lịch, kể cả trước xác minh
-        logger.error("Cuộc gọi %s dừng: %s", call_id, exc.code)
-        raise _error(exc.http_status, exc.code, exc.message) from exc
     except ReconciliationRequired as exc:
         logger.error("Phiên %s cần đối soát (lượt %s)", call_id, exc.turn)
         raise _error(

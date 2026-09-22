@@ -15,7 +15,7 @@ class EngineError(Exception):
     # Lý do chuyển máy đang được ghi khi lỗi xảy ra — chỉ để chẩn đoán, không phải bằng chứng đã chuyển
     transfer_reason: Optional[str] = None
     # Trace extraction của lượt lỗi — CÓ transcript / span, chỉ để trang demo hiển thị. Chỉ sống trong
-    # bộ nhớ của request; không bao giờ vào `failure_record()` hay session store.
+    # bộ nhớ của request; không bao giờ vào session store.
     extraction: Optional[dict[str, Any]] = None
 
 
@@ -120,92 +120,39 @@ class SlotTaken(ClinicWriteRejected):
     pass
 
 
-# --- Cuộc gọi không thể tiếp tục ------------------------------------------------------
-
-# Message cố định theo mã: không nêu trạng thái hay chi tiết lịch (có thể trước khi xác minh danh tính)
-TERMINATION_MESSAGES = {
-    "APPOINTMENT_NOT_ACTIONABLE": "Lịch hẹn không còn ở trạng thái có thể thao tác",
-    "CLINIC_INVALID_RESPONSE": "Clinic API trả dữ liệu lịch hẹn không hợp lệ",
-    "CLINIC_TERMINATION_FAILED": "Không ghi được trạng thái kết thúc cuộc gọi lên Clinic",
-}
+# --- Lịch hẹn không dùng được -----------------------------------------------------------
 
 
-class CallTerminated(EngineError):
-    """Lỗi xác định: cuộc gọi dừng, KHÔNG có business outcome và không gọi /transfer thay thế.
+class AppointmentUnusable(EngineError):
+    """Lịch hẹn không dùng được cho thao tác đang làm; gửi lại cũng không khác.
 
-    Giữa cuộc gọi, SessionManager lưu `failure_record()` vào phiên; request sau với cùng call_id nhận lại
-    đúng lỗi này (`restore`) mà không chạy lại extraction hay gọi Clinic.
-    `cause_code`: mã gốc (mã Clinic, SF-xx) — chỉ dùng cho chẩn đoán, transport lọc theo danh sách.
+    Không chặn lượt: như mọi lỗi nghiệp vụ, orchestrator chuyển máy SYSTEM_ERROR để nhân viên xử lý.
+    `cause_code`: mã gốc (mã Clinic) — chỉ dùng cho chẩn đoán.
     """
 
-    http_status = 500
-    code = "CALL_TERMINATED"
+    code = "APPOINTMENT_UNUSABLE"
 
-    def __init__(
-        self,
-        cause_code: Optional[str] = None,
-        *,
-        transfer_reason: Optional[str] = None,
-    ) -> None:
+    def __init__(self, cause_code: Optional[str] = None) -> None:
         self.cause_code = cause_code
-        self.transfer_reason = transfer_reason
         super().__init__(f"{self.code} ({cause_code})" if cause_code else self.code)
 
-    @property
-    def message(self) -> str:
-        return TERMINATION_MESSAGES.get(self.code, "Cuộc gọi không thể tiếp tục")
 
-    def failure_record(self) -> dict[str, Any]:
-        """Dấu kết thúc lưu trong phiên: chỉ HTTP status, mã lỗi và chẩn đoán đã lọc."""
-        return {
-            "http_status": self.http_status,
-            "code": self.code,
-            "diagnostics": self.diagnostics.to_dict() if self.diagnostics else None,
-        }
-
-    @staticmethod
-    def restore(record: dict[str, Any]) -> "CallTerminated":
-        from callbot.engine.diagnostics import TurnDiagnostics
-
-        kind = _TERMINATIONS.get(record.get("code", ""), CallTerminated)
-        error = kind()
-        error.diagnostics = TurnDiagnostics.from_dict(record.get("diagnostics"))
-        return error
-
-
-class ClinicInvalidResponse(CallTerminated):
+class ClinicInvalidResponse(AppointmentUnusable):
     """Phản hồi đọc lịch thiếu / sai dữ liệu bắt buộc."""
 
-    http_status = 502
     code = "CLINIC_INVALID_RESPONSE"
 
 
-class AppointmentNotActionable(CallTerminated):
+class AppointmentNotActionable(AppointmentUnusable):
     """Lịch đã ở trạng thái kết thúc hoặc Clinic từ chối vì lifecycle đã thay đổi."""
 
-    http_status = 409
     code = "APPOINTMENT_NOT_ACTIONABLE"
 
 
-class ClinicTerminationFailed(CallTerminated):
-    """/transfer hoặc /unreachable bị từ chối xác định: không được báo đã chuyển máy / không liên lạc được."""
-
-    http_status = 502
-    code = "CLINIC_TERMINATION_FAILED"
-
-
-_TERMINATIONS: dict[str, type[CallTerminated]] = {
-    kind.code: kind
-    for kind in (AppointmentNotActionable, ClinicInvalidResponse, ClinicTerminationFailed)
-}
-
-
 # Orchestrator không được biến các lỗi này thành chuyển máy SYSTEM_ERROR: chuyển máy là một lệnh
-# ghi mới, trong khi lệnh trước chưa rõ kết quả hoặc chưa ghi được nhật ký — hoặc cuộc gọi đã được
-# xác định là không thể tiếp tục (CallTerminated), kể cả khi chính lệnh chuyển máy thất bại.
+# ghi mới, trong khi lệnh trước chưa rõ kết quả hoặc chưa ghi được nhật ký.
 TURN_ABORTING_ERRORS: tuple[type[Exception], ...] = (
     WriteOutcomeUnknown,
     SessionStoreUnavailable,
     ReconciliationRequired,
-    CallTerminated,
 )
