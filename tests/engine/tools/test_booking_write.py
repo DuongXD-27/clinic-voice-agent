@@ -1,18 +1,20 @@
-import pytest
 from typing import Any, Optional
 
+import pytest
+
 from callbot.engine.errors import WriteOutcomeUnknown
-from callbot.engine.policy.guardrails import SevereFailureBlocked
-from callbot.engine.session.context import CallContext, ActionEvidence
-from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.journal import bind_journal
+from callbot.engine.policy.guardrails import SevereFailureBlocked
+from callbot.engine.session.context import ActionEvidence, CallContext
+from callbot.engine.tools.clinic_gateway import ClinicGateway
 from tests.engine.fake_clinic import FakeClinicAPI
 from tests.engine.tools.test_clinic_gateway import RecordingJournal
 
+
 def _ready_to_book() -> CallContext:
-    from callbot.engine.types import CallStart
     from callbot.engine.extraction.schema import QuestionId
     from callbot.engine.session.context import Question
+    from callbot.engine.types import CallStart
     ctx = CallContext(
         CallStart(call_id="c_book", caller_number="0987654321", direction="inbound", appointment_id=None),
         opened_at=None,
@@ -57,7 +59,7 @@ def test_book_missing_appointment_id_raises_unknown() -> None:
     fake = MissingIdClinicAPI()
     gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
     ctx = _ready_to_book()
-    
+
     with bind_journal(RecordingJournal()), pytest.raises(WriteOutcomeUnknown):
         gateway.book(ctx, "slot_91d2")
 
@@ -66,10 +68,10 @@ def test_book_wrong_status_raises_unknown() -> None:
     fake = WrongStatusClinicAPI()
     gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
     ctx = _ready_to_book()
-    
+
     with bind_journal(RecordingJournal()), pytest.raises(WriteOutcomeUnknown) as exc:
         gateway.book(ctx, "slot_91d2")
-    
+
     assert "book trả status SCHEDULED" in str(exc.value)
 
 
@@ -77,12 +79,12 @@ def test_book_duplicate_prevented_by_sf01() -> None:
     fake = FakeClinicAPI()
     gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
     ctx = _ready_to_book()
-    
+
     with bind_journal(RecordingJournal()):
         gateway.book(ctx, "slot_91d2")
-        
+
     assert ctx.created_appointment_id is not None
-    
+
     # Try again
     with pytest.raises(SevereFailureBlocked) as exc:
         gateway.book(ctx, "slot_91d2")
