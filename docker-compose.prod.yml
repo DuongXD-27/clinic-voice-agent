@@ -71,6 +71,30 @@ services:
       redis:
         condition: service_healthy
 
+  livekit-worker:
+    image: ${IMAGE:?Cần IMAGE trong image.env}
+    restart: unless-stopped
+    command: ["python", "-m", "callbot.transports.livekit.worker", "start"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
+      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
+      ASR_PROVIDER: zipformer
+      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
+      VAD_PROVIDER: ${VAD_PROVIDER:-webrtc}
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped

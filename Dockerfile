@@ -30,7 +30,7 @@ files = ['encoder-epoch-12-avg-8.int8.onnx', 'decoder-epoch-12-avg-8.onnx', 'joi
 COPY pyproject.toml ./
 RUN mkdir -p src/callbot src/inference src/speech \
     && touch src/callbot/__init__.py src/inference/__init__.py src/speech/__init__.py \
-    && pip install --no-cache-dir ".[speech-zipformer]" \
+    && pip install --no-cache-dir ".[speech-zipformer,livekit,vad-webrtc]" \
     && rm -rf src
 
 COPY src ./src
