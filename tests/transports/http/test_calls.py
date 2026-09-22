@@ -1,4 +1,6 @@
+import json
 from typing import Any, Optional
+from urllib.parse import unquote
 from uuid import uuid4
 
 import fakeredis
@@ -686,10 +688,10 @@ def test_rejected_confirm_over_http_is_transferred(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _at_confirm_readback(client, "c_http_rejected")
-    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
     body = _turn(client, "c_http_rejected", 3, "Vâng").json()
     assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
-    assert all(status != "CONFIRMED" for _, status, _ in clinic.writes)
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
 
 
 def test_unknown_confirm_outcome_over_http_needs_reconciliation(
@@ -753,10 +755,10 @@ def test_rejected_cancel_over_http_is_transferred(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _at_cancel_reconfirm(client, "c_http_cancel_rejected")
-    clinic.fail_next("cancel_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    clinic.fail_next("cancel_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
     body = _turn(client, "c_http_cancel_rejected", 4, "Hủy giúp tôi").json()
     assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
-    assert all(status != "CANCELLED" for _, status, _ in clinic.writes)
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
 
 
 def test_unknown_cancel_outcome_over_http_needs_reconciliation(
@@ -929,3 +931,145 @@ def test_unknown_unreachable_outcome_over_http_needs_reconciliation(
     response = _turn(client, "c_http_vm_unknown", 3, None, silence_ms=2000)
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
+
+
+# --- Clinic lỗi qua HTTP: vẫn chuyển máy ----------------------------------------------------------
+
+DEBUG = {"X-Demo-Debug": "1"}
+TRANSFER_SYSTEM = ("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})
+
+
+def _debug_turn(client: TestClient, call_id: str, turn: int, text: Optional[str], **kwargs):
+    return client.post(
+        f"/v1/calls/{call_id}/turn",
+        json={"turn": turn, "audio_url": None, "text": text, "silence_ms": 0, **kwargs},
+        headers=DEBUG,
+    )
+
+
+def _extraction_fields(header: str) -> dict[str, Any]:
+    return json.loads(unquote(header))
+
+
+def _demo_headers(response) -> dict[str, str]:
+    return {k: v for k, v in response.headers.items() if k.lower().startswith("x-demo-")}
+
+
+def _transferred(response) -> None:
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["outcome"], body["ended"]) == ("TRANSFERRED", True)
+    assert body["utterance"] == t.TRANSFER
+
+
+@pytest.mark.parametrize("status", ["CANCELLED", "TRANSFERRED", "UNREACHABLE", "RESCHEDULED"])
+def test_non_actionable_appointment_over_http_is_transferred_at_turn_one(
+    client: TestClient, clinic: FakeClinicAPI, status: str
+) -> None:
+    clinic.appointments["apt_00417"]["status"] = status
+    assert _start(client, "c_http_open_blocked").status_code == 200
+    response = _debug_turn(client, "c_http_open_blocked", 1, "Nguyễn Văn A")
+    _transferred(response)
+    assert response.headers["X-Demo-Transfer-Reason"] == "SYSTEM_ERROR"
+    assert clinic.writes == []
+
+
+def test_invalid_appointment_read_over_http_is_transferred_at_turn_one(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    del clinic.appointments["apt_00417"]["starts_at"]
+    assert _start(client, "c_http_open_invalid").status_code == 200
+    _transferred(_turn(client, "c_http_open_invalid", 1, "Nguyễn Văn A"))
+    assert clinic.writes == []
+
+
+def test_invalid_state_transition_over_http_is_transferred_with_extraction_headers(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_not_actionable")
+    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    response = _debug_turn(client, "c_http_not_actionable", 3, "Vâng")
+
+    _transferred(response)
+    headers = _demo_headers(response)
+    fields = _extraction_fields(headers.pop("x-demo-extraction-fields"))
+    assert headers == {
+        "x-demo-extraction-source": "RULE",
+        "x-demo-extraction-provenance": "EXACT",
+        "x-demo-extraction-question-id": "CONFIRM_READBACK",
+        "x-demo-transfer-reason": "SYSTEM_ERROR",
+        "x-demo-error-type": "APPOINTMENT_NOT_ACTIONABLE",
+        "x-demo-error-code": "INVALID_STATE_TRANSITION",
+    }
+    # Chỉ header extraction-fields mang nội dung câu; các header nhãn vẫn không có
+    assert "Vâng" not in " ".join(headers.values())
+    assert fields["transcript"] == "Vâng"
+    assert fields["fields"] == [
+        {"field": "agreement", "value": "AGREE", "span": "vâng", "provenance": "EXACT"}
+    ]
+    assert clinic.writes == [TRANSFER_SYSTEM]
+
+
+def test_rejected_transfer_over_http_still_hands_the_call_to_staff(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _start(client, "c_http_transfer_rejected")
+    clinic.fail_next("transfer_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
+    response = _debug_turn(client, "c_http_transfer_rejected", 1, "cho tôi gặp nhân viên")
+    _transferred(response)
+    assert response.headers["X-Demo-Transfer-Reason"] == "PATIENT_REQUEST"
+    assert clinic.writes == []
+
+
+def test_successful_transfer_over_http_exposes_the_requested_reason(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _start(client, "c_http_transfer_ok")
+    response = _debug_turn(client, "c_http_transfer_ok", 1, "cho tôi gặp nhân viên")
+    assert response.status_code == 200 and response.json()["outcome"] == "TRANSFERRED"
+    assert response.headers["X-Demo-Transfer-Reason"] == "PATIENT_REQUEST"
+    assert "X-Demo-Error-Type" not in response.headers
+    assert set(response.json()) == {"utterance", "audio_url", "state", "ended", "outcome"}
+
+
+def test_rejected_unreachable_over_http_is_transferred_not_unreachable(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _start(client, "c_http_unreachable_rejected")
+    clinic.fail_next("mark_unreachable", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
+    for turn in (1, 2):
+        assert (
+            _turn(client, "c_http_unreachable_rejected", turn, None, silence_ms=2000).json()[
+                "ended"
+            ]
+            is False
+        )
+    _transferred(_turn(client, "c_http_unreachable_rejected", 3, None, silence_ms=2000))
+    assert clinic.writes == [TRANSFER_SYSTEM]
+
+
+def test_debug_headers_are_absent_without_the_debug_request_header(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    _at_confirm_readback(client, "c_http_no_debug")
+    clinic.fail_next("confirm_appointment", clinic_error(409, "INVALID_STATE_TRANSITION"))
+    response = _turn(client, "c_http_no_debug", 3, "Vâng")
+    assert response.status_code == 200 and _demo_headers(response) == {}
+
+
+def test_demo_header_lists_the_words_each_field_was_read_from(client: TestClient) -> None:
+    _start(client, "c_http_fields")
+    _debug_turn(client, "c_http_fields", 1, "Nguyễn Văn A")
+    response = _debug_turn(client, "c_http_fields", 2, "Ngày 14 tháng 3 năm 1978")
+    fields = _extraction_fields(response.headers["X-Demo-Extraction-Fields"])
+    assert fields["transcript"] == "Ngày 14 tháng 3 năm 1978"
+    dob = next(f for f in fields["fields"] if f["field"] == "dob")
+    assert dob["value"] == "1978-03-14" and dob["span"] and dob["provenance"] != "NONE"
+    # Chỉ trường trích được; trường không có tín hiệu bị bỏ
+    assert all(f["provenance"] != "NONE" for f in fields["fields"])
+
+
+def test_extraction_fields_are_not_sent_without_the_debug_header(client: TestClient) -> None:
+    _start(client, "c_http_fields_off")
+    response = _turn(client, "c_http_fields_off", 1, "Nguyễn Văn A")
+    assert "X-Demo-Extraction-Fields" not in response.headers

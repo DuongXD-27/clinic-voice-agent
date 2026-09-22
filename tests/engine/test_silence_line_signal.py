@@ -258,17 +258,18 @@ def test_human_who_is_busy_is_not_voicemail() -> None:
     [
         [clinic_error(409, "INVALID_STATE_TRANSITION")],
         [clinic_error(409, "VERSION_CONFLICT"), clinic_error(409, "VERSION_CONFLICT")],
+        [clinic_error(422, "IDEMPOTENCY_CONFLICT")],
     ],
-    ids=["invalid_state", "version_conflict_twice"],
+    ids=["invalid_state", "version_conflict_twice", "idempotency_conflict"],
 )
 def test_rejected_unreachable_is_never_reported(failures) -> None:
+    """Không báo UNREACHABLE: chuyển máy SYSTEM_ERROR và ghi /transfer để nhân viên xử lý."""
     clinic = FakeClinicAPI()
     for failure in failures:
         clinic.fail_next("mark_unreachable", failure)
     _, clinic, actions = _call("c_t08_rejected", "outbound", [SILENCE, SILENCE, SILENCE], clinic)
-    assert actions[-1].ended and actions[-1].outcome != "UNREACHABLE"
-    assert actions[-1].utterance != t.GOODBYE_UNREACHABLE
-    assert clinic.writes == []
+    _ended(actions[-1], "TRANSFERRED", "SYSTEM_ERROR")
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})]
 
 
 def test_version_conflict_once_retries_same_key_and_marks_once() -> None:

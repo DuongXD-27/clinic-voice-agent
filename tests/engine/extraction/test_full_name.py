@@ -1,6 +1,7 @@
 import pytest
 
-from callbot.engine.extraction.full_name import extract_full_name
+from callbot.engine.extraction.full_name import extract_full_name, read_full_name
+from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.schema import Provenance
 
 
@@ -57,3 +58,63 @@ def test_rejects_non_names(text: str) -> None:
     result = extract_full_name(text)
     assert result.value is None
     assert result.provenance is Provenance.NONE
+
+
+# --- Tiếng đệm và danh xưng trước tên (demo 22-09: "à thì tôi là ông Nguyễn Văn a") -------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("à thì tôi là ông Nguyễn Văn a", "nguyễn văn a"),
+        ("tôi là ông Nguyễn Văn A", "nguyễn văn a"),
+        ("ừm, tôi tên Nguyễn Văn A", "nguyễn văn a"),
+        ("thì tôi là Nguyễn Văn A", "nguyễn văn a"),
+        ("ờ bà Trần Thị Mai đây", "trần thị mai"),
+        # Còn dưới 3 từ sau danh xưng: có thể là họ thật (Chu, Ông) -> giữ, Verifier so cả hai dạng
+        ("Chu Văn An", "chu văn an"),
+        ("tôi là ông Văn Tùng", "ông văn tùng"),
+        ("tôi là bà Lê Na", "bà lê na"),
+    ],
+)
+def test_fillers_and_honorifics_before_the_name(text: str, expected: str) -> None:
+    assert extract_full_name(text).value == expected
+
+
+@pytest.mark.parametrize("text", ["a thi toi la nguyen van a", "u nguyen van a"])
+def test_unaccented_fillers_are_not_stripped(text: str) -> None:
+    """Không dấu: "a", "u", "thi" có thể là tên — luật không đoán, để tuyến sau / hỏi lại."""
+    assert extract_full_name(text).value != "nguyen van a"
+
+
+# --- Tự nhận ở cuối câu bằng danh xưng: "Nguyễn Văn A là tên chú" -----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Nguyễn Văn A là tên tôi", "nguyễn văn a"),
+        ("Nguyễn Văn A là tên ông", "nguyễn văn a"),
+        ("Nguyễn Văn A là tên chú", "nguyễn văn a"),
+        ("Nguyễn Văn A là tên bác", "nguyễn văn a"),
+        ("Lê Thị Hoa là tên cô", "lê thị hoa"),
+        ("Trần Thị Mai, đấy là tên bà", "trần thị mai"),
+        ("Phạm Văn Nam là tên anh nhé", "phạm văn nam"),
+        ("nguyen van a la ten chu", "nguyen van a"),
+    ],
+)
+def test_self_claim_at_the_end_with_an_honorific(text: str, expected: str) -> None:
+    assert extract_full_name(text).value == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Nguyễn Văn A là tên ông tôi",
+        "Nguyễn Văn A là tên bố tôi",
+        "Tên chú của tôi là Nguyễn Văn A",
+    ],
+)
+def test_a_possessive_makes_it_a_relative_not_the_caller(text: str) -> None:
+    reading = read_full_name(text)
+    assert not reading.field.found and reading.reason is Reason.OTHER_PERSON

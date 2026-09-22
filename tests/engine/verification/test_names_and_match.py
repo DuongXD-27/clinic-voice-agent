@@ -78,3 +78,19 @@ def test_matches_wrapper_keeps_bool_contract_on_mock_verify_block() -> None:
     assert not matches("nguyễn văn a", date(1978, 3, 15), verify)
     assert not matches("nguyễn văn a", DOB, {})
     assert not matches("nguyễn văn a", DOB, {"full_name": "Nguyễn Văn A", "dob": "14/03/1978"})
+
+
+@pytest.mark.parametrize("claimed", ["ông nguyễn văn a", "chú Nguyễn Văn A", "ong nguyen van a"])
+def test_an_honorific_before_the_name_still_matches(claimed: str) -> None:
+    assert match_record(claimed, DOB, REF) is MatchDetail.NAME_AND_DOB_MATCH
+
+
+def test_an_honorific_does_not_rescue_a_wrong_name_or_dob() -> None:
+    assert match_record("ông nguyễn văn b", DOB, REF) is MatchDetail.NAME_MISMATCH
+    assert match_record("ông nguyễn văn a", date(1978, 3, 15), REF) is MatchDetail.DOB_MISMATCH
+
+
+@pytest.mark.parametrize("record", ["Ông Văn Tùng", "Chu Văn An"])
+def test_a_surname_that_looks_like_an_honorific_still_matches_verbatim(record: str) -> None:
+    ref = {**REF, "full_name": record}
+    assert match_record(record.lower(), DOB, ref) is MatchDetail.NAME_AND_DOB_MATCH

@@ -7,10 +7,14 @@ Số điện thoại KHÔNG chuẩn hóa ở đây — Verifier làm trước kh
 """
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, Optional, get_args
 
-from callbot.engine.errors import ClinicAPIError
+from callbot.engine.errors import ClinicAPIError, ClinicInvalidResponse
 from callbot.engine.extraction.schema import to_local
+from callbot.engine.types import Outcome
+
+# Trạng thái lịch hẹn của mock (§2.2) trùng tập Outcome của Phụ lục A
+APPOINTMENT_STATUSES = frozenset(get_args(Outcome))
 
 
 def iso_local(moment: datetime) -> str:
@@ -60,16 +64,42 @@ def normalize_patient_candidate(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def normalize_appointment(raw: dict[str, Any]) -> dict[str, Any]:
-    """Listing 3 giữ nguyên khóa; ép `version`/`attempt_count` về int; `patient.verify` là dict hoặc None."""
+def normalize_appointment(raw: Any) -> dict[str, Any]:
+    """Listing 3 giữ nguyên khóa; ép `version`/`attempt_count` về int; `patient.verify` là dict hoặc None.
+
+    Thiếu / sai dữ liệu bắt buộc để nói hoặc ghi (mã, trạng thái, version, giờ khám) là phản hồi hỏng:
+    `ClinicInvalidResponse` — không đoán giá trị; orchestrator chuyển máy SYSTEM_ERROR.
+    """
+    if not isinstance(raw, dict):
+        raise ClinicInvalidResponse("BAD_RESPONSE")
     appointment = dict(raw)
-    for key in ("appointment_id", "status", "version"):
+    for key in ("appointment_id", "status", "version", "starts_at"):
         if appointment.get(key) in (None, ""):
-            raise ClinicAPIError(None, "BAD_RESPONSE", f"Appointment thiếu {key}")
-    appointment["version"] = int(appointment["version"])
-    appointment["attempt_count"] = int(appointment.get("attempt_count") or 0)
+            raise ClinicInvalidResponse("BAD_RESPONSE")
+    status = appointment["status"]
+    if not isinstance(status, str) or status not in APPOINTMENT_STATUSES:
+        raise ClinicInvalidResponse("BAD_RESPONSE")
+    if not _is_datetime(appointment["starts_at"]):
+        raise ClinicInvalidResponse("BAD_RESPONSE")
+    try:
+        appointment["version"] = int(appointment["version"])
+        appointment["attempt_count"] = int(appointment.get("attempt_count") or 0)
+    except (TypeError, ValueError) as exc:
+        raise ClinicInvalidResponse("BAD_RESPONSE") from exc
+    if isinstance(raw["version"], bool) or appointment["version"] < 0:
+        raise ClinicInvalidResponse("BAD_RESPONSE")
     patient = dict(appointment.get("patient") or {})
     verify = patient.get("verify")
     patient["verify"] = dict(verify) if isinstance(verify, dict) else None
     appointment["patient"] = patient
     return appointment
+
+
+def _is_datetime(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        datetime.fromisoformat(value)
+    except ValueError:
+        return False
+    return True
