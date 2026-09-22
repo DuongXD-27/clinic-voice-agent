@@ -23,7 +23,7 @@ from callbot.engine import (
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
 from callbot.transports.http.call_mode import CallModeStore
-from callbot.transports.http.calls import get_orchestrator
+from callbot.transports.http.calls import _extraction_debug, get_orchestrator
 from callbot.transports.http.main import create_app
 from speech.audio import encode_wav
 from speech.types import AudioSegment
@@ -85,6 +85,28 @@ def test_demo_page_is_served(client: TestClient) -> None:
     assert response.status_code == 200
     assert "Vinmec Callbot Console" in response.text
     assert "/v1/calls" in response.text
+    assert "Extraction:" in response.text
+
+
+def test_extraction_debug_reports_ner_without_pii() -> None:
+    debug = _extraction_debug(
+        {
+            "question_id": "ASK_NAME",
+            "transcript": "à ừ thì là Nguyễn Văn A nhé em",
+            "full_name": {
+                "value": "nguyễn văn a",
+                "provenance": "FALLBACK",
+                "span": "nguyễn văn a",
+            },
+        }
+    ).model_dump()
+
+    assert debug == {
+        "question_id": "ASK_NAME",
+        "source": "NER",
+        "provenance": "FALLBACK",
+    }
+    assert "nguyễn văn a" not in str(debug).lower()
 
 
 def test_demo_audio_upload_returns_public_narrowband_wav(client: TestClient) -> None:
@@ -148,6 +170,24 @@ def test_name_turn_asks_dob_instead_of_transferring(client: TestClient) -> None:
         "ended": False,
         "outcome": None,
     }
+
+
+def test_demo_header_exposes_rule_source_without_pii(client: TestClient) -> None:
+    _start(client, "c_demo_debug")
+    response = client.post(
+        "/v1/calls/c_demo_debug/turn",
+        headers={"X-Demo-Debug": "1"},
+        json={"turn": 1, "audio_url": None, "text": "Nguyễn Văn A.", "silence_ms": 0},
+    )
+
+    assert response.status_code == 200
+    debug = response.json()["extraction_debug"]
+    assert debug == {
+        "question_id": "ASK_NAME",
+        "source": "RULE",
+        "provenance": "NORMALIZED",
+    }
+    assert "nguyễn văn a" not in str(debug).lower()
 
 
 def test_dob_turn_continues_same_session(client: TestClient, clinic: FakeClinicAPI) -> None:
@@ -377,6 +417,9 @@ class _RaisingOrchestrator:
         raise self._exc
 
     def handle_turn(self, call_id, caller):
+        raise self._exc
+
+    def handle_turn_with_details(self, call_id, caller):
         raise self._exc
 
 

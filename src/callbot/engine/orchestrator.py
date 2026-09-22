@@ -15,7 +15,7 @@ from callbot.engine.extraction.schema import ExtractionResult, TurnContext, to_l
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.policy_engine import PolicyDecision, PolicyEngine
 from callbot.engine.session.context import CallContext
-from callbot.engine.session.manager import SessionManager, TurnOutcome
+from callbot.engine.session.manager import SessionManager, TurnOutcome, TurnRun
 from callbot.engine.types import BotAction, CallerInput, CallStart
 
 logger = logging.getLogger(__name__)
@@ -70,6 +70,10 @@ class CallOrchestrator:
         return action
 
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
+        return self.handle_turn_with_details(call_id, caller).action
+
+    def handle_turn_with_details(self, call_id: str, caller: CallerInput) -> TurnRun:
+        """Run a turn and retain its extraction trace for transport-level diagnostics."""
         run = self._sessions.run_turn(call_id, caller, self._process)
         if not run.replayed:
             self._trace(
@@ -83,7 +87,7 @@ class CallOrchestrator:
                     "unreachable_reason": run.action.unreachable_reason,
                 },
             )
-        return run.action
+        return run
 
     def _process(self, ctx: CallContext, caller: CallerInput, received_at: datetime) -> TurnOutcome:
         ctx.turn = caller.turn

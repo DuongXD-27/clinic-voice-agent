@@ -380,11 +380,13 @@
       }
 
       async function jsonRequest(method, path, body) {
+        const started = performance.now();
         const response = await fetch(apiBase() + path, {
           method,
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Demo-Debug": "1" },
           body: body === undefined ? undefined : JSON.stringify(body),
         });
+        const requestElapsedMs = Math.round(performance.now() - started);
         let data;
         try { data = await response.json(); } catch { data = { detail: await response.text() }; }
         debugExchange(method, path, body, response.status, data);
@@ -393,6 +395,7 @@
           const message = detail?.message || detail?.[0]?.msg || data?.message || `HTTP ${response.status}`;
           throw new Error(message);
         }
+        data.demo_request_elapsed_ms = requestElapsedMs;
         return data;
       }
 
@@ -430,7 +433,19 @@
       }
 
       function applyBotResponse(data, turn) {
-        addMessage("bot", data.utterance, `BOT · turn ${turn} · ${data.state}`, data.audio_url);
+        const extraction = data.extraction_debug;
+        const extractionMeta = extraction
+          ? ` · Extraction: ${extraction.source} (${extraction.provenance})${extraction.question_id ? ` · ${extraction.question_id}` : ""}`
+          : "";
+        const timingMeta = Number.isFinite(data.demo_request_elapsed_ms)
+          ? ` · HTTP: ${data.demo_request_elapsed_ms} ms`
+          : "";
+        addMessage(
+          "bot",
+          data.utterance,
+          `BOT · turn ${turn} · ${data.state}${extractionMeta}${timingMeta}`,
+          data.audio_url,
+        );
         ui.stateValue.textContent = data.state;
         ui.outcomeValue.textContent = data.outcome || "—";
         if (data.ended) {

@@ -22,6 +22,7 @@ from callbot.engine import (
 )
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
+    ExtractionDebug,
     StartCallRequest,
     StartCallResponse,
     TurnRequest,
@@ -139,8 +140,9 @@ def start_call(
     )
 
 
-@router.post("/{call_id}/turn", response_model=TurnResponse)
+@router.post("/{call_id}/turn", response_model=TurnResponse, response_model_exclude_unset=True)
 def call_turn(
+    request: Request,
     call_id: str,
     payload: TurnRequest,
     orchestrator: Orchestrator,
@@ -169,20 +171,43 @@ def call_turn(
             audio_url=payload.audio_url,
             asr_confidence=confidence,
         )
-        action = orchestrator.handle_turn(call_id, caller)
+        run = orchestrator.handle_turn_with_details(call_id, caller)
+        action = run.action
         audio_url = (
             _synthesize(speech, call_id, payload.turn, action.utterance) if is_audio else None
         )
-        return action, audio_url
+        return action, audio_url, run.extraction
 
-    action, audio_url = _run_engine(call_id, _turn)
+    action, audio_url, extraction = _run_engine(call_id, _turn)
+    response_fields: dict[str, Any] = {
+        "utterance": action.utterance,
+        "audio_url": audio_url,
+        "state": action.state,
+        "ended": action.ended,
+        "outcome": action.outcome,
+    }
+    if request.headers.get("X-Demo-Debug") == "1":
+        response_fields["extraction_debug"] = _extraction_debug(extraction)
     return TurnResponse(
-        utterance=action.utterance,
-        audio_url=audio_url,
-        state=action.state,
-        ended=action.ended,
-        outcome=action.outcome,
+        **response_fields,
     )
+
+
+def _extraction_debug(extraction: Optional[dict[str, Any]]) -> ExtractionDebug:
+    """Summarize the extraction path without returning transcript values or spans."""
+    question_id = extraction.get("question_id") if extraction else None
+    provenances = [
+        field.get("provenance")
+        for name, field in (extraction or {}).items()
+        if name not in {"turn", "question_id", "transcript", "silent"}
+        and isinstance(field, dict)
+    ]
+    if "FALLBACK" in provenances:
+        return ExtractionDebug(question_id=question_id, source="NER", provenance="FALLBACK")
+    for provenance in ("EXACT", "NORMALIZED"):
+        if provenance in provenances:
+            return ExtractionDebug(question_id=question_id, source="RULE", provenance=provenance)
+    return ExtractionDebug(question_id=question_id, source="NONE", provenance="NONE")
 
 
 def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:

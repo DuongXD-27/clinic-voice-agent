@@ -166,7 +166,11 @@ class SessionManager:
                 raise TurnConflict(f"{call_id}: lượt {turn} đã nhận với đầu vào khác")
             if existing.status == "COMPLETED":
                 assert existing.result is not None
-                return TurnRun(BotAction.from_dict(existing.result), replayed=True, extraction=None)
+                return TurnRun(
+                    BotAction.from_dict(existing.result),
+                    replayed=True,
+                    extraction=existing.extraction,
+                )
             if existing.status == "RECONCILIATION_REQUIRED":
                 raise ReconciliationRequired(call_id, turn, existing.detail or "")
             # PROCESSING còn lại: chỉ xử lý tiếp khi chắc chắn chưa lệnh ghi nào tới Clinic
