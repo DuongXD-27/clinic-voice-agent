@@ -108,6 +108,7 @@ def test_normalizes_only_existing_name(transcript, name, expected):
         ("tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A"),
         ("Nguyễn 123", "Nguyễn 123", "tôi là Nguyễn 123"),
         ("Hoa", "Hoa", "tôi là Hoa"),
+        ("Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em"),
         ("", "", TRANSCRIPT),
         (None, "Nguyễn Văn A", TRANSCRIPT),
         ("Nguyễn Văn A", None, TRANSCRIPT),
@@ -178,6 +179,10 @@ def test_api_failures_do_not_retry_or_leak_details(error, caplog):
         (QuestionId.ASK_NAME, "tôi là vợ anh ấy", 0, True),
         (QuestionId.ASK_NAME, "tôi đang khó thở", 0, True),
         (QuestionId.ASK_NAME, "tôi nên uống thuốc gì", 0, True),
+        (QuestionId.ASK_NAME, "Ai đấy?", 0, True),
+        (QuestionId.ASK_NAME, "ai the", 0, True),
+        (QuestionId.ASK_NAME, "Dạ, cho hỏi ai đấy ạ?", 0, True),
+        (QuestionId.ASK_NAME, "Nguyễn Văn A nhé em", 0, True),
     ],
 )
 def test_state_and_rule_gates_make_no_http_request(question, text, silence, enabled):
@@ -212,7 +217,8 @@ def test_settings_reject_invalid_timeout(timeout):
 
 
 @pytest.mark.parametrize("success", [True, False])
-def test_orchestrator_uses_normalized_name_or_reprompts(success, monkeypatch):
+@pytest.mark.parametrize("transcript", [TRANSCRIPT, "Nguyễn Văn A cảm ơn em"])
+def test_orchestrator_uses_normalized_name_or_reprompts(success, transcript, monkeypatch):
     adapter, clients = adapter_for(
         lambda _: httpx.Response(200, json=completion()) if success else httpx.Response(503)
     )
@@ -222,7 +228,7 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, monkeypatch):
         bot = create_orchestrator(FakeClinicAPI(), settings=settings)
     factory.assert_called_once_with("openai")
     bot.start_call(CallStart(call_id="ner", direction="inbound", caller_number="0912345600"))
-    action = bot.handle_turn("ner", CallerInput(turn=1, text=TRANSCRIPT))
+    action = bot.handle_turn("ner", CallerInput(turn=1, text=transcript))
     assert action.state == "AWAITING_IDENTITY"
     session = bot.sessions.store.get_session("ner")
     assert session.context["identity_step"] == ("ASK_DOB" if success else "ASK_NAME")
@@ -240,7 +246,7 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, monkeypatch):
             bot.handle_turn("ner", CallerInput(turn=2, text="14/03/1978"))
         assert received == [("nguyễn văn a", date(1978, 3, 14))]
         # Replaying the committed first turn must not spend another model request.
-        bot.handle_turn("ner", CallerInput(turn=1, text=TRANSCRIPT))
+        bot.handle_turn("ner", CallerInput(turn=1, text=transcript))
         assert len(clients) == 1
 
 

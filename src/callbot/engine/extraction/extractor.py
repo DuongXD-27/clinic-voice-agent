@@ -275,18 +275,28 @@ class InformationExtractor:
         # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
         # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
         # Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
-        if reading.field.found or reading.reason is not Reason.NO_SIGNAL:
+        if reading.field.found or reading.reason not in (
+            Reason.NO_SIGNAL,
+            Reason.UNRESOLVED_BOUNDARY,
+        ):
             return reading.field
         if not self._name_fallback or self._fallback is None:
             return Field.nothing()
-        guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
+        logger.info("Name fallback route: %s", reading.reason.value)
+        try:
+            guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
+        except Exception:  # adapter lỗi cũng không được khôi phục ứng viên tên đáng ngờ
+            logger.warning("Name fallback failed; requesting the name again", exc_info=False)
+            return Field.nothing()
         # Tên do NER trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
         # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
         if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()
         if guarded.found and guarded.value:
             # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
-            name = strip_honorific(guarded.value, MIN_WORDS_AFTER_HONORIFIC)
+            name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
+            if read_full_name(name).field.value != name:
+                return Field.nothing()
             return Field(name, guarded.provenance, span=guarded.span)
         return guarded
 

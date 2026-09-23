@@ -27,7 +27,7 @@ from callbot.engine.errors import (
     WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
-from callbot.engine.extraction.greeting import is_greeting
+from callbot.engine.extraction.greeting import is_greeting, is_identity_question
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -214,12 +214,17 @@ class DialogueManager:
 
         if is_greeting(ex.transcript) and ctx.neutral_greetings < MAX_NEUTRAL_GREETINGS:
             # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
-            # được nhắc lại sau im lặng) thì chào lại; `_ask` đổi nội dung câu hỏi nên chỉ chào lại một lần.
+            # được nhắc lại sau im lặng) thì chào lại một lần. Hỏi "ai đấy" vẫn được giới thiệu lại.
             ctx.neutral_greetings += 1
             opening = ctx.question is not None and ctx.question.text == t.greeting(
                 ctx.call.direction
             )
-            if not ask_name:
+            if is_identity_question(ex.transcript):
+                # "Ai đấy?" là câu hỏi cần trả lời, kể cả sau reprompt / đã nhận tên.
+                text = (
+                    t.greeting_back(ctx.call.direction) if ask_name else t.INTRODUCE_AGAIN_ASK_DOB
+                )
+            elif not ask_name:
                 text = t.ASK_DOB_AGAIN
             elif opening:
                 text = t.greeting_back(ctx.call.direction)

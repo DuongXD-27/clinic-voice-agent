@@ -11,6 +11,18 @@ from callbot.engine.extraction.schema import Provenance
         ("Nguyễn Văn A.", "nguyễn văn a"),
         ("Nguyễn Văn A mà", "nguyễn văn a"),
         ("Nguyễn Văn A nhé", "nguyễn văn a"),
+        ("NGuyễn văn A nhé em", "nguyễn văn a"),
+        ("à thì anh tên là Nguyễn Văn A nhé em", "nguyễn văn a"),
+        ("Dạ, Nguyễn Văn A nhé em ạ", "nguyễn văn a"),
+        ("Nguyễn Văn A, nha chị!", "nguyễn văn a"),
+        ("nguyen van a nhe em", "nguyen van a"),
+        ("Nguyễn Văn A nhe em", "nguyễn văn a"),
+        ("Nguyen Van A nhé em", "nguyen van a"),
+        ("Trần Thị Bích Ngọc Anh nhé em", "trần thị bích ngọc anh"),
+        ("Nguyễn Thị Anh nhé em", "nguyễn thị anh"),
+        ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
+        ("Nguyễn Văn Em nhé", "nguyễn văn em"),
+        ("Nguyen Van A Em", "nguyen van a em"),
         ("Dạ, tôi là Nguyễn Văn A", "nguyễn văn a"),
         ("tôi là Nguyễn Văn A", "nguyễn văn a"),
         ("dạ vâng tên tôi là Trần Thị Bích Ngọc ạ", "trần thị bích ngọc"),
@@ -58,6 +70,12 @@ def test_rejects_non_names(text: str) -> None:
     result = extract_full_name(text)
     assert result.value is None
     assert result.provenance is Provenance.NONE
+
+
+@pytest.mark.parametrize("text", ["Ai đấy?", "ai the", "ai gọi vậy", "Dạ, cho hỏi ai đấy ạ?"])
+def test_caller_identity_questions_do_not_enter_name_fallback(text: str) -> None:
+    reading = read_full_name(text)
+    assert not reading.field.found and reading.reason is Reason.NOT_A_NAME
 
 
 # --- Tiếng đệm và danh xưng trước tên (demo 22-09: "à thì tôi là ông Nguyễn Văn a") -------------

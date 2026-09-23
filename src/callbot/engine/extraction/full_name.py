@@ -103,8 +103,15 @@ _SELF_OUTRO_PHRASES = [
     for speaker in _SPEAKERS
     for lead in ("", "đấy ", "đó ", "đây ", "thì ")
 ]
+# Chỉ bỏ danh xưng cuối câu khi có tiểu từ đứng TRƯỚC: "nhé em", "nha chị".
+# Không bỏ riêng "em" / "anh", hay cả "em nhé": đó có thể là tên Nguyễn Văn Em.
+_POLITE_ADDRESSES = [
+    f"{particle} {addressee}"
+    for particle in ("nhé", "nha")
+    for addressee in ("em", "anh", "chị", "bạn", "cô", "chú", "bác", "ông", "bà", "con", "cháu")
+]
 _SUFFIXES = compile_phrases(
-    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES],
+    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES, *_POLITE_ADDRESSES],
     unaccented_exclude=["ạ", "ấy ạ", "mà"],
 )
 _SELF_INTRODUCTIONS = compile_phrases(_SELF_INTRO_PHRASES)
@@ -193,6 +200,30 @@ _NON_NAME_WORDS_UNACCENTED = frozenset(
 # không giao nhau về mặt chữ, nên hợp nhất là đủ và xử lý được cả câu mất dấu một phần.
 _REJECTED_WORDS = _NON_NAME_WORDS | _NON_NAME_WORDS_UNACCENTED
 _REJECTED_NAMES = _GREETINGS | frozenset(strip_diacritics(g) for g in _GREETINGS)
+# Qua kiểm tra số từ chưa đủ để kết luận là tên. Lời nói còn sót phải được NER khoanh
+# vùng lại; tắt/lỗi NER thì hỏi lại, không đưa cả "Nguyễn Văn A cảm ơn em" tới Verifier.
+# Các từ mất dấu trùng tên (Chu, Vang, Roi, A...) không dùng riêng làm tín hiệu này.
+_SPEECH_RESIDUE = compile_phrases(
+    [
+        "ạ",
+        "nhé",
+        "ơi",
+        "vâng",
+        "chứ",
+        "rồi",
+        "nè",
+        "cảm ơn",
+        "cám ơn",
+        "đúng rồi",
+        "hello",
+        "alo",
+        "hi em",
+        "hú hú",
+        *_POLITE_ADDRESSES,
+        *(f"{particle} {addressee}" for particle in ("đây", "đó") for addressee in _SPEAKERS),
+    ],
+    unaccented_exclude=["ạ", "nhé", "ơi", "vâng", "chứ", "rồi", "nè"],
+)
 # Cách người gọi trỏ tới trường ngày sinh — dùng để biết một mệnh đề đang nói về ngày sinh
 # chứ không phải về tên.
 _DOB_REFERENCES = compile_phrases(
@@ -218,7 +249,9 @@ def read_full_name(transcript: str) -> Reading[str]:
 
     # Lời phân vân trong một mệnh đề nói riêng về ngày sinh là phân vân về NGÀY SINH:
     # "Nguyễn Văn A, tôi không nhớ rõ ngày sinh" vẫn khai tên rõ ràng, chỉ thiếu ngày.
-    named = " ".join(c for c in clauses if not _is_dob_aside(c))
+    # Giữ ranh giới mệnh đề: "alo em, tôi là A" không được ghép thành "em tôi là A"
+    # rồi hiểu nhầm đó là tên người thân. Chỉ bỏ mệnh đề xã giao đã nhận chắc chắn.
+    named = " ".join(c for c in clauses if not is_greeting(c) and not _is_dob_aside(c))
     if not named:
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
     if find_phrase(named, UNCERTAINTY, mixed=True) is not None:
@@ -241,6 +274,8 @@ def read_full_name(transcript: str) -> Reading[str]:
     name = _strip_repeated(name, _SUFFIXES, at_start=False)
     name = strip_honorific(name, MIN_WORDS_AFTER_HONORIFIC)
     words = name.split()
+    if find_phrase(name, _SPEECH_RESIDUE, mixed=True) is not None:
+        return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
     if (
         not name
         or name in _REJECTED_NAMES
