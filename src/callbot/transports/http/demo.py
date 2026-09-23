@@ -4,22 +4,35 @@ Harness thật tự host clip và chỉ gửi ``audio_url``. Trình duyệt thì
 ``blob:`` URL cục bộ, backend không thể tải URL đó, nên trang demo cần upload WAV
 vào một thư mục public trước khi gọi endpoint ``turn``. Module này chỉ làm nhiệm
 vụ transport; audio và logic demo không đi vào business core.
+
+``POST /demo-api/clinic-reset`` là nút reset clinic mock cho người test thủ công: mock
+không bật CORS nên trình duyệt không gọi thẳng ``/_harness/reset`` được, và API key chỉ
+nằm ở server. Engine (``ClinicMockClient``) vẫn không bao giờ gọi ``/_harness/*`` (§4.2.4).
 """
 
 import asyncio
+import logging
 import re
 import struct
 from pathlib import Path
+from typing import Any, Optional
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, Field
 
+from callbot.transports.http.config import settings
 from speech.audio.codec import decode_wav, encode_wav
 from speech.types import NARROWBAND_RATE
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/demo-api", tags=["demo"])
 
 _SAFE_CALL_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _MAX_WAV_BYTES = 8 * 1024 * 1024
+# Test thay bằng httpx.MockTransport; None = mạng thật
+_clinic_transport: Optional[httpx.AsyncBaseTransport] = None
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -75,3 +88,61 @@ async def upload_demo_audio(call_id: str, turn: int, request: Request) -> dict[s
         "duration_ms": duration_ms,
         "size_bytes": len(wav),
     }
+
+
+class ClinicResetRequest(BaseModel):
+    # Lịch đọc lại sau reset để trang demo báo trạng thái — mặc định lịch outbound mẫu của mock
+    appointment_id: str = Field(default="apt_00417", pattern=r"^[A-Za-z0-9_-]{1,128}$")
+
+
+def _harness_origin(base_url: str) -> str:
+    """CLINIC_MOCK_BASE_URL trỏ tới ``.../v1``; ``/_harness/*`` nằm ở gốc domain."""
+    return base_url.rstrip("/").removesuffix("/v1")
+
+
+@router.post("/clinic-reset")
+async def reset_clinic_mock(body: Optional[ClinicResetRequest] = None) -> dict[str, Any]:
+    """Reset clinic mock dùng chung (xóa dữ liệu của MỌI người test) rồi đọc lại một lịch hẹn."""
+    if not settings.demo_clinic_reset_enabled:
+        raise _error(404, "RESET_DISABLED", "Nút reset đã tắt (DEMO_CLINIC_RESET_ENABLED=false)")
+    if settings.clinic_backend != "mock":
+        raise _error(
+            409, "RESET_UNAVAILABLE", "CLINIC_BACKEND=sim: restart server để nạp lại dữ liệu"
+        )
+    appointment_id = (body or ClinicResetRequest()).appointment_id
+    base = settings.clinic_mock_base_url.rstrip("/")
+    headers = {"Authorization": f"Bearer {settings.clinic_mock_api_key}"}
+
+    async with httpx.AsyncClient(
+        headers=headers, timeout=httpx.Timeout(10.0, connect=3.0), transport=_clinic_transport
+    ) as client:
+        try:
+            reset = await client.post(f"{_harness_origin(base)}/_harness/reset")
+        except httpx.HTTPError as exc:
+            logger.error("Không gọi được /_harness/reset (%s)", type(exc).__name__)
+            raise _error(502, "CLINIC_UNREACHABLE", "Không kết nối được clinic mock") from exc
+        if reset.status_code >= 400:
+            code = _mock_error_code(reset)
+            raise _error(502, "RESET_FAILED", f"Clinic mock trả HTTP {reset.status_code} ({code})")
+
+        # Reset đã xong; đọc lại chỉ để hiển thị, lỗi ở bước này không làm hỏng kết quả reset
+        appointment = None
+        try:
+            read = await client.get(f"{base}/appointments/{appointment_id}")
+            if read.status_code == 200:
+                data = read.json()
+                appointment = {
+                    "appointment_id": data.get("appointment_id"),
+                    "status": data.get("status"),
+                    "version": data.get("version"),
+                }
+        except (httpx.HTTPError, ValueError):
+            logger.warning("Reset xong nhưng không đọc lại được %s", appointment_id)
+    return {"reset": True, "appointment": appointment}
+
+
+def _mock_error_code(response: httpx.Response) -> str:
+    try:
+        return str(response.json()["error"]["code"])
+    except (ValueError, KeyError, TypeError):
+        return "UNKNOWN"

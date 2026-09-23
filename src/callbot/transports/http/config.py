@@ -18,5 +18,9 @@ class Settings(BaseSettings):
     clinic_sim_dataset: Literal["listing3", "mentor_mock"] = "listing3"
     clinic_sim_scenario: str = ""
 
+    # Nút "Reset clinic mock" trên trang demo: route demo gọi /_harness/reset thay admin (engine không
+    # dùng). Đặt DEMO_CLINIC_RESET_ENABLED=false trước khung giờ chấm / audit (§4.2.4).
+    demo_clinic_reset_enabled: bool = True
+
 
 settings = Settings()
