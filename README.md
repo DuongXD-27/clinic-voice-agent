@@ -59,13 +59,13 @@ Toàn bộ cấu hình nằm trong `.env`, xem mẫu và chú thích ở [.env.e
 | Nhóm | Biến chính |
 |---|---|
 | API key model | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` |
-| Clinic API | `CLINIC_MOCK_BASE_URL`, `CLINIC_MOCK_API_KEY`, `CLINIC_ID` |
+| Clinic API | `CLINIC_BACKEND` (`mock` \| `sim`), `CLINIC_MOCK_BASE_URL`, `CLINIC_MOCK_API_KEY`, `CLINIC_ID`, `CLINIC_SIM_*` |
 | Voice pipeline | `ASR_PROVIDER` (`zipformer` \| `gemini` \| `phowhisper`), `TTS_PROVIDER` (`openai` \| `elevenlabs`), `PUBLIC_BASE_URL` |
 | Extraction qua LLM | `SEMANTIC_FALLBACK_*`, `NAME_FALLBACK_*` |
 | Session | `REDIS_URL`, `REDIS_PASSWORD`, `SESSION_*` |
 
 Chỉ cần API key của provider đang bật. Với cấu hình mặc định (ZipFormer + OpenAI TTS) cần
-`OPENAI_API_KEY` và `CLINIC_MOCK_API_KEY`.
+`OPENAI_API_KEY` và `CLINIC_MOCK_API_KEY` (không cần `CLINIC_MOCK_API_KEY` khi `CLINIC_BACKEND=sim`).
 
 ## Sử dụng
 
@@ -116,6 +116,11 @@ Chạy cả Redis và bot:
 ```bash
 docker compose up --build
 ```
+
+Docker local mặc định dùng **clinic giả trong bộ nhớ** (`CLINIC_BACKEND=sim`, 1 worker): không cần
+mạng hay `CLINIC_MOCK_API_KEY`, dữ liệu về ban đầu sau `docker compose restart bot`. Muốn gọi clinic
+mock đã deploy thì đặt `CLINIC_BACKEND=mock` trong `.env`. Bản deploy luôn dùng mock. Chi tiết và
+cách demo edge case: [src/clinic_mock_sim/README.md](src/clinic_mock_sim/README.md#demo-bằng-docker-local).
 
 Hoặc chỉ build image bot:
 
@@ -173,7 +178,7 @@ src/
 │   ├── llm/                    # LLM gateway, prompt, provider
 │   ├── asr/                    # Gemini / PhoWhisper / ZipFormer
 │   └── tts/                    # OpenAI / ElevenLabs
-└── clinic_mock_sim/            # clinic mock trong bộ nhớ, CHỈ dùng cho test (không vào image)
+└── clinic_mock_sim/            # clinic mock trong bộ nhớ: test + demo Docker local (deploy luôn dùng mock)
 tests/                          # cùng cấu trúc với src/
 docs/reference/                 # tài liệu thiết kế
 ```

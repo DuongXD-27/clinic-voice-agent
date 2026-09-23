@@ -1,11 +1,12 @@
 # clinic_mock_sim
 
-Clinic mock chạy trong bộ nhớ, **chỉ dùng cho test**. Cài đúng `ports.ClinicAPI` như
-`ClinicMockClient` (HTTP thật) nên bot không phân biệt được hai bên — nhưng không cần docker,
-không cần mạng, và dựng được những tình huống mock thật không có (trùng số điện thoại, backend
-timeout, slot bị lấy mất giữa chừng...).
+Clinic mock chạy trong bộ nhớ, dùng cho **test** và **demo Docker local**. Cài đúng
+`ports.ClinicAPI` như `ClinicMockClient` (HTTP thật) nên bot không phân biệt được hai bên — nhưng
+không cần mạng, không cần key, và dựng được những tình huống mock thật không có (trùng số điện
+thoại, backend timeout, slot bị lấy mất giữa chừng...). Bản deploy luôn dùng mock thật.
 
-Viết test mới: **xin fixture `clinic` là xong**, không cần tự viết clinic giả hay subclass.
+- Viết test mới: **xin fixture `clinic` là xong**, không cần tự viết clinic giả hay subclass.
+- Demo local: `docker compose up` là chạy trên sim — xem [Demo bằng Docker local](#demo-bằng-docker-local).
 
 ---
 
@@ -241,6 +242,38 @@ Thứ tự kiểm tra như mock: body (enum) → idempotency → tồn tại →
 
 ---
 
+## Demo bằng Docker local
+
+`docker-compose.yml` mặc định chạy bot trên sim — không cần mạng hay `CLINIC_MOCK_API_KEY`.
+
+| Muốn | Đặt trong `.env` | Chạy |
+|---|---|---|
+| Demo trên sim (mặc định) | không cần gì | `docker compose up -d` |
+| Demo edge case | `CLINIC_SIM_SCENARIO=slot_race` (nhiều tên: cách nhau dấu phẩy) | `docker compose up -d` |
+| Dữ liệu giống mock deploy | `CLINIC_SIM_DATASET=mentor_mock` | `docker compose up -d` |
+| Gọi mock đã deploy | `CLINIC_BACKEND=mock` + `CLINIC_MOCK_API_KEY` | `docker compose up -d` |
+| Làm lại từ đầu (sim) | — | `docker compose restart bot` |
+
+Lần đầu sau khi pull cần `docker compose up -d --build` để image có package này; sau đó đổi qua
+lại chỉ cần `up -d`.
+
+- **Dataset:** `listing3` (mặc định) — `apt_00417` 09:00 14/10/2026, 2 slot trống, `/slots` không
+  lọc ngày nên luôn có slot để demo đổi lịch. `mentor_mock` giống mock deploy — `/slots` lọc theo
+  cửa sổ 14 ngày từ hôm nay nên có thể không có slot nào.
+- **1 worker, tự động:** sim giữ dữ liệu trong bộ nhớ của từng process, nhiều worker là nhiều bản
+  lệch nhau. Image tự chạy 1 worker khi `CLINIC_BACKEND=sim`, kể cả khi `.env` còn
+  `WEB_CONCURRENCY=2` — không cần sửa `.env`. Chạy `uvicorn --workers 2` trực tiếp với sim thì app
+  từ chối khởi động kèm hướng dẫn.
+- **Dữ liệu mất khi restart** và dồn lại giữa các lần demo (huỷ `apt_00417` xong thì các lần sau
+  đều chuyển máy) — `docker compose restart bot` để về dữ liệu ban đầu.
+- Log khởi động có dòng cảnh báo `CLINIC_BACKEND=sim: dùng clinic giả trong bộ nhớ...`.
+- Chạy `uvicorn` trực tiếp (không Docker): mặc định `mock`; muốn sim thì đặt `CLINIC_BACKEND=sim`.
+- **Deploy** (`docker-compose.prod.yml`) cố định `CLINIC_BACKEND: mock`, ghi đè `.env` trên server.
+
+Code chọn backend: [clinic_backend.py](../callbot/transports/http/clinic_backend.py).
+
+---
+
 ## Chặn gọi mock thật
 
 Fixture autouse `block_live_clinic` chặn mọi request tới host của `CLINIC_MOCK_BASE_URL` (đọc từ
@@ -264,9 +297,10 @@ trước khi chạy.
 
 ## Quy tắc
 
-- **Chỉ import từ `tests/` và `scripts/`.** Code trong `src/callbot`, `src/speech`,
-  `src/inference` không được import package này (`test_plugin.py` kiểm tra); package không nằm
-  trong wheel nên không vào image Docker.
+- **Import từ `tests/` và `scripts/`.** Trong `src/callbot`, `src/speech`, `src/inference` chỉ
+  `callbot/transports/http/clinic_backend.py` được import package này, và chỉ trong hàm khi
+  `CLINIC_BACKEND=sim` (`test_plugin.py` kiểm tra). Package có trong image để demo local; deploy
+  vẫn luôn là mock nhờ compose prod.
 - **Sửa hành vi sim** (mã lỗi, lifecycle, shape) → `test_contract.py` phải pass cả trên mock thật.
 - **Thêm edge case** → hàm `(sim, **params)` trong `scenarios.py` có docstring, đăng ký vào
   `SCENARIOS` kèm cờ "mock thật có không", test trong `tests/clinic_mock_sim/test_scenarios.py`,

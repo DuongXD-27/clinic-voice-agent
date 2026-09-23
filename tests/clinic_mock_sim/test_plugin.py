@@ -52,17 +52,31 @@ def _imports(path: Path) -> set[str]:
     return names
 
 
+# Nơi duy nhất được chọn sim (CLINIC_BACKEND=sim, import trong hàm) — xem clinic_backend.py
+SIM_GATE = Path("src/callbot/transports/http/clinic_backend.py")
+
+
 @pytest.mark.parametrize("package", ["callbot", "speech", "inference"])
-def test_production_code_never_imports_the_sim(package: str) -> None:
+def test_production_code_imports_the_sim_only_through_the_backend_switch(package: str) -> None:
     offenders = [
-        str(path.relative_to(ROOT))
+        path.relative_to(ROOT).as_posix()
         for path in (ROOT / "src" / package).rglob("*.py")
-        if any(name.split(".")[0] == "clinic_mock_sim" for name in _imports(path))
+        if path.relative_to(ROOT) != SIM_GATE
+        and any(name.split(".")[0] == "clinic_mock_sim" for name in _imports(path))
     ]
     assert offenders == []
 
 
-def test_sim_is_not_shipped_in_the_wheel() -> None:
+def test_backend_switch_imports_the_sim_lazily() -> None:
+    tree = ast.parse((ROOT / SIM_GATE).read_text(encoding="utf-8"))
+    top_level = {
+        node.module for node in tree.body if isinstance(node, ast.ImportFrom) and node.module
+    }
+    assert not any(name.startswith("clinic_mock_sim") for name in top_level)
+
+
+def test_sim_ships_in_the_wheel_and_the_docker_dependency_stub() -> None:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    packages = config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
-    assert "src/clinic_mock_sim" not in packages
+    assert "src/clinic_mock_sim" in config["tool"]["hatch"]["build"]["targets"]["wheel"]["packages"]
+    # Bước cài dependency trong Dockerfile build wheel trên package stub: thiếu stub là build lỗi
+    assert "src/clinic_mock_sim/__init__.py" in (ROOT / "Dockerfile").read_text(encoding="utf-8")

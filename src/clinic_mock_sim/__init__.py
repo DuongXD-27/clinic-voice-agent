@@ -1,7 +1,8 @@
-"""Clinic mock trong bộ nhớ — CHỈ dùng cho test và script chạy tay. Xem README.md cùng thư mục.
+"""Clinic mock trong bộ nhớ — cho test, script chạy tay và demo Docker local. Xem README.md cùng thư mục.
 
-Code trong `src/callbot`, `src/speech`, `src/inference` không được import package này
-(`tests/clinic_mock_sim/test_boundary.py` kiểm tra); package không có trong image Docker.
+Code production chỉ được chạm tới package này qua `callbot/transports/http/clinic_backend.py`
+(CLINIC_BACKEND=sim, import trong hàm); `tests/clinic_mock_sim/test_plugin.py` kiểm tra.
+Deploy (docker-compose.prod.yml) cố định CLINIC_BACKEND=mock.
 """
 
 from clinic_mock_sim import scenarios
