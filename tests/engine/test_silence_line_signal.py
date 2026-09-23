@@ -12,7 +12,7 @@ from callbot.engine import CallerInput, CallStart, ReconciliationRequired, creat
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
 from callbot.engine.session import CallContext
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"

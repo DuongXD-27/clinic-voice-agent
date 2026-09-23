@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from callbot.engine import BotAction
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 from tests.engine.identity_cases import (
     CORRECT_DOB,
     IDENTITY_CASES,

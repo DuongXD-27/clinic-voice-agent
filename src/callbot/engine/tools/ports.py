@@ -1,7 +1,7 @@
 """Cổng tới clinic mock (§4.2) — cạnh "API nghiệp vụ" giữa Clinic Gateway và Clinic Mock.
 
 Protocol mô phỏng mock 1:1: một trang mỗi lần gọi, shape thô của mock, lỗi là `ClinicAPIError`.
-Nhờ vậy cùng một bộ contract test chạy được trên `ClinicMockClient` (HTTP thật) và `FakeClinicAPI`.
+Nhờ vậy cùng một bộ contract test chạy được trên `ClinicMockClient` (HTTP thật) và `clinic_mock_sim.FakeClinicAPI`.
 Chuẩn hóa sang khóa canonical của engine là việc của `ClinicGateway` (F-05 §5.3), không phải của cổng.
 
 Shape thô (đối chiếu `clinic-mock/src/clinic_mock/schemas.py`):

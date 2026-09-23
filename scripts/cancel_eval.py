@@ -35,9 +35,6 @@ from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.insert(0, str(ROOT))
-
-from tests.engine.fake_clinic import FakeClinicAPI  # noqa: E402
 
 from callbot.engine import (  # noqa: E402
     CallerInput,
@@ -50,6 +47,7 @@ from callbot.engine.dialogue import templates as t  # noqa: E402
 from callbot.engine.extraction.schema import QuestionId  # noqa: E402
 from callbot.engine.extraction.semantic import SemanticContext, SemanticOutcome  # noqa: E402
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
+from clinic_mock_sim import FakeClinicAPI  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
 CASES = ROOT / "eval" / "cancel" / "cases.csv"

@@ -7,7 +7,6 @@ import fakeredis
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 from tests.engine.test_cancel_dialogue import BrokenSemantic, FakeSemantic
 from tests.transports.http.fakes import FakeASR, FakeTTS, make_speech_bundle
 
@@ -29,6 +28,7 @@ from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import _extraction_debug, get_orchestrator
 from callbot.transports.http.main import create_app
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 from speech.audio import encode_wav
 from speech.types import AudioSegment
 

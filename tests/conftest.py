@@ -9,8 +9,11 @@ import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 from tests.transports.http.fakes import make_speech_bundle
+
+# Fixture `clinic`, `clinic_scenario` và chặn gọi clinic mock thật — xem src/clinic_mock_sim/README.md
+pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
 
 
 @pytest.fixture(autouse=True)
@@ -40,11 +43,6 @@ def redis_store_factory(redis_server):
         return RedisSessionStore(client, key_prefix=prefix, **kwargs)
 
     return factory
-
-
-@pytest.fixture
-def clinic() -> FakeClinicAPI:
-    return FakeClinicAPI()
 
 
 @pytest.fixture
