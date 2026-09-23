@@ -207,7 +207,20 @@ def test_a_greeting_between_failures_does_not_count() -> None:
 
 
 @pytest.mark.parametrize("direction", ["outbound", "inbound"])
-@pytest.mark.parametrize("greeting", ["alo", "hello em", "hi em", "Hello, chị ạ!"])
+@pytest.mark.parametrize(
+    "greeting",
+    [
+        "alo",
+        "hello em",
+        "hi em",
+        "Hello, chị ạ!",
+        "AI đấy?",
+        "ai goi vay",
+        "hú hú",
+        "em ơi",
+        "tôi nghe đây",
+    ],
+)
 def test_alo_after_opening_is_greeted_back(direction, greeting) -> None:
     start = _outbound("c_alo") if direction == "outbound" else _inbound("c_alo")
     actions, _ = _call(start, [greeting, NAME, DOB])
@@ -224,6 +237,38 @@ def test_alo_is_greeted_back_only_once() -> None:
     assert actions[2].utterance == t.ASK_NAME_AGAIN
 
 
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+@pytest.mark.parametrize("first", ["alo", "tôi không rõ"])
+def test_identity_question_after_reprompt_reintroduces_the_bot(direction, first) -> None:
+    start = _outbound("c_who_again") if direction == "outbound" else _inbound("c_who_again")
+    actions, clinic = _call(start, [first, "Ai đấy?", "NGuyễn văn A nhé em", DOB])
+    assert actions[2].utterance == t.greeting_back(direction)
+    assert actions[3].utterance == t.ASK_DOB
+    assert actions[4].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+def test_identity_question_at_dob_step_reintroduces_without_asking_name_again(direction) -> None:
+    start = _outbound("c_who_dob") if direction == "outbound" else _inbound("c_who_dob")
+    actions, clinic = _call(start, [NAME, "Ai gọi vậy?", DOB])
+    assert t.AI_DISCLOSURE in actions[2].utterance and "Vinmec" in actions[2].utterance
+    assert "ngày tháng năm sinh" in actions[2].utterance
+    assert "họ tên" not in actions[2].utterance and "họ và tên" not in actions[2].utterance
+    assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+@pytest.mark.parametrize(
+    "name", ["NGuyễn văn A nhé em", "nguyen van a nhe em", "Nguyễn Văn A nhé em, sinh ngày " + DOB]
+)
+def test_name_with_polite_address_verifies_without_spurious_mismatch(name) -> None:
+    lines = [name] if DOB in name else [name, DOB]
+    actions, clinic = _call(_outbound("c_name_suffix"), lines)
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
 def test_greetings_up_to_the_limit_do_not_transfer() -> None:
     """Demo 22-09: "alo", "hi em", "hi" từng chuyển NOT_UNDERSTOOD ở lượt 3 và ghi TRANSFERRED."""
     actions, clinic = _call(_outbound("c_hi_hi"), ["alo", "hi em", "hi", NAME, DOB])
@@ -233,8 +278,9 @@ def test_greetings_up_to_the_limit_do_not_transfer() -> None:
     assert actions[5].state == "AWAITING_INTENT" and clinic.writes == []
 
 
-def test_greetings_past_the_limit_count_as_not_understood() -> None:
-    actions, _ = _call(_outbound("c_alo_many"), ["alo", "alo", "alo", "alo"])
+@pytest.mark.parametrize("greeting", ["alo", "Ai đấy?"])
+def test_greetings_past_the_limit_count_as_not_understood(greeting) -> None:
+    actions, _ = _call(_outbound("c_alo_many"), [greeting] * 4)
     assert not actions[3].ended
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
@@ -244,6 +290,13 @@ def test_a_greeting_while_asking_dob_rereads_the_dob_question() -> None:
     assert actions[2].utterance == t.ASK_DOB_AGAIN
     assert actions[3].state == "AWAITING_IDENTITY"  # chưa hiểu lần 1, chưa chuyển máy
     assert actions[4].state == "AWAITING_INTENT"
+
+
+@pytest.mark.parametrize("greeting", ["hú hú", "hú hú em ơi", "ừ tôi nghe"])
+def test_contact_signal_during_dob_does_not_restart_identity(greeting) -> None:
+    actions, clinic = _call(_outbound("c_contact_dob"), [NAME, greeting, DOB])
+    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
 
 
 def test_english_greeting_after_reprompt_does_not_advance_to_dob() -> None:

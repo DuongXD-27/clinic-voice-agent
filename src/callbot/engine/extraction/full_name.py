@@ -103,8 +103,15 @@ _SELF_OUTRO_PHRASES = [
     for speaker in _SPEAKERS
     for lead in ("", "đấy ", "đó ", "đây ", "thì ")
 ]
+# Chỉ bỏ danh xưng cuối câu khi có tiểu từ đứng TRƯỚC: "nhé em", "nha chị".
+# Không bỏ riêng "em" / "anh", hay cả "em nhé": đó có thể là tên Nguyễn Văn Em.
+_POLITE_ADDRESSES = [
+    f"{particle} {addressee}"
+    for particle in ("nhé", "nha")
+    for addressee in ("em", "anh", "chị", "bạn", "cô", "chú", "bác", "ông", "bà", "con", "cháu")
+]
 _SUFFIXES = compile_phrases(
-    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES],
+    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES, *_POLITE_ADDRESSES],
     unaccented_exclude=["ạ", "ấy ạ", "mà"],
 )
 _SELF_INTRODUCTIONS = compile_phrases(_SELF_INTRO_PHRASES)
@@ -193,6 +200,30 @@ _NON_NAME_WORDS_UNACCENTED = frozenset(
 # không giao nhau về mặt chữ, nên hợp nhất là đủ và xử lý được cả câu mất dấu một phần.
 _REJECTED_WORDS = _NON_NAME_WORDS | _NON_NAME_WORDS_UNACCENTED
 _REJECTED_NAMES = _GREETINGS | frozenset(strip_diacritics(g) for g in _GREETINGS)
+# Qua kiểm tra số từ chưa đủ để kết luận là tên. Lời nói còn sót phải được NER khoanh
+# vùng lại; tắt/lỗi NER thì hỏi lại, không đưa cả "Nguyễn Văn A cảm ơn em" tới Verifier.
+# Các từ mất dấu trùng tên (Chu, Vang, Roi, A...) không dùng riêng làm tín hiệu này.
+_SPEECH_RESIDUE = compile_phrases(
+    [
+        "ạ",
+        "nhé",
+        "ơi",
+        "vâng",
+        "chứ",
+        "rồi",
+        "nè",
+        "cảm ơn",
+        "cám ơn",
+        "đúng rồi",
+        "hello",
+        "alo",
+        "hi em",
+        "hú hú",
+        *_POLITE_ADDRESSES,
+        *(f"{particle} {addressee}" for particle in ("đây", "đó") for addressee in _SPEAKERS),
+    ],
+    unaccented_exclude=["ạ", "nhé", "ơi", "vâng", "chứ", "rồi", "nè"],
+)
 # Cách người gọi trỏ tới trường ngày sinh — dùng để biết một mệnh đề đang nói về ngày sinh
 # chứ không phải về tên.
 _DOB_REFERENCES = compile_phrases(
@@ -204,7 +235,20 @@ def extract_full_name(transcript: str) -> Field[str]:
     return read_full_name(transcript).field
 
 
-def read_full_name(transcript: str) -> Reading[str]:
+def valid_name_span(name: str) -> bool:
+    """Validate an NER span without treating a possible final name syllable as a particle.
+
+    Selecting the boundary is the model's job here. The rule extractor must remain
+    conservative when it sees an entire utterance ending in an ambiguous particle.
+    """
+    normalized = clean(name)
+    return (
+        bool(normalized)
+        and read_full_name(normalized, preserve_final_nha=True).field.value == normalized
+    )
+
+
+def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Reading[str]:
     clauses = [clause for clause in (clean(c) for c in normalize(transcript).split(",")) if clause]
     text = " ".join(clauses)
     if not text:
@@ -218,7 +262,9 @@ def read_full_name(transcript: str) -> Reading[str]:
 
     # Lời phân vân trong một mệnh đề nói riêng về ngày sinh là phân vân về NGÀY SINH:
     # "Nguyễn Văn A, tôi không nhớ rõ ngày sinh" vẫn khai tên rõ ràng, chỉ thiếu ngày.
-    named = " ".join(c for c in clauses if not _is_dob_aside(c))
+    # Giữ ranh giới mệnh đề: "alo em, tôi là A" không được ghép thành "em tôi là A"
+    # rồi hiểu nhầm đó là tên người thân. Chỉ bỏ mệnh đề xã giao đã nhận chắc chắn.
+    named = " ".join(c for c in clauses if not is_greeting(c) and not _is_dob_aside(c))
     if not named:
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
     if find_phrase(named, UNCERTAINTY, mixed=True) is not None:
@@ -238,9 +284,20 @@ def read_full_name(transcript: str) -> Reading[str]:
     segment = own
 
     name = _strip_repeated(segment, _PREFIXES, at_start=True)
-    name = _strip_repeated(name, _SUFFIXES, at_start=False)
+    unstripped = name
+    if preserve_final_nha and name.endswith(" nha"):
+        # NER chose the complete span "Nguyễn Thị Nha". Do not immediately undo that
+        # choice using the whole-utterance rule that also handles "Nguyễn Văn A nha".
+        name = f"{_strip_repeated(name[:-4], _SUFFIXES, at_start=False)} nha"
+    else:
+        name = _strip_repeated(name, _SUFFIXES, at_start=False)
+    removed_suffix = unstripped[len(name) :].strip() if unstripped.startswith(name) else ""
     name = strip_honorific(name, MIN_WORDS_AFTER_HONORIFIC)
     words = name.split()
+    if not preserve_final_nha and _ambiguous_ending(segment, name, removed_suffix):
+        return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
+    if find_phrase(name, _SPEECH_RESIDUE, mixed=True) is not None:
+        return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
     if (
         not name
         or name in _REJECTED_NAMES
@@ -250,6 +307,25 @@ def read_full_name(transcript: str) -> Reading[str]:
     ):
         return Reading(Field.nothing(), Reason.NO_SIGNAL, segment)
     return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)
+
+
+def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool:
+    """A terminal particle may instead be the last syllable of someone's name."""
+    explicit_address = any(
+        removed_suffix == phrase or removed_suffix.startswith(phrase + " ")
+        for phrase in _POLITE_ADDRESSES
+        if phrase.startswith("nha ")
+    )
+    if removed_suffix.split()[:1] == ["nha"] and not explicit_address:
+        return True
+    # "Nguyễn Văn A em nhé" and "Nguyễn Văn Em nhé" have the same surface
+    # boundary problem. Only an explicit "nhé em" puts the addressee outside the name.
+    for speaker in (*_SPEAKERS, "bạn"):
+        if candidate.endswith(" " + speaker) and any(
+            segment.endswith(f" {speaker} {particle}") for particle in ("nhé", "nhe", "ạ")
+        ):
+            return True
+    return False
 
 
 def _is_dob_aside(clause: str) -> bool:

@@ -55,6 +55,9 @@ ASK_NAME_DECLINED = (
     "Anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
 )
 ASK_DOB = "Dạ, anh chị cho em xin ngày tháng năm sinh ạ."
+INTRODUCE_AGAIN_ASK_DOB = (
+    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em xin ngày tháng năm sinh ạ."
+)
 ASK_DOB_AGAIN = "Dạ, em chưa nghe rõ. Anh chị nhắc lại giúp em ngày, tháng, năm sinh ạ."
 # dob INVALID (31/02, thiếu năm, năm 2 chữ số mơ hồ, tuổi, âm lịch): không nhắc lại điều người gọi vừa nói
 ASK_DOB_INVALID = "Dạ, anh chị vui lòng cho em xin đủ ngày, tháng, năm sinh theo dương lịch ạ."

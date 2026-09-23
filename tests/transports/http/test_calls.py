@@ -240,6 +240,18 @@ def test_dob_turn_continues_same_session(client: TestClient, clinic: FakeClinicA
     assert clinic.writes == []
 
 
+def test_contact_then_reported_name_sentence_verifies_over_http(client, clinic) -> None:
+    _start(client, "c_spoken_identity")
+    contact = _turn(client, "c_spoken_identity", 1, "hú hú em ơi")
+    assert contact.status_code == 200
+    assert contact.json()["utterance"] == t.greeting_back("outbound")
+    name = _turn(client, "c_spoken_identity", 2, "à thì anh tên là Nguyễn Văn A nhé em")
+    assert name.status_code == 200 and name.json()["utterance"] == t.ASK_DOB
+    dob = _turn(client, "c_spoken_identity", 3, "14/03/1978")
+    assert dob.status_code == 200 and dob.json()["state"] == "AWAITING_INTENT"
+    assert not dob.json()["ended"] and clinic.writes == []
+
+
 def test_calls_do_not_share_state(client: TestClient) -> None:
     _start(client, "c_iso_a")
     _start(client, "c_iso_b")

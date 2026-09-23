@@ -1,8 +1,14 @@
 # NER tên — LLM gateway và few-shot
 
 NER bổ sung cho tầng luật khi bot đang hỏi tên (`ASK_NAME`). `InformationExtractor`
-chỉ gọi NER nếu luật chưa trích được tên và không có intent/clinical ưu tiên.
-NER không đánh giá lại tên đã được luật chấp nhận. Verifier vẫn quyết định danh tính.
+chỉ gọi NER nếu luật chưa hiểu (`NO_SIGNAL`) hoặc ứng viên còn lời nói chưa tách được
+(`UNRESOLVED_BOUNDARY`), và không có intent/clinical ưu tiên. Ứng viên có lời đệm không
+được luật chấp nhận làm tên. Tên sạch đã được luật nhận thì không gọi NER. Verifier vẫn
+quyết định danh tính; NER lỗi/tắt thì hỏi lại thay vì dùng ứng viên đáng ngờ.
+
+Các lỗi ranh giới tên, lời gọi/đáp máy và bộ 100 ca research nằm trong
+[rà soát họ tên và câu chào](identity-greeting-audit.md). Bộ ca ghi rõ cả lỗi còn tồn tại;
+không phải benchmark chất lượng model.
 
 Xem [LLM gateway](llm-gateway.md) để chọn OpenAI, Gemini, Groq hoặc OpenRouter,
 model mặc định của từng provider và cấu hình token budget.
@@ -11,7 +17,7 @@ model mặc định của từng provider và cấu hình token budget.
 
 - `extraction/fallback.py`: protocol và kiểm tra span chung cho các phương pháp fallback.
 - `callbot/engine/extraction/ner.py`: `NameNER`, gọi gateway, kiểm tra tên/span và chuyển thành `Field`.
-- `inference/llm/prompt/ner.py`: prompt `name_ner_v1` và 10 cặp few-shot với tên tổng hợp.
+- `inference/llm/prompt/ner.py`: prompt `name_ner_v3` và 18 cặp few-shot với tên tổng hợp.
 - `inference/llm/gateway.py`: `LLMGateway` và `create_gateway()`, chọn provider và kiểm tra JSON trả về.
 - `inference/llm/providers/base.py`: interface `StructuredProvider` và kết quả `StructuredReply` dùng chung.
 - `inference/llm/providers/`: adapter OpenAI, Gemini, Groq và OpenRouter.
@@ -32,6 +38,9 @@ NAME_FALLBACK_TIMEOUT_S=3.0
 OPENAI_API_KEY=<key>
 ```
 
+Với `gpt-6-luna` trên demo, đặt `NAME_FALLBACK_TIMEOUT_S=6.0` để các lượt phản hồi
+chậm hơn 3 giây không bị hỏi lại dù model vẫn có thể trả tên hợp lệ.
+
 Khởi động lại ứng dụng sau khi thay cấu hình. Thiếu key khi bật NER là lỗi khởi tạo;
 tắt NER không cần key. Các API key dùng `SecretStr`.
 
@@ -42,8 +51,10 @@ từ GitHub Variables. Docker Compose truyền các biến tới bot. Tắt/roll
 ## Request và kiểm tra output
 
 Mỗi lần fallback gửi prompt cố định cùng transcript hiện tại; không gửi hồ sơ bệnh
-nhân, lịch sử hội thoại hoặc dữ liệu lịch hẹn. Dùng `gpt-4o-mini`, temperature 0,
-giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema strict:
+nhân, lịch sử hội thoại hoặc dữ liệu lịch hẹn. Model mặc định là `gpt-4o-mini` với
+temperature 0; khi chọn `gpt-6-luna` hoặc `gpt-6-sol`, adapter bỏ `temperature`
+và dùng `reasoning_effort=none` để tương thích API và giảm độ trễ cuộc gọi.
+Giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema strict:
 
 ```json
 {"full_name": "Nguyễn Văn A", "span": "Nguyễn Văn A"}
@@ -55,8 +66,9 @@ chắn, chỉ nhắc người khác hoặc gặp chỉ dẫn giả mạo trong t
 thì chọn tên cuối cùng. Không thêm dấu hoặc sửa lỗi ASR.
 
 Sau model, adapter kiểm tra hai trường bằng nhau sau `clean()`, span xuất hiện
-trong transcript theo ranh giới từ và tên qua được `extract_full_name()` mà không
-bị thay đổi thêm. Kết quả hợp lệ dùng `Provenance.FALLBACK`, tên/span đã chuẩn hóa.
+trong transcript theo ranh giới từ và tên qua được `valid_name_span()` mà không
+bị thay đổi thêm. Hàm này kiểm tra đoạn tên mô hình đã chọn mà không cắt lại âm
+`Nha` ở cuối tên. Kết quả hợp lệ dùng `Provenance.FALLBACK`, tên/span đã chuẩn hóa.
 Span có thật chỉ chứng minh tên xuất hiện trong câu, không chứng minh model đã
 chọn đúng người; phần hiểu ngữ nghĩa vẫn cần đánh giá trên dữ liệu thực tế.
 
@@ -81,8 +93,10 @@ Test dùng HTTP mock để kiểm tra payload, timeout, lỗi, grounding, state 
 tên chuẩn hóa đến Verifier qua orchestrator. Fixture test tắt provider và xóa key
 bằng biến môi trường để `.env` của developer không kích hoạt request trả phí.
 
-Chưa triển khai evaluation/CLI và chưa đánh giá prompt bằng API thật. Test mock
-không chứng minh chất lượng trích xuất của model. Fallback vẫn tắt mặc định.
+CLI research: `python scripts/identity_eval.py` chạy chỉ luật; thêm `--ner` để gọi
+provider đang cấu hình và `--groups` để giới hạn tập ca. Probe thật ngày 2026-09-23 bị
+HTTP 401 `token_invalidated`, nên chưa có bằng chứng chất lượng model. Test mock
+chỉ chứng minh routing, kiểm tra span và hành vi khi lỗi. Fallback vẫn tắt mặc định.
 
 Tham chiếu API: [GPT-4o Mini](https://developers.openai.com/api/docs/models/gpt-4o-mini),
 [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
