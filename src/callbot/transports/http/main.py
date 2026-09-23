@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import monotonic
 from typing import Optional
 
 from fastapi import FastAPI
@@ -21,14 +22,18 @@ from callbot.engine import (
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
 from callbot.engine.tools.clinic_mock_client import ClinicMockClient
+from callbot.observability import JsonlSpanSource, MetricsQueryService
+from callbot.tracing import Tracer, create_tracer
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
-from callbot.transports.http.config import settings
+from callbot.transports.http.config import ObservabilityApiSettings, settings
 from callbot.transports.http.demo import router as demo_router
+from callbot.transports.http.observability import router as observability_router
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
 logger = logging.getLogger(__name__)
+_TRACE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 
 
 def _default_clinic() -> ClinicAPI:
@@ -61,26 +66,52 @@ def _default_call_mode() -> CallModeStore:
     return CallModeStore(client, key_prefix=config.redis_key_prefix, ttl_s=config.session_max_age_s)
 
 
+def _configure_observability(app: FastAPI, supplied: ObservabilityApiSettings | None) -> None:
+    """Register the opt-in internal router without risking core app startup."""
+    try:
+        config = supplied or ObservabilityApiSettings()
+        if not config.enabled:
+            return
+        configured = config.trace_dir.strip() or config.fallback_trace_dir.strip()
+        if not configured:
+            logger.warning("OBSERVABILITY_CONFIG_INVALID")
+            return
+        trace_dir = Path(configured)
+        app.state.observability_trace_dir = trace_dir
+        app.state.observability_service = MetricsQueryService(JsonlSpanSource(trace_dir))
+        app.include_router(observability_router)
+    except Exception:
+        logger.warning("OBSERVABILITY_CONFIG_INVALID")
+
+
 def create_app(
     clinic_factory: Callable[[], ClinicAPI] = _default_clinic,
     engine_settings: Optional[EngineSettings] = None,
     session_store_factory: Callable[[], SessionStore] = _default_session_store,
     speech_factory: Callable[[], SpeechBundle] = _default_speech,
     call_mode_factory: Callable[[], CallModeStore] = _default_call_mode,
+    tracer_factory: Callable[[], Tracer] = create_tracer,
+    observability_settings: ObservabilityApiSettings | None = None,
     cleanup_interval_s: float = 30.0,
     audio_retention_s: Optional[float] = None,
+    trace_shutdown_timeout_s: float = _TRACE_SHUTDOWN_TIMEOUT_SECONDS,
 ) -> FastAPI:
     if cleanup_interval_s <= 0:
         raise ValueError("cleanup_interval_s must be positive")
     if audio_retention_s is not None and audio_retention_s <= 0:
         raise ValueError("audio_retention_s must be positive")
+    if trace_shutdown_timeout_s <= 0:
+        raise ValueError("trace_shutdown_timeout_s must be positive")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        store = session_store_factory()
+        tracer = tracer_factory()
+        app.state.tracer = tracer
+        store = None
         clinic = None
         cleaner = None
         call_mode = None
+        speech = None
         stop = asyncio.Event()
         app.state.cleanup_healthy = True
         # Wav giữ đủ lâu để harness tải `audio_url` trong suốt cuộc gọi dài nhất có thể.
@@ -108,10 +139,11 @@ def create_app(
                     pass
 
         try:
+            store = session_store_factory()
             clinic = clinic_factory()
             app.state.session_store = store
             app.state.orchestrator = create_orchestrator(
-                clinic, engine_settings or EngineSettings(), store=store
+                clinic, engine_settings or EngineSettings(), tracer=tracer, store=store
             )
             speech = speech_factory()
             await asyncio.to_thread(warm_up, speech)
@@ -129,20 +161,64 @@ def create_app(
             stop.set()
             if cleaner is not None:
                 await cleaner
-            if call_mode is not None:
-                call_mode.close()
             try:
+                if speech is not None:
+                    for resource in (speech, speech.asr, speech.tts, speech.audio_store):
+                        close = getattr(resource, "close", None)
+                        if close is not None:
+                            try:
+                                await asyncio.to_thread(close)
+                            except Exception:
+                                logger.warning("SPEECH_RESOURCE_CLOSE_FAILED")
+                if call_mode is not None:
+                    try:
+                        await asyncio.to_thread(call_mode.close)
+                    except Exception:
+                        logger.warning("CALL_MODE_CLOSE_FAILED")
                 close = getattr(clinic, "close", None)
                 if close is not None:
-                    close()
+                    try:
+                        await asyncio.to_thread(close)
+                    except Exception:
+                        logger.warning("CLINIC_CLOSE_FAILED")
+                if store is not None:
+                    try:
+                        await asyncio.to_thread(store.close)
+                    except Exception:
+                        logger.warning("SESSION_STORE_CLOSE_FAILED")
             finally:
-                store.close()
+                deadline = monotonic() + trace_shutdown_timeout_s
+                try:
+                    remaining = max(0.0, deadline - monotonic())
+                    flushed = await asyncio.wait_for(
+                        asyncio.to_thread(tracer.flush, remaining), timeout=remaining
+                    )
+                    if not flushed:
+                        logger.warning("TRACE_FLUSH_INCOMPLETE")
+                except Exception:
+                    logger.warning("TRACE_FLUSH_FAILED")
+                try:
+                    remaining = max(0.0, deadline - monotonic())
+                    closed = await asyncio.wait_for(
+                        asyncio.to_thread(tracer.close, remaining), timeout=remaining
+                    )
+                    if not closed:
+                        logger.warning("TRACE_CLOSE_INCOMPLETE")
+                except Exception:
+                    logger.warning("TRACE_CLOSE_FAILED")
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
     app.include_router(calls_router)
     app.include_router(demo_router)
+    _configure_observability(app, observability_settings)
     demo_dir = Path(__file__).parent / "static"
     app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")
+    observability_ui_dir = Path(__file__).parent / "observability_static"
+    app.mount(
+        "/observability",
+        StaticFiles(directory=str(observability_ui_dir), html=True),
+        name="observability-dashboard",
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

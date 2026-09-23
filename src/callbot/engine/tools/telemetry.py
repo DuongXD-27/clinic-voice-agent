@@ -40,6 +40,10 @@ _records: ContextVar[Optional[list[ApiCallRecord]]] = ContextVar("clinic_api_cal
 @contextmanager
 def collect_api_calls() -> Iterator[list[ApiCallRecord]]:
     """Gom mọi lần gọi API trong khối `with` vào list trả về."""
+    active = _records.get()
+    if active is not None:
+        yield active
+        return
     records: list[ApiCallRecord] = []
     token = _records.set(records)
     try:
@@ -53,11 +57,10 @@ def record_api_call(record: ApiCallRecord) -> None:
     if records is not None:
         records.append(record)
     logger.debug(
-        "clinic %s %s -> %s %s %dms rid=%s",
+        "clinic operation=%s method=%s status=%s result=%s latency_ms=%d",
+        record.operation,
         record.method,
-        record.path,
         record.status,
         record.code or record.outcome,
         record.latency_ms,
-        record.request_id,
     )

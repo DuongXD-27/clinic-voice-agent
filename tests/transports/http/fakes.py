@@ -12,6 +12,7 @@ _SILENT_SEGMENT = AudioSegment(pcm=b"\x00\x00" * 100, sample_rate=8000)
 
 class FakeASR:
     name = "fake"
+    model = "fake-asr-v1"
     input_sample_rate = 16000
 
     def __init__(self, transcript: str = "") -> None:
@@ -29,6 +30,7 @@ class FakeASR:
 
 class FakeTTS:
     name = "fake"
+    model = "fake-tts-v1"
 
     def __init__(self, respond: bool = True, error: Optional[Exception] = None) -> None:
         self.respond = respond
