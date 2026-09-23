@@ -6,7 +6,10 @@ lại — cùng contract, tránh 2 bản lệch nhau.
 import asyncio
 
 import pytest
-from tests.transports.livekit.test_call_bridge_mapping import (
+
+pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
+
+from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
     _FakeAudioSource,
     _FakeOrchestrator,
     _FakeRoom,
@@ -14,9 +17,9 @@ from tests.transports.livekit.test_call_bridge_mapping import (
     _FakeTTS,
 )
 
-from callbot.engine.types import BotAction
-from callbot.transports.livekit.call_bridge import CallBridge
-from speech.turn.events import UserTurnCompleted
+from callbot.engine.types import BotAction  # noqa: E402
+from callbot.transports.livekit.call_bridge import CallBridge  # noqa: E402
+from speech.turn.events import UserTurnCompleted  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

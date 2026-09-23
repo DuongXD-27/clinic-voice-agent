@@ -2,14 +2,16 @@ import asyncio
 
 import pytest
 
-from callbot.engine.types import BotAction, CallerInput, CallStart
-from callbot.transports.livekit.call_bridge import (
+pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
+
+from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
+from callbot.transports.livekit.call_bridge import (  # noqa: E402
     CallBridge,
     call_start_from_room,
     caller_input_from_turn,
 )
-from speech.turn.events import UserTurnCompleted
-from speech.types import AudioSegment
+from speech.turn.events import UserTurnCompleted  # noqa: E402
+from speech.types import AudioSegment  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

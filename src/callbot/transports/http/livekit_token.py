@@ -77,8 +77,6 @@ def get_livekit_settings(request: Request) -> LiveKitSettings:
 
 @router.post("/token", response_model=LiveKitTokenResponse)
 def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitTokenResponse:
-    from livekit import api
-
     settings = get_livekit_settings(request)
     if not (settings.livekit_url and settings.livekit_api_key and settings.livekit_api_secret):
         raise HTTPException(
@@ -88,6 +86,12 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
                 "message": "LIVEKIT_URL/LIVEKIT_API_KEY/LIVEKIT_API_SECRET chưa cấu hình",
             },
         )
+
+    # Import trễ, sau khi đã xác nhận có cấu hình — package `livekit` (extra [livekit])
+    # không phải dependency bắt buộc của mọi môi trường (vd. CI mặc định chỉ cài
+    # [dev,speech]), route này phải trả đúng 503 khi CHƯA CẤU HÌNH thay vì raise
+    # ModuleNotFoundError mơ hồ khi package chưa cài.
+    from livekit import api
 
     room_name = payload.room_name or f"{settings.room_name_prefix}{uuid.uuid4()}"
     identity = f"web-{uuid.uuid4()}"
