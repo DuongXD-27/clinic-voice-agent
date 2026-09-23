@@ -5,8 +5,9 @@ WORKDIR /app
 # libgomp1: onnxruntime (dùng bởi sherpa-onnx) cần libgomp.so.1, không có sẵn trên slim.
 # libsndfile1: soundfile — wheel Linux thường đã bundle sẵn, giữ ở đây phòng bản
 # platform/kiến trúc nào đó không bundle.
+# curl: tải asset Silero VAD trực tiếp từ GitHub release (không có sẵn trên slim).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 libsndfile1 \
+    libgomp1 libsndfile1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Model gipformer1.5 bị .gitignore (nặng ~75MB/file) nên không có trong checkout git —
@@ -28,13 +29,22 @@ files = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt'];
 " && \
     rm -rf /root/.cache/huggingface /app/models/zipformer/.cache
 
+# Silero VAD (~600KB, không .gitignore vì nhỏ nhưng vẫn tải lúc build cho nhất quán với
+# gipformer1.5 ở trên) — dùng cho NoiseTracker (Speech Admission/Turn Validator, LUÔN
+# Silero bất kể VAD_PROVIDER) và tuỳ chọn làm VAD chính khi VAD_PROVIDER=silero (chưa phải
+# mặc định, xem docs/reference/livekit-merge-to-main.md). SILERO_VAD_MODEL_PATH trong
+# docker-compose*.yml phải trỏ đúng đường dẫn này.
+RUN mkdir -p /app/models/silero && \
+    curl -fL -o /app/models/silero/silero_vad.onnx \
+    https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+
 # Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
 # trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./
 RUN mkdir -p src/callbot src/clinic_mock_sim src/inference src/speech \
     && touch src/callbot/__init__.py src/clinic_mock_sim/__init__.py src/inference/__init__.py \
         src/speech/__init__.py \
-    && pip install --no-cache-dir ".[speech-zipformer,livekit,vad-webrtc]" \
+    && pip install --no-cache-dir ".[speech-zipformer,livekit,vad-webrtc,vad-silero]" \
     && rm -rf src
 
 COPY src ./src

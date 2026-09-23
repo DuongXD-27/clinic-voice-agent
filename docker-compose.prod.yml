@@ -84,6 +84,7 @@ services:
       ASR_PROVIDER: zipformer
       TTS_PROVIDER: ${TTS_PROVIDER:-openai}
       VAD_PROVIDER: ${VAD_PROVIDER:-webrtc}
+      SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx

@@ -1,8 +1,8 @@
 # Deploy sau khi merge nhánh LiveKit — cần gì, đổi model có sao không
 
 Ngắn gọn: **deploy bình thường không cần đổi gì**. Muốn bật tính năng mới (LiveKit thật,
-lọc hallucination, đổi VAD/model) thì mới cần sửa. Đổi model **không tự động có tác dụng**
-nếu chỉ sửa `.env` — phải sửa cả `Dockerfile`, xem mục 3.
+lọc hallucination, đổi VAD, đổi model) thì mới cần sửa `.env`. Riêng **đổi model ASR** thì
+sửa `.env` một mình **không có tác dụng** — phải sửa cả `Dockerfile`, xem mục 3.
 
 ## 1. Deploy không đổi gì (giữ nguyên hành vi cũ)
 
@@ -50,14 +50,22 @@ qua Docker (kể cả production) sẽ dùng nhầm model cũ dù local test b�
 **Sau khi đổi Dockerfile, bắt buộc phải build lại image** (không tự động) — merge PR vào
 `main` sẽ tự trigger build mới qua CD, nên chỉ cần đổi trong nhánh trước khi merge là đủ.
 
-### Đổi VAD sang Silero — cần thêm 1 bước nữa
+### Đổi VAD sang Silero — asset đã đóng gói sẵn, chỉ cần đổi `.env`
 
-`VAD_PROVIDER=silero` cần file `silero_vad.onnx` — package Python (`sherpa-onnx`) đã có
-sẵn trong image, nhưng **file model đó chưa được Dockerfile tải** (khác ZipFormer). Đặt
-`VAD_PROVIDER=silero` trên production bây giờ **sẽ crash lúc runtime** vì thiếu file. Cần
-thêm 1 bước tải file này vào `Dockerfile` (giống cách ZipFormer được tải) trước khi dùng
-được trên production — hiện tại `VAD_PROVIDER=silero` mới chỉ chạy được ở máy dev (tự tải
-tay theo hướng dẫn trong `.env.example`).
+`VAD_PROVIDER=silero` cần file `silero_vad.onnx` — image giờ tự tải file này lúc build
+(`Dockerfile`, từ GitHub release `k2-fsa/sherpa-onnx`) vào `/app/models/silero/`, và
+`docker-compose.yml`/`docker-compose.prod.yml` đã set `SILERO_VAD_MODEL_PATH` trỏ đúng
+đường dẫn đó cho service `livekit-worker`. Không cần sửa gì thêm ở Docker — muốn bật
+Silero làm VAD chính trên production chỉ cần thêm vào `.env` server:
+
+```bash
+VAD_PROVIDER=silero
+```
+
+Không cần build lại image (asset đã có sẵn trong mọi image build từ giờ), chỉ cần restart
+service. **Lưu ý:** đây vẫn là tính năng opt-in, chưa phải mặc định — cần thêm dữ liệu thật
+đa dạng môi trường trước khi coi là ổn định cho mọi call (xem báo cáo đối chiếu Silero vs
+WebRTC trong `docs/evidence/`).
 
 ## 4. Bật các lớp chặn hallucination (Speech Admission / Turn Validator)
 
@@ -80,7 +88,7 @@ container khởi động. Restart service là đủ.
 | Bật LiveKit thật | `.env` trên server | Không |
 | Bật chặn hallucination (Admission/Validator) | `.env` trên server | Không |
 | Đổi model ZipFormer sang bản khác | `Dockerfile` (+ `docker-compose.prod.yml` nếu tên file đổi) | **Có** |
-| Đổi VAD chính sang Silero | `Dockerfile` (thêm tải asset) rồi mới đổi `.env` | **Có** |
+| Đổi VAD chính sang Silero | `.env` trên server (asset đã đóng gói sẵn trong image) | Không |
 | Đổi ngưỡng SNR/thời lượng turn | `.env` trên server | Không |
 
 ## 6. Việc khác cần biết sau merge (không liên quan deploy)
