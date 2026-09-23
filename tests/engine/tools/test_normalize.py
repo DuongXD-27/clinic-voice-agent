@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from callbot.engine.errors import ClinicAPIError
+from callbot.engine.errors import ClinicAPIError, ClinicInvalidResponse
 from callbot.engine.tools.normalize import (
     iso_local,
     normalize_appointment,
@@ -91,9 +91,33 @@ def test_appointment_coerces_ints_and_verify_block() -> None:
     assert appointment["patient"]["verify"] is None
 
 
-def test_appointment_missing_version_is_bad_response() -> None:
-    with pytest.raises(ClinicAPIError):
-        normalize_appointment({"appointment_id": "apt_1", "status": "SCHEDULED"})
+STARTS_AT = "2026-10-14T09:00:00+07:00"
+
+
+def test_appointment_missing_version_is_invalid_response() -> None:
+    with pytest.raises(ClinicInvalidResponse):
+        normalize_appointment(
+            {"appointment_id": "apt_1", "status": "SCHEDULED", "starts_at": STARTS_AT}
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"starts_at": None},
+        {"starts_at": "14/10/2026 09:00"},
+        {"status": "PENDING"},
+        {"status": ["SCHEDULED"]},
+        {"version": "v3"},
+        {"version": True},
+        {"version": -1},
+        {"appointment_id": ""},
+    ],
+)
+def test_appointment_with_wrong_required_data_is_invalid_response(change) -> None:
+    raw = {"appointment_id": "apt_1", "status": "SCHEDULED", "starts_at": STARTS_AT, "version": 3}
+    with pytest.raises(ClinicInvalidResponse):
+        normalize_appointment({**raw, **change})
 
 
 def test_parse_iso_date_is_fail_closed() -> None:

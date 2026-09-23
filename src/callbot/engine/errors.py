@@ -3,11 +3,20 @@
 Tách khỏi session/ và tools/ để hai package cùng raise mà không import vòng.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from callbot.engine.diagnostics import TurnDiagnostics
 
 
 class EngineError(Exception):
-    pass
+    # Orchestrator / SessionManager gắn chẩn đoán KHÔNG chứa PII của lượt gây lỗi (transport đọc cho demo)
+    diagnostics: Optional["TurnDiagnostics"] = None
+    # Lý do chuyển máy đang được ghi khi lỗi xảy ra — chỉ để chẩn đoán, không phải bằng chứng đã chuyển
+    transfer_reason: Optional[str] = None
+    # Trace extraction của lượt lỗi — CÓ transcript / span, chỉ để trang demo hiển thị. Chỉ sống trong
+    # bộ nhớ của request; không bao giờ vào session store.
+    extraction: Optional[dict[str, Any]] = None
 
 
 # --- Phiên và thứ tự lượt ---------------------------------------------------------
@@ -109,6 +118,35 @@ class ClinicWriteRejected(EngineError):
 
 class SlotTaken(ClinicWriteRejected):
     pass
+
+
+# --- Lịch hẹn không dùng được -----------------------------------------------------------
+
+
+class AppointmentUnusable(EngineError):
+    """Lịch hẹn không dùng được cho thao tác đang làm; gửi lại cũng không khác.
+
+    Không chặn lượt: như mọi lỗi nghiệp vụ, orchestrator chuyển máy SYSTEM_ERROR để nhân viên xử lý.
+    `cause_code`: mã gốc (mã Clinic) — chỉ dùng cho chẩn đoán.
+    """
+
+    code = "APPOINTMENT_UNUSABLE"
+
+    def __init__(self, cause_code: Optional[str] = None) -> None:
+        self.cause_code = cause_code
+        super().__init__(f"{self.code} ({cause_code})" if cause_code else self.code)
+
+
+class ClinicInvalidResponse(AppointmentUnusable):
+    """Phản hồi đọc lịch thiếu / sai dữ liệu bắt buộc."""
+
+    code = "CLINIC_INVALID_RESPONSE"
+
+
+class AppointmentNotActionable(AppointmentUnusable):
+    """Lịch đã ở trạng thái kết thúc hoặc Clinic từ chối vì lifecycle đã thay đổi."""
+
+    code = "APPOINTMENT_NOT_ACTIONABLE"
 
 
 # Orchestrator không được biến các lỗi này thành chuyển máy SYSTEM_ERROR: chuyển máy là một lệnh

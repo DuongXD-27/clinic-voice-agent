@@ -15,11 +15,13 @@ from tests.transports.http.fakes import make_speech_bundle
 
 @pytest.fixture(autouse=True)
 def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) -> None:
-    """A developer's .env must never turn unit tests into paid NER requests."""
+    """A developer's .env must never turn unit tests into paid NER or semantic requests."""
     monkeypatch.setenv("NAME_FALLBACK_PROVIDER", "none")
     monkeypatch.setenv("NAME_FALLBACK_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("NAME_FALLBACK_TIMEOUT_S", "3.0")
     monkeypatch.setenv("NAME_FALLBACK_MAX_TOKENS", "")
+    # T-05 §8: tests that need the layer inject a fake extractor; nothing here calls OpenAI.
+    monkeypatch.setenv("SEMANTIC_FALLBACK_ENABLED", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setattr(engine_module, "_default_session_store", redis_store_factory)
 

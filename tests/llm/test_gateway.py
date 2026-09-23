@@ -61,6 +61,28 @@ def generate(gateway, **kwargs):
     )
 
 
+@pytest.mark.parametrize(
+    "model,effort", [("gpt-6-luna", "none"), ("gpt-6-sol", "none"), ("gpt-6-astra", None)]
+)
+def test_gpt_6_omits_unsupported_temperature(model, effort):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json=response_body("openai"))
+
+    gateway, _ = mocked_gateway("openai", handle, model=model)
+    assert generate(gateway).status == "completed"
+    payload = json.loads(requests[0].content)
+    assert payload["model"] == model
+    assert "temperature" not in payload
+    if effort is None:
+        assert "reasoning_effort" not in payload
+    else:
+        assert payload["reasoning_effort"] == effort
+    assert payload["store"] is False
+
+
 @pytest.mark.parametrize("provider", CONFIGS)
 def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
     requests = []

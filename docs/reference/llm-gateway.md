@@ -1,9 +1,10 @@
 # LLM gateway
 
-`src/inference/llm/gateway.py` là điểm gọi chung cho structured generation, hiện dùng cho NER:
+`src/inference/llm/gateway.py` là điểm gọi chung cho structured generation, hiện có hai người dùng:
 
 ```text
-NameNER → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
+NameNER              → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
+LLMSemanticExtractor → LLMGateway → OpenAI (gpt-4o-mini, cố định trong đợt T-05)
 ```
 
 Gateway chọn đúng một provider; không retry, không tự failover. Prompt và provider
@@ -36,6 +37,28 @@ giữ token budget cho JSON. Không trộn thought parts vào nội dung kết q
 OpenAI/Groq dùng Chat Completions với strict JSON Schema. Groq GPT-OSS dùng
 `reasoning_effort=low`. OpenRouter dùng `max_tokens` và yêu cầu endpoint hỗ trợ đủ
 tham số (`require_parameters=true`), tắt fallback giữa upstream endpoints.
+
+## Cấu hình tầng ngữ nghĩa (T-05)
+
+Tách hẳn khỏi `NAME_FALLBACK_*`: đổi provider/model của NER **không** đổi tầng ngữ nghĩa và ngược lại.
+Factory (`callbot.engine._semantic_extractor`) dựng `OpenAIConfig` với `model`, `timeout_s`,
+`max_completion_tokens` truyền **tường minh**; pydantic-settings ưu tiên init kwargs hơn
+`validation_alias` của env, và `tests/llm/test_semantic_config.py` khoá hành vi đó.
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu `OPENAI_API_KEY` → tự về chỉ-luật, không chặn khởi động |
+| `SEMANTIC_FALLBACK_MODEL` | `gpt-4o-mini` | Provider cố định OpenAI trong đợt này |
+| `SEMANTIC_FALLBACK_TIMEOUT_S` | `2.0` | Timeout **từng pha** của HTTPX, không phải deadline tổng lượt |
+| `SEMANTIC_FALLBACK_MAX_TOKENS` | `400` | Không dùng ngầm mặc định 200 của NER |
+| `SEMANTIC_FALLBACK_MAX_INPUT_CHARS` | `1500` | Vượt giới hạn → hỏi ngắn lại, **không** âm thầm cắt (cắt có thể mất lời phủ định) |
+
+Tối đa **một** request cho mỗi lượt; không retry, không tự đổi model. Mọi lỗi provider (timeout,
+429/5xx, refusal, JSON thiếu, sai schema, response bị cắt) trả `None` → Dialogue đi nhánh hỏi lại.
+Lỗi model không bao giờ thành lỗi Clinic hay `/transfer SYSTEM_ERROR`.
+
+Trace kỹ thuật ghi route reason, model, prompt version, status, elapsed và usage; **không** log
+khóa, prompt hay transcript.
 
 ## Gọi từ code
 

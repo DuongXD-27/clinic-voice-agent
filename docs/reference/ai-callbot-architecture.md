@@ -116,7 +116,7 @@ Trong HTTP audio mode, `audio_url` phải sẵn sàng khi trả phản hồi và
 
 ## 3. Luồng nghiệp vụ Inbound và Outbound
 
-Hai luồng dưới đây mô tả nghiệp vụ đích, đối chiếu [contract Rev 1.1 §1–§4 và Phụ lục A](https://callbot-contract-site-rev11.vercel.app/#s1) ngày 18/09/2026. Contract có bảy nhóm tình huống: xác minh danh tính, xác nhận đến khám, hủy, chuyển nhân viên, đổi lịch, không liên lạc được và đặt lịch mới. Inbound chỉ hỗ trợ đặt lịch mới; Outbound xử lý lịch hẹn có sẵn.
+Hai luồng dưới đây mô tả nghiệp vụ đích, đối chiếu contract Rev 1.1 §1–§4 và Phụ lục A ngày 18/09/2026. Contract có bảy nhóm tình huống: xác minh danh tính, xác nhận đến khám, hủy, chuyển nhân viên, đổi lịch, không liên lạc được và đặt lịch mới. Inbound chỉ hỗ trợ đặt lịch mới; Outbound xử lý lịch hẹn có sẵn.
 
 Mọi lượt chờ người gọi trả lời đều đi qua kiểm tra ngoại lệ ở mục 3.3, kể cả khi chưa xác minh danh tính. Mọi API đọc/ghi đều áp dụng xử lý lỗi ở mục 4. Các nút “thành công” chỉ được đi tới sau khi Mock xác nhận; không suy ra thành công từ lời người gọi hoặc trạng thái hội thoại.
 
@@ -328,9 +328,9 @@ Khi `ended=true`, `outcome` phải thuộc đúng bảy trạng thái contract: 
 | `404 NOT_FOUND` | Không ghi sang một lịch khác để thay thế; xử lý `SYSTEM_ERROR` khi tài nguyên cần thiết không tồn tại. Riêng tra cứu Inbound thành công nhưng không có đúng một hồ sơ đi nhánh `PATIENT_NOT_FOUND`. |
 | `429 RATE_LIMITED` / `503 UPSTREAM` | Có thể thử lại có giới hạn theo chính sách vận hành; giữ khóa cho cùng thao tác và bảo đảm thời hạn phản hồi HTTP. Không khôi phục được thì xử lý `SYSTEM_ERROR`. Contract không ấn định số lần hay khoảng chờ retry. |
 | Timeout / mất phản hồi khi ghi | Kết quả chưa rõ không đồng nghĩa ghi thất bại. Đối soát/thử lại cùng thao tác với cùng khóa; không tạo lịch Inbound thứ hai, không tăng số lần liên lạc lần nữa, không thông báo thành công khi chưa có bằng chứng. |
-| Không thể ghi `/transfer` hoặc `/unreachable` | Bàn giao lỗi hệ thống cho nhân viên/vận hành, giữ trace để đối soát; không tuyên bố Mock đã có `TRANSFERRED`/`UNREACHABLE`. Contract không định nghĩa một outcome lỗi riêng hay quy trình dự phòng khi Mock mất hoàn toàn; đây không phải nhánh hoàn tất nghiệp vụ thành công. |
+| Không thể ghi `/transfer` hoặc `/unreachable` | `/unreachable` bị từ chối → ghi `/transfer` với `SYSTEM_ERROR`, không báo `UNREACHABLE`. `/transfer` bị từ chối, lịch không còn ở trạng thái thao tác được, hoặc Clinic trả dữ liệu lịch hỏng → vẫn trả `outcome=TRANSFERRED` để nhân viên xử lý (Clinic lỗi không có nghĩa nhân viên không xử lý được); ghi log để vận hành đối soát, vì Mock có thể không có `TRANSFERRED`. Chỉ lệnh ghi chưa rõ kết quả (timeout, 2xx sai trạng thái) mới chặn lượt `409 CALL_RECONCILIATION_REQUIRED`. Contract không định nghĩa một outcome lỗi riêng. |
 
-Giữ nguyên khóa khi thử lại cùng một thao tác; nếu người gọi chọn khung giờ khác hoặc xác nhận một hành động mới thì đó là thao tác mới, không dùng lại khóa với payload khác. Cách phục hồi các lỗi ngoài ví dụ `SLOT_TAKEN` và `/unreachable` là chính sách thiết kế; danh sách mã lỗi lấy từ [Phụ lục A](https://callbot-contract-site-rev11.vercel.app/#sa).
+Giữ nguyên khóa khi thử lại cùng một thao tác; nếu người gọi chọn khung giờ khác hoặc xác nhận một hành động mới thì đó là thao tác mới, không dùng lại khóa với payload khác. Cách phục hồi các lỗi ngoài ví dụ `SLOT_TAKEN` và `/unreachable` là chính sách thiết kế; danh sách mã lỗi lấy từ Phụ lục A.
 
 ### 4.3. Các ràng buộc xuyên suốt và kiểm tra kết quả
 
@@ -347,8 +347,8 @@ Chỉ dùng dữ liệu tổng hợp do chương trình cung cấp, kể cả ki
 | [HTTP router](../../src/callbot/transports/http/calls.py) | Hai endpoint gọi `CallOrchestrator` thật (F-02, [evidence](../evidence/f02-http-engine.md)); chỉ text mode, `mode=audio` trả 501. Mã lỗi thứ tự lượt / đối soát: [http-api.md](http-api.md). |
 | [Session Manager](../../src/callbot/engine/session/manager.py) | Redis tạm thời, TTL, khóa theo `call_id`, replay, nhật ký lệnh Clinic và xóa nội dung sau khi ghi Clinic (F-03, [evidence](../evidence/f03-session-store.md), [vận hành](session-operations.md)). |
 | [Call Orchestrator](../../src/callbot/engine/orchestrator.py) | Điều phối lượt với `extraction.InformationExtractor`; `engine/nlu` đã xoá (F-04, [evidence](../evidence/f04-information-extraction-http.md)). |
-| [Information Extraction](../../src/callbot/engine/extraction/extractor.py) | Nối vào Orchestrator; IE chỉ nhận `TurnContext` (không hồ sơ bệnh nhân). NER tên few-shot gọi [LLM gateway](llm-gateway.md), chọn OpenAI/Gemini/Groq/OpenRouter, tắt mặc định ([hướng dẫn](name-ner.md)); fallback intent/agreement chưa có adapter. |
-| [Dialogue Manager](../../src/callbot/engine/dialogue/manager.py) | Điều phối theo `question_id`, `agreement`, `slot_choice`; bằng chứng xác nhận; `SLOT_TAKEN` đề xuất lại. Bước danh tính (T-02, [evidence](../evidence/t02-identity-dialogue.md)): lượt 0 rẽ nhánh theo tra cứu hồ sơ, nhận tên + ngày sinh gộp / ngày sinh trước, câu hỏi lại riêng cho ngày sinh không hợp lệ. Xác nhận đến khám (T-04, [evidence](../evidence/t04-confirm-dialogue.md)): đọc lại ngày, giờ, tên cơ sở (bảng `clinic_id → tên`); khẳng định sẽ đến / "vâng" là đồng ý, ngập ngừng thì đọc lại; báo `CONFIRMED` bằng bản ghi Mock trả về, status khác → chặn đối soát; inbound xin xác nhận lịch → chuyển `OUT_OF_SCOPE`. Im lặng / tín hiệu đường dây (T-08, [evidence](../evidence/t08-silence-line-signal.md)): nhắc im lặng hỏi lại câu đang chờ; AGREE cho câu hỏi không ở lượt ngay trước → chưa rõ, hỏi lại. Chưa dùng LLM. |
+| [Information Extraction](../../src/callbot/engine/extraction/extractor.py) | Nối vào Orchestrator; IE chỉ nhận `TurnContext` (không hồ sơ bệnh nhân). NER tên few-shot gọi [LLM gateway](llm-gateway.md), chọn OpenAI/Gemini/Groq/OpenRouter, tắt mặc định ([hướng dẫn](name-ner.md)); fallback intent/agreement chưa có adapter. Tầng ngữ nghĩa T-05 ([plan §8](../plans/t05-cancel-dialogue.md)): router quyết định gọi `gpt-4o-mini` đúng một lần mỗi lượt cho các câu hủy / ý định mà luật đọc sai hoặc không đọc được; kết quả chỉ làm rõ lý do và đổi ý, không nâng ngưỡng ghi. Mặc định bật; thiếu `OPENAI_API_KEY` thì chỉ dùng luật. |
+| [Dialogue Manager](../../src/callbot/engine/dialogue/manager.py) | Điều phối theo `question_id`, `agreement`, `slot_choice`; bằng chứng xác nhận; `SLOT_TAKEN` đề xuất lại. Bước danh tính (T-02, [evidence](../evidence/t02-identity-dialogue.md)): lượt 0 rẽ nhánh theo tra cứu hồ sơ, nhận tên + ngày sinh gộp / ngày sinh trước, câu hỏi lại riêng cho ngày sinh không hợp lệ. Xác nhận đến khám (T-04, [evidence](../evidence/t04-confirm-dialogue.md)): đọc lại ngày, giờ, tên cơ sở (bảng `clinic_id → tên`); khẳng định sẽ đến / "vâng" là đồng ý, ngập ngừng thì đọc lại; báo `CONFIRMED` bằng bản ghi Mock trả về, status khác → chặn đối soát; inbound xin xác nhận lịch → chuyển `OUT_OF_SCOPE`. Hủy lịch (T-05, [evidence](../evidence/t05-cancel-dialogue.md)): yêu cầu và xác nhận ở hai lượt khác nhau; lý do nhận ở mọi lượt và bị xoá khi rời nhánh hủy; "không hủy nữa, tôi muốn đổi lịch" đi nhánh đổi lịch; báo `CANCELLED` chỉ khi bản ghi Mock trả về ở `CANCELLED`, status khác → chặn đối soát. Im lặng / tín hiệu đường dây (T-08, [evidence](../evidence/t08-silence-line-signal.md)): nhắc im lặng hỏi lại câu đang chờ; AGREE cho câu hỏi không ở lượt ngay trước → chưa rõ, hỏi lại. Chưa dùng LLM. |
 | [Identity Verifier](../../src/callbot/engine/verification/identity.py) | T-01 ([evidence](../evidence/t01-identity-verifier.md)): hai pha theo luồng PDF — `prepare()` ở lượt 0 chuẩn hóa số gọi đến, đọc hồ sơ qua Gateway (lần duy nhất), giữ `{patient_id, full_name, dob}` trong `CallContext.identity_reference`; `verify()` đối chiếu không I/O, inbound đòi đúng một hồ sơ khớp cả hai. Nhánh "không có ứng viên → không hỏi tên" chờ T-02 nối `PrepareResult.transfer_reason` vào `opening()`. |
 | [Policy](../../src/callbot/engine/policy/policy_engine.py) | Bộ đếm theo thiết kế IE §6.1; im lặng: outbound `UNREACHABLE`, inbound chuyển máy. Danh tính dùng chung ngưỡng §1.1.5 (IE §6.2); không nhớ / không cung cấp hai lần → `IDENTITY_FAILED`; tra cứu lượt 0 thất bại → chuyển máy ở lượt 1. |
 | [Clinic Gateway](../../src/callbot/engine/tools/clinic_gateway.py) | Kiểm tra FSM + guardrail + bằng chứng trước mọi lệnh ghi; có `/unreachable`, hủy gửi `confirmed=true`. F-05 ([evidence](../evidence/f05-clinic-gateway.md)): đọc hết trang, chuẩn hóa slot/patient/appointment, lỗi ba lớp không lộ `httpx`, `FakeClinicAPI` hành xử như mock, contract test fake ↔ mock thật. |
@@ -359,11 +359,11 @@ Chỉ dùng dữ liệu tổng hợp do chương trình cung cấp, kể cả ki
 
 ## 6. Tài liệu đối chiếu
 
-- [Hợp đồng — phạm vi và hai kênh dùng chung lõi](https://callbot-contract-site-rev11.vercel.app/#s1).
-- [Hợp đồng — trạng thái kết thúc và cách chấm Inbound chuyển máy](https://callbot-contract-site-rev11.vercel.app/#s2).
-- [Hợp đồng — năm lỗi nghiêm trọng SF-01–SF-05](https://callbot-contract-site-rev11.vercel.app/#s3).
-- [Hợp đồng — API, trạng thái và thao tác unreachable](https://callbot-contract-site-rev11.vercel.app/#s4).
-- [Hợp đồng — enum và mã lỗi](https://callbot-contract-site-rev11.vercel.app/#sa).
-- [Hợp đồng — thay đổi Rev 1.1](https://callbot-contract-site-rev11.vercel.app/#sc).
+- Hợp đồng Rev 1.1 §1 — phạm vi và hai kênh dùng chung lõi.
+- Hợp đồng Rev 1.1 §2 — trạng thái kết thúc và cách chấm Inbound chuyển máy.
+- Hợp đồng Rev 1.1 §3 — năm lỗi nghiêm trọng SF-01–SF-05.
+- Hợp đồng Rev 1.1 §4 — API, trạng thái và thao tác unreachable.
+- Hợp đồng Rev 1.1 Phụ lục A — enum và mã lỗi.
+- Hợp đồng Rev 1.1 Phụ lục C — thay đổi so với Rev 1.0.
 - [Thiết kế Information Extraction](information-extraction-design.md).
 - [Tài liệu Clinic Mock](clinic-mock.md).

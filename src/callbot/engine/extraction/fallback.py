@@ -1,6 +1,7 @@
 """Tuyến sau (NER / LLM tập nhãn đóng) — thiết kế v1.1 §4, §5.1, §5.4.
 
-Chỉ gọi khi tầng luật cho kết quả "không có tín hiệu" (`Provenance.NONE`). Mọi kết quả
+Chỉ gọi khi tầng luật chưa hiểu hoặc chưa tách chắc ranh giới tên (`Provenance.NONE`),
+không dùng để lật kết luận phủ định / phân vân / thông tin người khác. Mọi kết quả
 tuyến sau đi qua `guard_fallback` — chốt chặn chống bịa đặt không phụ thuộc điểm tin cậy của mô hình:
 `span` phải là chuỗi con của transcript sau chuẩn hoá, không thì coi như NONE.
 

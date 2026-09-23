@@ -16,6 +16,7 @@ Thứ tự trong một lượt:
 8. cancel_reason — khi đang hủy.
 """
 
+import logging
 from typing import Optional
 
 from callbot.engine.extraction.agreement import extract_agreement
@@ -23,7 +24,14 @@ from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import read_dob
 from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
-from callbot.engine.extraction.full_name import name_after_dob, name_before_dob, read_full_name
+from callbot.engine.extraction.full_name import (
+    MIN_WORDS_AFTER_HONORIFIC,
+    name_after_dob,
+    name_before_dob,
+    read_full_name,
+    valid_name_span,
+)
+from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
@@ -40,8 +48,16 @@ from callbot.engine.extraction.schema import (
     QuestionId,
     TurnContext,
 )
+from callbot.engine.extraction.semantic import SemanticExtractor
+from callbot.engine.extraction.semantic_router import (
+    RouteReason,
+    build_semantic_context,
+    merge_semantic,
+    route_semantic,
+)
 from callbot.engine.extraction.slot_choice import extract_slot_choice
 from callbot.engine.extraction.text import clean
+from callbot.engine.types import CancelReason
 
 # Ở bước hỏi tên / ngày sinh không chạy intent nghiệp vụ: "Lê Văn Thôi", "Trần Văn Được" không được
 # thành REFUSE / CONFIRM. Chỉ giữ nhãn cần cho an toàn hoặc để không đọc nhầm câu thành tên:
@@ -66,6 +82,8 @@ _IDENTITY_FALLBACK_INTENTS = frozenset(
     }
 )
 
+logger = logging.getLogger(__name__)
+
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
 
 # Intent không mâu thuẫn với câu hỏi xác nhận. Intent khác (vd. RESCHEDULE khi đang xác nhận hủy)
@@ -81,13 +99,45 @@ _CONSISTENT_INTENTS: dict[QuestionId, frozenset[Intent]] = {
 _CANCEL_QUESTIONS = frozenset({QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_CANCEL_REASON})
 
 
+def _resolve_refusal_inside_reason(
+    question: Optional[QuestionId],
+    agreement: Field[Agreement],
+    cancel_reason: Field[CancelReason],
+) -> Field[Agreement]:
+    """ "tôi không đủ tiền" ở câu xác nhận hủy: chữ "không" thuộc về LÝ DO, không phải lời từ chối.
+
+    Luật agreement chỉ nhìn từ khóa nên trả REFUSE và Dialogue sẽ bỏ hủy, mất luôn lý do. Khi đoạn
+    làm nên REFUSE nằm gọn trong đoạn làm nên reason, lượt này là lượt chỉ nêu lý do: trả về "không
+    có tín hiệu đồng ý" để Dialogue ghi nhận lý do rồi hỏi lại (T-05 §8.3.1, §8.3.4).
+
+    Lời từ chối tường minh vẫn thắng: "không hủy nữa, dù tôi không đủ tiền" có đoạn REFUSE là
+    "không hủy nữa", không nằm trong "không đủ tiền" — giữ nguyên REFUSE.
+    """
+    if question is not QuestionId.CANCEL_RECONFIRM or agreement.value is not Agreement.REFUSE:
+        return agreement
+    if not cancel_reason.found or not agreement.span or not cancel_reason.span:
+        return agreement
+    if not _within(cancel_reason.span, agreement.span):
+        return agreement
+    return Field.nothing(Agreement.UNCLEAR)
+
+
+def _within(outer: str, inner: str) -> bool:
+    return f" {inner} " in f" {outer} "
+
+
 class InformationExtractor:
     def __init__(
-        self, fallback: Optional[FallbackExtractor] = None, name_fallback: bool = False
+        self,
+        fallback: Optional[FallbackExtractor] = None,
+        name_fallback: bool = False,
+        semantic: Optional[SemanticExtractor] = None,
     ) -> None:
         self._fallback = fallback
         # Factory bật NER theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
         self._name_fallback = name_fallback
+        # Factory bật tầng ngữ nghĩa theo SEMANTIC_FALLBACK_ENABLED; mặc định bật, thiếu OPENAI_API_KEY thì None.
+        self._semantic = semantic
 
     def extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
@@ -164,7 +214,17 @@ class InformationExtractor:
         if question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
             cancel_reason = extract_cancel_reason(transcript)
 
-        return ExtractionResult(
+        # Rule của mọi trường liên quan đã chạy xong: giờ mới thấy được xung đột giữa chúng.
+        agreement = _resolve_refusal_inside_reason(question, agreement, cancel_reason)
+        route_reason = route_semantic(
+            question_id=question,
+            transcript=transcript,
+            intent=intent,
+            clinical=clinical,
+            agreement=agreement,
+            cancel_reason=cancel_reason,
+        )
+        result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
             transcript=transcript,
@@ -177,6 +237,22 @@ class InformationExtractor:
             cancel_reason=cancel_reason,
             line_signal=line_signal,
         )
+        if route_reason is None or self._semantic is None:
+            return result
+        return self._apply_semantic(ctx, result, route_reason)
+
+    def _apply_semantic(
+        self, ctx: TurnContext, result: ExtractionResult, route_reason: RouteReason
+    ) -> ExtractionResult:
+        """Một lần gọi model cho cả lượt; kết quả hợp nhất theo bảng quyền ở `semantic.merge`."""
+        assert self._semantic is not None
+        context = build_semantic_context(ctx, result, route_reason)
+        try:
+            outcome = self._semantic.analyze(context)
+        except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
+            logger.warning("Tầng ngữ nghĩa lỗi, dùng kết quả thận trọng", exc_info=False)
+            outcome = None
+        return merge_semantic(result, outcome, route_reason, context.allowed_intents)
 
     # --- Từng trường có tuyến sau ------------------------------------------------
 
@@ -200,15 +276,29 @@ class InformationExtractor:
         # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
         # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
         # Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
-        if reading.field.found or reading.reason is not Reason.NO_SIGNAL:
+        if reading.field.found or reading.reason not in (
+            Reason.NO_SIGNAL,
+            Reason.UNRESOLVED_BOUNDARY,
+        ):
             return reading.field
         if not self._name_fallback or self._fallback is None:
             return Field.nothing()
-        guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
+        logger.info("Name fallback route: %s", reading.reason.value)
+        try:
+            guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
+        except Exception:  # adapter lỗi cũng không được khôi phục ứng viên tên đáng ngờ
+            logger.warning("Name fallback failed; requesting the name again", exc_info=False)
+            return Field.nothing()
         # Tên do NER trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
         # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
         if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()
+        if guarded.found and guarded.value:
+            # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
+            name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
+            if not valid_name_span(name):
+                return Field.nothing()
+            return Field(name, guarded.provenance, span=guarded.span)
         return guarded
 
     def _agreement(

@@ -320,7 +320,7 @@ def test_outbound_three_silent_turns_marks_unreachable() -> None:
     assert clinic.appointments["apt_00417"]["attempt_count"] == 1
 
 
-def test_rejected_unreachable_write_does_not_report_success() -> None:
+def test_rejected_unreachable_write_transfers_instead_of_reporting_success() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
     clinic.fail_next("mark_unreachable", clinic_error(409, "VERSION_CONFLICT"))
@@ -328,17 +328,11 @@ def test_rejected_unreachable_write_does_not_report_success() -> None:
     bot.start_call(_outbound("c_unreachable_rejected"))
 
     action = _run(bot, "c_unreachable_rejected", [SILENCE, SILENCE, SILENCE])
-    session = bot.sessions.store.get_session("c_unreachable_rejected")
     appointment = clinic.appointments["apt_00417"]
 
-    assert appointment["status"] == "SCHEDULED"
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
     assert appointment["attempt_count"] == 0
-    assert clinic.writes == []
-    assert session is not None and session.ended
-    assert session.context == {}
-    assert action.outcome != "UNREACHABLE", (
-        f"mutation rejected but BotAction=({action.state}, {action.outcome})"
-    )
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "SYSTEM_ERROR"})]
 
 
 def test_inbound_silence_transfers_without_booking() -> None:
@@ -400,6 +394,9 @@ def test_extractor_never_sees_patient_identity() -> None:
     # Người gọi nói sai tên: không được "sửa" theo hồ sơ
     _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
 
+    # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
+    # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
+    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn.
     assert {f.name for f in fields(TurnContext)} == {
         "turn",
         "question_id",
@@ -407,6 +404,8 @@ def test_extractor_never_sees_patient_identity() -> None:
         "now",
         "slots",
         "presented_slot_ids",
+        "pending_action",
+        "question_turn",
     }
     verify = clinic.appointments["apt_00417"]["patient"]["verify"]
     for seen in spy.contexts:

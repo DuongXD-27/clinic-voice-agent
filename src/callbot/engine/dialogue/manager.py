@@ -20,11 +20,14 @@ from typing import Any, Optional
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
+    AppointmentUnusable,
     ClinicWriteRejected,
+    EngineError,
     SlotTaken,
     WriteOutcomeUnknown,
 )
-from callbot.engine.extraction.greeting import is_greeting
+from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
+from callbot.engine.extraction.greeting import is_greeting, is_identity_question
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -50,8 +53,13 @@ from callbot.engine.verification.identity import IdentityVerifier, VerificationS
 logger = logging.getLogger(__name__)
 
 MAX_SLOTS_PRESENTED = 3
+# Lời chào ("alo", "hi em") ở bước danh tính không tính §1.1.5 tới mức này: đường truyền kém hay bot
+# nói chồng làm người nghe chào lại nhiều lần. Quá mức thì mới là chưa hiểu, để bước này không lặp mãi.
+MAX_NEUTRAL_GREETINGS = 2
 # Nhu cầu người gọi nói ở bước danh tính: chỉ để trả lời "cần xác minh trước", không dùng sau xác minh
 _BUSINESS_INTENTS = frozenset({Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK})
+# Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
+_CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
 
 @dataclass(frozen=True)
@@ -94,32 +102,51 @@ class DialogueManager:
         return BotAction(utterance=f"{t.SILENCE} {ctx.question.text}", state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
-        # Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None), chỉ trả outcome
+        """Luôn chuyển máy: Clinic lỗi thì nhân viên vẫn xử lý được cuộc gọi.
+
+        Rev 1.1 §2.1: inbound chưa tạo lịch thì Gateway không ghi gì (trả None).
+        Không ghi được TRANSFERRED (từ chối, lịch không còn thao tác được, phản hồi hỏng) -> vẫn trả
+        TRANSFERRED, ghi log để vận hành đối soát. Chỉ lỗi chưa rõ kết quả mới chặn lượt.
+        """
         if not ctx.ended:
             try:
-                self._gateway.transfer(ctx, reason)
-            except TURN_ABORTING_ERRORS:
+                written = self._gateway.transfer(ctx, reason)
+            except TURN_ABORTING_ERRORS as exc:
+                if isinstance(exc, EngineError) and exc.transfer_reason is None:
+                    exc.transfer_reason = reason
                 raise
-            except (ClinicWriteRejected, SevereFailureBlocked):
-                logger.error("Ghi TRANSFERRED thất bại cho %s", ctx.call_id)
+            except _CLINIC_FAILURES as exc:
+                logger.error(
+                    "Ghi TRANSFERRED thất bại cho %s (%s), vẫn chuyển máy",
+                    ctx.call_id,
+                    type(exc).__name__,
+                )
+                written = None
+            if written is not None and written.get("status") != "TRANSFERRED":
+                raise WriteOutcomeUnknown(
+                    f"{ctx.call_id}: transfer trả status {written.get('status')}"
+                )
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
         )
 
     def unreachable(self, ctx: CallContext, reason: UnreachableReason) -> BotAction:
-        """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail."""
+        """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail.
+
+        Không ghi được UNREACHABLE -> chuyển máy SYSTEM_ERROR (có ghi /transfer), không báo UNREACHABLE.
+        """
         try:
-            self._gateway.mark_unreachable(ctx, reason)
+            written = self._gateway.mark_unreachable(ctx, reason)
         except TURN_ABORTING_ERRORS:
             raise
-        except (ClinicWriteRejected, SevereFailureBlocked):
-            logger.error("Ghi UNREACHABLE thất bại cho %s", ctx.call_id)
-            return BotAction(
-                t.TRANSFER,
-                "ENDED",
-                ended=True,
-                outcome="TRANSFERRED",
-                transfer_reason="SYSTEM_ERROR",
+        except _CLINIC_FAILURES as exc:
+            logger.error(
+                "Ghi UNREACHABLE thất bại cho %s (%s), chuyển máy", ctx.call_id, type(exc).__name__
+            )
+            return self.transfer(ctx, "SYSTEM_ERROR")
+        if written.get("status") != "UNREACHABLE":
+            raise WriteOutcomeUnknown(
+                f"{ctx.call_id}: unreachable trả status {written.get('status')}"
             )
         return BotAction(
             t.GOODBYE_UNREACHABLE,
@@ -185,11 +212,24 @@ class DialogueManager:
             )
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
 
-        opening = ctx.question is not None and ctx.question.text == t.greeting(ctx.call.direction)
-        if ask_name and opening and is_greeting(ex.transcript):
-            # "Alo" đáp câu chào mở đầu (kể cả khi câu chào được nhắc lại sau im lặng): chào lại, không
-            # tính §1.1.5. `_ask` đổi nội dung câu hỏi nên chỉ chào lại một lần; "alo" tiếp theo là chưa hiểu.
-            text = t.greeting_back(ctx.call.direction)
+        if is_greeting(ex.transcript) and ctx.neutral_greetings < MAX_NEUTRAL_GREETINGS:
+            # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
+            # được nhắc lại sau im lặng) thì chào lại một lần. Hỏi "ai đấy" vẫn được giới thiệu lại.
+            ctx.neutral_greetings += 1
+            opening = ctx.question is not None and ctx.question.text == t.greeting(
+                ctx.call.direction
+            )
+            if is_identity_question(ex.transcript):
+                # "Ai đấy?" là câu hỏi cần trả lời, kể cả sau reprompt / đã nhận tên.
+                text = (
+                    t.greeting_back(ctx.call.direction) if ask_name else t.INTRODUCE_AGAIN_ASK_DOB
+                )
+            elif not ask_name:
+                text = t.ASK_DOB_AGAIN
+            elif opening:
+                text = t.greeting_back(ctx.call.direction)
+            else:
+                text = t.ASK_NAME_AGAIN
             return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         if not ask_name and dob_invalid:
             # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
@@ -221,7 +261,7 @@ class DialogueManager:
             return Reply(
                 self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT")
             )
-        appointment = self._gateway.get_appointment(ctx)
+        appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
             self._ask(
                 ctx,
@@ -263,7 +303,7 @@ class DialogueManager:
             )
         if ex.agreement.found or intent is Intent.CONFIRM:
             # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
-            appointment = self._gateway.get_appointment(ctx)
+            appointment = self._gateway.get_actionable_appointment(ctx)
             return Reply(
                 self._ask(
                     ctx,
@@ -283,7 +323,7 @@ class DialogueManager:
         if ctx.call.direction == "outbound":
             if intent is Intent.CONFIRM:
                 ctx.set_pending("CONFIRM")
-                appointment = self._gateway.get_appointment(ctx)
+                appointment = self._gateway.get_actionable_appointment(ctx)
                 return Reply(
                     self._ask(
                         ctx,
@@ -308,10 +348,11 @@ class DialogueManager:
         self, ctx: CallContext, intent: Intent, ex: ExtractionResult, now: datetime
     ) -> Reply:
         if intent is Intent.CANCEL:
+            # `set_pending` xóa bằng chứng VÀ lý do của hành động cũ: yêu cầu hủy mới bắt đầu từ
+            # trắng, mặc định UNSPECIFIED nếu lượt này không nêu lý do (T-05 §3.2.1)
             ctx.set_pending("CANCEL")
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
-            if ex.cancel_reason.found:
-                ctx.cancel_reason = ex.cancel_reason.value
+            self._update_cancel_reason(ctx, ex)
             return Reply(
                 self._ask(
                     ctx,
@@ -404,26 +445,62 @@ class DialogueManager:
         if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             # IE chỉ trả AGREE ở đây khi có động từ hủy tường minh (SF-05); "vâng" là UNCLEAR
             self._record_confirmation(ctx, ex)
-            if ctx.cancel_reason is None and ex.cancel_reason.found:
-                ctx.cancel_reason = ex.cancel_reason.value
-            self._gateway.cancel(ctx, ctx.cancel_reason or "UNSPECIFIED")
+            self._update_cancel_reason(ctx, ex)
+            written = self._gateway.cancel(ctx, ctx.cancel_reason or DEFAULT_CANCEL_REASON)
+            if written.get("status") != "CANCELLED":
+                # Như T-04: Mock nhận lệnh (2xx) nhưng bản ghi không ở CANCELLED thì không báo đã hủy,
+                # cũng không ghi /transfer thay thế — chặn lượt để đối soát.
+                raise WriteOutcomeUnknown(
+                    f"{ctx.call_id}: cancel trả status {written.get('status')}"
+                )
             return Reply(self._finish("CANCELLED", t.done("CANCELLED")))
+        if ex.intent.value is Intent.RESCHEDULE:
+            # Xét TRƯỚC nhánh REFUSE chung: "không hủy nữa, tôi muốn đổi lịch" là từ chối hủy kèm
+            # yêu cầu đổi lịch, không phải muốn giữ lịch (T-05 §3.3). `_start` xóa dữ liệu hủy.
+            return self._start(ctx, Intent.RESCHEDULE, ex, now)
         if agreement is Agreement.REFUSE:
             return self._abandon(ctx)
-        if ex.intent.value is Intent.RESCHEDULE:
-            return self._start(ctx, Intent.RESCHEDULE, ex, now)
+
+        # Chưa xác nhận: lý do vẫn được ghi nhận ở mọi lượt, nhưng ghi nhận lý do không phải đồng ý hủy
+        had_reason = ctx.cancel_reason not in (None, DEFAULT_CANCEL_REASON)
+        noted = self._update_cancel_reason(ctx, ex)
         if ex.agreement.found:
+            # Có tín hiệu đồng ý / mâu thuẫn / ngập ngừng nhưng dưới ngưỡng hủy: hỏi lại bằng câu
+            # lựa chọn, kể cả khi lượt đó có nêu lý do (§3.2.6)
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CHOICE), "UNCLEAR")
+        if noted:
+            # Chỉ lý do đầu tiên là tiến triển. Đổi sang lý do khác mà vẫn né xác nhận thì tính
+            # UNCLEAR, nếu không "bận" / "hết tiền" luân phiên sẽ reset bộ đếm mãi, không bao giờ
+            # chuyển máy. Lý do mới vẫn được ghi nhận.
             return Reply(
-                self._ask(
-                    ctx,
-                    QuestionId.CANCEL_RECONFIRM,
-                    t.CANCEL_CHOICE,
-                    "AWAITING_CONFIRMATION",
-                    action="CANCEL",
-                ),
-                "UNCLEAR",
+                self._ask_cancel_again(ctx, t.CANCEL_REASON_NOTED),
+                "UNCLEAR" if had_reason else "UNDERSTOOD",
             )
+        if ex.cancel_reason.found:
+            # Lặp lại lý do cũ, hoặc nhiều lý do không chọn được, mà vẫn né xác nhận: hỏi lại rõ
+            # hủy / giữ và tính UNCLEAR để Policy không để vòng lặp kéo dài
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CHOICE), "UNCLEAR")
         return self._not_understood(ctx)
+
+    def _ask_cancel_again(self, ctx: CallContext, text: str) -> BotAction:
+        return self._ask(
+            ctx, QuestionId.CANCEL_RECONFIRM, text, "AWAITING_CONFIRMATION", action="CANCEL"
+        )
+
+    @staticmethod
+    def _update_cancel_reason(ctx: CallContext, ex: ExtractionResult) -> bool:
+        """Ghi nhận lý do hủy của lượt này; trả về True khi xác định được MỘT lý do mới (§3.2.3).
+
+        `cancel_reason.found` nghĩa là lượt này có nội dung lý do. Nêu nhiều lý do không chọn được
+        thì IE trả `UNSPECIFIED` kèm provenance: thay lý do cũ (không giữ ngầm) nhưng chưa xác định
+        được gì nên không tính là tiến triển. Lượt không nói lý do giữ nguyên giá trị hiện tại.
+        """
+        if not ex.cancel_reason.found:
+            return False
+        reason = ex.cancel_reason.value or DEFAULT_CANCEL_REASON
+        determined = reason != DEFAULT_CANCEL_REASON and reason != ctx.cancel_reason
+        ctx.cancel_reason = reason
+        return determined
 
     # --- Helpers ---------------------------------------------------------------------------
 
@@ -434,7 +511,7 @@ class DialogueManager:
             return Reply(
                 self._ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT")
             )
-        appointment = self._gateway.get_appointment(ctx)
+        appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
             self._ask(
                 ctx,

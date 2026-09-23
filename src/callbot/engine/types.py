@@ -28,6 +28,10 @@ CancelReason = Literal[
     "PATIENT_UNAVAILABLE", "NO_LONGER_NEEDED", "WENT_ELSEWHERE", "COST", "UNSPECIFIED"
 ]
 
+# Hành động đang chờ xác nhận. Ở đây thay vì `session/context.py` để `extraction/` dùng được mà
+# không tạo import vòng (session -> extraction.schema).
+PendingAction = Literal["CONFIRM", "CANCEL", "RESCHEDULE", "BOOK"]
+
 TransferReason = Literal[
     "IDENTITY_FAILED",
     "PATIENT_NOT_FOUND",

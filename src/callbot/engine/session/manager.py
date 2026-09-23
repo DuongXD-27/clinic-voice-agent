@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
+from callbot.engine.diagnostics import TurnDiagnostics, build_diagnostics
 from callbot.engine.errors import (
     CallConflict,
     CallEnded,
@@ -53,6 +54,8 @@ def now_vn() -> datetime:
 class TurnOutcome:
     action: BotAction
     extraction: Optional[dict[str, Any]] = None
+    # Không lưu vào session store; lượt replay dựng lại từ extraction + action
+    diagnostics: Optional[TurnDiagnostics] = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,7 @@ class TurnRun:
     action: BotAction
     replayed: bool
     extraction: Optional[dict[str, Any]] = None
+    diagnostics: Optional[TurnDiagnostics] = None
 
 
 TurnProcessor = Callable[[CallContext, CallerInput, datetime], TurnOutcome]
@@ -131,7 +135,9 @@ class SessionManager:
                     outcome = process(ctx, caller, received_at)
             except WriteOutcomeUnknown as exc:
                 self._block(call_id, caller.turn, str(exc))
-                raise ReconciliationRequired(call_id, caller.turn, str(exc)) from exc
+                blocked = ReconciliationRequired(call_id, caller.turn, str(exc))
+                blocked.diagnostics, blocked.extraction = exc.diagnostics, exc.extraction
+                raise blocked from exc
             except ReconciliationRequired as exc:
                 # Nhật ký phát hiện khóa lệnh đã tồn tại với kết quả chưa rõ
                 self._block(call_id, caller.turn, str(exc))
@@ -145,7 +151,12 @@ class SessionManager:
                 outcome.extraction,
                 ended=ctx.ended,
             )
-            return TurnRun(outcome.action, replayed=False, extraction=outcome.extraction)
+            return TurnRun(
+                outcome.action,
+                replayed=False,
+                extraction=outcome.extraction,
+                diagnostics=outcome.diagnostics,
+            )
 
     def _check_retired(self, session: SessionRecord) -> None:
         if session.purged_reason in ("RECONCILIATION_REQUIRED", "CLINIC_COMMITTED"):
@@ -166,7 +177,15 @@ class SessionManager:
                 raise TurnConflict(f"{call_id}: lượt {turn} đã nhận với đầu vào khác")
             if existing.status == "COMPLETED":
                 assert existing.result is not None
-                return TurnRun(BotAction.from_dict(existing.result), replayed=True, extraction=None)
+                action = BotAction.from_dict(existing.result)
+                return TurnRun(
+                    action,
+                    replayed=True,
+                    extraction=existing.extraction,
+                    diagnostics=build_diagnostics(
+                        existing.extraction, transfer_reason=action.transfer_reason
+                    ),
+                )
             if existing.status == "RECONCILIATION_REQUIRED":
                 raise ReconciliationRequired(call_id, turn, existing.detail or "")
             # PROCESSING còn lại: chỉ xử lý tiếp khi chắc chắn chưa lệnh ghi nào tới Clinic

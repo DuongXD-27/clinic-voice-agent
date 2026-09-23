@@ -6,7 +6,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from callbot.engine.extraction.fallback import guard_fallback
-from callbot.engine.extraction.full_name import extract_full_name
+from callbot.engine.extraction.full_name import valid_name_span
 from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
 from inference.common.telemetry import InferenceTimer
@@ -61,7 +61,7 @@ class NameNER:
                 return Field.nothing()
 
             name, span = clean(result.full_name), clean(result.span or "")
-            if name != span or extract_full_name(name).value != name:
+            if name != span or not valid_name_span(name):
                 status = "rejected"
                 return Field.nothing()
             guarded = guard_fallback(Field(name, Provenance.FALLBACK, span), transcript, None)

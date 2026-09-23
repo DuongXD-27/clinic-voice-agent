@@ -66,6 +66,14 @@ class TurnRequest(BaseModel):
         return self
 
 
+class ExtractionDebug(BaseModel):
+    """Non-PII extraction diagnostics exposed by the interactive demo."""
+
+    question_id: Optional[str]
+    source: Literal["RULE", "NER", "LLM", "NONE"]
+    provenance: Literal["EXACT", "NORMALIZED", "FALLBACK", "NONE"]
+
+
 class TurnResponse(BaseModel):
     utterance: str
     audio_url: Optional[str]

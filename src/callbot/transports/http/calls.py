@@ -1,11 +1,13 @@
 """Đổi request/response HTTP sang kiểu của engine — không chứa logic hội thoại (§1.3.2)."""
 
+import json
 import logging
 from collections.abc import Callable
 from typing import Annotated, Any, Optional, TypeVar
+from urllib.parse import quote
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from callbot.engine import (
     CallBusy,
@@ -20,8 +22,10 @@ from callbot.engine import (
     TurnConflict,
     TurnOutOfOrder,
 )
+from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
+    ExtractionDebug,
     StartCallRequest,
     StartCallResponse,
     TurnRequest,
@@ -61,7 +65,21 @@ def _error(status_code: int, code: str, message: str, **extra: Any) -> HTTPExcep
     )
 
 
-def _run_engine(call_id: str, operation: Callable[[], T]) -> T:
+def _run_engine(call_id: str, operation: Callable[[], T], *, debug: bool = False) -> T:
+    """`debug`: response lỗi vẫn mang header chẩn đoán (extraction đã trích trước khi lỗi)."""
+    try:
+        return _translate_errors(call_id, operation)
+    except HTTPException as exc:
+        if debug:
+            cause = exc.__cause__
+            diagnostics = getattr(cause, "diagnostics", None)
+            if diagnostics is not None:
+                headers = _debug_headers(diagnostics, getattr(cause, "extraction", None))
+                exc.headers = {**(exc.headers or {}), **headers}
+        raise
+
+
+def _translate_errors(call_id: str, operation: Callable[[], T]) -> T:
     # Không trả chi tiết exception cho client: có thể chứa URL/header của clinic mock
     try:
         return operation()
@@ -139,8 +157,10 @@ def start_call(
     )
 
 
-@router.post("/{call_id}/turn", response_model=TurnResponse)
+@router.post("/{call_id}/turn", response_model=TurnResponse, response_model_exclude_unset=True)
 def call_turn(
+    request: Request,
+    response: Response,
     call_id: str,
     payload: TurnRequest,
     orchestrator: Orchestrator,
@@ -169,13 +189,17 @@ def call_turn(
             audio_url=payload.audio_url,
             asr_confidence=confidence,
         )
-        action = orchestrator.handle_turn(call_id, caller)
+        run = orchestrator.handle_turn_with_details(call_id, caller)
+        action = run.action
         audio_url = (
             _synthesize(speech, call_id, payload.turn, action.utterance) if is_audio else None
         )
-        return action, audio_url
+        return action, audio_url, run
 
-    action, audio_url = _run_engine(call_id, _turn)
+    debug = request.headers.get("X-Demo-Debug") == "1"
+    action, audio_url, run = _run_engine(call_id, _turn, debug=debug)
+    if debug and run.diagnostics is not None:
+        response.headers.update(_debug_headers(run.diagnostics, run.extraction))
     return TurnResponse(
         utterance=action.utterance,
         audio_url=audio_url,
@@ -183,6 +207,61 @@ def call_turn(
         ended=action.ended,
         outcome=action.outcome,
     )
+
+
+def _extraction_debug(extraction: Optional[dict[str, Any]]) -> ExtractionDebug:
+    """Summarize the extraction path without returning transcript values or spans."""
+    question_id, source, provenance = summarize_extraction(extraction)
+    return ExtractionDebug(question_id=question_id, source=source, provenance=provenance)
+
+
+def _debug_headers(
+    diagnostics: TurnDiagnostics, extraction: Optional[dict[str, Any]] = None
+) -> dict[str, str]:
+    """Demo-only diagnostics, never in the JSON contract. Values are allow-listed by the engine.
+
+    `X-Demo-Transfer-Reason` is the transfer that was requested, not proof that Clinic recorded it.
+    `X-Demo-Extraction-Fields` is the one exception to the allow-list: it carries the transcript and
+    the extracted values / spans so the demo can show what was read from the sentence. It is only
+    sent to a client that asked for `X-Demo-Debug: 1`, never logged and never stored.
+    """
+    headers = {
+        "X-Demo-Extraction-Source": diagnostics.extraction_source,
+        "X-Demo-Extraction-Provenance": diagnostics.extraction_provenance,
+    }
+    optional = {
+        "X-Demo-Extraction-Question-Id": diagnostics.question_id,
+        "X-Demo-Transfer-Reason": diagnostics.transfer_reason,
+        "X-Demo-Error-Type": diagnostics.error_type,
+        "X-Demo-Error-Code": diagnostics.error_code,
+    }
+    headers.update({name: value for name, value in optional.items() if value is not None})
+    fields = _extraction_fields(extraction)
+    if fields is not None:
+        headers["X-Demo-Extraction-Fields"] = fields
+    return headers
+
+
+def _extraction_fields(extraction: Optional[dict[str, Any]]) -> Optional[str]:
+    """Transcript + fields actually extracted, as percent-encoded JSON (headers are latin-1 only)."""
+    if not extraction:
+        return None
+    fields = [
+        {
+            "field": name,
+            "value": field.get("value"),
+            "span": field.get("span"),
+            "provenance": field.get("provenance"),
+        }
+        for name, field in extraction.items()
+        if isinstance(field, dict) and field.get("provenance") not in (None, "NONE")
+    ]
+    payload = {
+        "transcript": extraction.get("transcript") or "",
+        "silent": bool(extraction.get("silent")),
+        "fields": fields,
+    }
+    return quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), safe="")
 
 
 def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:
