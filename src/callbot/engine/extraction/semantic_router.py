@@ -3,8 +3,9 @@
 Hai việc tách bạch:
 - `route_semantic`: trả `None` (không gọi) hoặc một mã lý do gọi. Không dùng điểm tin cậy tự khai
   của rule hay model; `found == True` KHÔNG có nghĩa là rule đã đúng.
-- `merge_semantic`: bảng quyền T-05 §8.3.4. Model được làm rõ lý do và chuyển nhu cầu; model KHÔNG được
-  nâng NONE / UNCLEAR / REFUSE thành AGREE để mở khóa lệnh ghi.
+- `merge_semantic`: bảng quyền T-05 §8.3.4. Model được làm rõ lý do, chuyển nhu cầu và báo việc ngoài
+  phạm vi (`OUT_OF_SCOPE` -> Policy chuyển máy); model KHÔNG được nâng NONE / UNCLEAR / REFUSE thành
+  AGREE để mở khóa lệnh ghi.
 """
 
 from enum import Enum
@@ -79,8 +80,16 @@ _SETTLED = frozenset(clean(u) for u in _SETTLED_UTTERANCES) | frozenset(
 
 # Ý định model được phép đề xuất, theo ngữ cảnh. KHÔNG lọc lại bằng `allowed_in_direction`: inbound
 # phải giữ CANCEL / RESCHEDULE / CONFIRM để Dialogue còn chuyển OUT_OF_SCOPE (§8.3.3).
-_OUTBOUND_BUSINESS = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE)
-_INBOUND_BUSINESS = (Intent.BOOK, Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE)
+# OUT_OF_SCOPE: câu diễn đạt vòng mà luật không bắt được ("lịch này tôi có đặt đâu") — chỉ dẫn tới
+# chuyển máy, không mở khóa lệnh ghi nào.
+_OUTBOUND_BUSINESS = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.OUT_OF_SCOPE)
+_INBOUND_BUSINESS = (
+    Intent.BOOK,
+    Intent.CONFIRM,
+    Intent.CANCEL,
+    Intent.RESCHEDULE,
+    Intent.OUT_OF_SCOPE,
+)
 
 _SEMANTIC_QUESTIONS = frozenset(
     {QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_INTENT, QuestionId.CONFIRM_READBACK}
@@ -179,6 +188,14 @@ def merge_semantic(
     """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật."""
     if outcome is None:
         return _without_model(result, route_reason)
+    if outcome.intent is Intent.OUT_OF_SCOPE and outcome.intent in allowed_intents:
+        # Ngoài phạm vi thắng mọi kiểu trả lời, như thứ tự PRIORITY của luật ("vâng, à mà địa chỉ ở
+        # đâu"): Policy chuyển máy. Bỏ tín hiệu đồng ý để không lượt nào dùng nó làm bằng chứng ghi.
+        return _replace(
+            result,
+            intent=Field(Intent.OUT_OF_SCOPE, Provenance.FALLBACK, span=outcome.intent_span),
+            agreement=Field.nothing(Agreement.UNCLEAR),
+        )
 
     intent, agreement, reason = result.intent, result.agreement, result.cancel_reason
     kind = outcome.reply_kind

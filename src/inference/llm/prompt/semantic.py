@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - chỉ để type hint, tránh import vòng runtime
     from callbot.engine.extraction.semantic import SemanticContext
 
-PROMPT_VERSION = "semantic_v3"
+PROMPT_VERSION = "semantic_v4"
 
 # Mô tả MỤC ĐÍCH câu bot vừa hỏi, không gửi nguyên văn câu hỏi (câu đọc lịch có dữ liệu Clinic).
 QUESTION_PURPOSE: dict[str, str] = {
@@ -31,7 +31,8 @@ Chọn đúng một reply_kind:
 - DECLINE_ACTION: từ chối rõ ràng chính việc bot đang hỏi.
 - INFORM_REASON: chỉ nêu lý do hoặc hoàn cảnh, CHƯA quyết định. Câu có chữ "không" nằm trong lý do
   ("không đủ tiền", "không cần khám nữa") là nêu lý do, KHÔNG phải từ chối.
-- CHANGE_INTENT: chuyển sang nhu cầu khác (đổi lịch, đặt lịch, xác nhận đến khám).
+- CHANGE_INTENT: chuyển sang nhu cầu khác (đổi lịch, đặt lịch, xác nhận đến khám), hoặc sang việc
+  ngoài phạm vi bot xử lý (intent OUT_OF_SCOPE).
 - QUESTION: người gọi hỏi lại hoặc hỏi thêm.
 - AMBIGUOUS: mâu thuẫn, ngập ngừng, hoặc không đủ căn cứ.
 
@@ -53,6 +54,11 @@ Quy tắc bắt buộc:
 - Ở câu hỏi đến khám (CONFIRM_READBACK), chỉ dùng INFORM_REASON khi câu nói rõ người gọi KHÔNG đến
   được theo lịch. Câu nói mình rảnh, đang bận lúc nghe máy, hay không muốn hủy / đổi lịch là
   AMBIGUOUS.
+- intent OUT_OF_SCOPE (kèm intent_span) chỉ khi người gọi NÊU CỤ THỂ một yêu cầu hoặc câu hỏi mà bot
+  không xử lý: người khác đi khám thay, hỏi địa chỉ / đường đi, xin đến muộn, xin gọi lại, không nhận
+  mình đã đặt lịch, xin gửi tin nhắn. KHÔNG chọn OUT_OF_SCOPE khi người gọi chỉ
+  kể hoàn cảnh ("tôi đang lái xe"), câu chưa nói hết ("cho chị hỏi chút"), hay hỏi lại chính lịch vừa
+  đọc ("mấy giờ nhỉ" là QUESTION).
 Chỉ trả JSON đúng sáu khóa của schema. Không giải thích, không confidence.
 """
 
@@ -154,7 +160,8 @@ FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
             reason_span="bận mất rồi",
         ),
     ),
-    # T-04 §8: "dạ" mở câu chỉ là lễ phép; người khác đến thay không phải người bệnh xác nhận
+    # T-04 §8: "dạ" mở câu chỉ là lễ phép; người khác đến thay là việc ngoài phạm vi, không phải
+    # người bệnh xác nhận
     (
         "CONFIRM_READBACK",
         "dạ hôm đó tôi bận rồi",
@@ -167,7 +174,28 @@ FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
     (
         "CONFIRM_READBACK",
         "vợ tôi sẽ đến thay",
-        _reading(reply_kind="AMBIGUOUS", reply_span="vợ tôi sẽ đến thay"),
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="OUT_OF_SCOPE",
+            intent_span="vợ tôi sẽ đến thay",
+            reply_span="vợ tôi sẽ đến thay",
+        ),
+    ),
+    # Ngoài phạm vi mà không có từ khóa, đối lập với câu chỉ kể hoàn cảnh
+    (
+        "CONFIRM_READBACK",
+        "lịch này tôi có đặt đâu em",
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="OUT_OF_SCOPE",
+            intent_span="lịch này tôi có đặt đâu",
+            reply_span="lịch này tôi có đặt đâu em",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi đang ở ngoài chợ",
+        _reading(reply_kind="AMBIGUOUS", reply_span="tôi đang ở ngoài chợ"),
     ),
     (
         "CONFIRM_READBACK",

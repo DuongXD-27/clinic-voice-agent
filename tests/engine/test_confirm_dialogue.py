@@ -217,6 +217,23 @@ def test_exceptions_at_readback_transfer_without_confirming(answer: str, reason:
     assert _confirm_writes(clinic) == []
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "vợ tôi sẽ đến thay",
+        "địa chỉ ở đâu em nhỉ",
+        "tôi đến trễ không sao chứ",
+        "dạ, tôi đang bận, gọi lại sau",
+    ],
+)
+def test_out_of_scope_answer_at_readback_transfers_instead_of_rereading(answer: str) -> None:
+    """Câu bot hiểu nhưng ngoài kịch bản: chuyển máy ngay (§1.1.5), không đọc lại lịch để né."""
+    bot, clinic, _ = _at_readback("c_t04_oos")
+    action = _run(bot, "c_t04_oos", [answer], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "OUT_OF_SCOPE")
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+
+
 def test_silence_and_repeat_request_keep_the_readback_question() -> None:
     bot, clinic, summary = _at_readback("c_t04_silence")
     action = _run(bot, "c_t04_silence", [SILENCE], start=3)
@@ -334,7 +351,6 @@ def test_inbound_attendance_wording_is_not_mistaken_for_confirm() -> None:
         "tôi phải đi làm hôm đó",
         "vâng, hôm đó tôi phải đi công tác",
         "hôm đó tôi sẽ đi công tác",
-        "vợ tôi sẽ đến thay",
         "chắc được",
         "tôi sẽ đến lúc 10 giờ",
         "à",

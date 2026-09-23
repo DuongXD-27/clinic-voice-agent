@@ -11,16 +11,43 @@ hỏi đang chờ (`question_id` trong bộ câu):
 - `ASK_INTENT`: sau khi người gọi nói "Không" ở câu tóm tắt (bot hỏi "đổi hay hủy");
 - `SLOT_READBACK`: sau "tôi muốn đổi lịch" và "khung 1".
 
-`expect_behaviour` là nhãn nghiệp vụ theo kiến trúc §3.2 (`O_AGREE`): đồng ý → `CONFIRM`; "không" hoặc
-kể hoàn cảnh không đến được → `ASK_CHANGE_OR_CANCEL`; chưa rõ → `REREAD`. Dấu `|` chỉ dùng khi nghiệp
-vụ chấp nhận cả hai (câu mơ hồ thật, hoặc câu ngụ ý đồng ý mà đọc lại vẫn đúng §1.1.3), không dùng để
-chừa chỗ cho luật khi không có model. `needs_inference=yes`: ý người gọi phải suy ra từ hoàn cảnh, không
-có từ khóa nói thẳng; chỉ luật thì được phép sai ở các câu này nhưng không được ghi. Báo cáo tách:
+`expect_behaviour` là nhãn nghiệp vụ theo kiến trúc §3.2 (`O_AGREE`): nói sẽ đến / đồng ý rõ với lịch
+vừa đọc → `CONFIRM` (chỉ báo đã nghe / đã nhớ như "vâng tôi nghe", "tôi nhớ rồi" chưa phải đồng ý);
+"không" hoặc kể hoàn cảnh không đến được → `ASK_CHANGE_OR_CANCEL`; chỉ chưa rõ có đồng ý lịch hay không
+→ `REREAD`. Câu bot hiểu được nhưng là yêu cầu / câu hỏi ngoài kịch bản (người khác đến thay, hỏi địa
+chỉ, xin gọi lại sau, không nhận lịch...) → `TRANSFER` (§3.3, `OUT_OF_SCOPE`), không dùng `REREAD` để né.
+Dấu `|` chỉ dùng khi nghiệp vụ chấp nhận cả hai hành vi với câu mơ hồ thật — không dùng vì "cả hai đều
+an toàn" hay để chừa chỗ cho luật khi không có model. `needs_inference=yes`: ý người gọi phải suy ra
+từ hoàn cảnh, không có từ khóa nói thẳng; chỉ luật thì được phép sai ở các câu này nhưng không được
+ghi. Báo cáo tách:
 - độ chính xác trên `holdout` (tập `prompt` là câu mẫu của prompt), tách câu luật quyết được và câu
   cần suy nghĩa,
 - số lần GHI SAI (lệnh ghi khi không có hành vi ghi nào được chấp nhận) — exit code 1 nếu > 0,
 - tỷ lệ câu đồng ý thật không được ghi ngay, số lượt gọi model theo nhóm.
-Mỗi dòng kết quả ghi nhãn model trả về (`semantic_kind`, `semantic_reason`, `semantic_intent`).
+Mỗi dòng kết quả ghi nhãn model trả về (`semantic_kind`, `semantic_reason`, `semantic_intent`) và
+`transfer_reason` khi bot chuyển máy (group `out_of_scope` phải là `OUT_OF_SCOPE`; group
+`out_of_scope_trap` là câu có từ gần giống nhưng không được chuyển máy).
+
+Nhãn hành vi (`expect_behaviour`, `observed_behaviour`) — `_behaviour` xét theo đúng thứ tự dưới đây,
+nhãn đầu tiên khớp được dùng. Hai nhãn đầu là LỆNH GHI; các nhãn còn lại không ghi gì vào Clinic.
+
+    CONFIRM               Ghi CONFIRMED (xác nhận đến khám).
+    SLOT_WRITE            Ghi RESCHEDULED / BOOKED (đổi lịch / đặt lịch sang khung mới).
+    TRANSFER              Chuyển máy (xin nhân viên, lâm sàng, không hiểu 2 lần, ngoài phạm vi...).
+    ENDED                 Cuộc gọi kết thúc mà không thuộc các nhãn trên.
+    ASK_CHANGE_OR_CANCEL  Bot hỏi "Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?" — người gọi đã
+                          nói không đến được / từ chối lịch.
+    NOT_UNDERSTOOD        Bot nói "Dạ, em chưa hiểu ý anh chị..." — tính vào §1.1.5 (2 lần -> chuyển máy).
+    RESCHEDULE            Bot đọc các khung giờ trống (câu hỏi đang chờ OFFER_SLOTS) — bắt đầu đổi lịch.
+    CANCEL                Bot hỏi "chắc chắn muốn hủy lịch khám này..." (CANCEL_RECONFIRM) — bắt đầu
+                          hủy, chưa ghi; cần xác nhận lần hai có động từ hủy.
+    ABANDON               (chỉ ở SLOT_READBACK) Bỏ việc đổi lịch, quay về hỏi giữ lịch cũ.
+    REREAD                Câu hỏi đang chờ là CONFIRM_READBACK: bot đọc lại ngày, giờ, cơ sở và hỏi có /
+                          không ("... có đến khám được theo lịch này không ạ?" / "... đồng ý chứ ạ?").
+                          "vâng" ở lượt sau sẽ ghi CONFIRMED.
+    ASK_AGAIN             Câu hỏi đang chờ là SLOT_READBACK: bot hỏi lại khung vừa chọn bằng câu lựa
+                          chọn ("chọn khung ... hay muốn nghe khung khác ạ?").
+    OTHER                 Không khớp nhãn nào — luồng lạ, cần xem lại.
 
 Kết quả ghi ra `result/<dd-mm-yyyy>/confirm/<label>/` (ngày theo giờ Việt Nam, thư mục được commit).
 Transcript là dữ liệu tổng hợp, không có PII.
@@ -45,7 +72,6 @@ import fakeredis  # noqa: E402
 
 # Dùng chung bộ đếm model và cách đo với eval hủy; import cũng đặt sys.path cho src / tests.
 from cancel_eval import Counting, RecordingGateway, _latency, result_dir  # noqa: E402
-from tests.engine.fake_clinic import FakeClinicAPI  # noqa: E402
 
 from callbot.engine import (  # noqa: E402
     CallerInput,
@@ -58,6 +84,7 @@ from callbot.engine.dialogue import templates as t  # noqa: E402
 from callbot.engine.extraction.schema import QuestionId  # noqa: E402
 from callbot.engine.extraction.semantic import SemanticContext, SemanticOutcome  # noqa: E402
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
+from clinic_mock_sim import FakeClinicAPI  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
 CASES = ROOT / "eval" / "confirm" / "cases.csv"
@@ -165,6 +192,8 @@ def _run_case(
         "needs_inference": row.get("needs_inference") == "yes",
         "expect_behaviour": row["expect_behaviour"],
         "observed_behaviour": observed,
+        # Cùng là TRANSFER: tách chuyển vì ngoài phạm vi (group out_of_scope) với lâm sàng / xin nhân viên
+        "transfer_reason": action.transfer_reason or "",
         "behaviour_ok": observed in accepted,
         "unsafe_write": observed in WRITE_BEHAVIOURS and observed not in accepted,
         # Câu đồng ý thật (hành vi mong đợi đầu tiên là ghi) mà bot đọc lại thay vì ghi

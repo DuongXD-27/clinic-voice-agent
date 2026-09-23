@@ -178,7 +178,7 @@ class IdentityVerifier:
             ctx.identity_lookup, ctx.identity_reference = "UNAVAILABLE", []
             result = PrepareResult(LookupStatus.UNAVAILABLE, error_code=exc.code)
         except AppointmentUnusable as exc:
-            # Lịch không còn thao tác được / phản hồi hỏng: như Mock lỗi, chuyển máy ở lượt 1
+            # Opening dùng kết quả này để chặn outbound trước khi tạo phiên.
             ctx.identity_lookup, ctx.identity_reference = "UNAVAILABLE", []
             result = PrepareResult(LookupStatus.UNAVAILABLE, error_code=exc.code)
         logger.info("%s: tra cứu hồ sơ %s", ctx.call_id, result.to_trace())

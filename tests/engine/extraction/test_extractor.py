@@ -389,7 +389,6 @@ def test_stated_attendance_does_not_unlock_other_writes() -> None:
     [
         "hôm đó tôi sẽ đi công tác",
         "tôi vẫn đi làm hôm đó",
-        "vợ tôi sẽ đến thay",
         "tối đó tôi đến bệnh viện khác rồi",
         "tôi sẽ đến lúc 10 giờ",
         "toi se di cong tac",
@@ -400,6 +399,31 @@ def test_attendance_wording_inside_another_plan_is_not_agreement(text: str) -> N
     result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
     assert result.intent.value is Intent.CONFIRM
     assert result.agreement.value is Agreement.UNCLEAR and result.agreement.found
+
+
+@pytest.mark.parametrize(
+    "question",
+    [QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT, QuestionId.SLOT_READBACK],
+)
+@pytest.mark.parametrize(
+    "text",
+    ["vợ tôi sẽ đến thay", "gửi xe ở đâu em", "tôi đến muộn chút được không", "gọi lại sau nhé"],
+)
+def test_out_of_scope_request_at_business_steps(question: QuestionId, text: str) -> None:
+    """Bot hiểu câu nhưng không có luồng xử lý: Policy chuyển máy OUT_OF_SCOPE, không đọc lại lịch."""
+    result = InformationExtractor().extract(ctx(question), text)
+    assert result.intent.value is Intent.OUT_OF_SCOPE
+    assert result.agreement.value is not Agreement.AGREE
+
+
+def test_callback_request_at_the_name_step_is_not_out_of_scope() -> None:
+    """T-08: người nghe đang bận ở bước hỏi tên được hỏi lại tên, không chuyển máy."""
+    busy = "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"
+    assert (
+        InformationExtractor().extract(ctx(QuestionId.ASK_NAME), busy).intent.value is Intent.NONE
+    )
+    address = InformationExtractor().extract(ctx(QuestionId.ASK_NAME), "địa chỉ phòng khám ở đâu")
+    assert address.intent.value is Intent.OUT_OF_SCOPE
 
 
 @pytest.mark.parametrize(

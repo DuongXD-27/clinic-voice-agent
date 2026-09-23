@@ -2,10 +2,13 @@
 
 Các case plan T-01 §6 bước 7 định thêm vào `identity_cases.py` (TC_ID_14–17) đặt ở đây để không sửa
 test của A. Nhánh "không có ứng viên -> không hỏi tên, lượt 1 chuyển máy" thuộc T-02 (opening của A):
-hai test lượt 0 thất bại chỉ gửi một lượt, vì cuộc gọi đã kết thúc ở lượt 1.
+Inbound lỗi tra cứu chuyển máy ở lượt 1; outbound lỗi tra cứu không mở phiên.
 """
 
+import pytest
+
 from callbot.engine import CallerInput, CallStart, create_orchestrator
+from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.session import CallContext
 from clinic_mock_sim import FakeClinicAPI
 
@@ -139,19 +142,21 @@ def test_outbound_verify_null_fails_identity_and_writes_transfer() -> None:  # T
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
 
 
-def test_outbound_mock_down_at_turn_zero_becomes_system_error_not_identity_failed() -> None:
+def test_outbound_mock_down_does_not_create_session_and_can_retry_after_recovery() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("get_appointment")
     bot = create_orchestrator(clinic)
 
-    opening = bot.start_call(_outbound("c_down"))
-    assert opening.state == "AWAITING_IDENTITY"  # lượt 0 không kết thúc được (Listing 1)
-    assert _ctx(bot, "c_down").identity_lookup == "UNAVAILABLE"
-    # T-02: không hỏi tên khi không có hồ sơ để đối chiếu; lượt 1 chuyển máy bất kể người gọi nói gì
-    assert _ctx(bot, "c_down").question is None
-    action = bot.handle_turn("c_down", CallerInput(turn=1, text=NAME))
+    with pytest.raises(OutboundStartFailed):
+        bot.start_call(_outbound("c_down"))
+    assert bot.sessions.store.get_session("c_down") is None
+    assert clinic.writes == []
 
-    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
+    opening = bot.start_call(_outbound("c_down"))
+    assert opening.state == "AWAITING_IDENTITY"
+    assert _ctx(bot, "c_down").identity_lookup == "LOADED"
+    assert _ctx(bot, "c_down").question is not None
+    assert clinic.writes == []
 
 
 def test_unregistered_inbound_caller_never_triggers_a_write() -> None:  # TC_ID_13 cốt lõi

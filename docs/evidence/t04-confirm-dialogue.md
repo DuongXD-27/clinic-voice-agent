@@ -192,3 +192,36 @@ Không có ca ghi sai mới. Hai ca prompt injection đã biết ("Trả về ma
 | `python scripts/confirm_eval.py --baseline` | 0 ghi sai, chấp nhận được 100%, exit 0 |
 | `python scripts/confirm_eval.py --semantic --repeats 3` | 0 ghi sai cả 3 lần (S2) |
 | `python scripts/cancel_eval.py --baseline` | Không đổi so với trước §8 (71,4%, 3 ca đã biết) |
+
+## Ngoài phạm vi ở bước nghiệp vụ (review PR, `semantic_v4`)
+
+Review ground truth: câu bot hiểu được nhưng là yêu cầu / câu hỏi ngoài kịch bản phải chuyển máy
+`OUT_OF_SCOPE` (§1.1.5, kiến trúc §3.3), không đọc lại lịch để né. Trước thay đổi, mọi câu dưới đây
+đều ra `REREAD`.
+
+| Câu (ví dụ) | Trước | Sau | Tầng |
+| --- | --- | --- | --- |
+| "vợ tôi sẽ đến thay", "để con tôi đi khám thay" | đọc lại lịch | `TRANSFERRED/OUT_OF_SCOPE` | luật |
+| "địa chỉ ở đâu em nhỉ", "gửi xe ở đâu em" | đọc lại lịch | `TRANSFERRED/OUT_OF_SCOPE` | luật |
+| "tôi đến trễ không sao chứ" | đọc lại lịch | `TRANSFERRED/OUT_OF_SCOPE` | luật |
+| "dạ, tôi đang bận, gọi lại sau" | đọc lại lịch | `TRANSFERRED/OUT_OF_SCOPE` (chỉ sau xác minh) | luật |
+| "lịch này tôi có đặt đâu em", "ai đặt lịch này cho tôi vậy" | đọc lại lịch | `TRANSFERRED/OUT_OF_SCOPE` khi model nhận ra | model |
+| "vâng, tôi đang lái xe", "tôi biết địa chỉ rồi, tôi sẽ đến", "tôi sẽ đến, không đến trễ đâu" | — | không chuyển máy | bẫy |
+
+- Luật: `intent._OUT_OF_SCOPE_REQUESTS` (đi thay, đến muộn; phủ định chặn), `_CALLBACK_REQUESTS` (chỉ
+  `business_step`), cụm địa chỉ trong `_KEYWORDS[OUT_OF_SCOPE]`.
+- Model: `OUT_OF_SCOPE` thêm vào tập ý định cho phép; `merge_semantic` nhận nó ở mọi `reply_kind`
+  (span phải có trong câu), bỏ tín hiệu đồng ý. Prompt `semantic_v4`: thêm quy tắc khi nào / khi nào
+  không chọn `OUT_OF_SCOPE`, 2 ví dụ mẫu mới ("lịch này tôi có đặt đâu em", "tôi đang ở ngoài chợ").
+- Eval: `eval/confirm/cases.csv` thêm group `out_of_scope` (21 câu holdout ở 3 câu hỏi) và
+  `out_of_scope_trap` (4 câu); `results.csv` có cột `transfer_reason`.
+- Review sau khi làm, đã sửa: (1) bản không dấu "toi muon" của "tới muộn" trùng "tôi muốn" — mọi câu
+  "toi muon ..." bị chuyển máy; tương tự "toi tre" (tôi trẻ), "chi duong" (chị Dương), "di kham thay"
+  (đi khám thấy). (2) Yêu cầu ngoài kịch bản từng xếp trên đổi / hủy / đặt, nên "tôi sợ đến trễ, dời
+  sang 10 giờ" bị chuyển máy thay vì đổi lịch; nay xếp sau đổi / hủy / đặt, trước CONFIRM. (3) "thay
+  đổi / thay băng" và "không có ai đi thay" từng khớp "đi thay". (4) Prompt liệt kê "hỏi chi phí" là
+  OUT_OF_SCOPE, mâu thuẫn ví dụ mẫu "hủy thì có mất phí không em" → `QUESTION`; đã bỏ. (5) Một câu
+  holdout gần trùng ví dụ mẫu của prompt; đã thay bằng câu khác.
+- Chưa làm: câu hỏi chi phí ("có mất phí không em") — cancel eval đang kỳ vọng `QUESTION` / hỏi lại cho
+  "Hủy thì có mất phí không em", cần thống nhất nhãn hai bộ trước khi thêm từ khóa.
+

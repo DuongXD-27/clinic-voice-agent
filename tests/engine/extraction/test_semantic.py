@@ -41,7 +41,7 @@ from inference.llm.prompt.semantic import PROMPT_VERSION, build_messages
 from inference.llm.providers.base import StructuredReply
 
 NOW = datetime(2026, 10, 1, 9, 0, tzinfo=VN_TZ)
-OUTBOUND_INTENTS = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE)
+OUTBOUND_INTENTS = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.OUT_OF_SCOPE)
 
 
 def _field(value: Any, provenance: Provenance = Provenance.EXACT, span: Optional[str] = None):
@@ -732,17 +732,83 @@ def test_a_reason_drops_the_mistaken_confirm_at_ask_intent() -> None:
 @pytest.mark.parametrize(
     "outcome",
     [
-        SemanticOutcome(ReplyKind.AMBIGUOUS, "vợ tôi sẽ đến thay"),
-        SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="UNSPECIFIED", reason_span="thay"),
-        SemanticOutcome(ReplyKind.QUESTION, "vợ tôi sẽ đến thay"),
+        SemanticOutcome(ReplyKind.AMBIGUOUS, "tôi sẽ đến lúc 10 giờ"),
+        SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="UNSPECIFIED", reason_span="10 giờ"),
+        SemanticOutcome(ReplyKind.QUESTION, "tôi sẽ đến lúc 10 giờ"),
     ],
 )
 def test_an_unsure_model_keeps_the_rule_confirm_at_ask_intent(outcome: SemanticOutcome) -> None:
     """Model không chắc: giữ kết luận luật (đọc lại lịch, không ghi gì)."""
     merged = merge_semantic(
-        _weak_confirm("vợ tôi sẽ đến thay", "sẽ đến"),
+        _weak_confirm("tôi sẽ đến lúc 10 giờ", "sẽ đến"),
         outcome,
         RouteReason.ATTENDANCE_UNCLEAR,
         OUTBOUND_INTENTS,
     )
     assert merged.intent.value is Intent.CONFIRM
+
+
+# --- Ngoài phạm vi: model chỉ được dẫn tới chuyển máy, không mở khóa ghi -----------------------
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ReplyKind.CHANGE_INTENT,
+        ReplyKind.QUESTION,
+        ReplyKind.AMBIGUOUS,
+        ReplyKind.CONFIRM_ACTION,
+    ],
+)
+def test_out_of_scope_from_the_model_wins_over_every_reply_kind(kind: ReplyKind) -> None:
+    """Như PRIORITY của luật: ngoài phạm vi thắng cả đồng ý — Policy chuyển máy, không ghi."""
+    merged = merge_semantic(
+        _readback(
+            "vâng, lịch này tôi có đặt đâu em", agreement=_field(Agreement.UNCLEAR, span="vâng")
+        ),
+        SemanticOutcome(
+            kind,
+            "vâng",
+            intent=Intent.OUT_OF_SCOPE,
+            intent_span="lịch này tôi có đặt đâu",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.intent == Field(
+        Intent.OUT_OF_SCOPE, Provenance.FALLBACK, span="lịch này tôi có đặt đâu"
+    )
+    assert merged.agreement.value is not Agreement.AGREE and not merged.agreement.found
+
+
+def test_out_of_scope_is_ignored_when_not_allowed_here() -> None:
+    merged = merge_semantic(
+        _readback("lịch này tôi có đặt đâu em"),
+        SemanticOutcome(
+            ReplyKind.CHANGE_INTENT,
+            intent=Intent.OUT_OF_SCOPE,
+            intent_span="lịch này tôi có đặt đâu",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE),
+    )
+    assert merged.intent.value is not Intent.OUT_OF_SCOPE
+
+
+def test_out_of_scope_needs_a_span_from_the_transcript() -> None:
+    """Model tự viết span không có trong câu -> không nhận nhãn, không chuyển máy."""
+    reading = _reading(
+        reply_kind="CHANGE_INTENT", intent="OUT_OF_SCOPE", intent_span="tôi không đặt lịch"
+    )
+    context = _context("lịch này tôi có đặt đâu em", question_id=QuestionId.CONFIRM_READBACK)
+    assert ground_reading(reading, context) is None
+
+
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+def test_the_model_may_propose_out_of_scope_in_both_directions(direction: str) -> None:
+    context = build_semantic_context(
+        _turn_context(direction=direction, question_id=QuestionId.ASK_INTENT),
+        _result("lịch này tôi có đặt đâu", question_id=QuestionId.ASK_INTENT),
+        RouteReason.INTENT_UNCLEAR,
+    )
+    assert Intent.OUT_OF_SCOPE in context.allowed_intents

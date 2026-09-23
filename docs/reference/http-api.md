@@ -15,10 +15,26 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Trường hợp | Kết quả |
 |---|---|
 | `call_id` mới | `200`, mở phiên, trả câu chào |
+| Outbound không đọc được lịch hợp lệ từ Clinic (lỗi API, không tìm thấy, dữ liệu hỏng hoặc lịch không còn thao tác được) | `503 OUTBOUND_START_FAILED`; không tạo phiên, không trả lời bot/TTS, không ghi chuyển máy. Sau khi khắc phục có thể gửi lại cùng `call_id` |
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
 | `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `src/speech/bundle.py` |
+
+Console mô phỏng outbound bằng `appointment_id`, chưa thực hiện quay số điện thoại.
+Tra cứu Clinic là điều kiện trước khi mở phiên outbound; lỗi này hiển thị cho người vận hành.
+Inbound đã có người gọi đến nên lỗi tra cứu vẫn theo luồng chuyển nhân viên.
+
+Luồng xử lý trong code: [`calls.py`](../../src/callbot/transports/http/calls.py)
+→ `CallOrchestrator.start_call` → `SessionManager.open` →
+[`DialogueManager.opening`](../../src/callbot/engine/dialogue/manager.py).
+Manager chọn [`inbound.opening`](../../src/callbot/engine/dialogue/inbound.py) hoặc
+[`outbound.opening`](../../src/callbot/engine/dialogue/outbound.py) theo `direction`.
+Mỗi luồng gọi `IdentityVerifier.prepare` để tra cứu rồi quyết định hỏi danh tính,
+chuyển nhân viên (inbound) hoặc từ chối mở phiên (outbound).
+[`questions.ask`](../../src/callbot/engine/dialogue/questions.py) dùng chung để lưu câu hỏi
+và lượt hỏi; `SessionManager` chỉ ghi phiên và áp dụng trạng thái sau khi mở đầu thành công.
+`calls.py` chuyển `OutboundStartFailed` thành lỗi HTTP ở bảng trên.
 
 ## `POST /v1/calls/{call_id}/turn`
 
