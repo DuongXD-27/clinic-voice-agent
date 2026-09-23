@@ -1,4 +1,4 @@
-"""Clinic lỗi hoặc lịch không còn thao tác được: cuộc gọi luôn chuyển cho nhân viên.
+"""Clinic lỗi: chặn mở outbound; cuộc gọi đang diễn ra chuyển cho nhân viên.
 
 Không báo thành công giả cho lệnh nghiệp vụ (CONFIRMED / CANCELLED / UNREACHABLE). Khi chính lệnh ghi
 TRANSFERRED thất bại, bot vẫn trả TRANSFERRED để nhân viên xử lý; chỉ lệnh ghi chưa rõ kết quả mới
@@ -15,6 +15,7 @@ from callbot.engine import (
     ReconciliationRequired,
     create_orchestrator,
 )
+from callbot.engine.errors import OutboundStartFailed
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -58,13 +59,11 @@ def _transferred(action, reason: str = "SYSTEM_ERROR") -> None:
 
 
 @pytest.mark.parametrize("status", ["CANCELLED", "RESCHEDULED", "TRANSFERRED", "UNREACHABLE"])
-def test_non_actionable_appointment_is_transferred_at_turn_one(status: str) -> None:
+def test_non_actionable_appointment_prevents_outbound_start(status: str) -> None:
     clinic = FakeClinicAPI()
     _set_status(clinic, status)
-    bot, _, _ = _bot("c_open_blocked", clinic)
-
-    _transferred(_run(bot, "c_open_blocked", [NAME]))
-    # Clinic không cho /transfer từ trạng thái này: không gửi lệnh ghi nào
+    with pytest.raises(OutboundStartFailed):
+        _bot("c_open_blocked", clinic)
     assert clinic.requests == []
 
 
@@ -76,13 +75,11 @@ def test_actionable_appointments_open_normally(status: str) -> None:
     assert not _run(bot, "c_open_ok", [NAME]).ended
 
 
-def test_invalid_read_at_opening_is_transferred_at_turn_one() -> None:
+def test_invalid_read_prevents_outbound_start() -> None:
     clinic = FakeClinicAPI()
     del clinic.appointments["apt_00417"]["starts_at"]
-    bot, _, _ = _bot("c_open_invalid", clinic)
-
-    run = bot.handle_turn_with_details("c_open_invalid", _caller(1, NAME))
-    _transferred(run.action)
+    with pytest.raises(OutboundStartFailed):
+        _bot("c_open_invalid", clinic)
     assert clinic.requests == []
 
 

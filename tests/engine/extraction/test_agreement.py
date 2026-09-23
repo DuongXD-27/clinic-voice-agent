@@ -231,3 +231,83 @@ def test_polite_position_keeps_priorities(
     text: str, question: QuestionId, expected: Agreement
 ) -> None:
     assert extract_agreement(text, question).value is expected
+
+
+# --- T-04 §8: AGREE chỉ khi câu được giải thích hết -----------------------------------------------
+
+
+@pytest.mark.parametrize("question", [CONFIRM, SLOT])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # từ khẳng định là hư từ của câu kể
+        "hôm đó tôi có việc bận",
+        "tôi phải đi làm hôm đó",
+        "tôi được nghỉ hôm đó mà",
+        "hôm đó đúng ngày giỗ nhà tôi",
+        "tôi đang chuẩn bị đi xa",
+        # đáp lễ mở câu, phần sau là việc khác
+        "dạ hôm đó tôi bận rồi",
+        "vâng, hôm đó tôi phải đi công tác",
+        "dạ tôi khám ở chỗ khác rồi",
+        "vâng tôi nghe",
+        "dạ em ơi cho chị hỏi chút",
+        # đoán / cố gắng / điều kiện
+        "chắc được",
+        "hy vọng là được",
+        "nếu rảnh thì được",
+        # giờ khác, câu hỏi đuôi "chứ"
+        "vâng, 3 giờ chiều nhé",
+        "tôi đến trễ không sao chứ",
+    ],
+)
+def test_affirmative_word_inside_another_statement_never_agrees(
+    question: QuestionId, text: str
+) -> None:
+    result = extract_agreement(text, question)
+    assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize("text", ["à", "ạ", "ừm"])
+def test_filler_sound_alone_is_not_a_confirmation(text: str) -> None:
+    """T-04 §8: "à?" là hỏi lại, "ừm" là đang nghĩ; "vâng / dạ / ừ / ờ" vẫn là xác nhận."""
+    result = extract_agreement(text, CONFIRM)
+    assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tôi sẽ có mặt",
+        "vâng, hôm đó tôi đến",
+        "dạ đúng rồi em",
+        "được rồi được rồi",
+        "vâng vâng",
+        "dạ vâng, cảm ơn em nhiều",
+        "nhất định rồi",
+        "đương nhiên",
+        "đến chứ",
+        "đi chứ",
+        "không thành vấn đề",
+        "không có vấn đề gì",
+    ],
+)
+def test_short_attendance_answers_still_agree(text: str) -> None:
+    assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
+
+
+@pytest.mark.parametrize("text", ["Được, đổi giúp tôi.", "được khung đó", "chốt đi em"])
+def test_short_slot_answers_still_agree(text: str) -> None:
+    assert extract_agreement(text, SLOT).value is Agreement.AGREE
+
+
+@pytest.mark.parametrize("text", ["không cần đổi đâu", "không cần hủy", "không biết nữa"])
+def test_not_wanting_a_change_is_not_a_refusal_to_attend(text: str) -> None:
+    """Chữ "không" thuộc cụm khác: không hỏi "đổi hay hủy" (T-04 §8)."""
+    result = extract_agreement(text, CONFIRM)
+    assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize("text", ["không cần đổi", "không đổi"])
+def test_not_changing_is_still_a_refusal_when_choosing_a_slot(text: str) -> None:
+    assert extract_agreement(text, SLOT).value is Agreement.REFUSE

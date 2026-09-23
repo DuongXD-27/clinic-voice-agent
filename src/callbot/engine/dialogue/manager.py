@@ -4,7 +4,7 @@ Nhận thẳng `ExtractionResult` (thiết kế IE v1.1). Mỗi phản hồi kè
 Dialogue không tự quyết chuyển máy vì không hiểu.
 
 Quy ước:
-- Mỗi câu hỏi nghiệp vụ đi qua `_ask`, lưu `question_id` + nội dung + lượt. Câu "em chưa hiểu" không
+- Mỗi câu hỏi nghiệp vụ đi qua `questions.ask`, lưu `question_id` + nội dung + lượt. Câu "em chưa hiểu" không
   đổi câu hỏi đang chờ; nhắc im lặng và xin nhắc lại thì hỏi lại nguyên văn câu đó ở lượt hiện tại.
 - Chỉ `agreement == AGREE` cho đúng câu hỏi xác nhận mới tạo bằng chứng và gọi lệnh ghi;
   REFUSE bỏ hành động chờ; UNCLEAR hỏi lại — câu đến khám thì đọc lại ngày, giờ, cơ sở bằng câu
@@ -17,7 +17,9 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Optional
 
+from callbot.engine.dialogue import inbound, outbound
 from callbot.engine.dialogue import templates as t
+from callbot.engine.dialogue.questions import ask
 from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
     AppointmentUnusable,
@@ -39,11 +41,10 @@ from callbot.engine.extraction.schema import (
 from callbot.engine.extraction.slot_choice import filter_slots, parse_slot_criteria
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.policy_engine import Understanding
-from callbot.engine.session.context import ActionEvidence, CallContext, PendingAction, Question
+from callbot.engine.session.context import ActionEvidence, CallContext, PendingAction
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.types import (
     BotAction,
-    CallState,
     Outcome,
     TransferReason,
     UnreachableReason,
@@ -80,15 +81,9 @@ class DialogueManager:
     # --- Mở đầu / kết thúc -----------------------------------------------------
 
     def opening(self, ctx: CallContext) -> BotAction:
-        # Luồng PDF: đọc hồ sơ ở lượt 0 và giữ dữ liệu chuẩn trong Session (T-01). Không ném lỗi.
-        prepare = self._verifier.prepare(ctx)
-        if prepare.transfer_reason is not None:
-            # Không có hồ sơ để đối chiếu: không hỏi tên. Listing 1 không cho kết thúc ở lượt 0,
-            # nên Policy.check_preconditions chuyển máy ở lượt 1.
-            return BotAction(t.greeting_handoff(ctx.call.direction), "AWAITING_IDENTITY")
-        return self._ask(
-            ctx, QuestionId.ASK_NAME, t.greeting(ctx.call.direction), "AWAITING_IDENTITY"
-        )
+        """Chọn luồng mở đầu; mỗi hướng tự quyết định xử lý kết quả tra cứu."""
+        flow = outbound if ctx.call.direction == "outbound" else inbound
+        return flow.opening(ctx, self._verifier)
 
     def silence(self, ctx: CallContext) -> BotAction:
         """Kiến trúc §3.3: nhắc rồi hỏi lại câu đang chờ ở bước hiện tại (T-08).
@@ -210,7 +205,7 @@ class DialogueManager:
                 if dob_invalid
                 else t.ASK_DOB
             )
-            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"))
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))
 
         if is_greeting(ex.transcript) and ctx.neutral_greetings < MAX_NEUTRAL_GREETINGS:
             # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
@@ -230,18 +225,18 @@ class DialogueManager:
                 text = t.greeting_back(ctx.call.direction)
             else:
                 text = t.ASK_NAME_AGAIN
-            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         if not ask_name and dob_invalid:
             # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
             return self._not_understood(ctx, question, t.ASK_DOB_INVALID)
         intent = ex.intent.value
         if intent is Intent.CANNOT_PROVIDE:
             text = t.ASK_NAME_DECLINED if ask_name else t.ASK_DOB_DECLINED
-            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "DECLINED")
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "DECLINED")
         if intent in _BUSINESS_INTENTS:
             # Nói nhu cầu trước khi xác minh: lần đầu không tính là không hiểu, không dùng nhu cầu này
             text = t.ASK_NAME_FOR_REQUEST if ask_name else t.ASK_DOB_FOR_REQUEST
-            return Reply(self._ask(ctx, question, text, "AWAITING_IDENTITY"), "UNCLEAR")
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "UNCLEAR")
         return self._not_understood(
             ctx, question, t.ASK_NAME_AGAIN if ask_name else t.ASK_DOB_AGAIN
         )
@@ -258,12 +253,10 @@ class DialogueManager:
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
-            return Reply(
-                self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT")
-            )
+            return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
         appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
-            self._ask(
+            ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
                 t.appointment_summary(ctx, appointment),
@@ -298,14 +291,12 @@ class DialogueManager:
             return Reply(self._finish("CONFIRMED", t.confirmed(ctx, written)))
         if agreement is Agreement.REFUSE:
             ctx.clear_pending()
-            return Reply(
-                self._ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT")
-            )
+            return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT"))
         if ex.agreement.found or intent is Intent.CONFIRM:
             # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
             appointment = self._gateway.get_actionable_appointment(ctx)
             return Reply(
-                self._ask(
+                ask(
                     ctx,
                     QuestionId.CONFIRM_READBACK,
                     t.attendance_reread(ctx, appointment),
@@ -325,7 +316,7 @@ class DialogueManager:
                 ctx.set_pending("CONFIRM")
                 appointment = self._gateway.get_actionable_appointment(ctx)
                 return Reply(
-                    self._ask(
+                    ask(
                         ctx,
                         QuestionId.CONFIRM_READBACK,
                         t.attendance_readback(ctx, appointment),
@@ -335,6 +326,13 @@ class DialogueManager:
                 )
             if intent in (Intent.CANCEL, Intent.RESCHEDULE):
                 return self._start(ctx, intent, ex, now)
+            if ex.cancel_reason.found and ex.cancel_reason.value != DEFAULT_CANCEL_REASON:
+                # "Đổi hay hủy?" -> "hôm đó tôi đi công tác": người gọi kể vì sao không đến nhưng
+                # chưa chọn. Hỏi lại đúng câu đó; lần đầu không tính §1.1.5 (T-04 §8, Q-2).
+                return Reply(
+                    ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT"),
+                    "UNCLEAR",
+                )
             return self._not_understood(ctx)
 
         if intent is Intent.BOOK:
@@ -354,7 +352,7 @@ class DialogueManager:
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
             self._update_cancel_reason(ctx, ex)
             return Reply(
-                self._ask(
+                ask(
                     ctx,
                     QuestionId.CANCEL_RECONFIRM,
                     t.CANCEL_RECONFIRM,
@@ -375,7 +373,7 @@ class DialogueManager:
             assert slot is not None and ctx.pending_action is not None
             ctx.select_slot(slot["slot_id"])
             return Reply(
-                self._ask(
+                ask(
                     ctx,
                     QuestionId.SLOT_READBACK,
                     t.slot_readback(ctx, slot),
@@ -426,7 +424,7 @@ class DialogueManager:
             return self._start(ctx, Intent.CANCEL, ex, now)
         if ex.agreement.found:
             return Reply(
-                self._ask(
+                ask(
                     ctx,
                     QuestionId.SLOT_READBACK,
                     t.slot_choice(ctx, slot),
@@ -483,9 +481,7 @@ class DialogueManager:
         return self._not_understood(ctx)
 
     def _ask_cancel_again(self, ctx: CallContext, text: str) -> BotAction:
-        return self._ask(
-            ctx, QuestionId.CANCEL_RECONFIRM, text, "AWAITING_CONFIRMATION", action="CANCEL"
-        )
+        return ask(ctx, QuestionId.CANCEL_RECONFIRM, text, "AWAITING_CONFIRMATION", action="CANCEL")
 
     @staticmethod
     def _update_cancel_reason(ctx: CallContext, ex: ExtractionResult) -> bool:
@@ -508,12 +504,10 @@ class DialogueManager:
         """Người gọi từ chối: bỏ hành động chờ, không ghi gì."""
         ctx.clear_pending()
         if ctx.call.direction == "inbound":
-            return Reply(
-                self._ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT")
-            )
+            return Reply(ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT"))
         appointment = self._gateway.get_actionable_appointment(ctx)
         return Reply(
-            self._ask(
+            ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
                 t.keep_appointment(ctx, appointment),
@@ -547,7 +541,7 @@ class DialogueManager:
         presented = candidates[:MAX_SLOTS_PRESENTED]
         ctx.presented_slot_ids = [slot["slot_id"] for slot in presented]
         assert ctx.pending_action is not None
-        return self._ask(
+        return ask(
             ctx,
             QuestionId.OFFER_SLOTS,
             t.offer_slots(ctx, presented, prefix),
@@ -563,7 +557,7 @@ class DialogueManager:
     ) -> Reply:
         if question_id is not None:
             # Hỏi lại cùng một câu hỏi danh tính bằng lời khác
-            return Reply(self._ask(ctx, question_id, text, ctx.state), "NOT_UNDERSTOOD")
+            return Reply(ask(ctx, question_id, text, ctx.state), "NOT_UNDERSTOOD")
         return Reply(BotAction(text, ctx.state), "NOT_UNDERSTOOD")
 
     @staticmethod
@@ -595,18 +589,6 @@ class DialogueManager:
             provenance=source.provenance.value,
             span=source.span,
         )
-
-    @staticmethod
-    def _ask(
-        ctx: CallContext,
-        question_id: QuestionId,
-        text: str,
-        state: CallState,
-        action: Optional[PendingAction] = None,
-        slot_id: Optional[str] = None,
-    ) -> BotAction:
-        ctx.question = Question(question_id, text, ctx.turn, action=action, slot_id=slot_id)
-        return BotAction(text, state)
 
     @staticmethod
     def _finish(outcome: Outcome, text: str) -> BotAction:

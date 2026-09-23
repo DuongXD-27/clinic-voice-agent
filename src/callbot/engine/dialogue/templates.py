@@ -19,12 +19,8 @@ GREETING_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
 )
-# Lượt 0 khi tra cứu hồ sơ không cho dữ liệu để xác minh (T-02): vẫn công bố AI, không hỏi tên,
+# Inbound lượt 0 khi tra cứu không có dữ liệu để xác minh: vẫn công bố AI, không hỏi tên,
 # không nói lý do ("số này chưa có hồ sơ" cũng là thông tin về hồ sơ). Lượt 1 chuyển máy.
-GREETING_HANDOFF_OUTBOUND = (
-    f"Dạ em xin chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
-    "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
-)
 GREETING_HANDOFF_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
@@ -112,11 +108,6 @@ def greeting(direction: str) -> str:
 def greeting_back(direction: str) -> str:
     """Trả lời "alo" ngay sau câu chào mở đầu."""
     return GREETING_BACK_OUTBOUND if direction == "outbound" else GREETING_BACK_INBOUND
-
-
-def greeting_handoff(direction: str) -> str:
-    """Câu chào khi không thể xác minh (không có hồ sơ / không đọc được hồ sơ): [R-26], không hỏi tên."""
-    return GREETING_HANDOFF_OUTBOUND if direction == "outbound" else GREETING_HANDOFF_INBOUND
 
 
 def speak_datetime(iso: str) -> str:

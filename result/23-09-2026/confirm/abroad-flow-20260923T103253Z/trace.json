@@ -1,0 +1,373 @@
+{
+  "ran_at": "20260923T103253Z",
+  "model": "gpt-6-luna",
+  "prompt_version": "semantic_v4",
+  "timeout_s": 3.0,
+  "clinic": "FakeClinicAPI",
+  "runs": [
+    {
+      "repeat": 1,
+      "branch": "explicit_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    },
+    {
+      "repeat": 1,
+      "branch": "polite_then_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "vâng",
+          "bot": "Dạ, anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị xác nhận “hủy lịch” giúp em ạ.",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 6,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "branch": "explicit_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    },
+    {
+      "repeat": 2,
+      "branch": "polite_then_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "vâng",
+          "bot": "Dạ, anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị xác nhận “hủy lịch” giúp em ạ.",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 6,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "branch": "explicit_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    },
+    {
+      "repeat": 3,
+      "branch": "polite_then_cancel",
+      "turns": [
+        {
+          "turn": 3,
+          "caller": "tuần đó tôi sẽ đi nước ngoài",
+          "bot": "Dạ, lịch khám Nội tổng quát của anh chị là 9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City. Anh chị có đến khám được theo lịch này không ạ?",
+          "question": "CONFIRM_READBACK",
+          "state": "AWAITING_INTENT",
+          "outcome": null,
+          "semantic_status": "timeout",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": false
+        },
+        {
+          "turn": 4,
+          "caller": "hủy giúp tôi",
+          "bot": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 5,
+          "caller": "vâng",
+          "bot": "Dạ, anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị xác nhận “hủy lịch” giúp em ạ.",
+          "question": "CANCEL_RECONFIRM",
+          "state": "AWAITING_CONFIRMATION",
+          "outcome": null,
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [],
+          "passed": true
+        },
+        {
+          "turn": 6,
+          "caller": "đúng, hủy đi",
+          "bot": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+          "question": null,
+          "state": "ENDED",
+          "outcome": "CANCELLED",
+          "semantic_status": "not_called",
+          "semantic": null,
+          "cancel_reason": null,
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "passed": true
+        }
+      ],
+      "passed": false
+    }
+  ],
+  "passed": false
+}

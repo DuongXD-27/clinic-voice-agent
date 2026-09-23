@@ -1,11 +1,18 @@
 """Intent — thiết kế v1.1 §5.4 (tầng luật viết tay).
 
 Ưu tiên khi một câu khớp nhiều nhãn:
-    REQUEST_HUMAN > NOT_PATIENT > OUT_OF_SCOPE > RESCHEDULE > CANCEL > BOOK > CONFIRM > REPEAT_REQUEST
+    REQUEST_HUMAN > NOT_PATIENT > OUT_OF_SCOPE (chủ đề) > RESCHEDULE > CANCEL > BOOK
+    > OUT_OF_SCOPE (yêu cầu) > CONFIRM > REPEAT_REQUEST
 
 - "Không đến được, đổi sang chiều được không" -> RESCHEDULE (có phương án thay thế).
 - Phủ định đứng trước từ khoá hành động bị loại: "không hủy", "đừng đổi", "chưa muốn đặt lịch".
-  Không áp dụng cho OUT_OF_SCOPE ("không có bảo hiểm thì sao" vẫn là câu hỏi bảo hiểm).
+  Không áp dụng cho chủ đề OUT_OF_SCOPE ("không có bảo hiểm thì sao" vẫn là câu hỏi bảo hiểm), nhưng áp
+  dụng cho yêu cầu OUT_OF_SCOPE ("không đến trễ đâu", "không cần gọi lại" không phải yêu cầu).
+- OUT_OF_SCOPE gồm chủ đề ngoài phạm vi (§1.2.3, địa chỉ / đường đi) và yêu cầu ngoài kịch bản mà bot
+  hiểu được: người khác đi khám thay, đến muộn, xin gọi lại. Yêu cầu xếp sau đổi / hủy / đặt — câu có
+  nhu cầu trong phạm vi thì làm nhu cầu đó ("tôi sợ đến trễ, dời sang 10 giờ" -> RESCHEDULE) — nhưng
+  trước CONFIRM ("vợ tôi sẽ đến thay" không phải đồng ý). Xin gọi lại chỉ xét ở bước nghiệp vụ
+  (`business_step`): ở bước danh tính người nghe đang bận vẫn được hỏi lại tên (T-08).
 - Transcript không dấu: khớp bản không dấu của từ khoá, provenance NORMALIZED. Từ khoá mà bản
   không dấu trùng nghĩa khác nằm trong `_UNACCENTED_EXCLUDE` ("dời" / "đợi", "tôi đến" / "tối đến").
 """
@@ -77,6 +84,22 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "kê đơn",
         "kết quả xét nghiệm",
         "trả kết quả",
+        # Địa chỉ / đường đi: chỉ cụm dạng hỏi, "tôi biết địa chỉ rồi" không phải câu hỏi
+        "địa chỉ ở đâu",
+        "địa chỉ là gì",
+        "địa chỉ cụ thể",
+        "xin địa chỉ",
+        "địa chỉ phòng khám",
+        "địa chỉ cơ sở",
+        "địa chỉ bệnh viện",
+        "phòng khám ở đâu",
+        "cơ sở ở đâu",
+        "bệnh viện ở đâu",
+        "chỉ đường",
+        "đi đường nào",
+        "gửi xe ở đâu",
+        "chỗ gửi xe",
+        "bãi gửi xe",
     ],
     Intent.RESCHEDULE: [
         "đổi lịch",
@@ -138,10 +161,16 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "vẫn đến",
         "vẫn đi",
         "giữ lịch",
+        "giữ nguyên",
         "giữ nguyên lịch",
         "vẫn giữ lịch",
         "đúng lịch",
         "xác nhận",
+        # Trả lời "đổi hay hủy" bằng cách giữ lịch (T-04 §8)
+        "không đổi không hủy",
+        "không đổi cũng không hủy",
+        "không đổi gì",
+        "không hủy gì",
     ],
     Intent.REPEAT_REQUEST: [
         "gì cơ",
@@ -172,10 +201,60 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "không biết năm sinh",
     ],
 }
+# Yêu cầu ngoài kịch bản (§1.1.5): bot hiểu được nhưng không có luồng xử lý. Phủ định đứng trước làm
+# mất nhãn ("không đến trễ đâu").
+_OUT_OF_SCOPE_REQUESTS = [
+    # người khác đi khám thay người bệnh
+    "đến thay",
+    "đi thay",
+    "khám thay",
+    "đi khám thay",
+    "đến khám thay",
+    "khám hộ",
+    "đi khám hộ",
+    # đến muộn so với lịch
+    "đến muộn",
+    "đến trễ",
+    "đi muộn",
+    "đi trễ",
+    "tới muộn",
+    "tới trễ",
+]
+# Xin gọi lại: chỉ ở bước nghiệp vụ (xem docstring). "rồi gọi lại" (người gọi tự gọi lại) không có ở đây.
+_CALLBACK_REQUESTS = [
+    "gọi lại sau",
+    "gọi lại cho tôi",
+    "gọi lại giúp",
+    "gọi lại lúc khác",
+    "gọi lúc khác",
+    "lát gọi lại",
+    "lát nữa gọi lại",
+]
+# "den thay" = đến thấy; "di thay" = đi thấy; "kham thay" = khám thấy; "di muon" = đi mượn;
+# "toi muon" = TÔI MUỐN; "toi tre" = tôi trẻ
+_REQUESTS_UNACCENTED_EXCLUDE = [
+    "đến thay",
+    "đi thay",
+    "khám thay",
+    "đi khám thay",
+    "đến khám thay",
+    "đi muộn",
+    "tới muộn",
+    "tới trễ",
+]
+# "thay đổi / thay băng / thay thuốc / thay đồ" không phải người khác đi thay; "không ai đi thay" là phủ
+# định mà `is_negated` không thấy (có "ai" chen giữa). Chỉ cần bản có dấu: bản không dấu của các cụm "thay"
+# đã bị loại ở trên.
+_NOT_A_REQUEST = re.compile(
+    r"(?<!\w)(?:thay (?:đổi|băng|thuốc|đồ)"
+    r"|(?:không|chẳng)(?: có)? ai (?:đi|đến|tới)(?: khám)? thay)(?!\w)"
+)
 _UNACCENTED_EXCLUDE: dict[Intent, list[str]] = {
     Intent.RESCHEDULE: ["dời", "đổi lại"],  # "doi" = đợi / đói / đội; "doi lai" = đợi lại
-    Intent.CONFIRM: ["tôi đến", "đúng lịch"],  # "toi den" = tối đến; "dung lich" = dùng lịch
+    # "toi den" = tối đến; "dung lich" = dùng lịch; "khong doi gi" = không đợi gì
+    Intent.CONFIRM: ["tôi đến", "đúng lịch", "không đổi gì"],
     Intent.CANNOT_PROVIDE: ["quên mất", "quên rồi"],  # "quen mat" = quen mặt; "quen roi" = quen rồi
+    Intent.OUT_OF_SCOPE: ["chỉ đường"],  # "chi duong" = chị Dương
 }
 # Nhãn chỉ-một-hướng vẫn nhận ở hướng kia với cụm hẹp, để Dialogue chuyển máy vì ngoài kịch bản
 # (§1.1.5) thay vì hỏi lại. Inbound "xác nhận lịch khám" nói về lịch có sẵn; "tôi đến được" thì không —
@@ -192,6 +271,8 @@ _COMPILED = {
     intent: compile_phrases(words, _UNACCENTED_EXCLUDE.get(intent, ()))
     for intent, words in _KEYWORDS.items()
 }
+_COMPILED_REQUESTS = compile_phrases(_OUT_OF_SCOPE_REQUESTS, _REQUESTS_UNACCENTED_EXCLUDE)
+_COMPILED_CALLBACK = compile_phrases(_CALLBACK_REQUESTS)
 
 # "tôi là vợ anh ấy", "em là con của bà ấy", "anh ấy đi làm rồi"
 _RELATIVE = (
@@ -217,12 +298,20 @@ def extract_intent(
     transcript: str,
     direction: Direction,
     allowed: Optional[Iterable[Intent]] = None,
+    *,
+    business_step: bool = True,
 ) -> Field[Intent]:
+    """`business_step=False`: bước danh tính, không xét cụm xin gọi lại."""
     text = clean(transcript)
     unaccented = is_unaccented(text)
     provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
     allowed_set = frozenset(allowed) if allowed is not None else frozenset(PRIORITY)
     for intent in (*PRIORITY, *IDENTITY_ONLY):
+        if intent is Intent.CONFIRM and Intent.OUT_OF_SCOPE in allowed_set:
+            # Yêu cầu ngoài kịch bản: sau đổi / hủy / đặt, trước CONFIRM (xem docstring)
+            span = _match_out_of_scope_request(text, unaccented, business_step)
+            if span is not None:
+                return Field(Intent.OUT_OF_SCOPE, provenance, span=span)
         if intent not in allowed_set:
             continue
         if allowed_in_direction(intent, direction):
@@ -259,3 +348,16 @@ def _match(intent: Intent, text: str, unaccented: bool) -> Optional[str]:
         text, _COMPILED[intent], allow_negated=intent not in _NEGATABLE, unaccented=unaccented
     )
     return found.group(0) if found else None
+
+
+def _match_out_of_scope_request(text: str, unaccented: bool, business_step: bool) -> Optional[str]:
+    phrase_sets = (
+        (_COMPILED_REQUESTS, _COMPILED_CALLBACK) if business_step else (_COMPILED_REQUESTS,)
+    )
+    # Dấu ";" giữ ranh giới từ: cụm bị xoá không làm hai từ hai bên ghép thành cụm mới
+    text = _NOT_A_REQUEST.sub(" ; ", text)
+    for phrases in phrase_sets:
+        found = find_phrase(text, phrases, allow_negated=False, unaccented=unaccented)
+        if found:
+            return found.group(0)
+    return None

@@ -192,7 +192,9 @@ class InformationExtractor:
             # ngày (dù không dùng được) thì họ có cung cấp được — không phải CANNOT_PROVIDE.
             and (dob_reading is None or not dob_reading.zone)
         ):
-            fallback_intent = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
+            fallback_intent = extract_intent(
+                transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS, business_step=False
+            )
             if fallback_intent.found:
                 intent = fallback_intent
 
@@ -223,6 +225,7 @@ class InformationExtractor:
             clinical=clinical,
             agreement=agreement,
             cancel_reason=cancel_reason,
+            direction=ctx.direction,
         )
         result = ExtractionResult(
             turn=ctx.turn,

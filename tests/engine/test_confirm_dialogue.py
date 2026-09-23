@@ -16,6 +16,7 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
+from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
 from callbot.engine.session import CallContext
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
@@ -216,6 +217,23 @@ def test_exceptions_at_readback_transfer_without_confirming(answer: str, reason:
     assert _confirm_writes(clinic) == []
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "vợ tôi sẽ đến thay",
+        "địa chỉ ở đâu em nhỉ",
+        "tôi đến trễ không sao chứ",
+        "dạ, tôi đang bận, gọi lại sau",
+    ],
+)
+def test_out_of_scope_answer_at_readback_transfers_instead_of_rereading(answer: str) -> None:
+    """Câu bot hiểu nhưng ngoài kịch bản: chuyển máy ngay (§1.1.5), không đọc lại lịch để né."""
+    bot, clinic, _ = _at_readback("c_t04_oos")
+    action = _run(bot, "c_t04_oos", [answer], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "OUT_OF_SCOPE")
+    assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]
+
+
 def test_silence_and_repeat_request_keep_the_readback_question() -> None:
     bot, clinic, summary = _at_readback("c_t04_silence")
     action = _run(bot, "c_t04_silence", [SILENCE], start=3)
@@ -320,3 +338,146 @@ def test_inbound_attendance_wording_is_not_mistaken_for_confirm() -> None:
     bot, clinic = _inbound_at_intent("c_t04_in_book")
     action = _run(bot, "c_t04_in_book", ["sáng mai tôi đến được không"], start=3)
     assert not action.ended and clinic.writes == []
+
+
+# --- T-04 §8: câu kể có từ khẳng định / đáp lễ không được mở khóa lệnh ghi ------------------------
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "dạ hôm đó tôi bận rồi",
+        "hôm đó tôi có việc bận",
+        "tôi phải đi làm hôm đó",
+        "vâng, hôm đó tôi phải đi công tác",
+        "hôm đó tôi sẽ đi công tác",
+        "chắc được",
+        "tôi sẽ đến lúc 10 giờ",
+        "à",
+    ],
+)
+def test_statements_with_a_yes_word_reread_without_writing(answer: str) -> None:
+    bot, clinic, _ = _at_readback("c_t04s8_story")
+    action = _run(bot, "c_t04s8_story", [answer], start=3)
+    assert not action.ended and clinic.writes == []
+    assert FACTS in action.utterance and action.utterance.endswith(t.ASK_ATTENDANCE)
+    ctx = _context(bot, "c_t04s8_story")
+    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK and ctx.evidence == []
+
+
+def test_yes_after_the_reread_confirms() -> None:
+    bot, clinic, _ = _at_readback("c_t04s8_story_yes")
+    action = _run(bot, "c_t04s8_story_yes", ["dạ hôm đó tôi bận rồi", "vâng"], start=3)
+    assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
+
+
+@pytest.mark.parametrize("answer", ["không thành vấn đề", "nhất định rồi", "tôi sẽ có mặt"])
+def test_other_ways_of_agreeing_confirm_in_one_turn(answer: str) -> None:
+    bot, clinic, _ = _at_readback("c_t04s8_agree")
+    action = _run(bot, "c_t04s8_agree", [answer], start=3)
+    assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
+
+
+def test_not_wanting_to_change_is_not_asked_change_or_cancel() -> None:
+    bot, clinic, _ = _at_readback("c_t04s8_nochange")
+    action = _run(bot, "c_t04s8_nochange", ["không cần đổi đâu"], start=3)
+    assert action.utterance != t.ASK_CHANGE_OR_CANCEL and FACTS in action.utterance
+    assert clinic.writes == []
+
+
+@pytest.mark.parametrize("keep", ["giữ nguyên", "không đổi không hủy gì cả"])
+def test_keeping_after_a_refusal_rereads_then_confirms(keep: str) -> None:
+    bot, clinic, _ = _at_readback("c_t04s8_keep")
+    action = _run(bot, "c_t04s8_keep", ["không", keep], start=3)
+    assert action.state == "AWAITING_CONFIRMATION" and FACTS in action.utterance
+    assert clinic.writes == []
+    action = _run(bot, "c_t04s8_keep", ["vâng"], start=5)
+    assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
+
+
+class _FakeSemantic:
+    def __init__(self, replies: dict[str, SemanticOutcome]) -> None:
+        self._replies = replies
+
+    def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
+        return self._replies.get(context.transcript)
+
+
+def test_a_reason_read_by_the_model_asks_change_or_cancel_without_counting() -> None:
+    """AC-3: lý do không đến được là từ chối đến khám, không phải "em chưa hiểu"."""
+    line = "dạ hôm đó tôi bận rồi"
+    bot, clinic, _ = _at_readback("c_t04s8_sem")
+    bot._extractor._semantic = _FakeSemantic(
+        {
+            line: SemanticOutcome(
+                ReplyKind.INFORM_REASON,
+                cancel_reason="PATIENT_UNAVAILABLE",
+                reason_span="hôm đó tôi bận rồi",
+            )
+        }
+    )
+    action = _run(bot, "c_t04s8_sem", [line], start=3)
+    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
+    ctx = _context(bot, "c_t04s8_sem")
+    assert (ctx.unclear_streak, ctx.failed_understandings) == (0, 0)
+
+
+def test_a_statement_at_the_slot_readback_does_not_reschedule() -> None:
+    """Cùng lỗi ở câu đọc lại slot: "tôi có việc bận" từng ghi RESCHEDULED."""
+    bot, clinic, _ = _at_readback("c_t04s8_slot")
+    action = _run(bot, "c_t04s8_slot", ["tôi muốn đổi lịch", "khung 1"], start=3)
+    assert _context(bot, "c_t04s8_slot").question.question_id is QuestionId.SLOT_READBACK
+    action = _run(bot, "c_t04s8_slot", ["hôm đó tôi có việc bận"], start=5)
+    assert not action.ended and clinic.writes == []
+
+
+# --- T-04 §8: từ khóa CONFIRM khớp nhầm không chặn tầng ngữ nghĩa ---------------------------------
+
+TRIP = "hôm đó tôi sẽ đi công tác"
+TRIP_REASON = SemanticOutcome(
+    ReplyKind.INFORM_REASON, cancel_reason="PATIENT_UNAVAILABLE", reason_span=TRIP
+)
+
+
+def test_a_trip_mistaken_for_attendance_asks_change_or_cancel_when_the_model_reads_it() -> None:
+    bot, clinic, _ = _at_readback("c_t04_trip")
+    bot._extractor._semantic = _FakeSemantic({TRIP: TRIP_REASON})
+    action = _run(bot, "c_t04_trip", [TRIP], start=3)
+    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
+
+
+def test_without_the_model_the_trip_only_rereads() -> None:
+    """Model timeout / tắt: giữ kết luận luật — đọc lại lịch, không ghi."""
+    bot, clinic, _ = _at_readback("c_t04_trip_off")
+    bot._extractor._semantic = _FakeSemantic({})
+    action = _run(bot, "c_t04_trip_off", [TRIP], start=3)
+    assert FACTS in action.utterance and clinic.writes == []
+
+
+def test_a_reason_at_change_or_cancel_asks_that_question_again_without_counting() -> None:
+    """Q-2: "đổi hay hủy?" -> kể lý do: hỏi lại, lần đầu không tính §1.1.5; sau đó hủy vẫn cần 2 lượt."""
+    bot, clinic, _ = _at_readback("c_t04_trip_intent")
+    bot._extractor._semantic = _FakeSemantic({TRIP: TRIP_REASON})
+    action = _run(bot, "c_t04_trip_intent", ["không", TRIP], start=3)
+    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
+    ctx = _context(bot, "c_t04_trip_intent")
+    assert ctx.question.question_id is QuestionId.ASK_INTENT and ctx.question.turn == 4
+    assert (ctx.unclear_streak, ctx.failed_understandings) == (1, 0)
+    action = _run(bot, "c_t04_trip_intent", ["hủy lịch giúp tôi"], start=5)
+    assert _context(bot, "c_t04_trip_intent").question.question_id is QuestionId.CANCEL_RECONFIRM
+    assert clinic.writes == []
+
+
+def test_an_unspecified_reason_at_the_readback_rereads() -> None:
+    line = "tôi được nghỉ hôm đó mà"
+    bot, clinic, _ = _at_readback("c_t04_offday")
+    bot._extractor._semantic = _FakeSemantic(
+        {
+            line: SemanticOutcome(
+                ReplyKind.INFORM_REASON, cancel_reason="UNSPECIFIED", reason_span=line
+            )
+        }
+    )
+    action = _run(bot, "c_t04_offday", [line], start=3)
+    assert FACTS in action.utterance and action.utterance != t.ASK_CHANGE_OR_CANCEL
+    assert clinic.writes == []

@@ -23,6 +23,7 @@ from callbot.engine import (
     TurnOutOfOrder,
 )
 from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
+from callbot.engine.errors import OutboundStartFailed
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -111,6 +112,13 @@ def _translate_errors(call_id: str, operation: Callable[[], T]) -> T:
     except SessionStoreUnavailable as exc:
         logger.error("Session store không sẵn sàng khi xử lý %s", call_id)
         raise _error(503, "SESSION_STORE_UNAVAILABLE", "Kho phiên không sẵn sàng") from exc
+    except OutboundStartFailed as exc:
+        raise _error(
+            503,
+            "OUTBOUND_START_FAILED",
+            "Chưa thể bắt đầu cuộc gọi đi: không lấy được lịch hẹn hợp lệ từ Clinic. "
+            "Cuộc gọi chưa được tạo. Vui lòng kiểm tra Clinic và mã lịch hẹn.",
+        ) from exc
     except httpx.TimeoutException as exc:
         logger.warning("Clinic mock timeout khi xử lý %s", call_id)
         raise _error(504, "UPSTREAM_TIMEOUT", "Clinic API không phản hồi kịp") from exc

@@ -25,6 +25,11 @@ mâu thuẫn không có dấu câu do tầng ngữ nghĩa xử lý (`extraction/
 ở câu hỏi đến khám (CONFIRM_READBACK, ASK_ATTENDANCE) là khẳng định. "Không hủy" ở câu hỏi đến khám
 chỉ là không muốn hủy — không phải từ chối đến khám (T-04).
 
+Ở câu hỏi có lệnh ghi (trừ CANCEL_RECONFIRM, đã có ngưỡng SF-05), AGREE phải là câu trả lời ĐƯỢC GIẢI
+THÍCH HẾT (T-04 §8): bỏ tín hiệu đồng ý, đáp lễ, tiểu từ, xưng hô và bổ ngữ của câu hỏi, phần còn lại phải
+rỗng. "Dạ hôm đó tôi bận rồi", "tôi có việc bận", "vợ tôi sẽ đến thay" còn nội dung khác -> UNCLEAR:
+"dạ" mở câu chỉ là lễ phép, "có / phải / được" là hư từ của câu kể, không phải câu trả lời.
+
 Transcript không dấu lệch thêm về UNCLEAR: bỏ các từ đáp lễ và từ khẳng định có bản không dấu trùng
 nghĩa khác ("da" = dạ/đã, "co" = có/cô, "dung" = đúng/đừng/dùng). "dung" đứng một mình -> UNCLEAR,
 vì "dung huy" có thể là "đúng, hủy" hoặc "đừng hủy" — hai nghĩa ngược nhau.
@@ -42,12 +47,22 @@ from callbot.engine.extraction.text import (
     find_phrase,
     is_unaccented,
     normalize,
+    phrase_pattern,
+    remove_phrases,
     remove_spans,
     strip_diacritics,
 )
 
 _AGREE_IDIOMS = compile_phrases(
-    ["không sao", "không vấn đề gì", "không có gì", "không sao đâu", "không vấn đề"]
+    [
+        "không sao",
+        "không vấn đề gì",
+        "không có gì",
+        "không sao đâu",
+        "không vấn đề",
+        "không thành vấn đề",
+        "không có vấn đề gì",
+    ]
 )
 _REFUSE_COMMON = [
     "không",
@@ -81,9 +96,24 @@ _REFUSE = compile_phrases(
 )
 _ATTENDANCE_REFUSE = compile_phrases(_REFUSE_COMMON, unaccented_exclude=_REFUSE_UNACCENTED_EXCLUDE)
 _KEEP = compile_phrases(_KEEP_WORDS)
-_NOT_CANCEL = compile_phrases(_NOT_CANCEL_WORDS, unaccented_exclude=["đừng hủy"])
+# Ở câu hỏi đến khám, "không hủy / không cần đổi" chỉ là không muốn thay lịch: không phải từ chối đến
+# khám, chưa phải đồng ý (T-04, §8). Ở câu hỏi hủy / chọn slot, các cụm đổi lịch không nằm trong
+# `_REFUSE` riêng vì "không" đã đủ là từ chối ở đó.
+_NOT_CHANGE_WORDS = [
+    "không cần hủy",
+    "không đổi",
+    "không đổi nữa",
+    "không đổi gì",
+    "không cần đổi",
+    "không đổi lịch",
+    "không cần đổi lịch",
+    "khỏi đổi",
+]
+_NOT_CANCEL = compile_phrases(
+    [*_NOT_CANCEL_WORDS, *_NOT_CHANGE_WORDS], unaccented_exclude=["đừng hủy"]
+)
 # Ngập ngừng: người gọi chưa quyết, dù câu có "vâng" / "được" (T-04). Không có "chắc" đứng một mình:
-# "chắc chắn" là khẳng định.
+# "chắc chắn" là khẳng định; "chắc được", "chắc đến" là đoán (T-04 §8).
 _HEDGE = compile_phrases(
     [
         "để xem",
@@ -93,18 +123,32 @@ _HEDGE = compile_phrases(
         "xem lại",
         "chắc là",
         "chắc vậy",
+        "chắc được",
+        "chắc đến",
+        "chắc đi",
         "có lẽ",
         "không chắc",
         "chưa chắc",
         "chưa biết",
+        "không biết",
         "tính sau",
         "để tôi hỏi",
+        "hy vọng",
+        "hi vọng",
+        "mong là",
+        "cố gắng",
+        "nếu",
     ]
 )
 _POLITE = compile_phrases(
     ["vâng", "dạ", "ừ", "ờ", "ừm", "ạ", "à", "vâng ạ", "dạ vâng", "ừ ừ"],
     unaccented_exclude=["dạ", "ừ", "ờ", "ừm", "ạ", "à", "ừ ừ"],  # "da" = đã; "a", "u", "o" quá ngắn
 )
+# Đáp lễ đủ để đồng ý ở câu hỏi đến khám (T-04 Q-2). "à" (hỏi lại), "ạ", "ừm" (đang nghĩ) đứng riêng
+# chỉ là tín hiệu chưa rõ (T-04 §8).
+_POLITE_AGREE = frozenset(
+    clean(p) for p in ["vâng", "dạ", "ừ", "ờ", "vâng ạ", "dạ vâng", "ừ ừ"]
+) | frozenset(strip_diacritics(clean(p)) for p in ["vâng", "vâng ạ", "dạ vâng"])
 _AFFIRM = compile_phrases(
     [
         "có",
@@ -124,10 +168,17 @@ _AFFIRM = compile_phrases(
         "chắc chắn",
         "chắc chắn rồi",
         "tất nhiên",
+        "tất nhiên rồi",
         "được rồi",
+        "nhất định",
+        "nhất định rồi",
+        "đương nhiên",
+        "đương nhiên rồi",
     ],
     unaccented_exclude=["có", "đúng"],  # "co" = cô/cỏ/cơ; "dung" = đừng/dùng
 )
+# Chỉ ở câu hỏi đến khám: "đến chứ" là khẳng định sẽ đến, không có từ đồng ý nào khác trong câu
+_ATTEND_AFFIRM = compile_phrases(["đến chứ", "đi chứ"])
 _SLOT_ACTION = compile_phrases(
     ["đổi đi", "đặt đi", "chốt", "chốt đi", "lấy khung đó", "lấy giờ đó", "lấy luôn"],
     unaccented_exclude=["đổi đi"],  # "doi di" = đợi đi
@@ -138,6 +189,48 @@ _CONTRAST = compile_phrases(
 )
 _QUESTION_WORDS = compile_phrases(
     ["gì", "bao giờ", "mấy giờ", "thế nào", "sao", "bao nhiêu", "ở đâu", "ai"]
+)
+
+# Phần được phép còn lại trong câu AGREE ở câu hỏi có lệnh ghi (T-04 §8). Bổ ngữ xét theo cụm trước,
+# rồi từ đệm theo từng từ. Thiếu một từ ở đây chỉ làm câu đồng ý bị đọc lại (an toàn); thêm nhầm một
+# từ nội dung thì mở khóa lệnh ghi — mỗi từ mới cần một ca âm tính trong eval/confirm.
+_FILLER_WORDS = [
+    # tiểu từ
+    "ạ", "à", "nhé", "nha", "nhá", "đi", "luôn", "rồi", "mà", "đấy", "đó", "vậy", "thế",
+    "chứ", "đâu", "cả", "hết", "ơi",
+    # xưng hô
+    "tôi", "em", "anh", "chị", "mình", "tớ", "cháu", "con", "bác", "cô", "chú", "ông", "bà",
+    "chúng",
+    # lễ phép
+    "cảm", "cám", "ơn", "nhiều",
+]  # fmt: skip
+_FILLER = frozenset(clean(w) for w in _FILLER_WORDS)
+_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _FILLER)
+_ATTEND_COMPLEMENTS = compile_phrases(
+    [
+        "đi khám",
+        "đến khám",
+        "khám",
+        "đúng giờ",
+        "đúng hẹn",
+        "theo lịch",
+        "lịch này",
+        "lịch đó",
+        "lịch",
+        "hôm đó",
+        "có mặt",
+        "như vậy",
+        "như thế",
+        "vẫn",
+        "sẽ",
+        "cứ",
+        "đến",
+    ],
+    unaccented_exclude=["đúng giờ", "đúng hẹn"],  # "dung" = đừng
+)
+_SLOT_COMPLEMENTS = compile_phrases(
+    ["khung đó", "khung này", "giờ đó", "khung", "đổi", "đặt", "giúp", "cho", "này", "lịch"],
+    unaccented_exclude=["đổi"],  # "doi" = đợi
 )
 
 # Không có "chứ": "được chứ" là khẳng định, không phải hỏi lại
@@ -229,9 +322,14 @@ def extract_agreement(
     ):
         # "không, hủy đi": từ chối và động từ hủy ở hai mệnh đề — mâu thuẫn, không phải "đừng hủy"
         return Field(Agreement.UNCLEAR, matched, span=text)
+    attending = question_id in _ATTENDANCE_QUESTIONS
     idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
+    # "không đổi gì cả" ở câu hỏi đến khám: "gì" thuộc cụm trung tính, không phải câu hỏi
+    neutral = find_phrase(text, _NOT_CANCEL, unaccented=unaccented) if attending else None
     question = find_phrase(
-        remove_spans(text, [idiom] if idiom else []), _QUESTION_WORDS, unaccented=unaccented
+        remove_spans(text, [m for m in (idiom, neutral) if m]),
+        _QUESTION_WORDS,
+        unaccented=unaccented,
     )
     if question is not None:
         return Field(Agreement.UNCLEAR, matched, span=question.group(0))
@@ -244,7 +342,6 @@ def extract_agreement(
         # "ờ để xem", "chắc là được": người gọi chưa quyết — không mở khóa lệnh ghi
         return Field(Agreement.UNCLEAR, matched, span=hedge.group(0))
 
-    attending = question_id in _ATTENDANCE_QUESTIONS
     cues = _find_cues(text, unaccented, attending)
     stated = attendance if attending else None
     positive = cues.idiom or cues.affirm or cues.cancel_verb or cues.slot_action or stated
@@ -255,6 +352,9 @@ def extract_agreement(
 
     span = _agree_span(question_id, cues) or stated
     if span is not None:
+        if _leaves_content(text, question_id, stated, unaccented):
+            # Có tín hiệu đồng ý nhưng câu còn nói việc khác ("dạ hôm đó tôi bận rồi"): hỏi lại (T-04 §8)
+            return Field(Agreement.UNCLEAR, matched, span=span)
         return Field(Agreement.AGREE, matched, span=span)
     signal = cues.polite or positive or cues.not_cancel
     if signal:
@@ -282,7 +382,8 @@ def _find_cues(text: str, unaccented: bool, attending: bool = False) -> _Cues:
     return _Cues(
         refuse=_group(refuse),
         idiom=_group(idiom),
-        affirm=positive(_AFFIRM) or (positive(_KEEP) if attending else None),
+        affirm=positive(_AFFIRM)
+        or (positive(_KEEP) or positive(_ATTEND_AFFIRM) if attending else None),
         # Xét trên câu gốc, trước khi bỏ span khác: "ạ" cuối câu kể lý do là lễ phép, không phải đáp lời
         polite=_group(_leading_phrase(text, _POLITE, unaccented)),
         cancel_verb=positive(_CANCEL_VERB),
@@ -311,8 +412,53 @@ def _agree_span(question_id: QuestionId, cues: _Cues) -> Optional[str]:
     if question_id is QuestionId.SLOT_READBACK:
         return cues.affirm or cues.slot_action or cues.idiom
     if question_id in (QuestionId.CONFIRM_READBACK, QuestionId.ASK_ATTENDANCE):
-        return cues.affirm or cues.idiom or cues.polite
+        polite = cues.polite if cues.polite in _POLITE_AGREE else None
+        return cues.affirm or cues.idiom or polite
     return None
+
+
+# Ở câu hỏi "đổi hay hủy", "thôi" mở câu là chuyển ý ("thôi tôi vẫn đến"), không phải từ chối
+_INTENT_ANSWER_FILLER = compile_phrases(["thôi", "gì cả", "gì hết"])
+
+
+def attendance_leaves_content(transcript: str, span: Optional[str]) -> bool:
+    """Cụm intent CONFIRM (`span`) không giải thích hết câu trả lời "đổi hay hủy" (T-04 §8).
+
+    "hôm đó tôi sẽ đi công tác" có cụm "sẽ đi" nhưng nói việc khác: router cho tầng ngữ nghĩa xét,
+    thay vì đọc lại lịch theo luật. Cùng bảng từ đệm với câu hỏi đến khám.
+    """
+    text = clean(transcript)
+    unaccented = is_unaccented(text)
+    text = remove_phrases(text, _INTENT_ANSWER_FILLER, unaccented)
+    return _leaves_content(text, QuestionId.CONFIRM_READBACK, span, unaccented)
+
+
+def mentions_keeping(transcript: str) -> bool:
+    """Câu có cụm "không hủy / không (cần) đổi": từ chối THAY lịch, không phải từ chối đến khám."""
+    return find_phrase(clean(transcript), _NOT_CANCEL) is not None
+
+
+def _leaves_content(
+    text: str, question_id: QuestionId, stated: Optional[str], unaccented: bool
+) -> bool:
+    """Câu còn từ nội dung ngoài tín hiệu đồng ý, đáp lễ, tiểu từ, xưng hô và bổ ngữ (T-04 §8).
+
+    Chỉ áp dụng ở câu hỏi có ngưỡng "từ khẳng định bất kỳ"; CANCEL_RECONFIRM đã đòi động từ hủy.
+    Bỏ MỌI lần xuất hiện của tín hiệu, không chỉ span: "được rồi được rồi" là câu đồng ý.
+    """
+    # Bổ ngữ bỏ TRƯỚC tín hiệu: bỏ "đúng" trước thì "đúng giờ" còn trơ lại "giờ"
+    if question_id is QuestionId.SLOT_READBACK:
+        sets = (_SLOT_COMPLEMENTS, _AGREE_IDIOMS, _AFFIRM, _SLOT_ACTION, _POLITE)
+    elif question_id in _ATTENDANCE_QUESTIONS:
+        sets = (_AGREE_IDIOMS, _NOT_CANCEL, _KEEP, _ATTEND_AFFIRM, _ATTEND_COMPLEMENTS)
+        sets = (*sets, _AFFIRM, _POLITE)
+    else:
+        return False
+    rest = phrase_pattern(stated).sub(" ", text) if stated else text
+    for phrases in sets:
+        rest = remove_phrases(rest, phrases, unaccented)
+    filler = _FILLER_UNACCENTED if unaccented else _FILLER
+    return any(word not in filler for word in rest.split())
 
 
 def _is_tag_question(text: str, words_of: _WordSets) -> bool:

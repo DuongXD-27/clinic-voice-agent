@@ -975,24 +975,55 @@ def _transferred(response) -> None:
 
 
 @pytest.mark.parametrize("status", ["CANCELLED", "TRANSFERRED", "UNREACHABLE", "RESCHEDULED"])
-def test_non_actionable_appointment_over_http_is_transferred_at_turn_one(
+def test_non_actionable_appointment_over_http_prevents_start(
     client: TestClient, clinic: FakeClinicAPI, status: str
 ) -> None:
     clinic.appointments["apt_00417"]["status"] = status
-    assert _start(client, "c_http_open_blocked").status_code == 200
-    response = _debug_turn(client, "c_http_open_blocked", 1, "Nguyễn Văn A")
-    _transferred(response)
-    assert response.headers["X-Demo-Transfer-Reason"] == "SYSTEM_ERROR"
+    response = _start(client, "c_http_open_blocked")
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "OUTBOUND_START_FAILED"
+    assert _turn(client, "c_http_open_blocked", 1, "Nguyễn Văn A").status_code == 404
     assert clinic.writes == []
 
 
-def test_invalid_appointment_read_over_http_is_transferred_at_turn_one(
+def test_invalid_appointment_read_over_http_prevents_start(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     del clinic.appointments["apt_00417"]["starts_at"]
-    assert _start(client, "c_http_open_invalid").status_code == 200
-    _transferred(_turn(client, "c_http_open_invalid", 1, "Nguyễn Văn A"))
+    response = _start(client, "c_http_open_invalid")
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "OUTBOUND_START_FAILED"
+    assert _turn(client, "c_http_open_invalid", 1, "Nguyễn Văn A").status_code == 404
     assert clinic.writes == []
+
+
+@pytest.mark.parametrize("mode", ["text", "audio"])
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [(503, "UPSTREAM"), (504, "TIMEOUT"), (404, "NOT_FOUND"), (401, "BAD_KEY")],
+)
+def test_outbound_lookup_failure_never_starts_or_speaks_and_can_retry(
+    client: TestClient, clinic: FakeClinicAPI, mode: str, status: int, code: str
+) -> None:
+    clinic.fail_next("get_appointment", clinic_error(status, code, "private upstream details"))
+    response = _start(client, "c_http_down", mode=mode)
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "OUTBOUND_START_FAILED"
+    assert "private upstream details" not in response.text
+    assert "utterance" not in response.json()
+    assert client.app.state.orchestrator.sessions.store.get_session("c_http_down") is None
+    assert client.app.state.speech.tts.spoken == []
+    assert not client.app.state.call_mode.is_audio("c_http_down")
+    assert _turn(client, "c_http_down", 1, "Alo").status_code == 404
+    assert clinic.writes == [] and clinic.requests == []
+
+    recovered = _start(client, "c_http_down", mode=mode)
+    assert recovered.status_code == 200
+    assert recovered.json()["utterance"] == greeting("outbound")
+    reads = len(clinic.calls)
+    assert _start(client, "c_http_down", mode=mode).json() == recovered.json()
+    assert len(clinic.calls) == reads  # phiên đã mở vẫn replay, không tra cứu lại
 
 
 def test_invalid_state_transition_over_http_is_transferred_with_extraction_headers(
