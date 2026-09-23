@@ -223,6 +223,7 @@ class InformationExtractor:
             clinical=clinical,
             agreement=agreement,
             cancel_reason=cancel_reason,
+            direction=ctx.direction,
         )
         result = ExtractionResult(
             turn=ctx.turn,

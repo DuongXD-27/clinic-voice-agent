@@ -95,3 +95,12 @@ def test_span_and_provenance() -> None:
     assert result.provenance is Provenance.EXACT
     assert result.span == "hủy"
     assert extract_intent("alo", "outbound").provenance is Provenance.NONE
+
+
+@pytest.mark.parametrize(
+    "text", ["giữ nguyên", "không đổi không hủy gì cả", "không đổi cũng không hủy", "không đổi gì"]
+)
+def test_keeping_the_appointment_is_confirm_outbound_only(text: str) -> None:
+    """T-04 §8: trả lời "đổi hay hủy" bằng cách giữ lịch; inbound không có lịch để giữ."""
+    assert extract_intent(text, "outbound").value is Intent.CONFIRM
+    assert extract_intent(text, "inbound").value is not Intent.CONFIRM

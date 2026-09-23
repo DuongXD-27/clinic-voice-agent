@@ -260,23 +260,30 @@ Nguyên tắc phân lớp: `ADVICE_REQUEST` cần **hành vi hỏi** (từ nghi 
 
 | `question_id` | Hành động | "vâng" / "dạ" / "ừ" đứng một mình | "có" / "được" / "đúng" đứng một mình | Cần để `AGREE` |
 |---|---|---|---|---|
-| `ASK_ATTENDANCE` | không ghi — dẫn tới `CONFIRM_READBACK` | `AGREE` | `AGREE` | từ khẳng định bất kỳ |
-| `CONFIRM_READBACK` (§1.1.3) | ghi `CONFIRMED` | `AGREE` | `AGREE` | từ khẳng định bất kỳ |
-| `SLOT_READBACK` (§1.1.6, §1.1.10) | ghi `RESCHEDULED` / `BOOKED` | `UNCLEAR` | `AGREE` | "được", "đồng ý", "đổi đi", "đặt đi" |
+| `ASK_ATTENDANCE` | không ghi — dẫn tới `CONFIRM_READBACK` | `AGREE` | `AGREE` | từ khẳng định bất kỳ, câu được giải thích hết |
+| `CONFIRM_READBACK` (§1.1.3) | ghi `CONFIRMED` | `AGREE` | `AGREE` | từ khẳng định bất kỳ, câu được giải thích hết |
+| `SLOT_READBACK` (§1.1.6, §1.1.10) | ghi `RESCHEDULED` / `BOOKED` | `UNCLEAR` | `AGREE` | "được", "đồng ý", "đổi đi", "đặt đi"; câu được giải thích hết |
 | `CANCEL_RECONFIRM` (§1.1.4) | ghi `CANCELLED` | `UNCLEAR` | `UNCLEAR` | động từ hủy tường minh: "hủy đi", "hủy giúp tôi", "đúng, hủy" |
 
 Figure 0 rev 1.1 gộp tóm tắt lịch, đọc lại ngày/giờ/khoa và câu hỏi "Anh chị đến được không ạ?" vào **một lượt**; câu trả lời "Có, tôi đến được." ghi `CONFIRMED` ngay. Câu gộp đó mang `question_id = CONFIRM_READBACK`. `ASK_ATTENDANCE` chỉ dùng khi Dialogue hỏi "có đến được không" **trước** khi đọc lại.
 
+**Câu trả lời được giải thích hết (T-04 §8):** ở `CONFIRM_READBACK`, `ASK_ATTENDANCE`, `SLOT_READBACK`, tín hiệu đồng ý chỉ thành `AGREE` khi phần còn lại của câu chỉ là tiểu từ ("ạ", "nhé", "rồi"...), xưng hô ("tôi", "em"...), lễ phép ("cảm ơn") và bổ ngữ của câu hỏi (đến khám: "khám", "đúng giờ", "hôm đó", "có mặt"...; slot: "đổi", "giúp", "khung đó"...). Còn từ nội dung khác → `UNCLEAR` có tín hiệu (đọc lại / hỏi lại; tầng ngữ nghĩa xét nếu không có intent). Lý do: "dạ" mở câu chỉ là lễ phép và "có / phải / được / đúng" là hư từ của câu kể — "dạ hôm đó tôi bận rồi", "hôm đó tôi có việc bận", "tôi phải đi làm", "vợ tôi sẽ đến thay", "tôi sẽ đến lúc 10 giờ" từng ghi `CONFIRMED`. `CANCEL_RECONFIRM` không áp dụng (đã đòi động từ hủy). Danh sách từ đệm: `agreement._FILLER_WORDS`, `_ATTEND_COMPLEMENTS`, `_SLOT_COMPLEMENTS`; thêm từ mới phải kèm ca âm tính trong `eval/confirm/cases.csv`.
+
 **Câu hỏi đến khám (`CONFIRM_READBACK`, `ASK_ATTENDANCE`) — T-04:**
-- "Vâng" / "dạ" / "ừ" là xác nhận, kể cả khi kèm lời khác ("vâng, cảm ơn em").
+- "Vâng" / "dạ" / "ừ" / "ờ" là xác nhận, kể cả khi kèm lời được giải thích hết ("vâng, cảm ơn em"); kèm việc khác thì không (T-04 §8). "À", "ạ", "ừm" đứng riêng chỉ là tín hiệu `UNCLEAR`.
+- Các câu khẳng định không có từ đồng ý gốc cũng là `AGREE`: "nhất định rồi", "đương nhiên", "đến chứ", "không thành vấn đề" (T-04 §8).
 - Câu **khẳng định sẽ đến** không có từ đồng ý ("tôi sẽ đến", "vẫn đến", "xác nhận") là `AGREE` — contract Bảng 1 "states or agrees they will attend". IE truyền cụm intent `CONFIRM` vào `extract_agreement(attendance=...)`; cụm này chỉ được xét **sau** mọi chặn (câu hỏi đuôi, "nhưng", ngập ngừng, từ chối) và chỉ ở câu hỏi đến khám.
-- "Giữ lịch", "giữ nguyên lịch" → `AGREE`; "không hủy", "đừng hủy" không phải từ chối đến khám (chỉ còn `UNCLEAR` nếu không có gì khác). Ở `CANCEL_RECONFIRM` / `SLOT_READBACK` các cụm này vẫn là `REFUSE`.
+- "Giữ lịch", "giữ nguyên lịch" → `AGREE`; "không hủy", "đừng hủy", "không cần hủy", "không (cần) đổi", "khỏi đổi" không phải từ chối đến khám (chỉ còn `UNCLEAR` nếu không có gì khác). Ở `CANCEL_RECONFIRM` / `SLOT_READBACK` các cụm này vẫn là `REFUSE`.
+- Ở `ASK_INTENT` outbound (sau khi từ chối, bot hỏi "đổi hay hủy"), "giữ nguyên", "không đổi không hủy gì cả" là intent `CONFIRM` → đọc lại lịch (T-04 §8).
+- Tầng ngữ nghĩa ở `CONFIRM_READBACK` (T-04 §8): `INFORM_REASON` có mã lý do cụ thể ("hôm đó tôi bận") → `REFUSE` để hỏi đổi hay hủy; lý do `UNSPECIFIED`, hoặc câu có "không hủy / không đổi" → `UNCLEAR` (đọc lại); `CONFIRM_ACTION` → `UNCLEAR`. Model không bao giờ nâng lên `AGREE`.
+- Luật intent không được chặn model (T-04 §8): outbound, khi luật ra `CONFIRM` nhưng agreement `UNCLEAR` có tín hiệu (`CONFIRM_READBACK`), hoặc cụm `CONFIRM` không giải thích hết câu (`ASK_INTENT`), router vẫn gọi tầng ngữ nghĩa (`ATTENDANCE_UNCLEAR`). Câu đồng ý thật là `AGREE` nên không bị gọi model.
 
 **Bẫy phủ định:**
 - "không sao", "không vấn đề gì", "không có gì" → `AGREE` (khi đang hỏi xác nhận).
 - "… được **không**?" (câu hỏi đuôi) → `UNCLEAR`, không phải `REFUSE`.
 - "thôi", "để sau", "chưa", "không hủy nữa", "giữ lịch" → `REFUSE` (trừ "giữ lịch", "không hủy" ở câu hỏi đến khám — xem trên).
-- **Ngập ngừng** ("để xem", "chắc là", "có lẽ", "chưa chắc", "để tôi hỏi") → `UNCLEAR` ở mọi câu hỏi xác nhận, kể cả khi có "vâng" / "được" ("chắc là được"). Không có "chắc" đứng một mình: "chắc chắn" là khẳng định.
+- **Ngập ngừng** ("để xem", "chắc là", "chắc được", "có lẽ", "chưa chắc", "không biết", "để tôi hỏi", "hy vọng", "mong là", "cố gắng", "nếu") → `UNCLEAR` ở mọi câu hỏi xác nhận, kể cả khi có "vâng" / "được" ("chắc là được"). Không có "chắc" đứng một mình: "chắc chắn" là khẳng định.
+- "không thành vấn đề", "không có vấn đề gì" → `AGREE` như "không sao" (T-04 §8).
 - Nói vòng ("hôm đó tôi bận mất rồi") → luật cho `UNCLEAR`, tuyến sau xét.
 
 **Khi `UNCLEAR`:** ở câu hỏi đến khám, Dialogue **đọc lại** ngày, giờ, cơ sở bằng câu có / không ("vâng" là câu trả lời hợp lệ — kiến trúc §3.2 "Chưa rõ → O_READ"). Ở hủy / chọn slot, hỏi lại bằng **câu lựa chọn A/B** để từ đáp lễ phép không còn là câu trả lời hợp lệ:

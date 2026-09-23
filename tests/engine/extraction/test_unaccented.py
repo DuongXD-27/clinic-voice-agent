@@ -141,6 +141,10 @@ def test_cancel_reconfirm_unaccented_agrees(text: str) -> None:
         (QuestionId.CONFIRM_READBACK, "khong huy", Agreement.UNCLEAR),
         (QuestionId.CONFIRM_READBACK, "chac la duoc", Agreement.UNCLEAR),
         (QuestionId.CONFIRM_READBACK, "de xem", Agreement.UNCLEAR),
+        (QuestionId.CONFIRM_READBACK, "chac duoc", Agreement.UNCLEAR),  # T-04 §8: đoán
+        (QuestionId.CONFIRM_READBACK, "vang toi dang lai xe", Agreement.UNCLEAR),  # T-04 §8
+        (QuestionId.CONFIRM_READBACK, "vang cam on em", Agreement.AGREE),
+        (QuestionId.SLOT_READBACK, "toi phai di lam hom do", Agreement.UNCLEAR),  # T-04 §8
         (QuestionId.CANCEL_RECONFIRM, "giu lich", Agreement.REFUSE),
         (QuestionId.SLOT_READBACK, "duoc", Agreement.AGREE),
         (QuestionId.SLOT_READBACK, "duoc khong", Agreement.UNCLEAR),

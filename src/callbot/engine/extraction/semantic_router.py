@@ -10,6 +10,8 @@ Hai việc tách bạch:
 from enum import Enum
 from typing import Optional
 
+from callbot.engine.extraction.agreement import attendance_leaves_content, mentions_keeping
+from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.schema import (
     Agreement,
     ClinicalLevel,
@@ -37,6 +39,8 @@ class RouteReason(str, Enum):
     CANCEL_CONTRADICTION = "CANCEL_CONTRADICTION"  # tín hiệu ngược nhau / ngập ngừng
     CANCEL_UNRESOLVED = "CANCEL_UNRESOLVED"  # câu hủy không thuộc tập toàn câu rõ ràng
     INTENT_UNCLEAR = "INTENT_UNCLEAR"  # ASK_INTENT / CONFIRM_READBACK chưa có ý định dùng được
+    # Outbound: luật ra CONFIRM nhưng chính luật chưa chắc ("hôm đó tôi sẽ đi công tác") (T-04 §8)
+    ATTENDANCE_UNCLEAR = "ATTENDANCE_UNCLEAR"
 
 
 # Câu rõ ràng khi khớp TOÀN CÂU — rule đã đủ, không làm chậm đường rõ bằng một request model.
@@ -98,6 +102,7 @@ def route_semantic(
     clinical: Field[ClinicalLevel],
     agreement: Field[Agreement],
     cancel_reason: Field[CancelReason],
+    direction: Direction = "outbound",
 ) -> Optional[RouteReason]:
     """`None` = chỉ dùng rule. Gọi sau khi rule của mọi trường liên quan đã chạy."""
     text = clean(transcript)
@@ -117,6 +122,19 @@ def route_semantic(
             # Rule đã đủ ngưỡng SF-05 nhưng câu không thuộc tập toàn câu rõ: kiểm lại mệnh đề
             return RouteReason.CANCEL_UNRESOLVED
         return RouteReason.CANCEL_UNRESOLVED
+    if intent.value is Intent.CONFIRM and direction == "outbound":
+        # Từ khóa CONFIRM ("sẽ đi", "tôi đến") khớp cả câu kể: không để luật intent chặn model khi
+        # chính luật chưa chắc (T-04 §8). Câu đồng ý thật ("tôi sẽ đến") là AGREE nên không tới đây.
+        if (
+            question_id is QuestionId.CONFIRM_READBACK
+            and agreement.value is Agreement.UNCLEAR
+            and agreement.found
+        ):
+            return RouteReason.ATTENDANCE_UNCLEAR
+        if question_id is QuestionId.ASK_INTENT and attendance_leaves_content(
+            transcript, intent.span
+        ):
+            return RouteReason.ATTENDANCE_UNCLEAR
     # ASK_INTENT / CONFIRM_READBACK: chỉ gọi khi lượt này KHÔNG cho Dialogue đường đi nào — không có
     # ý định dùng được VÀ cũng không có câu trả lời có/không dứt khoát. Một lượt đã nói rõ nhu cầu
     # ("tôi muốn hủy lịch") đi thẳng nhánh nghiệp vụ, không tốn thêm một request.
@@ -164,15 +182,37 @@ def merge_semantic(
 
     intent, agreement, reason = result.intent, result.agreement, result.cancel_reason
     kind = outcome.reply_kind
+    readback = result.question_id is QuestionId.CONFIRM_READBACK
+    # "không cần hủy / không cần đổi" ở câu hỏi đến khám: từ chối THAY lịch, không phải từ chối
+    # đến khám — model đọc thành từ chối hay lý do đều không được thành REFUSE
+    keeping = readback and mentions_keeping(result.transcript)
+    # Chỉ một mã lý do cụ thể mới nói được người gọi không đến theo lịch; UNSPECIFIED là model
+    # không biết ("tôi được nghỉ hôm đó mà", "vâng, tôi đang lái xe") (T-04 §8, Q-3)
+    cannot_attend = (
+        kind is ReplyKind.INFORM_REASON
+        and outcome.cancel_reason not in (None, DEFAULT_CANCEL_REASON)
+        and not keeping
+    )
 
     if outcome.cancel_reason is not None and kind is not ReplyKind.DECLINE_ACTION:
         # Lý do có căn cứ được cập nhật ở mọi kiểu trả lời trừ khi người gọi đang bỏ hủy hẳn
         reason = Field(outcome.cancel_reason, Provenance.FALLBACK, span=outcome.reason_span)
 
-    if kind is ReplyKind.INFORM_REASON:
+    if kind is ReplyKind.INFORM_REASON and readback:
+        # "Hôm đó tôi bận": lý do KHÔNG đến được theo lịch là từ chối câu hỏi đến khám, để Dialogue
+        # hỏi đổi hay hủy thay vì "em chưa hiểu". REFUSE không mở khóa lệnh ghi nào. Lý do không
+        # rõ thì đọc lại lịch.
+        agreement = (
+            Field(Agreement.REFUSE, Provenance.FALLBACK, span=outcome.reason_span)
+            if cannot_attend
+            else _unclear(outcome.reason_span or result.transcript)
+        )
+    elif kind is ReplyKind.INFORM_REASON:
         # Chỉ nêu lý do: KHÔNG phải đồng ý, cũng không phải từ chối. `Field.nothing` để Dialogue đi
         # nhánh "đã ghi nhận lý do" và hỏi lại (§8.3.4).
         agreement = Field.nothing(Agreement.UNCLEAR)
+    elif kind is ReplyKind.DECLINE_ACTION and keeping:
+        agreement = _unclear(outcome.reply_span or result.transcript)
     elif kind is ReplyKind.DECLINE_ACTION:
         agreement = Field(Agreement.REFUSE, Provenance.FALLBACK, span=outcome.reply_span)
     elif kind is ReplyKind.CHANGE_INTENT and outcome.intent in allowed_intents:
@@ -191,8 +231,25 @@ def merge_semantic(
         # Model KHÔNG nâng ngưỡng ghi: giữ nguyên kết luận rule. Câu đã bị router đánh dấu mâu thuẫn
         # thì vẫn phải hỏi lại và nhận xác nhận mới ở lượt sau.
         agreement = _no_promotion(result.agreement, route_reason)
+        if readback and not agreement.found:
+            # Model thấy đồng ý mà luật không: đọc lại lịch để nhận xác nhận ở lượt sau, thay vì
+            # "em chưa hiểu". Vẫn không nâng lên AGREE.
+            agreement = _unclear(outcome.reply_span or result.transcript)
+
+    if (
+        result.question_id is QuestionId.ASK_INTENT
+        and route_reason is RouteReason.ATTENDANCE_UNCLEAR
+        and (kind is ReplyKind.DECLINE_ACTION or cannot_attend)
+    ):
+        # "Đổi hay hủy?" -> "hôm đó tôi sẽ đi công tác": CONFIRM của luật là khớp nhầm; bỏ nó để
+        # Dialogue hỏi lại thay vì đọc lại lịch. Còn lại (mơ hồ, câu hỏi) giữ kết luận của luật.
+        intent = Field.nothing(Intent.NONE)
 
     return _replace(result, intent=intent, agreement=agreement, cancel_reason=reason)
+
+
+def _unclear(span: Optional[str]) -> Field[Agreement]:
+    return Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=span)
 
 
 def _no_promotion(agreement: Field[Agreement], route_reason: RouteReason) -> Field[Agreement]:

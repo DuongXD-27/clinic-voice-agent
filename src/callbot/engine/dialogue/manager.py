@@ -335,6 +335,15 @@ class DialogueManager:
                 )
             if intent in (Intent.CANCEL, Intent.RESCHEDULE):
                 return self._start(ctx, intent, ex, now)
+            if ex.cancel_reason.found and ex.cancel_reason.value != DEFAULT_CANCEL_REASON:
+                # "Đổi hay hủy?" -> "hôm đó tôi đi công tác": người gọi kể vì sao không đến nhưng
+                # chưa chọn. Hỏi lại đúng câu đó; lần đầu không tính §1.1.5 (T-04 §8, Q-2).
+                return Reply(
+                    self._ask(
+                        ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT"
+                    ),
+                    "UNCLEAR",
+                )
             return self._not_understood(ctx)
 
         if intent is Intent.BOOK:

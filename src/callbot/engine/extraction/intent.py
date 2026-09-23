@@ -138,10 +138,16 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "vẫn đến",
         "vẫn đi",
         "giữ lịch",
+        "giữ nguyên",
         "giữ nguyên lịch",
         "vẫn giữ lịch",
         "đúng lịch",
         "xác nhận",
+        # Trả lời "đổi hay hủy" bằng cách giữ lịch (T-04 §8)
+        "không đổi không hủy",
+        "không đổi cũng không hủy",
+        "không đổi gì",
+        "không hủy gì",
     ],
     Intent.REPEAT_REQUEST: [
         "gì cơ",
@@ -174,7 +180,8 @@ _KEYWORDS: dict[Intent, list[str]] = {
 }
 _UNACCENTED_EXCLUDE: dict[Intent, list[str]] = {
     Intent.RESCHEDULE: ["dời", "đổi lại"],  # "doi" = đợi / đói / đội; "doi lai" = đợi lại
-    Intent.CONFIRM: ["tôi đến", "đúng lịch"],  # "toi den" = tối đến; "dung lich" = dùng lịch
+    # "toi den" = tối đến; "dung lich" = dùng lịch; "khong doi gi" = không đợi gì
+    Intent.CONFIRM: ["tôi đến", "đúng lịch", "không đổi gì"],
     Intent.CANNOT_PROVIDE: ["quên mất", "quên rồi"],  # "quen mat" = quen mặt; "quen roi" = quen rồi
 }
 # Nhãn chỉ-một-hướng vẫn nhận ở hướng kia với cụm hẹp, để Dialogue chuyển máy vì ngoài kịch bản

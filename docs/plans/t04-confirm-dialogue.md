@@ -1,6 +1,6 @@
 # Plan T-04 — Hội thoại Confirm
 
-**Owner:** A (Hoàn) · **Trạng thái:** Đã triển khai (Q-2, Q-5, Q-6 chốt; Q-1, Q-2b, Q-3, Q-4 theo đề xuất) — evidence `docs/evidence/t04-confirm-dialogue.md` · **Ngày:** 18-09-2026
+**Owner:** A (Hoàn) · **Trạng thái:** Đã triển khai (Q-2, Q-5, Q-6 chốt; Q-1, Q-2b, Q-3, Q-4 theo đề xuất). §8 (sửa sau review 23-09-2026) đã triển khai, Q-7..Q-11 chốt theo đề xuất — evidence `docs/evidence/t04-confirm-dialogue.md` · **Ngày:** 18-09-2026, cập nhật 23-09-2026
 **Nguồn:** `docs/task-breakdown.md` §3 (T-04), §7 bất biến 1, 3, 5, 8; `docs/reference/ai-callbot-architecture.md` §3.1–§3.3, §4.1–§4.2; `docs/reference/information-extraction-design.md` §5.4, §5.6, §6.1; `docs/reference/clinic-mock.md` §5.4; contract rev 1.1 §1, §1.1.3, §1.1.5, §2.1, §2.2, §4.2.2, §4.2.5, Bảng 1, Listing 5, Figure 0 (đọc lại site rev 1.1 ngày 18-09-2026)
 **Phụ thuộc:** T-02 (xác minh), T-03 (Gateway `confirm`, PR #18 `db669f7`), F-03, F-04, F-05 — đều đã có trên `main`
 
@@ -186,7 +186,7 @@ HTTP (`test_calls.py`): một cuộc outbound đầy đủ qua `/v1/calls` + `/t
 | # | Câu hỏi | Quyết định | Căn cứ / phương án khác |
 | --- | --- | --- | --- |
 | Q-1 | Câu khẳng định tham dự không có từ đồng ý ("tôi sẽ đến", "xác nhận") ở câu đọc lại có ghi `CONFIRMED` không? | Đề xuất **có**: coi là AGREE (§3.2 bước 4) | Bảng 1 "states or agrees they will attend"; câu đọc lại đã có đủ ngày, giờ, cơ sở. Giữ hiện trạng (F-04 chọn UNCLEAR) thì người gọi nói "tôi sẽ đến" hai lần là bị chuyển máy |
-| Q-2 | "Vâng" / "dạ" / "ừ" ở câu đọc lại có là xác nhận không? | **Đã chốt: là xác nhận** (18-09-2026). Giữ ngưỡng hiện có, không siết "đứng một mình" | Khớp §1.1.3 "agrees to that read-back" |
+| Q-2 | "Vâng" / "dạ" / "ừ" ở câu đọc lại có là xác nhận không? | **Đã chốt: là xác nhận** (18-09-2026). Giữ ngưỡng hiện có, không siết "đứng một mình". *Siết lại ngày 23-09-2026: phần còn lại của câu phải được giải thích hết — xem §8.1* | Khớp §1.1.3 "agrees to that read-back" |
 | Q-2b | Câu ngập ngừng ("để xem", "chắc là", "có lẽ", "chưa chắc") có hạ xuống UNCLEAR không, kể cả khi có "vâng"/"được"? | Đề xuất **có** | Không mâu thuẫn Q-2: "vâng" vẫn là xác nhận, chỉ câu có cụm ngập ngừng mới bị hỏi lại. Nếu không muốn, bỏ bước 1 §3.2 (khi đó "ờ để xem" vẫn ghi `CONFIRMED`) |
 | Q-3 | Chưa rõ: đọc lại (câu có/không) thay cho câu A/B `ATTENDANCE_CHOICE` | Đề xuất **đọc lại** | Kiến trúc §3.2 "Chưa rõ → O_READ". Vì "vâng" là xác nhận (Q-2), câu hỏi lại phải là câu có/không. Phương án khác: giữ câu A/B với `QuestionId` riêng, phải sửa thêm FSM (`CONFIRMATION_QUESTION_FOR`) |
 | Q-4 | Đọc tên cơ sở thế nào khi Mock chỉ trả `clinic_id`? | Đề xuất bảng `clinic_id → tên` trong `templates.py`, lấy từ seed Mock; không có trong bảng thì "Vinmec" | §1.1.3 bắt đọc "clinic". Không có endpoint `/clinics`. Phương án khác: đưa bảng vào `EngineSettings` (env JSON) nếu harness chấm dùng `clinic_id` khác. Nên hỏi `#residency-batch03` harness có kiểm tên cơ sở trong `utterance` không |
@@ -202,3 +202,58 @@ HTTP (`test_calls.py`): một cuộc outbound đầy đủ qua `/v1/calls` + `/t
 - `QuestionId.ASK_ATTENDANCE` vẫn chưa dùng; T-04 không bật.
 - Output Guard tập trung (R-01), trace quyết định xác nhận (R-02): không thuộc T-04.
 - Rủi ro Q-2b: danh sách từ ngập ngừng viết tay có thể sót. Tuyến sau LLM không được nâng lên AGREE khi luật đã thấy tín hiệu ngập ngừng (giữ nguyên quy tắc `guard_fallback`).
+
+## 8. Sửa sau review (23-09-2026): đồng ý sai và luật intent chặn tầng ngữ nghĩa
+
+Review ngày 23-09-2026 chạy khoảng 90 câu qua Orchestrator thật và `FakeClinicAPI`. Khoảng 30 câu **ghi `CONFIRMED` khi người gọi chưa đồng ý**; ở `SLOT_READBACK`, các câu tương tự ghi `RESCHEDULED`. Lệnh ghi Clinic không thu hồi được, nên đây là lỗi cùng hạng với SF-05. Bộ eval `eval/confirm/cases.csv` giữ toàn bộ các câu này (§8.5).
+
+### 8.1 IE agreement: AGREE là câu trả lời được giải thích hết
+
+| Nhóm lỗi | Ví dụ (đều từng ghi `CONFIRMED`) | Nguyên nhân |
+| --- | --- | --- |
+| Từ khẳng định trong câu kể | "hôm đó tôi **có** việc bận", "tôi **phải** đi làm", "hôm đó **đúng** ngày giỗ" | `_AFFIRM` dò mọi vị trí; "có / phải / được / đúng" là hư từ |
+| Đáp lễ mở câu | "**dạ** hôm đó tôi bận rồi", "vâng tôi nghe", "à", "ạ", "ừm" | Đáp lễ đầu câu là đủ để AGREE (Q-2 cũ) |
+| Cụm tham dự trong câu khác | "hôm đó tôi **sẽ đi** công tác", "vợ tôi **sẽ đến** thay" | Cụm intent `CONFIRM` thành AGREE (Q-1), không xét phần còn lại |
+| Ngập ngừng sót, giờ khác | "chắc được", "tôi cố gắng đến được", "tôi sẽ đến lúc 10 giờ" | `_HEDGE` thiếu; không xét phần còn lại |
+
+Thiết kế:
+- Ở `CONFIRM_READBACK`, `ASK_ATTENDANCE`, `SLOT_READBACK` (không áp dụng `CANCEL_RECONFIRM`), sau khi luật thấy tín hiệu đủ ngưỡng: bỏ bổ ngữ của câu hỏi, rồi bỏ mọi tín hiệu đồng ý / đáp lễ / giữ lịch / cụm tham dự, rồi bỏ từ đệm (tiểu từ, xưng hô, "cảm ơn"). Còn từ nội dung thì trả `UNCLEAR` có tín hiệu, và Dialogue đọc lại lịch (`agreement._leaves_content`).
+- "à", "ạ", "ừm" đứng riêng → `UNCLEAR`; "vâng / dạ / ừ / ờ" vẫn là xác nhận.
+- Bổ sung: `_HEDGE` ("chắc được", "hy vọng", "cố gắng", "nếu", "không biết"...), `_AGREE_IDIOMS` ("không thành vấn đề"), `_AFFIRM` ("nhất định", "đương nhiên"), "đến chứ / đi chứ".
+- Cụm trung tính ở câu hỏi đến khám ("không cần hủy", "không (cần) đổi"): không phải REFUSE.
+- `intent.py` `CONFIRM`: thêm "giữ nguyên", "không đổi không hủy"... để câu trả lời "đổi hay hủy" bằng cách giữ lịch dẫn tới đọc lại.
+
+### 8.2 Luật intent không được chặn tầng ngữ nghĩa
+
+Tầng Intent chỉ có một fallback LLM thật là tầng ngữ nghĩa. `FallbackExtractor.intent` chỉ có trên interface: `NameNER.intent()` trả `None`. Router chỉ gọi model khi luật **không** ra intent, nên câu mà từ khóa `CONFIRM` khớp nhầm không bao giờ tới model, dù luật agreement đã báo "chưa rõ".
+
+| Thành phần | Thay đổi |
+| --- | --- |
+| `route_semantic` | Lý do mới `ATTENDANCE_UNCLEAR`, chỉ outbound. Ở `CONFIRM_READBACK`: intent `CONFIRM` và agreement `UNCLEAR` có tín hiệu. Ở `ASK_INTENT`: intent `CONFIRM` mà cụm không giải thích hết câu (`agreement.attendance_leaves_content`; "thôi", "gì cả" là từ đệm). Câu đồng ý thật là AGREE nên không bị gọi model |
+| `merge_semantic`, `CONFIRM_READBACK` | `INFORM_REASON` + mã cụ thể → REFUSE (hỏi "đổi hay hủy"); + `UNSPECIFIED` → `UNCLEAR` (đọc lại). Câu có cụm "không hủy / không đổi": `INFORM_REASON` hay `DECLINE_ACTION` đều → `UNCLEAR`. `CONFIRM_ACTION` → `UNCLEAR` (không bao giờ AGREE) |
+| `merge_semantic`, `ASK_INTENT` + `ATTENDANCE_UNCLEAR` | `DECLINE_ACTION` hoặc `INFORM_REASON` + mã cụ thể → bỏ intent `CONFIRM` của luật. Mơ hồ / câu hỏi / `UNSPECIFIED` → giữ kết luận luật (đọc lại lịch) |
+| `DialogueManager._intent` outbound | Intent `NONE` + lý do cụ thể từ model → hỏi lại "đổi hay hủy", `Understanding "UNCLEAR"` (lần đầu không tính §1.1.5) |
+| Prompt `semantic_v3` | Kể hoàn cảnh là `INFORM_REASON`, không phải `CHANGE_INTENT`. Ở câu đọc lại, chỉ dùng `INFORM_REASON` khi người gọi nói rõ không đến được. 4 ví dụ mẫu mới; mô tả `ASK_INTENT` outbound |
+
+Bất biến giữ nguyên: model không nâng lên AGREE; timeout hay lỗi thì giữ kết luận luật; hủy vẫn cần xác nhận lần hai có động từ hủy.
+
+### 8.3 Quyết định
+
+| # | Câu hỏi | Quyết định (23-09-2026) |
+| --- | --- | --- |
+| Q-7 | Siết Q-2: đồng ý chỉ khi phần còn lại của câu được giải thích hết | Có |
+| Q-8 | "à / ạ / ừm" đứng riêng là xác nhận? | Không, đọc lại |
+| Q-9 | Chấp nhận thêm ~1,3–2,7 s cho lượt được gọi thêm model (chỉ câu luật đã báo "chưa rõ") | Có |
+| Q-10 | `ASK_INTENT`, model đọc ra lý do cụ thể → hỏi lại "đổi hay hủy" hay "em chưa hiểu"? | Hỏi lại, không tính lần đầu |
+| Q-11 | `INFORM_REASON` + `UNSPECIFIED` ở câu đọc lại → đọc lại lịch? | Có. Hủy lịch vẫn không bắt buộc lý do: Mock nhận `UNSPECIFIED`, chỉ bắt `confirmed=true` |
+
+### 8.4 Ngoài phạm vi
+
+- Từ khóa `CONFIRM` vẫn rộng. §8.2 để model sửa khi có model; khi model tắt, bot chỉ đọc lại lịch, không ghi.
+- Bộ eval do đội tự viết (~120 câu holdout): là bằng chứng không làm hỏng, chưa đo được độ chính xác trên người gọi thật.
+
+### 8.5 Eval
+
+- `scripts/confirm_eval.py`: `--baseline` (chỉ luật), `--route-only` (đếm lượt gọi model, không gọi API), `--semantic --repeats N`. Ghi nhãn model từng câu; báo "chấp nhận được" và "lý tưởng" (hành vi đầu tiên trong `expect_behaviour`).
+- `scripts/eval_compare.py A B`: bảng chỉ số và danh sách câu đổi hành vi giữa hai lần chạy.
+- Cổng bắt buộc: 0 ghi sai ở mọi lần chạy. Mọi thay đổi prompt phải chạy lại cả `cancel_eval --semantic` (prompt dùng chung).

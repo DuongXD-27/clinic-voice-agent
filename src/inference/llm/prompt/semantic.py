@@ -10,12 +10,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - chỉ để type hint, tránh import vòng runtime
     from callbot.engine.extraction.semantic import SemanticContext
 
-PROMPT_VERSION = "semantic_v1"
+PROMPT_VERSION = "semantic_v3"
 
 # Mô tả MỤC ĐÍCH câu bot vừa hỏi, không gửi nguyên văn câu hỏi (câu đọc lịch có dữ liệu Clinic).
 QUESTION_PURPOSE: dict[str, str] = {
     "CANCEL_RECONFIRM": "Bot vừa hỏi người gọi xác nhận hủy lịch khám lần thứ hai.",
-    "ASK_INTENT": "Bot vừa hỏi người gọi cần hỗ trợ việc gì.",
+    "ASK_INTENT": (
+        "Bot vừa hỏi người gọi cần hỗ trợ việc gì (gọi ra: sau khi người gọi nói không đến theo lịch,"
+        " bot hỏi muốn đổi lịch hay hủy lịch)."
+    ),
     "CONFIRM_READBACK": "Bot vừa đọc lại lịch khám và hỏi người gọi có đến khám được không.",
 }
 
@@ -45,6 +48,11 @@ Quy tắc bắt buộc:
 - Câu vừa có từ chối vừa có động từ hành động ở hai mệnh đề ("không, hủy đi") là AMBIGUOUS.
 - Đáp lễ trần ("vâng", "dạ", "ừ") tại câu xác nhận hủy là AMBIGUOUS, không phải đồng ý.
 - Không suy ra lý do từ ngữ cảnh ngoài câu nói. Không đoán điều người gọi chưa nói.
+- Người gọi chỉ kể hoàn cảnh ("tôi sẽ đi khám chỗ khác", "hôm đó tôi đi công tác") là INFORM_REASON,
+  không phải CHANGE_INTENT: chỉ chọn CHANGE_INTENT khi người gọi nói rõ muốn hủy / đổi / đặt.
+- Ở câu hỏi đến khám (CONFIRM_READBACK), chỉ dùng INFORM_REASON khi câu nói rõ người gọi KHÔNG đến
+  được theo lịch. Câu nói mình rảnh, đang bận lúc nghe máy, hay không muốn hủy / đổi lịch là
+  AMBIGUOUS.
 Chỉ trả JSON đúng sáu khóa của schema. Không giải thích, không confidence.
 """
 
@@ -144,6 +152,55 @@ FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
             reply_kind="INFORM_REASON",
             cancel_reason="PATIENT_UNAVAILABLE",
             reason_span="bận mất rồi",
+        ),
+    ),
+    # T-04 §8: "dạ" mở câu chỉ là lễ phép; người khác đến thay không phải người bệnh xác nhận
+    (
+        "CONFIRM_READBACK",
+        "dạ hôm đó tôi bận rồi",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="hôm đó tôi bận rồi",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "vợ tôi sẽ đến thay",
+        _reading(reply_kind="AMBIGUOUS", reply_span="vợ tôi sẽ đến thay"),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi sẽ có mặt",
+        _reading(reply_kind="CONFIRM_ACTION", reply_span="tôi sẽ có mặt"),
+    ),
+    # T-04 §8: câu mà từ khóa "sẽ đi / sẽ đến" khớp nhầm; "không hủy", "được nghỉ" không phải từ chối
+    (
+        "CONFIRM_READBACK",
+        "tuần đó tôi sẽ đi nước ngoài",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="tuần đó tôi sẽ đi nước ngoài",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "không hủy đâu em",
+        _reading(reply_kind="AMBIGUOUS", reply_span="không hủy đâu em"),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "hôm ấy tôi được nghỉ",
+        _reading(reply_kind="AMBIGUOUS", reply_span="hôm ấy tôi được nghỉ"),
+    ),
+    (
+        "ASK_INTENT",
+        "tôi sẽ đi khám bệnh viện khác",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="WENT_ELSEWHERE",
+            reason_span="đi khám bệnh viện khác",
         ),
     ),
 )

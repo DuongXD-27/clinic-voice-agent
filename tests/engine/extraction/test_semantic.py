@@ -98,6 +98,7 @@ def _route(transcript: str, **changes: Any) -> Optional[RouteReason]:
         clinical=Field.nothing(ClinicalLevel.NONE),
         agreement=Field.nothing(Agreement.UNCLEAR),
         cancel_reason=Field.nothing("UNSPECIFIED"),
+        direction="outbound",
     )
     return route_semantic(**{**base, **changes})
 
@@ -557,3 +558,191 @@ def test_changing_to_keep_the_appointment_at_the_cancel_question_is_a_refusal() 
     assert merged.intent.value is Intent.CONFIRM
     assert merged.agreement.value is Agreement.REFUSE and merged.agreement.found
     assert merged.agreement.provenance is Provenance.FALLBACK
+
+
+# --- T-04 §8: câu hỏi đến khám ----------------------------------------------------------------
+
+
+def _readback(transcript: str, **changes: Any) -> ExtractionResult:
+    return _result(transcript, question_id=QuestionId.CONFIRM_READBACK, **changes)
+
+
+def test_a_reason_at_the_attendance_question_is_a_refusal_to_attend() -> None:
+    """ "dạ hôm đó tôi bận rồi": hỏi đổi hay hủy, không "em chưa hiểu"; REFUSE không ghi gì."""
+    merged = merge_semantic(
+        _readback("dạ hôm đó tôi bận rồi", agreement=_field(Agreement.UNCLEAR, span="dạ")),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="hôm đó tôi bận rồi",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.REFUSE
+    assert merged.agreement.provenance is Provenance.FALLBACK
+
+
+def test_a_reason_at_the_cancel_question_is_still_only_a_reason() -> None:
+    merged = merge_semantic(
+        _result("tôi không đủ tiền"),
+        SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="COST", reason_span="không đủ tiền"),
+        RouteReason.CANCEL_UNRESOLVED,
+        OUTBOUND_INTENTS,
+    )
+    assert not merged.agreement.found
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [Field.nothing(Agreement.UNCLEAR), Field(Agreement.UNCLEAR, Provenance.EXACT, span="có")],
+)
+def test_model_agreement_at_the_attendance_question_only_triggers_a_reread(rule) -> None:
+    """Model thấy đồng ý mà luật không: đọc lại lịch (UNCLEAR có tín hiệu), không bao giờ AGREE."""
+    merged = merge_semantic(
+        _readback("tôi sẽ có mặt", agreement=rule),
+        SemanticOutcome(ReplyKind.CONFIRM_ACTION, "tôi sẽ có mặt"),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.UNCLEAR and merged.agreement.found
+
+
+# --- T-04 §8: luật CONFIRM khớp nhầm không được chặn model ---------------------------------------
+
+
+def _confirm(span: str) -> Field[Intent]:
+    return _field(Intent.CONFIRM, span=span)
+
+
+def test_a_confirm_keyword_inside_another_statement_is_routed_at_the_readback() -> None:
+    reason = _route(
+        "hôm đó tôi sẽ đi công tác",
+        question_id=QuestionId.CONFIRM_READBACK,
+        intent=_confirm("sẽ đi"),
+        agreement=_field(Agreement.UNCLEAR, span="sẽ đi"),
+    )
+    assert reason is RouteReason.ATTENDANCE_UNCLEAR
+
+
+def test_a_real_attendance_statement_is_not_routed() -> None:
+    """ "tôi sẽ đến" là AGREE của luật: câu đồng ý thật không bị chậm thêm."""
+    reason = _route(
+        "tôi sẽ đến",
+        question_id=QuestionId.CONFIRM_READBACK,
+        intent=_confirm("sẽ đến"),
+        agreement=_field(Agreement.AGREE, span="sẽ đến"),
+    )
+    assert reason is None
+
+
+@pytest.mark.parametrize(
+    "transcript, span, routed",
+    [
+        ("hôm đó tôi sẽ đi công tác", "sẽ đi", True),
+        ("tối đó tôi đến viện khác rồi", "tôi đến", True),
+        ("thôi tôi vẫn đến", "vẫn đến", False),
+        ("không đổi không hủy gì cả", "không đổi không hủy", False),
+        ("giữ lịch", "giữ lịch", False),
+    ],
+)
+def test_ask_intent_routes_only_confirm_that_leaves_other_content(
+    transcript: str, span: str, routed: bool
+) -> None:
+    reason = _route(transcript, question_id=QuestionId.ASK_INTENT, intent=_confirm(span))
+    assert (reason is RouteReason.ATTENDANCE_UNCLEAR) is routed
+
+
+def test_inbound_confirm_is_never_routed_as_attendance() -> None:
+    """Inbound "xác nhận lịch" là ngoài kịch bản -> chuyển máy; không để model đổi nhãn."""
+    reason = _route(
+        "tôi muốn xác nhận lịch khám hôm đó",
+        question_id=QuestionId.ASK_INTENT,
+        intent=_confirm("xác nhận lịch khám"),
+        direction="inbound",
+    )
+    assert reason is None
+
+
+def test_an_unspecified_reason_at_the_readback_rereads_instead_of_refusing() -> None:
+    """Q-3: "tôi được nghỉ hôm đó mà" — model không nói được lý do thì không suy ra là không đến."""
+    merged = merge_semantic(
+        _readback("tôi được nghỉ hôm đó mà", agreement=_field(Agreement.UNCLEAR, span="được")),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="UNSPECIFIED",
+            reason_span="tôi được nghỉ hôm đó mà",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.UNCLEAR and merged.agreement.found
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SemanticOutcome(ReplyKind.DECLINE_ACTION, "không cần hủy"),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="NO_LONGER_NEEDED",
+            reason_span="không cần hủy",
+        ),
+    ],
+)
+def test_not_wanting_to_cancel_is_never_a_refusal_to_attend(outcome: SemanticOutcome) -> None:
+    merged = merge_semantic(
+        _readback("không cần hủy", agreement=_field(Agreement.UNCLEAR, span="không cần hủy")),
+        outcome,
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.UNCLEAR and merged.agreement.found
+
+
+def test_a_plain_decline_at_the_readback_is_still_a_refusal() -> None:
+    merged = merge_semantic(
+        _readback("hôm đó thì chịu", agreement=Field.nothing(Agreement.UNCLEAR)),
+        SemanticOutcome(ReplyKind.DECLINE_ACTION, "hôm đó thì chịu"),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.REFUSE
+
+
+def _weak_confirm(transcript: str, span: str) -> ExtractionResult:
+    return _result(transcript, question_id=QuestionId.ASK_INTENT, intent=_confirm(span))
+
+
+def test_a_reason_drops_the_mistaken_confirm_at_ask_intent() -> None:
+    merged = merge_semantic(
+        _weak_confirm("hôm đó tôi sẽ đi công tác", "sẽ đi"),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="hôm đó tôi sẽ đi công tác",
+        ),
+        RouteReason.ATTENDANCE_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.intent.value is Intent.NONE
+    assert (merged.cancel_reason.value, merged.cancel_reason.found) == ("PATIENT_UNAVAILABLE", True)
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SemanticOutcome(ReplyKind.AMBIGUOUS, "vợ tôi sẽ đến thay"),
+        SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="UNSPECIFIED", reason_span="thay"),
+        SemanticOutcome(ReplyKind.QUESTION, "vợ tôi sẽ đến thay"),
+    ],
+)
+def test_an_unsure_model_keeps_the_rule_confirm_at_ask_intent(outcome: SemanticOutcome) -> None:
+    """Model không chắc: giữ kết luận luật (đọc lại lịch, không ghi gì)."""
+    merged = merge_semantic(
+        _weak_confirm("vợ tôi sẽ đến thay", "sẽ đến"),
+        outcome,
+        RouteReason.ATTENDANCE_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.intent.value is Intent.CONFIRM
