@@ -9,8 +9,8 @@ import pytest
 from callbot.engine import _semantic_extractor, create_orchestrator
 from callbot.engine.extraction.semantic import LLMSemanticExtractor
 from callbot.engine.settings import EngineSettings
+from clinic_mock_sim import FakeClinicAPI
 from inference.llm.config import OpenAIConfig
-from tests.engine.fake_clinic import FakeClinicAPI
 
 
 @pytest.fixture(autouse=True)

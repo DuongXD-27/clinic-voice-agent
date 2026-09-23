@@ -20,9 +20,9 @@ from callbot.engine import (
 )
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
-from callbot.engine.tools.clinic_mock_client import ClinicMockClient
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
+from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings
 from callbot.transports.http.demo import router as demo_router
 from callbot.transports.http.livekit_token import router as livekit_router
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def _default_clinic() -> ClinicAPI:
-    return ClinicMockClient(settings.clinic_mock_base_url, settings.clinic_mock_api_key)
+    return build_clinic(settings)
 
 
 def _default_session_store() -> SessionStore:

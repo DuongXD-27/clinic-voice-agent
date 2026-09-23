@@ -64,7 +64,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/callbot", "src/inference", "src/speech"]
+packages = ["src/callbot", "src/clinic_mock_sim", "src/inference", "src/speech"]
 
 [tool.hatch.build]
 # Cài -e: đưa src/ (không phải gốc repo) vào sys.path, để `import callbot` chạy được ngoài pytest
@@ -91,4 +91,4 @@ select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["callbot", "inference", "speech"]
+known-first-party = ["callbot", "clinic_mock_sim", "inference", "speech"]

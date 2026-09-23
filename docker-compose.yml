@@ -23,7 +23,8 @@ services:
       timeout: 3s
       retries: 10
 
-  # Clinic mock chạy riêng tại clinic-mock.vmec-callbot.tech; bot gọi qua CLINIC_MOCK_BASE_URL trong .env
+  # Clinic: mặc định dùng clinic_mock_sim trong bộ nhớ (không cần mạng/key). Muốn gọi mock đã deploy
+  # (clinic-mock.vmec-callbot.tech) thì đặt CLINIC_BACKEND=mock trong .env, kèm CLINIC_MOCK_API_KEY.
   bot:
     build: .
     ports:
@@ -34,7 +35,12 @@ services:
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:-callbot}@redis:6379/0
       REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
-      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      # Local không cần hơn 1 worker. Khi CLINIC_BACKEND=sim, image tự ép 1 dù .env đặt bao nhiêu
+      # (sim nằm trong bộ nhớ từng process — xem CMD trong Dockerfile)
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      CLINIC_BACKEND: ${CLINIC_BACKEND:-sim}
+      CLINIC_SIM_DATASET: ${CLINIC_SIM_DATASET:-listing3}
+      CLINIC_SIM_SCENARIO: ${CLINIC_SIM_SCENARIO:-}
       SESSION_IDLE_TTL_S: ${SESSION_IDLE_TTL_S:-1800}
       SESSION_MAX_AGE_S: ${SESSION_MAX_AGE_S:-7200}
       SESSION_TOMBSTONE_TTL_S: ${SESSION_TOMBSTONE_TTL_S:-86400}

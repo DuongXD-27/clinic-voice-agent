@@ -28,8 +28,9 @@ files = ['encoder-epoch-12-avg-8.int8.onnx', 'decoder-epoch-12-avg-8.onnx', 'joi
 # Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
 # trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./
-RUN mkdir -p src/callbot src/inference src/speech \
-    && touch src/callbot/__init__.py src/inference/__init__.py src/speech/__init__.py \
+RUN mkdir -p src/callbot src/clinic_mock_sim src/inference src/speech \
+    && touch src/callbot/__init__.py src/clinic_mock_sim/__init__.py src/inference/__init__.py \
+        src/speech/__init__.py \
     && pip install --no-cache-dir ".[speech-zipformer,livekit,vad-webrtc]" \
     && rm -rf src
 
@@ -40,4 +41,6 @@ RUN pip install --no-cache-dir --no-deps --force-reinstall .
 EXPOSE 8000
 
 ENV WEB_CONCURRENCY=2
-CMD ["sh", "-c", "exec uvicorn callbot.transports.http.main:app --host 0.0.0.0 --port 8000 --workers \"$WEB_CONCURRENCY\""]
+# CLINIC_BACKEND=sim: clinic giả nằm trong bộ nhớ từng process, nhiều worker là nhiều bản lệch nhau
+# → tự ép 1 worker, không bắt ai sửa WEB_CONCURRENCY trong .env. mock (deploy) giữ nguyên số worker.
+CMD ["sh", "-c", "if [ \"$CLINIC_BACKEND\" = sim ]; then export WEB_CONCURRENCY=1; fi; exec uvicorn callbot.transports.http.main:app --host 0.0.0.0 --port 8000 --workers \"$WEB_CONCURRENCY\""]
