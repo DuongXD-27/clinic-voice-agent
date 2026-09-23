@@ -225,3 +225,46 @@ Review ground truth: câu bot hiểu được nhưng là yêu cầu / câu hỏi
 - Chưa làm: câu hỏi chi phí ("có mất phí không em") — cancel eval đang kỳ vọng `QUESTION` / hỏi lại cho
   "Hủy thì có mất phí không em", cần thống nhất nhãn hai bộ trước khi thêm từ khóa.
 
+## Review cases và kết quả eval (23-09-2026)
+
+Sửa 6 ca trong `eval/confirm/cases.csv`: câu "tôi đang chuẩn bị đi xa" chưa xác định xung đột với
+lịch nên kỳ vọng đọc lại; câu khám viện khác được sửa thành "giờ đó" để khớp ngữ cảnh lịch 09:00;
+hai câu đồng ý tường minh chuyển `needs_inference=no`; hai ví dụ đã nằm trong system prompt
+chuyển khỏi holdout sang `prompt`. Tổng vẫn là 192 ca: 11 prompt, 181 holdout.
+
+Lệnh eval: `python scripts/confirm_eval.py --semantic --repeats 3`, model `gpt-6-luna`, prompt
+`semantic_v4`. Báo cáo chạy lúc `2026-09-23T10:35:59Z`; 576 dòng kết quả khớp bộ cases sau review.
+
+| Lượt | Holdout đúng | Chính xác | Ghi sai | Model accepted / timeout |
+| --- | --- | --- | --- | --- |
+| 1 | 158/181 | 87,29% | 0 | 101 / 0 |
+| 2 | 157/181 | 86,74% | 0 | 101 / 0 |
+| 3 | 155/181 | 85,64% | 0 | 100 / 1 |
+
+- Đạt điều kiện 0 ghi sai trên tập đã chạy; chưa đạt toàn bộ kỳ vọng hành vi (23/24/26 ca holdout
+  sai tương ứng). Mỗi lượt có 11/56 câu kỳ vọng ghi xác nhận nhưng bot chưa ghi ngay. Luật chưa
+  nhận đủ cách diễn đạt đồng ý; model không được nâng `UNCLEAR` thành `AGREE` để mở khóa ghi.
+- Các nhóm còn sai gồm câu đồng ý, lý do không đến, đổi lịch, ngoại lệ, bẫy ngoài phạm vi và
+  xác nhận khung giờ. Không đổi nhãn để làm kết quả khớp implementation.
+- [Summary](../../result/23-09-2026/confirm/semantic/summary.json),
+  [kết quả từng ca](../../result/23-09-2026/confirm/semantic/results.csv).
+
+Kiểm tra hội thoại riêng bằng Orchestrator thật, model thật, `FakeClinicAPI` và Redis giả lập:
+2 kịch bản (xác nhận hủy trực tiếp; nói "vâng" rồi xác nhận rõ) × 3 lần, **6/6 đạt kiểm tra luồng**.
+
+| Câu khách nói | Bot thực tế | Ghi Clinic |
+| --- | --- | --- |
+| "tuần đó tôi sẽ đi nước ngoài" | Hỏi đổi lịch hay hủy; model trả `INFORM_REASON/PATIENT_UNAVAILABLE` | Chưa ghi |
+| "hủy giúp tôi" | Hỏi chắc chắn muốn hủy lịch không | Chưa ghi |
+| "vâng" (kịch bản thứ hai) | Hỏi hủy hay giữ, yêu cầu xác nhận "hủy lịch" | Chưa ghi |
+| "đúng, hủy đi" | Báo đã hủy | `CANCELLED` |
+
+**Giới hạn phát hiện:** lý do `PATIENT_UNAVAILABLE` từ lượt đầu không được giữ đến lệnh hủy;
+cả 6 lần ghi `cancel_reason=UNSPECIFIED`. Kết quả 6/6 chỉ kiểm tra chuyển bước và điều kiện ghi,
+không chứng minh việc bảo toàn lý do hủy. Chưa sửa engine trong thay đổi này.
+
+- [Trace model trả thành công](../../result/23-09-2026/confirm/abroad-flow-20260923T103406Z/trace.json).
+- [Trace chạy trong sandbox](../../result/23-09-2026/confirm/abroad-flow-20260923T103253Z/trace.json):
+  6/6 request model timeout; bot đọc lại lịch ở lượt đầu. Tách khỏi kết quả model thành công;
+  các bước yêu cầu và xác nhận hủy vẫn được kiểm tra. Sau khi xác minh request chỉ chứa dữ liệu
+  tổng hợp và được duyệt chạy ngoài sandbox, model trả thành công cả 6 lần, giữ timeout cấu hình 3 s.

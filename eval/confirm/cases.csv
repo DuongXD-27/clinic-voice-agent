@@ -48,7 +48,7 @@ holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",CONF
 holdout,agree_attend,CONFIRM_READBACK,toi se den,CONFIRM,no
 holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,CONFIRM,no
 holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,CONFIRM,no
-holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",CONFIRM,yes
+holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",CONFIRM,no
 holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,REREAD,no
 holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,CONFIRM,yes
 holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,CONFIRM,yes
@@ -69,11 +69,11 @@ holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm 
 holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,ASK_CHANGE_OR_CANCEL,yes
-holdout,cannot_attend,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,ASK_CHANGE_OR_CANCEL,yes
+holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,REREAD,yes
 holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,ASK_CHANGE_OR_CANCEL,yes
-holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,ASK_CHANGE_OR_CANCEL,yes
-holdout,cannot_attend,CONFIRM_READBACK,tối đó tôi đến bệnh viện khác rồi,ASK_CHANGE_OR_CANCEL,yes
+prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,ASK_CHANGE_OR_CANCEL,yes
+holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,ASK_CHANGE_OR_CANCEL,yes
 holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,ASK_CHANGE_OR_CANCEL,yes
@@ -123,7 +123,7 @@ holdout,filler,CONFIRM_READBACK,ừm,REREAD,no
 holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,REREAD,no
 holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",REREAD,no
 holdout,question,CONFIRM_READBACK,được không em,REREAD,no
-holdout,question,CONFIRM_READBACK,mấy giờ nhỉ,REREAD,no
+prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,REREAD,no
 holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,TRANSFER,no
 holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,REREAD,no
 holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,REREAD,no
@@ -151,7 +151,7 @@ holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,TRANSFER,no
 holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,TRANSFER,yes
 holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,TRANSFER,yes
 holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,TRANSFER,yes
-holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",CONFIRM,yes
+holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",CONFIRM,no
 holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",CONFIRM,yes
 holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,CONFIRM,yes
 holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,REREAD,yes
