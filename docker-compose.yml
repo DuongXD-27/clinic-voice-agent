@@ -54,15 +54,15 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # mode=audio (§4.1.2): ZipFormer 68M self-host qua sherpa-onnx + OpenAI TTS.
+      # mode=audio (§4.1.2): gipformer1.5 68M self-host qua sherpa-onnx + OpenAI TTS.
       # Đường dẫn model trỏ vào chỗ Dockerfile tải lúc build (/app/models/zipformer),
       # không phải src/... — xem comment trong Dockerfile.
       ASR_PROVIDER: ${ASR_PROVIDER:-zipformer}
       TTS_PROVIDER: ${TTS_PROVIDER:-openai}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
-      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
-      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
-      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
     # host.docker.internal chỉ tự có trên Docker Desktop (Mac/Windows) — trên
     # Docker Linux cần khai báo tay để container gọi ngược ra service chạy
@@ -84,9 +84,9 @@ services:
       ASR_PROVIDER: zipformer
       TTS_PROVIDER: ${TTS_PROVIDER:-openai}
       VAD_PROVIDER: ${VAD_PROVIDER:-webrtc}
-      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
-      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
-      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
     depends_on:
       redis:

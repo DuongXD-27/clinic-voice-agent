@@ -3,13 +3,13 @@ from uuid import uuid4
 import fakeredis
 import pytest
 from fastapi.testclient import TestClient
-from tests.engine.fake_clinic import FakeClinicAPI
 from tests.transports.http.fakes import make_speech_bundle
 
 from callbot.engine import EngineSettings
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
 from callbot.transports.livekit.settings import LiveKitSettings
+from clinic_mock_sim import FakeClinicAPI
 
 
 def _app(clinic, redis_store_factory, redis_server, tmp_path, livekit_settings: LiveKitSettings):
