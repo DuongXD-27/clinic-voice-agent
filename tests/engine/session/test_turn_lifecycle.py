@@ -21,7 +21,7 @@ from callbot.engine import (
     create_orchestrator,
 )
 from callbot.engine.session import CallContext, SessionManager
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 CANCEL_CALL = ["Nguyễn Văn A", "14/03/1978", "Tôi muốn hủy lịch", "Vâng", "Hủy giúp tôi"]
 
@@ -138,18 +138,14 @@ def test_silence_input_is_compared_exactly(store) -> None:
 # --- Đồng thời và restart --------------------------------------------------------------
 
 
-class SlowClinic(FakeClinicAPI):
-    def __init__(self, delay: float) -> None:
-        super().__init__()
-        self.delay = delay
-
-    def get_appointment(self, appointment_id):
-        time.sleep(self.delay)
-        return super().get_appointment(appointment_id)
+def _slow_clinic(delay: float) -> FakeClinicAPI:
+    clinic = FakeClinicAPI()
+    clinic.delay("get_appointment", delay)  # chờ thật: các test dưới cần hai luồng chồng lên nhau
+    return clinic
 
 
 def test_two_threads_same_turn_process_once(store, reopen) -> None:
-    clinic = SlowClinic(delay=0.2)
+    clinic = _slow_clinic(0.2)
     workers = [create_orchestrator(clinic, store=reopen()) for _ in range(2)]
     workers[0].start_call(_outbound("c_race"))
     _say(workers[0], "c_race", 1, "Nguyễn Văn A")
@@ -179,7 +175,7 @@ def test_two_threads_same_turn_process_once(store, reopen) -> None:
 
 
 def test_busy_call_returns_call_busy_without_changes(store) -> None:
-    clinic = SlowClinic(delay=0.6)
+    clinic = _slow_clinic(0.6)
     slow = create_orchestrator(clinic, store=store)
     slow.start_call(_outbound("c_busy_turn"))
     _say(slow, "c_busy_turn", 1, "Nguyễn Văn A")
@@ -196,7 +192,7 @@ def test_busy_call_returns_call_busy_without_changes(store) -> None:
 
 
 def test_different_calls_do_not_block_each_other(store) -> None:
-    clinic = SlowClinic(delay=0.5)
+    clinic = _slow_clinic(0.5)
     bot = create_orchestrator(clinic, store=store)
     for call_id in ("c_iso_1", "c_iso_2"):
         bot.start_call(_outbound(call_id))
@@ -236,19 +232,10 @@ def _verified(bot, call_id: str) -> None:
 
 
 def test_crash_before_clinic_write_recovers_safely(store, reopen) -> None:
-    class CrashingClinic(FakeClinicAPI):
-        crash = False
-
-        def get_appointment(self, appointment_id):
-            if self.crash:
-                self.crash = False
-                raise SimulatedCrash()
-            return super().get_appointment(appointment_id)
-
-    clinic = CrashingClinic()
+    clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=reopen())
     _verified(bot, "c_crash_before")
-    clinic.crash = True
+    clinic.fail_next("get_appointment", SimulatedCrash())
     with pytest.raises(SimulatedCrash):
         _say(bot, "c_crash_before", 3, "Có, tôi đến được")
     assert store.get_turn("c_crash_before", 3).status == "PROCESSING"
@@ -301,12 +288,11 @@ def test_lost_terminal_response_is_not_replayed_after_content_erasure(store) -> 
 
 
 def test_write_timeout_requires_reconciliation_without_transfer(store) -> None:
-    class TimeoutClinic(FakeClinicAPI):
-        def confirm_appointment(self, appointment_id, version, idempotency_key=None):
-            self.requests.append((idempotency_key, "CONFIRMED"))
-            raise httpx.ReadTimeout("slow", request=httpx.Request("POST", "https://clinic.test"))
-
-    clinic = TimeoutClinic()
+    clinic = FakeClinicAPI()
+    clinic.fail_next(
+        "confirm_appointment",
+        httpx.ReadTimeout("slow", request=httpx.Request("POST", "https://clinic.test")),
+    )
     bot = create_orchestrator(clinic, store=store)
     _verified(bot, "c_timeout")
     with pytest.raises(ReconciliationRequired):
@@ -345,19 +331,8 @@ def test_store_unavailable_before_journal_sends_nothing(store) -> None:
 
 
 def test_version_conflict_retries_once_with_same_key(store) -> None:
-    class ConflictOnce(FakeClinicAPI):
-        conflicted = False
-
-        def confirm_appointment(self, appointment_id, version, idempotency_key=None):
-            if not self.conflicted:
-                self.conflicted = True
-                from tests.engine.fake_clinic import clinic_error
-
-                self.requests.append((idempotency_key, "CONFLICT"))
-                raise clinic_error(409, "VERSION_CONFLICT")
-            return super().confirm_appointment(appointment_id, version, idempotency_key)
-
-    clinic = ConflictOnce()
+    clinic = FakeClinicAPI()
+    clinic.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
     bot = create_orchestrator(clinic, store=store)
     _verified(bot, "c_conflict")
     assert _say(bot, "c_conflict", 3, "Có, tôi đến được").outcome == "CONFIRMED"

@@ -15,7 +15,7 @@ from callbot.engine import (
     ReconciliationRequired,
     create_orchestrator,
 )
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 SILENCE = None
@@ -46,7 +46,7 @@ def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
 
 
 def _set_status(clinic: FakeClinicAPI, status: str) -> None:
-    clinic.appointments["apt_00417"]["status"] = status
+    clinic.set_status("apt_00417", status)
 
 
 def _transferred(action, reason: str = "SYSTEM_ERROR") -> None:
@@ -151,9 +151,8 @@ def test_transfer_is_recorded_on_clinic_when_it_can_be() -> None:
         clinic_error(422, "IDEMPOTENCY_CONFLICT"),
         clinic_error(404, "NOT_FOUND"),
         clinic_error(409, "INVALID_STATE_TRANSITION"),
-        clinic_error(503, "UPSTREAM"),
     ],
-    ids=["idempotency", "not_found", "invalid_state", "upstream"],
+    ids=["idempotency", "not_found", "invalid_state"],
 )
 def test_rejected_transfer_still_hands_the_call_to_staff(error) -> None:
     bot, clinic, _ = _bot("c_transfer_rejected")
@@ -217,9 +216,17 @@ def test_a_business_write_error_is_transferred_even_when_the_transfer_is_rejecte
     assert run.diagnostics.question_id == "CONFIRM_READBACK"
 
 
-def test_transfer_timeout_needs_reconciliation() -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        None,  # timeout
+        clinic_error(503, "UPSTREAM"),  # 5xx: client thật không biết mock đã ghi chưa
+    ],
+    ids=["timeout", "upstream_5xx"],
+)
+def test_transfer_timeout_needs_reconciliation(error) -> None:
     bot, clinic, _ = _bot("c_transfer_timeout")
-    clinic.fail_next("transfer_appointment", outcome_unknown=True)
+    clinic.fail_next("transfer_appointment", error, outcome_unknown=error is None)
     with pytest.raises(ReconciliationRequired) as exc:
         bot.handle_turn("c_transfer_timeout", _caller(1, "cho tôi gặp nhân viên"))
     assert exc.value.diagnostics.transfer_reason == "PATIENT_REQUEST"

@@ -24,8 +24,8 @@ from callbot.engine.extraction.semantic import (
     SemanticOutcome,
 )
 from callbot.engine.session import CallContext
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 
 SILENCE = None
 FACTS = "9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City"

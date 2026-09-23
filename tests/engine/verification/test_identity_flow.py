@@ -7,7 +7,7 @@ hai test lượt 0 thất bại chỉ gửi một lượt, vì cuộc gọi đã
 
 from callbot.engine import CallerInput, CallStart, create_orchestrator
 from callbot.engine.session import CallContext
-from callbot.engine.tools.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 

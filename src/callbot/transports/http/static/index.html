@@ -199,12 +199,32 @@
       .extraction .empty-note { color: var(--muted); }
       pre { max-height: 260px; margin: 0; padding: 0 20px 20px; overflow: auto; color: #24433a; font: 0.75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 
+      .guide { margin-bottom: 18px; }
+      .guide > details { border-top: 0; }
+      .guide > details > summary { color: var(--ink); font-size: 0.95rem; }
+      .guide-rules { margin: 0 20px 14px; padding: 10px 14px; border-radius: 12px; background: #fff6e8; color: #6b4a16; font-size: 0.8rem; line-height: 1.55; }
+      .guide-rules strong { color: #4f360f; }
+      .guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 20px 20px; }
+      .scenario { display: grid; gap: 10px; align-content: start; padding: 16px; border: 1px solid var(--line); border-radius: 15px; background: white; }
+      .scenario-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+      .scenario h3 { margin: 0; font-size: 0.92rem; }
+      .scenario .expect { padding: 3px 9px; border-radius: 999px; background: var(--mint); color: var(--green-dark); font-size: 0.72rem; font-weight: 800; }
+      .scenario p { margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.5; }
+      .scenario ol { display: grid; gap: 8px; margin: 0; padding-left: 20px; font-size: 0.8rem; }
+      .scenario li { line-height: 1.45; }
+      .scenario li span { display: block; color: var(--muted); font-size: 0.74rem; }
+      .say { display: inline-block; margin: 0 0 3px; padding: 4px 10px; border: 1px solid #b9d9cb; border-radius: 999px; background: #f1faf5; color: var(--green-dark); font-size: 0.8rem; font-weight: 650; }
+      .say:hover:not(:disabled) { background: var(--mint); }
+      .scenario .warn { padding: 8px 10px; border-radius: 10px; background: #f8e5e3; color: var(--red); }
+      .small-btn { padding: 7px 11px; font-size: 0.78rem; }
+
       .hidden { display: none !important; }
       .busy-label::after { content: "…"; }
 
       @media (max-width: 780px) {
         header { align-items: flex-start; flex-direction: column; }
         .layout { grid-template-columns: 1fr; }
+        .guide-grid { grid-template-columns: 1fr; }
         .conversation { height: 420px; }
       }
 
@@ -212,6 +232,8 @@
         .shell { width: min(100% - 20px, 1180px); padding-top: 18px; }
         .fields { grid-template-columns: 1fr; }
         .field.wide { grid-column: auto; }
+        .guide-grid { padding: 0 12px 12px; }
+        .guide-rules { margin: 0 12px 12px; }
         .status-grid { grid-template-columns: 1fr; }
         .metric { border-right: 0; border-bottom: 1px solid var(--line); }
         .metric:last-child { border-bottom: 0; }
@@ -229,6 +251,63 @@
         </div>
         <div id="health" class="health">Đang kiểm tra API</div>
       </header>
+
+      <section class="card guide">
+        <details id="guide" open>
+          <summary>Hướng dẫn test happy case</summary>
+          <div class="guide-rules">
+            <strong>Clinic mock dùng chung cho cả team.</strong> Mock chỉ có một lịch outbound (<code>apt_00417</code>)
+            và một khung trống (15:00 ngày 14/10). Call ID khác nhau vẫn dùng chung dữ liệu này, nên mỗi lần chỉ một
+            người test: báo nhóm → <strong>Reset clinic mock</strong> → test một cuộc gọi → báo xong. Reset xóa dữ liệu của
+            mọi người, không bấm khi người khác đang gọi. Nói sai tên hoặc ngày sinh là bot chuyển máy ngay và khóa lịch
+            cho đến lần reset sau. Bấm vào câu mẫu màu xanh để điền vào ô nhập, rồi bấm Gửi turn.
+          </div>
+          <div class="guide-grid">
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>Outbound · xác nhận lịch</h3>
+                <span class="expect">Kỳ vọng: CONFIRMED</span>
+              </div>
+              <p>Bot gọi bệnh nhân Nguyễn Văn A để nhắc lịch khám Nội tổng quát 15:30 ngày 14/10 tại Vinmec Times City.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="outbound">Điền cấu hình outbound</button></div>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
+                  <span>Turn 0 bot chào, xưng trợ lý ảo AI và hỏi đang nói chuyện với ai.</span></li>
+                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
+                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
+                <li><button class="say" type="button">Ngày 14 tháng 3 năm 1978</button>
+                  <span>Bot đọc lịch: 3 giờ 30 chiều ngày 14 tháng 10 tại Vinmec Times City, hỏi có đến được không.</span></li>
+                <li><button class="say" type="button">Có, tôi đến được</button>
+                  <span>Bot báo đã xác nhận lịch. State ENDED · Outcome CONFIRMED.</span></li>
+              </ol>
+            </article>
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>Inbound · đặt lịch mới</h3>
+                <span class="expect">Kỳ vọng: BOOKED</span>
+              </div>
+              <p>Bệnh nhân Nguyễn Văn A gọi từ số 0912345600 để đặt lịch khám.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="inbound">Điền cấu hình inbound</button></div>
+              <p id="slotWindowWarn" class="warn hidden">Bot chỉ tìm khung giờ trong 14 ngày tới, mà khung trống duy nhất của
+                mock là 15:00 ngày 14/10. Trước ngày 30/09 bước 4 sẽ chuyển máy (OUT_OF_SCOPE) chứ không phải lỗi thao tác.</p>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
+                  <span>Turn 0 bot chào "Vinmec xin nghe" và hỏi họ tên đầy đủ.</span></li>
+                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
+                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
+                <li><button class="say" type="button">14/03/1978</button>
+                  <span>Bot hỏi anh chị cần hỗ trợ gì.</span></li>
+                <li><button class="say" type="button">Tôi muốn đặt lịch khám</button>
+                  <span>Bot đọc khung 1: 3 giờ chiều ngày 14 tháng 10.</span></li>
+                <li><button class="say" type="button">Khung 1</button>
+                  <span>Bot hỏi chốt khung 3 giờ chiều ngày 14 tháng 10.</span></li>
+                <li><button class="say" type="button">Đúng rồi</button>
+                  <span>Bot báo đã đặt lịch. State ENDED · Outcome BOOKED. Khung trống đã hết, người sau cần reset.</span></li>
+              </ol>
+            </article>
+          </div>
+        </details>
+      </section>
 
       <div class="layout">
         <aside class="stack">
@@ -278,6 +357,7 @@
               <div class="actions">
                 <button id="startBtn" class="primary">Bắt đầu cuộc gọi</button>
                 <button id="resetBtn" class="secondary" type="button">Phiên mới</button>
+                <button id="clinicResetBtn" class="danger" type="button">Reset clinic mock</button>
               </div>
               <div id="notice" class="notice">Trang này không lưu API key hoặc dữ liệu ngoài server demo.</div>
             </div>
@@ -337,7 +417,8 @@
         apiBase: $("apiBase"), callId: $("callId"), direction: $("direction"), mode: $("mode"),
         appointmentId: $("appointmentId"), callerNumber: $("callerNumber"), locale: $("locale"),
         maxTurns: $("maxTurns"), appointmentField: $("appointmentField"), callerField: $("callerField"),
-        startBtn: $("startBtn"), resetBtn: $("resetBtn"), health: $("health"), notice: $("notice"),
+        startBtn: $("startBtn"), resetBtn: $("resetBtn"), clinicResetBtn: $("clinicResetBtn"),
+        slotWindowWarn: $("slotWindowWarn"), health: $("health"), notice: $("notice"),
         stateValue: $("stateValue"), turnValue: $("turnValue"), outcomeValue: $("outcomeValue"),
         conversation: $("conversation"), textInput: $("textInput"), recordBox: $("recordBox"),
         recordBtn: $("recordBtn"), recordTitle: $("recordTitle"), recordHint: $("recordHint"),
@@ -713,6 +794,70 @@
         setNotice("Đã tạo Call ID mới.");
       }
 
+      async function resetClinicMock() {
+        const ok = window.confirm(
+          "Reset clinic mock sẽ xóa dữ liệu test của CẢ TEAM và nạp lại dữ liệu mẫu.\n" +
+          "Chỉ bấm khi không có ai khác đang gọi. Tiếp tục?",
+        );
+        if (!ok) return;
+        const appointmentId = ui.appointmentId.value.trim() || "apt_00417";
+        ui.clinicResetBtn.disabled = true;
+        setNotice("Đang reset clinic mock…");
+        try {
+          const data = await jsonRequest("POST", "/demo-api/clinic-reset", { appointment_id: appointmentId });
+          // Call ID cũ sẽ phát lại câu chào đã lưu, nên reset luôn đi kèm phiên mới
+          resetSession();
+          const appt = data.appointment;
+          setNotice(appt
+            ? `Đã reset clinic mock · ${appt.appointment_id}: ${appt.status} v${appt.version}. Đã tạo Call ID mới.`
+            : "Đã reset clinic mock (không đọc lại được lịch hẹn). Đã tạo Call ID mới.");
+        } catch (error) {
+          setNotice(`Reset clinic mock lỗi: ${error.message}`, true);
+        } finally {
+          ui.clinicResetBtn.disabled = false;
+        }
+      }
+
+      const PRESETS = {
+        outbound: { direction: "outbound", appointmentId: "apt_00417" },
+        inbound: { direction: "inbound", callerNumber: "0912345600" },
+      };
+
+      function applyPreset(name) {
+        if (session.active) {
+          setNotice("Đang có cuộc gọi mở — bấm Phiên mới trước khi đổi cấu hình.", true);
+          return;
+        }
+        const preset = PRESETS[name];
+        ui.direction.value = preset.direction;
+        if (preset.appointmentId) ui.appointmentId.value = preset.appointmentId;
+        if (preset.callerNumber) ui.callerNumber.value = preset.callerNumber;
+        ui.mode.value = "text";
+        updateDirection();
+        updateMode();
+        setNotice(`Đã điền cấu hình ${name}. Reset clinic mock nếu cần, rồi bấm Bắt đầu cuộc gọi.`);
+      }
+
+      function sayLine(text) {
+        if (!session.active || session.ended) {
+          setNotice("Bấm Bắt đầu cuộc gọi trước, rồi chọn câu mẫu.", true);
+          return;
+        }
+        if (ui.mode.value !== "text") {
+          setNotice(`Đang ở chế độ audio — hãy đọc: “${text}”.`);
+          return;
+        }
+        ui.textInput.value = text;
+        ui.textInput.focus();
+        setNotice("Đã điền câu mẫu. Bấm Gửi turn hoặc Enter.");
+      }
+
+      function updateSlotWindowWarning() {
+        // Khung trống duy nhất của mock; bot chỉ tìm trong 14 ngày tới (gateway SLOT_WINDOW_DAYS)
+        const onlySlot = Date.parse("2026-10-14T15:00:00+07:00");
+        ui.slotWindowWarn.classList.toggle("hidden", onlySlot - Date.now() <= 14 * 24 * 3600 * 1000);
+      }
+
       async function startRecording() {
         if (!navigator.mediaDevices?.getUserMedia) {
           setNotice("Trình duyệt không hỗ trợ thu microphone.", true);
@@ -817,6 +962,13 @@
       ui.apiBase.addEventListener("change", checkHealth);
       ui.startBtn.addEventListener("click", startCall);
       ui.resetBtn.addEventListener("click", resetSession);
+      ui.clinicResetBtn.addEventListener("click", resetClinicMock);
+      document.querySelectorAll("[data-preset]").forEach((button) => {
+        button.addEventListener("click", () => applyPreset(button.dataset.preset));
+      });
+      document.querySelectorAll(".say").forEach((button) => {
+        button.addEventListener("click", () => sayLine(button.textContent.trim()));
+      });
       ui.sendBtn.addEventListener("click", () => sendTurn());
       ui.silenceBtn.addEventListener("click", () => sendTurn({ silence: true }));
       ui.recordBtn.addEventListener("click", () => session.recording ? stopRecording() : startRecording());
@@ -826,6 +978,7 @@
 
       ui.apiBase.value = window.location.origin;
       resetSession();
+      updateSlotWindowWarning();
       checkHealth();
     </script>
   </body>

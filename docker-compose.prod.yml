@@ -44,6 +44,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      # Deploy luôn gọi clinic mock thật; cố định ở đây để .env trên server không đổi được sang sim
+      CLINIC_BACKEND: mock
       SESSION_IDLE_TTL_S: ${SESSION_IDLE_TTL_S:-1800}
       SESSION_MAX_AGE_S: ${SESSION_MAX_AGE_S:-7200}
       SESSION_TOMBSTONE_TTL_S: ${SESSION_TOMBSTONE_TTL_S:-86400}
