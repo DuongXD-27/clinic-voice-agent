@@ -109,6 +109,8 @@ def create_app(
 
         try:
             clinic = clinic_factory()
+            # Trang demo đọc dữ liệu sim để dựng dropdown (demo.list_clinic_fixtures)
+            app.state.clinic = clinic
             app.state.session_store = store
             app.state.orchestrator = create_orchestrator(
                 clinic, engine_settings or EngineSettings(), store=store

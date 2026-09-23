@@ -199,7 +199,10 @@
       .extraction .empty-note { color: var(--muted); }
       pre { max-height: 260px; margin: 0; padding: 0 20px 20px; overflow: auto; color: #24433a; font: 0.75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
 
-      .guide { margin-bottom: 18px; }
+      .guide { margin-top: 18px; }
+      .field-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: -4px; color: var(--muted); font-size: 0.74rem; }
+      .link-btn { padding: 0; border-radius: 0; background: none; color: var(--green); font-size: 0.74rem; text-decoration: underline; }
+      .link-btn:hover:not(:disabled) { transform: none; color: var(--green-dark); }
       .guide > details { border-top: 0; }
       .guide > details > summary { color: var(--ink); font-size: 0.95rem; }
       .guide-rules { margin: 0 20px 14px; padding: 10px 14px; border-radius: 12px; background: #fff6e8; color: #6b4a16; font-size: 0.8rem; line-height: 1.55; }
@@ -215,6 +218,7 @@
       .scenario li span { display: block; color: var(--muted); font-size: 0.74rem; }
       .say { display: inline-block; margin: 0 0 3px; padding: 4px 10px; border: 1px solid #b9d9cb; border-radius: 999px; background: #f1faf5; color: var(--green-dark); font-size: 0.8rem; font-weight: 650; }
       .say:hover:not(:disabled) { background: var(--mint); }
+      .scenario p strong { color: var(--ink); }
       .scenario .warn { padding: 8px 10px; border-radius: 10px; background: #f8e5e3; color: var(--red); }
       .small-btn { padding: 7px 11px; font-size: 0.78rem; }
 
@@ -252,63 +256,6 @@
         <div id="health" class="health">Đang kiểm tra API</div>
       </header>
 
-      <section class="card guide">
-        <details id="guide" open>
-          <summary>Hướng dẫn test happy case</summary>
-          <div class="guide-rules">
-            <strong>Clinic mock dùng chung cho cả team.</strong> Mock chỉ có một lịch outbound (<code>apt_00417</code>)
-            và một khung trống (15:00 ngày 14/10). Call ID khác nhau vẫn dùng chung dữ liệu này, nên mỗi lần chỉ một
-            người test: báo nhóm → <strong>Reset clinic mock</strong> → test một cuộc gọi → báo xong. Reset xóa dữ liệu của
-            mọi người, không bấm khi người khác đang gọi. Nói sai tên hoặc ngày sinh là bot chuyển máy ngay và khóa lịch
-            cho đến lần reset sau. Bấm vào câu mẫu màu xanh để điền vào ô nhập, rồi bấm Gửi turn.
-          </div>
-          <div class="guide-grid">
-            <article class="scenario">
-              <div class="scenario-head">
-                <h3>Outbound · xác nhận lịch</h3>
-                <span class="expect">Kỳ vọng: CONFIRMED</span>
-              </div>
-              <p>Bot gọi bệnh nhân Nguyễn Văn A để nhắc lịch khám Nội tổng quát 15:30 ngày 14/10 tại Vinmec Times City.</p>
-              <div><button class="secondary small-btn" type="button" data-preset="outbound">Điền cấu hình outbound</button></div>
-              <ol>
-                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
-                  <span>Turn 0 bot chào, xưng trợ lý ảo AI và hỏi đang nói chuyện với ai.</span></li>
-                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
-                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
-                <li><button class="say" type="button">Ngày 14 tháng 3 năm 1978</button>
-                  <span>Bot đọc lịch: 3 giờ 30 chiều ngày 14 tháng 10 tại Vinmec Times City, hỏi có đến được không.</span></li>
-                <li><button class="say" type="button">Có, tôi đến được</button>
-                  <span>Bot báo đã xác nhận lịch. State ENDED · Outcome CONFIRMED.</span></li>
-              </ol>
-            </article>
-            <article class="scenario">
-              <div class="scenario-head">
-                <h3>Inbound · đặt lịch mới</h3>
-                <span class="expect">Kỳ vọng: BOOKED</span>
-              </div>
-              <p>Bệnh nhân Nguyễn Văn A gọi từ số 0912345600 để đặt lịch khám.</p>
-              <div><button class="secondary small-btn" type="button" data-preset="inbound">Điền cấu hình inbound</button></div>
-              <p id="slotWindowWarn" class="warn hidden">Bot chỉ tìm khung giờ trong 14 ngày tới, mà khung trống duy nhất của
-                mock là 15:00 ngày 14/10. Trước ngày 30/09 bước 4 sẽ chuyển máy (OUT_OF_SCOPE) chứ không phải lỗi thao tác.</p>
-              <ol>
-                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
-                  <span>Turn 0 bot chào "Vinmec xin nghe" và hỏi họ tên đầy đủ.</span></li>
-                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
-                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
-                <li><button class="say" type="button">14/03/1978</button>
-                  <span>Bot hỏi anh chị cần hỗ trợ gì.</span></li>
-                <li><button class="say" type="button">Tôi muốn đặt lịch khám</button>
-                  <span>Bot đọc khung 1: 3 giờ chiều ngày 14 tháng 10.</span></li>
-                <li><button class="say" type="button">Khung 1</button>
-                  <span>Bot hỏi chốt khung 3 giờ chiều ngày 14 tháng 10.</span></li>
-                <li><button class="say" type="button">Đúng rồi</button>
-                  <span>Bot báo đã đặt lịch. State ENDED · Outcome BOOKED. Khung trống đã hết, người sau cần reset.</span></li>
-              </ol>
-            </article>
-          </div>
-        </details>
-      </section>
-
       <div class="layout">
         <aside class="stack">
           <section class="card">
@@ -339,11 +286,20 @@
                 </div>
                 <div id="appointmentField" class="field wide">
                   <label for="appointmentId">Appointment ID</label>
-                  <input id="appointmentId" value="apt_00417" />
+                  <select id="appointmentId">
+                    <option value="apt_00417">apt_00417</option>
+                  </select>
                 </div>
                 <div id="callerField" class="field wide hidden">
-                  <label for="callerNumber">Caller number</label>
-                  <input id="callerNumber" value="0912345600" inputmode="tel" />
+                  <label for="callerSelect">Caller number</label>
+                  <select id="callerSelect">
+                    <option value="__manual__">Nhập số khác…</option>
+                  </select>
+                  <input id="callerNumber" placeholder="Nhập số điện thoại, ví dụ 0912345600" inputmode="tel" />
+                </div>
+                <div class="field wide field-hint">
+                  <span id="fixturesHint">Đang tải dữ liệu clinic…</span>
+                  <button id="fixturesBtn" class="link-btn" type="button">Tải lại</button>
                 </div>
                 <div class="field">
                   <label for="locale">Locale</label>
@@ -407,6 +363,101 @@
           </div>
         </section>
       </div>
+      <section class="card guide">
+        <details id="guide" open>
+          <summary>Hướng dẫn test happy case</summary>
+          <div class="guide-rules">
+            <strong>Clinic mock dùng chung cho cả team.</strong> Mock chỉ có một lịch outbound (<code>apt_00417</code>)
+            và một khung trống (15:00 ngày 14/10). Call ID khác nhau vẫn dùng chung dữ liệu này, nên mỗi lần chỉ một
+            người test: báo nhóm → <strong>Reset clinic mock</strong> → test một cuộc gọi → báo xong. Dropdown Appointment ID
+            hiện trạng thái lịch: khác <code>SCHEDULED</code> là lịch đã bị dùng, cần reset trước khi gọi. Reset xóa dữ liệu
+            của mọi người, không bấm khi người khác đang gọi. Bấm câu mẫu màu xanh để điền vào ô nhập rồi bấm Gửi turn.
+          </div>
+          <div class="guide-grid">
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>Confirm attendance · outbound</h3>
+                <span class="expect">Kỳ vọng: CONFIRMED</span>
+              </div>
+              <p>Bot gọi bệnh nhân Nguyễn Văn A để nhắc lịch khám Nội tổng quát 15:30 ngày 14/10 tại Vinmec Times City.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="outbound">Điền cấu hình outbound</button></div>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
+                  <span>Turn 0 bot chào, xưng trợ lý ảo AI và hỏi đang nói chuyện với ai.</span></li>
+                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
+                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
+                <li><button class="say" type="button">Ngày 14 tháng 3 năm 1978</button>
+                  <span>Bot đọc lịch: 3 giờ 30 chiều ngày 14 tháng 10 tại Vinmec Times City, hỏi có đến được không.</span></li>
+                <li><button class="say" type="button">Có, tôi đến được</button>
+                  <span>Bot báo đã xác nhận lịch. State ENDED · Outcome CONFIRMED.</span></li>
+              </ol>
+            </article>
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>Identity verification · outbound</h3>
+                <span class="expect">Kỳ vọng: xác minh → đọc lịch</span>
+              </div>
+              <p>Bot chỉ nói chi tiết lịch sau khi tên và ngày sinh khớp hồ sơ. Người nghe có thể nói cả hai trong một câu.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="outbound">Điền cấu hình outbound</button></div>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.</li>
+                <li><button class="say" type="button">Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978</button>
+                  <span>Xác minh xong ngay turn 1: bot đọc lịch khám và hỏi có đến được không.</span></li>
+                <li><button class="say" type="button">Có</button>
+                  <span>State ENDED · Outcome CONFIRMED.</span></li>
+              </ol>
+              <p><strong>Biến thể sai danh tính</strong> (kỳ vọng TRANSFERRED · IDENTITY_FAILED):</p>
+              <ol>
+                <li><button class="say" type="button">Tôi là Trần Văn B</button>
+                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
+                <li><button class="say" type="button">Ngày 1 tháng 1 năm 1990</button>
+                  <span>Bot chuyển máy ngay, không hỏi lại, không nói sai ở đâu. Lịch bị khóa, cần reset.</span></li>
+              </ol>
+            </article>
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>No answer · outbound</h3>
+                <span class="expect">Kỳ vọng: UNREACHABLE</span>
+              </div>
+              <p>Người nghe máy không nói gì. Bot nhắc lại hai lần rồi kết thúc, không đọc chi tiết lịch hẹn.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="outbound">Điền cấu hình outbound</button></div>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.</li>
+                <li><button class="say" type="button" data-silence>Gửi im lặng 2 giây</button>
+                  <span>Bot: "Alo, anh chị còn nghe máy không ạ?" rồi hỏi lại câu chào.</span></li>
+                <li><button class="say" type="button" data-silence>Gửi im lặng 2 giây</button>
+                  <span>Bot nhắc lại lần hai.</span></li>
+                <li><button class="say" type="button" data-silence>Gửi im lặng 2 giây</button>
+                  <span>Bot: "Dạ, em xin phép gọi lại sau ạ." State ENDED · Outcome UNREACHABLE (SILENCE). Cần reset.</span></li>
+              </ol>
+            </article>
+            <article class="scenario">
+              <div class="scenario-head">
+                <h3>Booking · inbound</h3>
+                <span class="expect">Kỳ vọng: BOOKED</span>
+              </div>
+              <p>Bệnh nhân Nguyễn Văn A gọi từ số 0912345600 để đặt lịch khám.</p>
+              <div><button class="secondary small-btn" type="button" data-preset="inbound">Điền cấu hình inbound</button></div>
+              <p id="slotWindowWarn" class="warn hidden">Bot chỉ tìm khung giờ trong 14 ngày tới, mà khung trống duy nhất của
+                mock là 15:00 ngày 14/10. Trước ngày 30/09 bước 4 sẽ chuyển máy (OUT_OF_SCOPE) chứ không phải lỗi thao tác.</p>
+              <ol>
+                <li>Reset clinic mock, điền cấu hình, bấm Bắt đầu cuộc gọi.
+                  <span>Turn 0 bot chào "Vinmec xin nghe" và hỏi họ tên đầy đủ.</span></li>
+                <li><button class="say" type="button">Tôi là Nguyễn Văn A</button>
+                  <span>Bot hỏi ngày tháng năm sinh.</span></li>
+                <li><button class="say" type="button">14/03/1978</button>
+                  <span>Bot hỏi anh chị cần hỗ trợ gì.</span></li>
+                <li><button class="say" type="button">Tôi muốn đặt lịch khám</button>
+                  <span>Bot đọc khung 1: 3 giờ chiều ngày 14 tháng 10.</span></li>
+                <li><button class="say" type="button">Khung 1</button>
+                  <span>Bot hỏi chốt khung 3 giờ chiều ngày 14 tháng 10.</span></li>
+                <li><button class="say" type="button">Đúng rồi</button>
+                  <span>Bot báo đã đặt lịch. State ENDED · Outcome BOOKED. Khung trống đã hết, người sau cần reset.</span></li>
+              </ol>
+            </article>
+          </div>
+        </details>
+      </section>
     </main>
 
     <script>
@@ -415,7 +466,8 @@
       const $ = (id) => document.getElementById(id);
       const ui = {
         apiBase: $("apiBase"), callId: $("callId"), direction: $("direction"), mode: $("mode"),
-        appointmentId: $("appointmentId"), callerNumber: $("callerNumber"), locale: $("locale"),
+        appointmentId: $("appointmentId"), callerSelect: $("callerSelect"), callerNumber: $("callerNumber"),
+        fixturesHint: $("fixturesHint"), fixturesBtn: $("fixturesBtn"), locale: $("locale"),
         maxTurns: $("maxTurns"), appointmentField: $("appointmentField"), callerField: $("callerField"),
         startBtn: $("startBtn"), resetBtn: $("resetBtn"), clinicResetBtn: $("clinicResetBtn"),
         slotWindowWarn: $("slotWindowWarn"), health: $("health"), notice: $("notice"),
@@ -656,6 +708,7 @@
         if (data.ended) {
           session.ended = true;
           setNotice(`Cuộc gọi đã kết thúc: ${data.outcome}.`);
+          loadFixtures();  // trạng thái lịch vừa đổi — cập nhật dropdown
         }
         setBusy(false);
       }
@@ -685,7 +738,7 @@
           call_id: callId,
           direction: ui.direction.value,
           appointment_id: inbound ? null : (ui.appointmentId.value.trim() || null),
-          caller_number: inbound ? (ui.callerNumber.value.trim() || null) : null,
+          caller_number: inbound ? (callerNumber() || null) : null,
           locale: ui.locale.value.trim() || "vi-VN",
           mode: ui.mode.value,
           max_turns: Number(ui.maxTurns.value),
@@ -760,8 +813,8 @@
       }
 
       function lockConfig(locked) {
-        [ui.apiBase, ui.callId, ui.direction, ui.mode, ui.appointmentId, ui.callerNumber,
-          ui.locale, ui.maxTurns].forEach((element) => { element.disabled = locked; });
+        [ui.apiBase, ui.callId, ui.direction, ui.mode, ui.appointmentId, ui.callerSelect,
+          ui.callerNumber, ui.locale, ui.maxTurns].forEach((element) => { element.disabled = locked; });
         ui.textInput.disabled = !locked || session.ended;
         setBusy(false);
       }
@@ -807,6 +860,7 @@
           const data = await jsonRequest("POST", "/demo-api/clinic-reset", { appointment_id: appointmentId });
           // Call ID cũ sẽ phát lại câu chào đã lưu, nên reset luôn đi kèm phiên mới
           resetSession();
+          loadFixtures();
           const appt = data.appointment;
           setNotice(appt
             ? `Đã reset clinic mock · ${appt.appointment_id}: ${appt.status} v${appt.version}. Đã tạo Call ID mới.`
@@ -830,12 +884,89 @@
         }
         const preset = PRESETS[name];
         ui.direction.value = preset.direction;
-        if (preset.appointmentId) ui.appointmentId.value = preset.appointmentId;
-        if (preset.callerNumber) ui.callerNumber.value = preset.callerNumber;
+        if (preset.appointmentId && hasOption(ui.appointmentId, preset.appointmentId)) {
+          ui.appointmentId.value = preset.appointmentId;
+        }
+        if (preset.callerNumber) {
+          const listed = hasOption(ui.callerSelect, preset.callerNumber);
+          ui.callerSelect.value = listed ? preset.callerNumber : MANUAL_PHONE;
+          if (!listed) ui.callerNumber.value = preset.callerNumber;
+          updateCallerInput();
+        }
         ui.mode.value = "text";
         updateDirection();
         updateMode();
         setNotice(`Đã điền cấu hình ${name}. Reset clinic mock nếu cần, rồi bấm Bắt đầu cuộc gọi.`);
+      }
+
+      function sendSilenceLine() {
+        if (!session.active || session.ended) {
+          setNotice("Bấm Bắt đầu cuộc gọi trước, rồi chọn câu mẫu.", true);
+          return;
+        }
+        sendTurn({ silence: true });
+      }
+
+      // --- Dropdown dữ liệu clinic (GET /demo-api/clinic-fixtures) ---
+      const MANUAL_PHONE = "__manual__";
+
+      function hasOption(select, value) {
+        return [...select.options].some((option) => option.value === value);
+      }
+
+      function callerNumber() {
+        return ui.callerSelect.value === MANUAL_PHONE ? ui.callerNumber.value.trim() : ui.callerSelect.value;
+      }
+
+      function updateCallerInput() {
+        ui.callerNumber.classList.toggle("hidden", ui.callerSelect.value !== MANUAL_PHONE);
+      }
+
+      function fillSelect(select, options, preferred) {
+        const previous = select.value;
+        select.innerHTML = "";
+        for (const { value, label } of options) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = label;
+          select.append(option);
+        }
+        // Giữ lựa chọn đang có; không còn thì lấy giá trị mặc định, rồi đến dòng đầu
+        const keep = [previous, preferred].find((value) => hasOption(select, value));
+        if (keep) select.value = keep;
+      }
+
+      function renderFixtures(data) {
+        const appointments = data.appointments.length ? data.appointments : [{ appointment_id: "apt_00417" }];
+        fillSelect(ui.appointmentId, appointments.map((a) => ({
+          value: a.appointment_id,
+          label: [a.appointment_id, a.status, a.display_name].filter(Boolean).join(" · "),
+        })), "apt_00417");
+        fillSelect(ui.callerSelect, [
+          ...data.phones.map((p) => ({ value: p.phone, label: [p.phone, p.display_name].filter(Boolean).join(" · ") })),
+          { value: MANUAL_PHONE, label: "Nhập số khác…" },
+        ], "0912345600");
+        updateCallerInput();
+      }
+
+      async function loadFixtures() {
+        ui.fixturesBtn.disabled = true;
+        ui.fixturesHint.textContent = "Đang tải dữ liệu clinic…";
+        try {
+          const response = await fetch(apiBase() + "/demo-api/clinic-fixtures");
+          let data;
+          try { data = await response.json(); } catch { data = {}; }
+          if (!response.ok) throw new Error(data?.detail?.message || `HTTP ${response.status}`);
+          renderFixtures(data);
+          const source = data.source === "sim" ? "clinic mock sim (local)" : "clinic mock";
+          ui.fixturesHint.textContent =
+            `Nguồn: ${source} · ${data.appointments.length} lịch hẹn · ${data.phones.length} số điện thoại.`;
+        } catch (error) {
+          // Giữ lựa chọn hiện có (mặc định apt_00417 / nhập tay số điện thoại)
+          ui.fixturesHint.textContent = `Không tải được dữ liệu clinic (${error.message}).`;
+        } finally {
+          ui.fixturesBtn.disabled = false;
+        }
       }
 
       function sayLine(text) {
@@ -959,7 +1090,7 @@
 
       ui.direction.addEventListener("change", updateDirection);
       ui.mode.addEventListener("change", updateMode);
-      ui.apiBase.addEventListener("change", checkHealth);
+      ui.apiBase.addEventListener("change", () => { checkHealth(); loadFixtures(); });
       ui.startBtn.addEventListener("click", startCall);
       ui.resetBtn.addEventListener("click", resetSession);
       ui.clinicResetBtn.addEventListener("click", resetClinicMock);
@@ -967,8 +1098,12 @@
         button.addEventListener("click", () => applyPreset(button.dataset.preset));
       });
       document.querySelectorAll(".say").forEach((button) => {
-        button.addEventListener("click", () => sayLine(button.textContent.trim()));
+        button.addEventListener("click", () => (
+          "silence" in button.dataset ? sendSilenceLine() : sayLine(button.textContent.trim())
+        ));
       });
+      ui.callerSelect.addEventListener("change", updateCallerInput);
+      ui.fixturesBtn.addEventListener("click", loadFixtures);
       ui.sendBtn.addEventListener("click", () => sendTurn());
       ui.silenceBtn.addEventListener("click", () => sendTurn({ silence: true }));
       ui.recordBtn.addEventListener("click", () => session.recording ? stopRecording() : startRecording());
@@ -978,8 +1113,10 @@
 
       ui.apiBase.value = window.location.origin;
       resetSession();
+      updateCallerInput();
       updateSlotWindowWarning();
       checkHealth();
+      loadFixtures();
     </script>
   </body>
 </html>
