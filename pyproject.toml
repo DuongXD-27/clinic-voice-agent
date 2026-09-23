@@ -71,4 +71,4 @@ select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["callbot", "inference", "speech"]
+known-first-party = ["callbot", "clinic_mock_sim", "inference", "speech"]

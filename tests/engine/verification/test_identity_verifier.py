@@ -8,7 +8,6 @@ import pytest
 
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from callbot.engine.tools.fake_clinic import FakeClinicAPI, clinic_error
 from callbot.engine.types import CallStart
 from callbot.engine.verification import (
     IdentityVerifier,
@@ -16,6 +15,7 @@ from callbot.engine.verification import (
     MatchDetail,
     VerificationStatus,
 )
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
 NAME, DOB = "Nguyễn Văn A", date(1978, 3, 14)

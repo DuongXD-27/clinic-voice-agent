@@ -17,9 +17,9 @@ from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.session.context import ActionEvidence, CallContext, Question
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from callbot.engine.tools.fake_clinic import FakeClinicAPI, clinic_error
 from callbot.engine.tools.telemetry import collect_api_calls
 from callbot.engine.types import CallStart
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 OCT = datetime.fromisoformat("2026-10-14T00:00:00+07:00")
 

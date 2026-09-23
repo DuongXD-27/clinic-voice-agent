@@ -5,7 +5,7 @@ import pytest
 
 from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
 from callbot.engine.verification.names import normalize_text, strip_diacritics
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 from tests.engine.identity_cases import IDENTITY_CASES, IdentityCase, PromptKind
 
 APPOINTMENT_ID = "apt_00417"

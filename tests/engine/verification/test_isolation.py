@@ -8,9 +8,9 @@ from callbot.engine.extraction.schema import TurnContext
 from callbot.engine.orchestrator import build_turn_context
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from callbot.engine.tools.fake_clinic import FakeClinicAPI
 from callbot.engine.types import CallStart
 from callbot.engine.verification import IdentityVerifier
+from clinic_mock_sim import FakeClinicAPI
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)
 SECRETS = ("Nguyễn Văn A", "nguyen van a", "1978-03-14", "pt_3391", "N. V. A.")

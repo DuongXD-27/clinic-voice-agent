@@ -13,7 +13,7 @@ from callbot.engine.dialogue import templates as t
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"

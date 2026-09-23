@@ -17,7 +17,7 @@ from callbot.engine import (
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
 from callbot.engine.session import CallContext
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
 FACTS = "9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City"

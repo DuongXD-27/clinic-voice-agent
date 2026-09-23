@@ -137,6 +137,9 @@ make format    # tự sửa lint + format
 make test      # chỉ pytest
 ```
 
+Test không gọi clinic mock thật: fixture `clinic` (và `client`) chạy trên `clinic_mock_sim`, kèm
+edge case dựng sẵn qua `clinic_scenario(...)`. Hướng dẫn: [src/clinic_mock_sim/README.md](src/clinic_mock_sim/README.md).
+
 Không có `make` (Windows):
 
 ```bash
@@ -166,10 +169,11 @@ src/
 │   ├── audio/                  # codec WAV/G.711, chuẩn hoá PCM 8 kHz
 │   ├── asr/                    # VAD → ASR → transcript
 │   └── tts/                    # tổng hợp giọng nói, phục vụ audio_url
-└── inference/                  # provider model dùng chung
-    ├── llm/                    # LLM gateway, prompt, provider
-    ├── asr/                    # Gemini / PhoWhisper / ZipFormer
-    └── tts/                    # OpenAI / ElevenLabs
+├── inference/                  # provider model dùng chung
+│   ├── llm/                    # LLM gateway, prompt, provider
+│   ├── asr/                    # Gemini / PhoWhisper / ZipFormer
+│   └── tts/                    # OpenAI / ElevenLabs
+└── clinic_mock_sim/            # clinic mock trong bộ nhớ, CHỈ dùng cho test (không vào image)
 tests/                          # cùng cấu trúc với src/
 docs/reference/                 # tài liệu thiết kế
 ```
@@ -187,4 +191,5 @@ docs/reference/                 # tài liệu thiết kế
 | Luồng STT | [stt-flow.md](docs/reference/stt-flow.md) |
 | Cài model ZipFormer | [zipformer-model-setup.md](docs/reference/zipformer-model-setup.md) |
 | Clinic API | [clinic-mock.md](docs/reference/clinic-mock.md) |
+| Clinic giả cho test | [clinic_mock_sim/README.md](src/clinic_mock_sim/README.md) |
 | Phone leg | [phone-leg-architecture.md](docs/reference/phone-leg-architecture.md) |

@@ -8,10 +8,10 @@ from pydantic import ValidationError
 from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction.ner import NameExtraction, NameNER
 from callbot.engine.types import CallerInput, CallStart
+from clinic_mock_sim import FakeClinicAPI
 from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
 from inference.llm.gateway import create_gateway
 from inference.llm.prompt.ner import build_messages
-from tests.engine.fake_clinic import FakeClinicAPI
 
 CONFIGS = {
     "openai": (OpenAIConfig, "gpt-4o-mini", 200),

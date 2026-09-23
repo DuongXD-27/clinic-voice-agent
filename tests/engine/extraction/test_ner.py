@@ -12,11 +12,11 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction import InformationExtractor, Intent, Provenance, QuestionId
 from callbot.engine.extraction.ner import NameNER
 from callbot.engine.types import CallerInput, CallStart
+from clinic_mock_sim import FakeClinicAPI
 from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
 from inference.llm.prompt.ner import FEW_SHOTS, PROMPT_VERSION, build_messages
 from tests.engine.extraction.test_extractor import ctx
-from tests.engine.fake_clinic import FakeClinicAPI
 
 TRANSCRIPT = "À ừ thì là Nguyễn Văn A nhé em"
 KEY = "synthetic-test-secret"
