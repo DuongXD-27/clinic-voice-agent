@@ -235,7 +235,20 @@ def extract_full_name(transcript: str) -> Field[str]:
     return read_full_name(transcript).field
 
 
-def read_full_name(transcript: str) -> Reading[str]:
+def valid_name_span(name: str) -> bool:
+    """Validate an NER span without treating a possible final name syllable as a particle.
+
+    Selecting the boundary is the model's job here. The rule extractor must remain
+    conservative when it sees an entire utterance ending in an ambiguous particle.
+    """
+    normalized = clean(name)
+    return (
+        bool(normalized)
+        and read_full_name(normalized, preserve_final_nha=True).field.value == normalized
+    )
+
+
+def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Reading[str]:
     clauses = [clause for clause in (clean(c) for c in normalize(transcript).split(",")) if clause]
     text = " ".join(clauses)
     if not text:
@@ -271,9 +284,18 @@ def read_full_name(transcript: str) -> Reading[str]:
     segment = own
 
     name = _strip_repeated(segment, _PREFIXES, at_start=True)
-    name = _strip_repeated(name, _SUFFIXES, at_start=False)
+    unstripped = name
+    if preserve_final_nha and name.endswith(" nha"):
+        # NER chose the complete span "Nguyễn Thị Nha". Do not immediately undo that
+        # choice using the whole-utterance rule that also handles "Nguyễn Văn A nha".
+        name = f"{_strip_repeated(name[:-4], _SUFFIXES, at_start=False)} nha"
+    else:
+        name = _strip_repeated(name, _SUFFIXES, at_start=False)
+    removed_suffix = unstripped[len(name) :].strip() if unstripped.startswith(name) else ""
     name = strip_honorific(name, MIN_WORDS_AFTER_HONORIFIC)
     words = name.split()
+    if not preserve_final_nha and _ambiguous_ending(segment, name, removed_suffix):
+        return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
     if find_phrase(name, _SPEECH_RESIDUE, mixed=True) is not None:
         return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
     if (
@@ -285,6 +307,25 @@ def read_full_name(transcript: str) -> Reading[str]:
     ):
         return Reading(Field.nothing(), Reason.NO_SIGNAL, segment)
     return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)
+
+
+def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool:
+    """A terminal particle may instead be the last syllable of someone's name."""
+    explicit_address = any(
+        removed_suffix == phrase or removed_suffix.startswith(phrase + " ")
+        for phrase in _POLITE_ADDRESSES
+        if phrase.startswith("nha ")
+    )
+    if removed_suffix.split()[:1] == ["nha"] and not explicit_address:
+        return True
+    # "Nguyễn Văn A em nhé" and "Nguyễn Văn Em nhé" have the same surface
+    # boundary problem. Only an explicit "nhé em" puts the addressee outside the name.
+    for speaker in (*_SPEAKERS, "bạn"):
+        if candidate.endswith(" " + speaker) and any(
+            segment.endswith(f" {speaker} {particle}") for particle in ("nhé", "nhe", "ạ")
+        ):
+            return True
+    return False
 
 
 def _is_dob_aside(clause: str) -> bool:

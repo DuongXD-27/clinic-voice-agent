@@ -91,6 +91,8 @@ def test_request_contract_and_private_telemetry(caplog):
         (unicodedata.normalize("NFD", TRANSCRIPT), "Nguyễn Văn A", "nguyễn văn a"),
         ("À tôi tên Lê Thị Hoà em nhé", "Lê Thị Hoà", "lê thị hòa"),
         ("a u thi ten toi la nguyen van a nhe em", "nguyen van a", "nguyen van a"),
+        ("Nguyễn Thị Nha", "Nguyễn Thị Nha", "nguyễn thị nha"),
+        ("Lê Nha", "Lê Nha", "lê nha"),
     ],
 )
 def test_normalizes_only_existing_name(transcript, name, expected):
@@ -248,6 +250,23 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, transcript, mon
         # Replaying the committed first turn must not spend another model request.
         bot.handle_turn("ner", CallerInput(turn=1, text=transcript))
         assert len(clients) == 1
+
+
+def test_orchestrator_accepts_name_ending_in_nha_from_ner(monkeypatch):
+    name = "Nguyễn Văn Nha"
+    adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion(name, name)))
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    settings = EngineSettings(name_fallback_provider="openai", _env_file=None)
+    with patch("callbot.engine.create_gateway", return_value=adapter._gateway):
+        bot = create_orchestrator(FakeClinicAPI(), settings=settings)
+
+    bot.start_call(CallStart(call_id="ner-nha", direction="inbound", caller_number="0912345600"))
+    run = bot.handle_turn_with_details("ner-nha", CallerInput(turn=1, text=name))
+
+    assert run.action.state == "AWAITING_IDENTITY"
+    assert bot.sessions.store.get_session("ner-nha").context["identity_step"] == "ASK_DOB"
+    assert run.extraction["full_name"]["value"] == "nguyễn văn nha"
+    assert run.extraction["full_name"]["provenance"] == "FALLBACK"
 
 
 def test_disabled_provider_does_not_construct_adapter():

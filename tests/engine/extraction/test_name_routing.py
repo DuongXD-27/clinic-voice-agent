@@ -71,7 +71,7 @@ def test_known_contact_signals_never_spend_a_name_request(text):
     [
         ("à thì anh tên là Nguyễn Văn A nhé em", "nguyễn văn a"),
         ("Nguyễn Thị Anh", "nguyễn thị anh"),
-        ("Nguyễn Văn Em nhé", "nguyễn văn em"),
+        ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
         ("Nguyen Van Chu", "nguyen van chu"),
         ("Nguyễn Văn Hữu", "nguyễn văn hữu"),
         ("Hà Hà", "hà hà"),
@@ -109,4 +109,55 @@ def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
     result = InformationExtractor(fallback=BrokenFallback(), name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), "Nguyễn Văn A cảm ơn em"
     )
+    assert not result.full_name.found
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Nguyễn Thị Nha", "nguyễn thị nha"),
+        ("Nguyễn Thị Nha nhé em", "nguyễn thị nha"),
+        ("Tôi là Nguyễn Thị Nha nhé em", "nguyễn thị nha"),
+        ("Lê Nha", "lê nha"),
+        ("Nguyễn Văn A em nhé", "nguyễn văn a"),
+        ("Nguyễn Văn A em ạ", "nguyễn văn a"),
+        ("Nguyễn Văn Em nhé", "nguyễn văn em"),
+    ],
+)
+def test_ambiguous_suffix_must_use_ner_instead_of_a_truncated_rule_name(text, expected):
+    reading = read_full_name(text)
+    assert reading.reason is Reason.UNRESOLVED_BOUNDARY
+    assert not reading.field.found
+
+    fallback = FakeFallback(full_name=Field(expected, Provenance.FALLBACK, span=expected))
+    result = InformationExtractor(fallback=fallback, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), text
+    )
+    assert fallback.calls == ["full_name"]
+    assert result.full_name.value == expected
+    assert result.full_name.provenance is Provenance.FALLBACK
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Nguyễn Thị Nha",
+        "Nguyễn Thị Nha nhé em",
+        "Tôi là Nguyễn Thị Nha nhé em",
+        "Lê Nha",
+        "Nguyễn Văn A em nhé",
+        "Nguyễn Văn Em nhé",
+    ],
+)
+def test_ambiguous_suffix_never_falls_back_to_a_wrong_rule_guess(text):
+    result = InformationExtractor().extract(ctx(QuestionId.ASK_NAME), text)
+    assert not result.full_name.found
+
+
+def test_a_model_rejection_keeps_an_ambiguous_suffix_unresolved():
+    fallback = FakeFallback(full_name=None)
+    result = InformationExtractor(fallback=fallback, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), "Nguyễn Thị Nha"
+    )
+    assert fallback.calls == ["full_name"]
     assert not result.full_name.found

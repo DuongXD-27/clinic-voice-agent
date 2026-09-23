@@ -38,7 +38,7 @@ ID036,suffix_other,ASK_NAME,Nguyễn Văn A vâng,nguyễn văn a,0,0,NONE,,Đá
 ID037,suffix_other,ASK_NAME,Nguyễn Văn A chứ,nguyễn văn a,0,0,NONE,,Tiểu từ cuối câu
 ID038,boundary_review,ASK_NAME,Nguyễn Văn A em nhé,*,0,0,NONE,,Em có thể thuộc tên; cần gán nhãn theo ngữ cảnh
 ID039,boundary_review,ASK_NAME,Nguyễn Văn A em ạ,*,0,0,NONE,,Không tự cắt em chỉ vì đứng cuối
-ID040,names,ASK_NAME,Nguyễn Văn Em nhé,nguyễn văn em,0,0,NONE,,Giữ tên Em
+ID040,boundary_review,ASK_NAME,Nguyễn Văn Em nhé,*,0,0,NONE,,Em có thể là tên hoặc danh xưng; cần ngữ cảnh
 ID041,names,ASK_NAME,Nguyễn Thị Anh nhé em,nguyễn thị anh,0,0,NONE,,Giữ tên Anh
 ID042,names,ASK_NAME,Nguyen Van A Em,nguyen van a em,0,0,NONE,,Không cắt A hoặc Em không dấu
 ID043,names,ASK_NAME,Nguyễn Thị Ái,nguyễn thị ái,0,0,NONE,,Không nhầm Ái với ai

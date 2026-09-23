@@ -17,7 +17,7 @@ model mặc định của từng provider và cấu hình token budget.
 
 - `extraction/fallback.py`: protocol và kiểm tra span chung cho các phương pháp fallback.
 - `callbot/engine/extraction/ner.py`: `NameNER`, gọi gateway, kiểm tra tên/span và chuyển thành `Field`.
-- `inference/llm/prompt/ner.py`: prompt `name_ner_v2` và 15 cặp few-shot với tên tổng hợp.
+- `inference/llm/prompt/ner.py`: prompt `name_ner_v3` và 18 cặp few-shot với tên tổng hợp.
 - `inference/llm/gateway.py`: `LLMGateway` và `create_gateway()`, chọn provider và kiểm tra JSON trả về.
 - `inference/llm/providers/base.py`: interface `StructuredProvider` và kết quả `StructuredReply` dùng chung.
 - `inference/llm/providers/`: adapter OpenAI, Gemini, Groq và OpenRouter.
@@ -38,6 +38,9 @@ NAME_FALLBACK_TIMEOUT_S=3.0
 OPENAI_API_KEY=<key>
 ```
 
+Với `gpt-6-luna` trên demo, đặt `NAME_FALLBACK_TIMEOUT_S=6.0` để các lượt phản hồi
+chậm hơn 3 giây không bị hỏi lại dù model vẫn có thể trả tên hợp lệ.
+
 Khởi động lại ứng dụng sau khi thay cấu hình. Thiếu key khi bật NER là lỗi khởi tạo;
 tắt NER không cần key. Các API key dùng `SecretStr`.
 
@@ -48,8 +51,10 @@ từ GitHub Variables. Docker Compose truyền các biến tới bot. Tắt/roll
 ## Request và kiểm tra output
 
 Mỗi lần fallback gửi prompt cố định cùng transcript hiện tại; không gửi hồ sơ bệnh
-nhân, lịch sử hội thoại hoặc dữ liệu lịch hẹn. Dùng `gpt-4o-mini`, temperature 0,
-giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema strict:
+nhân, lịch sử hội thoại hoặc dữ liệu lịch hẹn. Model mặc định là `gpt-4o-mini` với
+temperature 0; khi chọn `gpt-6-luna` hoặc `gpt-6-sol`, adapter bỏ `temperature`
+và dùng `reasoning_effort=none` để tương thích API và giảm độ trễ cuộc gọi.
+Giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema strict:
 
 ```json
 {"full_name": "Nguyễn Văn A", "span": "Nguyễn Văn A"}
@@ -61,8 +66,9 @@ chắn, chỉ nhắc người khác hoặc gặp chỉ dẫn giả mạo trong t
 thì chọn tên cuối cùng. Không thêm dấu hoặc sửa lỗi ASR.
 
 Sau model, adapter kiểm tra hai trường bằng nhau sau `clean()`, span xuất hiện
-trong transcript theo ranh giới từ và tên qua được `extract_full_name()` mà không
-bị thay đổi thêm. Kết quả hợp lệ dùng `Provenance.FALLBACK`, tên/span đã chuẩn hóa.
+trong transcript theo ranh giới từ và tên qua được `valid_name_span()` mà không
+bị thay đổi thêm. Hàm này kiểm tra đoạn tên mô hình đã chọn mà không cắt lại âm
+`Nha` ở cuối tên. Kết quả hợp lệ dùng `Provenance.FALLBACK`, tên/span đã chuẩn hóa.
 Span có thật chỉ chứng minh tên xuất hiện trong câu, không chứng minh model đã
 chọn đúng người; phần hiểu ngữ nghĩa vẫn cần đánh giá trên dữ liệu thực tế.
 

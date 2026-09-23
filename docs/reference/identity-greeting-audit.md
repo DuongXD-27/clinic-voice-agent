@@ -1,7 +1,7 @@
 # Rà soát họ tên và câu chào — 2026-09-23
 
-**Cập nhật lần 2:** [corpus](../../eval/identity/cases.csv) hiện có **100 ca tổng hợp**:
-**79 PASS, 19 FAIL, 2 REVIEW** khi chỉ dùng luật. Lượt khảo sát đầu có 80 ca với
+**Cập nhật lần 3:** [corpus](../../eval/identity/cases.csv) hiện có **100 ca tổng hợp**:
+**78 PASS, 19 FAIL, 3 REVIEW** khi chỉ dùng luật. Lượt khảo sát đầu có 80 ca với
 52 PASS / 26 FAIL / 2 REVIEW. Đây là tập khám phá lỗi có chủ đích, không phải holdout
 hay tỷ lệ chính xác trên cuộc gọi thực tế.
 
@@ -15,6 +15,7 @@ chứng đã xác minh danh tính.
 | Trường / tình huống | Quyết định | Khi model lỗi hoặc không có kết quả |
 | --- | --- | --- |
 | Tên rõ ràng; bỏ được tiền tố/đuôi đã biết, gồm nguyên câu người dùng báo | Luật, không gọi NER | Không cần model |
+| Đuôi `Nha` có thể là âm cuối tên hoặc tiểu từ; `…em nhé`/`…em ạ` có thể chứa tên `Em` hoặc danh xưng | `UNRESOLVED_BOUNDARY` → NER tên | Không nhận tên bị cắt hay dính danh xưng; hỏi lại |
 | Ứng viên tên còn `đây em`, `ạ em`, `cảm ơn em`, `đúng rồi`, `nhé em ơi` hoặc lời chào lẫn vào | `UNRESOLVED_BOUNDARY` → NER tên | Trả không có tên và hỏi lại; không khôi phục ứng viên bẩn |
 | Cấu trúc tên dài mà luật chưa hiểu | `NO_SIGNAL` → NER tên khi đang ở `ASK_NAME` | Hỏi lại |
 | `hú hú`, `em ơi`, `tôi nghe đây`, `ừ tôi nghe` | Nhận toàn câu là gọi/đáp máy, không gọi NER | Dialogue giữ câu hỏi đang chờ; sau lời mở đầu thì chào lại |
@@ -27,8 +28,18 @@ chứng đã xác minh danh tính.
 
 NER vẫn chỉ nhận transcript hiện tại, không nhận hồ sơ để đoán tên. Kết quả cần có span
 trong vùng tên, qua kiểm tra tên sạch, và không được thêm dấu/sửa ASR. Prompt nâng lên
-`name_ner_v2`, thêm phân biệt tiếng gọi, tên tổ chức, lời cảm ơn và tên thật có `Anh/Em`.
-Validator trong extractor cũng chặn adapter trả lại nguyên ứng viên bẩn.
+`name_ner_v3`, có thêm đối chứng tên `Nha` với tiểu từ `nha` và đuôi `em nhé`.
+Validator trong extractor cũng chặn adapter trả lại nguyên ứng viên bẩn. Việc chọn
+ranh giới từ cả câu thuộc NER; kiểm tra span đã chọn không được dùng lại luật cắt
+tiểu từ `nha`, nếu không sẽ bác chính tên `Nguyễn Thị Nha`.
+
+Ví dụ định tuyến: trước đây `Nguyễn Thị Nha` cho `nguyễn thị / NORMALIZED`, còn
+`Nguyễn Văn A em nhé` cho `nguyễn văn a em / NORMALIZED`; cả hai được báo `OK` nên
+NER không chạy. Nay cả hai cho `UNRESOLVED_BOUNDARY`. Với fallback giả lập trả đúng
+span trong câu, đầu ra tương ứng là `nguyễn thị nha / FALLBACK` và
+`nguyễn văn a / FALLBACK`. Nếu NER tắt, lỗi hoặc bác span thì kết quả là không có
+tên, bot hỏi lại. Đây là bằng chứng về định tuyến và kiểm tra output, chưa phải
+đánh giá độ đúng của model thật.
 
 Đã sửa thêm ranh giới mệnh đề: `alo em, tôi là Nguyễn Văn A` không bị ghép thành
 `em tôi là…` rồi hiểu nhầm người thân. Câu `alo em, mẹ tôi là…` vẫn bị chặn.
@@ -64,11 +75,10 @@ Vì lỗi truy cập, chưa có completion nào để đánh giá chất lượn
 Không coi số FAIL trong lượt này là độ chính xác của model. Cần cập nhật thông tin truy
 cập hợp lệ rồi chạy lại; `.env` không được thay đổi trong bản sửa.
 
-Trong 19 ca chưa đạt khi tắt NER, 16 ca là lời nói cần lấy lại ranh giới tên; hiện chúng
-trả không có tên thay vì nhận cả lời đệm. Ba ca còn lại là hai ca tên trùng `Nha` bị
-luật cắt và một ca tên + không nhớ ngày sinh thiếu dấu phẩy. Đây vẫn là lỗi cần xử lý,
-không được tuyên bố đã giải quyết bằng routing mới. Hai ca `…em nhé`/`…em ạ` vẫn cần
-ngữ cảnh; không tự cắt `Em` có thể là phần của họ tên.
+Trong 19 ca chưa đạt khi tắt NER, 18 ca tên cần lấy lại ranh giới hoặc cấu trúc tự
+giới thiệu, gồm hai ca tên trùng `Nha`; hiện chúng trả không có tên thay vì nhận tên
+bị cắt hoặc lời đệm. Ca còn lại là tên + không nhớ ngày sinh thiếu dấu phẩy.
+Hai ca `…em nhé`/`…em ạ` vẫn cần ngữ cảnh; không tự cắt `Em` có thể là phần của họ tên.
 
 `Ai đấy, tôi là Nguyễn Văn A` hiện lấy được tên, nhưng Dialogue chưa đáp đồng thời câu
 hỏi về bên gọi khi đã nhận được thông tin mới. Corpus chấm extraction; thiết kế nhiều
@@ -123,7 +133,9 @@ hoặc âm cuối của tên; chỉ nhìn transcript không đảm bảo phân b
 `expect_name=*`, không sửa nhãn thành đầu ra hiện có để báo PASS. Không dùng tên trong
 hồ sơ để đoán ngược. Cần gán nhãn với ngữ cảnh/audio hoặc thiết kế hỏi lại phần họ tên.
 
-Ca đối chứng `Nguyễn Văn Em nhé` phải giữ `Em`; `Nguyễn Thị Anh nhé em` phải giữ `Anh`.
+`ID040`: `Nguyễn Văn Em nhé` cũng cần review vì cùng chuỗi có thể được hiểu là tên
+`Nguyễn Văn Em` hoặc tên `Nguyễn Văn` kèm lời gọi `em nhé`. Câu rõ hơn
+`Nguyễn Văn Em nhé anh` phải giữ `Em`; `Nguyễn Thị Anh nhé em` phải giữ `Anh`.
 Việc bỏ một danh xưng cuối câu vô điều kiện sẽ làm sai cả những tên hợp lệ này.
 
 ## Các hàng rào đang hoạt động trong tập khảo sát
@@ -141,7 +153,7 @@ Việc bỏ một danh xưng cuối câu vô điều kiện sẽ làm sai cả n
 
 ```powershell
 .venv\Scripts\python.exe scripts/identity_eval.py --output outputs/eval/identity/results.csv
-.venv\Scripts\python.exe scripts/identity_eval.py --ner --groups suffix_other,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/ner-results.csv
+.venv\Scripts\python.exe scripts/identity_eval.py --ner --groups suffix_other,name_particle_collision,boundary_review,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/ner-results.csv
 .venv\Scripts\python.exe -m pytest -q tests/engine/extraction tests/engine/test_identity_dialogue.py
 ```
 

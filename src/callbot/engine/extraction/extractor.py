@@ -29,6 +29,7 @@ from callbot.engine.extraction.full_name import (
     name_after_dob,
     name_before_dob,
     read_full_name,
+    valid_name_span,
 )
 from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reason
@@ -295,7 +296,7 @@ class InformationExtractor:
         if guarded.found and guarded.value:
             # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
             name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
-            if read_full_name(name).field.value != name:
+            if not valid_name_span(name):
                 return Field.nothing()
             return Field(name, guarded.provenance, span=guarded.span)
         return guarded

@@ -21,7 +21,6 @@ from callbot.engine.extraction.schema import Provenance
         ("Trần Thị Bích Ngọc Anh nhé em", "trần thị bích ngọc anh"),
         ("Nguyễn Thị Anh nhé em", "nguyễn thị anh"),
         ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
-        ("Nguyễn Văn Em nhé", "nguyễn văn em"),
         ("Nguyen Van A Em", "nguyen van a em"),
         ("Dạ, tôi là Nguyễn Văn A", "nguyễn văn a"),
         ("tôi là Nguyễn Văn A", "nguyễn văn a"),
