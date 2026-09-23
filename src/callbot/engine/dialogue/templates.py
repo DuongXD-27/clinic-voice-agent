@@ -55,6 +55,9 @@ ASK_NAME_DECLINED = (
     "Anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
 )
 ASK_DOB = "Dạ, anh chị cho em xin ngày tháng năm sinh ạ."
+INTRODUCE_AGAIN_ASK_DOB = (
+    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em xin ngày tháng năm sinh ạ."
+)
 ASK_DOB_AGAIN = "Dạ, em chưa nghe rõ. Anh chị nhắc lại giúp em ngày, tháng, năm sinh ạ."
 # dob INVALID (31/02, thiếu năm, năm 2 chữ số mơ hồ, tuổi, âm lịch): không nhắc lại điều người gọi vừa nói
 ASK_DOB_INVALID = "Dạ, anh chị vui lòng cho em xin đủ ngày, tháng, năm sinh theo dương lịch ạ."
@@ -69,8 +72,17 @@ ASK_ATTENDANCE = "Anh chị có đến khám được theo lịch này không �
 NOT_UNDERSTOOD = "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
 SILENCE = "Alo, anh chị còn nghe máy không ạ?"
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
-# Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ
-CANCEL_CHOICE = "Dạ, anh chị muốn hủy lịch khám hay giữ lịch ạ?"
+# Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ.
+# Nói luôn cụm cần nói, vì ngưỡng AGREE ở đây đòi động từ hủy tường minh (SF-05).
+CANCEL_CHOICE = (
+    "Dạ, anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị xác nhận “hủy lịch” giúp em ạ."
+)
+# Đã hiểu lý do nhưng người gọi chưa xác nhận hủy (T-05 §3.3). Chỉ đọc tiền tố ghi nhận khi lý do
+# đã xác định — không đọc lại lý do phỏng đoán, và ghi nhận lý do KHÔNG phải đã đồng ý hủy.
+CANCEL_REASON_NOTED = (
+    "Dạ, em đã ghi nhận lý do. Anh chị xác nhận hủy lịch khám này chứ ạ? "
+    "Nếu muốn hủy, anh chị nói “hủy lịch” giúp em ạ."
+)
 BOOKING_ABANDONED = "Dạ, em chưa đặt lịch nào cho anh chị. Anh chị cần em hỗ trợ gì thêm ạ?"
 SLOT_TAKEN = "Dạ, khung giờ đó vừa có người đặt. "
 SLOT_NO_MATCH = "Dạ, em chưa thấy khung giờ đó. "

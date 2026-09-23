@@ -8,8 +8,9 @@ import logging
 from datetime import datetime
 from typing import Any, Optional, Protocol
 
+from callbot.engine.diagnostics import build_diagnostics
 from callbot.engine.dialogue.manager import DialogueManager
-from callbot.engine.errors import TURN_ABORTING_ERRORS
+from callbot.engine.errors import TURN_ABORTING_ERRORS, EngineError
 from callbot.engine.extraction.extractor import InformationExtractor
 from callbot.engine.extraction.schema import ExtractionResult, TurnContext, to_local
 from callbot.engine.policy.guardrails import SevereFailureBlocked
@@ -37,6 +38,8 @@ def build_turn_context(ctx: CallContext, turn: int, received_at: datetime) -> Tu
         now=to_local(received_at),
         slots=tuple(dict(slot) for slot in ctx.slots),
         presented_slot_ids=tuple(ctx.presented_slot_ids),
+        pending_action=ctx.pending_action,
+        question_turn=question.turn if question else None,
     )
 
 
@@ -90,50 +93,87 @@ class CallOrchestrator:
         return run
 
     def _process(self, ctx: CallContext, caller: CallerInput, received_at: datetime) -> TurnOutcome:
+        """Kiểm tra preconditions -> extract -> policy / dialogue.
+
+        `extraction` nằm ở scope này (vẫn trong `try`): lỗi xảy ra SAU khi trích vẫn giữ được kết quả đã
+        trích cho trace và chẩn đoán. Preconditions chặn lượt, hoặc extractor chưa xong, thì là None.
+        """
         ctx.turn = caller.turn
         ctx.record("caller", caller.transcript)
         extraction: Optional[ExtractionResult] = None
+        handled: Optional[Exception] = None
         try:
-            extraction, action = self._decide(ctx, caller, received_at)
-        except TURN_ABORTING_ERRORS:
+            decision = self._policy.check_preconditions(ctx)
+            if decision.kind != "CONTINUE":
+                action = self._execute(ctx, decision)
+            else:
+                extraction = self._extractor.extract(
+                    build_turn_context(ctx, caller.turn, received_at),
+                    caller.transcript,
+                    silence_ms=caller.silence_ms,
+                )
+                action = self._decide(ctx, extraction, received_at)
+        except TURN_ABORTING_ERRORS as exc:
+            self._annotate(exc, extraction)
             raise
         except SevereFailureBlocked as blocked:
             logger.error("Chặn severe failure %s tại %s", blocked.code, ctx.call_id)
-            action = self._dialogue.transfer(ctx, "SYSTEM_ERROR")
-        except Exception:
+            handled = blocked
+            action = self._transfer_after_error(ctx, extraction, blocked)
+        except Exception as exc:
             logger.error("Lỗi xử lý lượt %s của %s", caller.turn, ctx.call_id)
-            action = self._dialogue.transfer(ctx, "SYSTEM_ERROR")
+            handled = exc
+            action = self._transfer_after_error(ctx, extraction, exc)
 
         self._apply(ctx, action)
-        return TurnOutcome(action, extraction.to_trace() if extraction else None)
+        trace = extraction.to_trace() if extraction else None
+        diagnostics = build_diagnostics(
+            trace, transfer_reason=action.transfer_reason, error=handled
+        )
+        return TurnOutcome(action, trace, diagnostics)
 
     def _decide(
-        self, ctx: CallContext, caller: CallerInput, received_at: datetime
-    ) -> tuple[Optional[ExtractionResult], BotAction]:
-        decision = self._policy.check_preconditions(ctx)
-        if decision.kind != "CONTINUE":
-            return None, self._execute(ctx, decision)
-
-        extraction = self._extractor.extract(
-            build_turn_context(ctx, caller.turn, received_at),
-            caller.transcript,
-            silence_ms=caller.silence_ms,
-        )
+        self, ctx: CallContext, extraction: ExtractionResult, received_at: datetime
+    ) -> BotAction:
         decision = self._policy.check_silence(ctx, extraction)
         if decision.kind == "REPROMPT":
-            return extraction, self._dialogue.silence(ctx)
+            return self._dialogue.silence(ctx)
         if decision.kind != "CONTINUE":
-            return extraction, self._execute(ctx, decision)
+            return self._execute(ctx, decision)
 
         decision = self._policy.check_signals(ctx, extraction)
         if decision.kind != "CONTINUE":
-            return extraction, self._execute(ctx, decision)
+            return self._execute(ctx, decision)
 
         reply = self._dialogue.respond(ctx, extraction, received_at)
         decision = self._policy.register_understanding(ctx, reply.understanding)
         if decision.kind == "TRANSFER":
-            return extraction, self._execute(ctx, decision)
-        return extraction, reply.action
+            return self._execute(ctx, decision)
+        return reply.action
+
+    def _transfer_after_error(
+        self, ctx: CallContext, extraction: Optional[ExtractionResult], error: Exception
+    ) -> BotAction:
+        """Lỗi nghiệp vụ -> chuyển máy SYSTEM_ERROR; chỉ báo TRANSFERRED khi /transfer thành công."""
+        try:
+            return self._dialogue.transfer(ctx, "SYSTEM_ERROR")
+        except EngineError as exc:
+            self._annotate(exc, extraction, transfer_reason="SYSTEM_ERROR")
+            raise
+
+    @staticmethod
+    def _annotate(
+        error: BaseException,
+        extraction: Optional[ExtractionResult],
+        transfer_reason: Optional[str] = None,
+    ) -> None:
+        """Gắn chẩn đoán không PII vào exception có kiểu để transport vẫn trả được extraction."""
+        if not isinstance(error, EngineError) or error.diagnostics is not None:
+            return
+        reason = transfer_reason or error.transfer_reason
+        trace = extraction.to_trace() if extraction else None
+        error.extraction = trace
+        error.diagnostics = build_diagnostics(trace, transfer_reason=reason, error=error)
 
     def _execute(self, ctx: CallContext, decision: PolicyDecision) -> BotAction:
         if decision.kind == "UNREACHABLE" and decision.unreachable_reason:

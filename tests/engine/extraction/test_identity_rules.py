@@ -70,6 +70,18 @@ class FakeNER:
 
 
 @pytest.mark.parametrize(
+    "transcript", ["hello em", "hi em", "Hello, chị ạ!", "dạ hi anh", "alo em", "chào em"]
+)
+def test_greeting_is_not_a_name_even_with_ner_enabled(transcript: str) -> None:
+    ner = FakeNER(clean(transcript))
+    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), transcript
+    )
+    assert not result.full_name.found
+    assert ner.calls == 0
+
+
+@pytest.mark.parametrize(
     "transcript",
     [
         "không phải 14 tháng 3 năm 1978",
@@ -528,3 +540,27 @@ def test_a_combined_answer_reaches_the_verifier_in_one_turn() -> None:
 def test_a_corrected_combined_answer_hands_over_the_corrected_halves() -> None:
     _, verifier = _identity_turns("Nguyễn Văn A, à nhầm Nguyễn Văn B, sinh ngày 14/3/1978")
     assert verifier.calls == [("nguyễn văn b", DOB)]
+
+
+def test_ner_honorific_is_dropped_like_the_rule_does() -> None:
+    """Demo 22-09: NER trả "ông nguyễn văn a" — danh xưng không thuộc họ tên."""
+    transcript = "a thi toi la ong nguyen van a"  # không dấu: luật không bắt, NER bắt
+    ner = FakeNER("ong nguyen van a")
+    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), transcript
+    )
+    assert ner.calls == 1
+    assert result.full_name.value == "nguyen van a"
+    assert result.full_name.provenance is Provenance.FALLBACK
+
+
+@pytest.mark.parametrize(
+    "transcript", ["Tên chú của tôi là Nguyễn Văn A", "Nguyễn Văn A là tên ông tôi"]
+)
+def test_a_relatives_name_never_reaches_the_ner(transcript: str) -> None:
+    """Model từng nhận nhầm "tên chú của tôi" là tên người gọi: luật chặn trước khi tới NER."""
+    ner = FakeNER("Nguyễn Văn A")
+    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), transcript
+    )
+    assert ner.calls == 0 and not result.full_name.found

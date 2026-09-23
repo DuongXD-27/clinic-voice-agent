@@ -186,3 +186,48 @@ def test_keeping_is_still_refusal_outside_attendance(text: str) -> None:
     """Cùng cụm, câu hỏi khác nghĩa: ở hủy / chọn slot vẫn là từ chối (SF-05 không đổi)."""
     assert extract_agreement(text, CANCEL).value is Agreement.REFUSE
     assert extract_agreement(text, SLOT).value is Agreement.REFUSE
+
+
+# --- Đáp lễ chỉ là tín hiệu khi đứng riêng / mở đầu câu --------------------------------------------
+
+
+ALL_CONFIRMATIONS = [CANCEL, SLOT, CONFIRM, QuestionId.ASK_ATTENDANCE]
+
+
+@pytest.mark.parametrize("question", ALL_CONFIRMATIONS)
+@pytest.mark.parametrize(
+    "text", ["Dạo này kẹt tiền quá em ạ", "Dạo này kẹt tiền quá em", "Về quê rồi em ạ"]
+)
+def test_trailing_particle_is_not_an_answer(question: QuestionId, text: str) -> None:
+    """Demo 22-09: "ạ" cuối câu kể lý do từng thành tín hiệu mâu thuẫn (và AGREE ở câu đến khám)."""
+    field = extract_agreement(text, question)
+    assert not field.found and field.value is Agreement.UNCLEAR
+
+
+@pytest.mark.parametrize("question", ALL_CONFIRMATIONS)
+@pytest.mark.parametrize("text", ["vâng", "dạ vâng ạ", "dạ, để tôi xem đã"])
+def test_standalone_or_leading_polite_word_is_still_a_signal(
+    question: QuestionId, text: str
+) -> None:
+    assert extract_agreement(text, question).found
+
+
+@pytest.mark.parametrize(
+    ("text", "question", "expected"),
+    [
+        ("hủy lịch ạ", CANCEL, Agreement.AGREE),  # động từ hủy tường minh, "ạ" cuối không đổi gì
+        ("vâng, hủy đi", CANCEL, Agreement.AGREE),
+        ("vâng", CANCEL, Agreement.UNCLEAR),  # SF-05: đáp lễ một mình không hủy
+        ("vâng", CONFIRM, Agreement.AGREE),
+        ("tôi đến được ạ", CONFIRM, Agreement.AGREE),  # "được" vẫn là khẳng định
+        ("tôi đến ạ", CONFIRM, Agreement.UNCLEAR),  # không còn nhờ "ạ" cuối câu mà thành AGREE
+        ("dạ không", CONFIRM, Agreement.REFUSE),  # phủ định vẫn thắng đáp lễ mở đầu
+        ("vâng, mấy giờ ạ", CONFIRM, Agreement.UNCLEAR),  # câu hỏi vẫn thắng đáp lễ mở đầu
+        ("vang", CONFIRM, Agreement.AGREE),  # không dấu: giữ luật hiện tại
+        ("toi ban lam em a", CONFIRM, Agreement.UNCLEAR),
+    ],
+)
+def test_polite_position_keeps_priorities(
+    text: str, question: QuestionId, expected: Agreement
+) -> None:
+    assert extract_agreement(text, question).value is expected

@@ -13,6 +13,14 @@ CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): "dạ" đáp lễ
 Tín hiệu mâu thuẫn ("thôi hủy đi", "không, hủy đi") -> UNCLEAR, Dialogue hỏi lại bằng câu A/B.
 Ngập ngừng ("để xem", "chắc là được", "có lẽ") -> UNCLEAR ở mọi câu hỏi xác nhận, kể cả khi có "vâng" (T-04).
 
+Từ đáp lễ ("vâng", "dạ", "ạ") chỉ là tín hiệu khi đứng riêng hoặc mở đầu câu: "kẹt tiền quá em ạ" là kể
+lý do, không phải trả lời có / không.
+
+`clean` bỏ dấu câu nên "không, hủy đi" và "không hủy đi" thành cùng một chuỗi, dù nghĩa ngược nhau.
+`_split_by_clause_break` đọc bản CÒN dấu câu để tách hai trường hợp: cụm từ chối hủy bị dấu câu cắt
+đôi là hai mệnh đề ngược nhau, không phải lời từ chối. Dấu câu của ASR chỉ là một tín hiệu — câu
+mâu thuẫn không có dấu câu do tầng ngữ nghĩa xử lý (`extraction/semantic.py`), không phải luật này.
+
 "Giữ lịch" nghĩa ngược nhau theo câu hỏi: ở CANCEL_RECONFIRM / SLOT_READBACK là từ chối hủy / đổi;
 ở câu hỏi đến khám (CONFIRM_READBACK, ASK_ATTENDANCE) là khẳng định. "Không hủy" ở câu hỏi đến khám
 chỉ là không muốn hủy — không phải từ chối đến khám (T-04).
@@ -22,6 +30,7 @@ nghĩa khác ("da" = dạ/đã, "co" = có/cô, "dung" = đúng/đừng/dùng). 
 vì "dung huy" có thể là "đúng, hủy" hoặc "đừng hủy" — hai nghĩa ngược nhau.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -32,6 +41,7 @@ from callbot.engine.extraction.text import (
     compile_phrases,
     find_phrase,
     is_unaccented,
+    normalize,
     remove_spans,
     strip_diacritics,
 )
@@ -162,6 +172,25 @@ _UNACCENTED_WORDS = _ACCENTED_WORDS.unaccented()
 
 _ATTENDANCE_QUESTIONS = frozenset({QuestionId.CONFIRM_READBACK, QuestionId.ASK_ATTENDANCE})
 
+# Cụm từ chối hủy bị dấu câu cắt đôi: "không, hủy đi". Dựng từ chính `_NOT_CANCEL_WORDS` để danh
+# sách chỉ có một nguồn; bản không dấu bỏ "đừng hủy" đúng như `_NOT_CANCEL` (xem `unaccented_exclude`).
+_CLAUSE_BREAK = r"\s*[,;.!?…]+\s*"
+
+
+def _split_pattern(phrase: str) -> re.Pattern[str]:
+    words = phrase.split()
+    return re.compile(r"(?<!\w)" + _CLAUSE_BREAK.join(re.escape(w) for w in words) + r"(?!\w)")
+
+
+_SPLIT_ACCENTED = tuple(
+    _split_pattern(clean(p)) for p in _NOT_CANCEL_WORDS if len(clean(p).split()) > 1
+)
+_SPLIT_UNACCENTED = tuple(
+    _split_pattern(strip_diacritics(clean(p)))
+    for p in _NOT_CANCEL_WORDS
+    if len(clean(p).split()) > 1 and p != "đừng hủy"
+)
+
 
 @dataclass(frozen=True)
 class _Cues:
@@ -195,6 +224,11 @@ def extract_agreement(
         return Field(Agreement.UNCLEAR, matched, span=text)
     if unaccented and _has_ambiguous_dung(text):
         return Field(Agreement.UNCLEAR, matched, span="dung")
+    if question_id is QuestionId.CANCEL_RECONFIRM and _split_by_clause_break(
+        transcript, unaccented
+    ):
+        # "không, hủy đi": từ chối và động từ hủy ở hai mệnh đề — mâu thuẫn, không phải "đừng hủy"
+        return Field(Agreement.UNCLEAR, matched, span=text)
     idiom = find_phrase(text, _AGREE_IDIOMS, unaccented=unaccented)
     question = find_phrase(
         remove_spans(text, [idiom] if idiom else []), _QUESTION_WORDS, unaccented=unaccented
@@ -249,11 +283,24 @@ def _find_cues(text: str, unaccented: bool, attending: bool = False) -> _Cues:
         refuse=_group(refuse),
         idiom=_group(idiom),
         affirm=positive(_AFFIRM) or (positive(_KEEP) if attending else None),
-        polite=positive(_POLITE, allow_negated=True),
+        # Xét trên câu gốc, trước khi bỏ span khác: "ạ" cuối câu kể lý do là lễ phép, không phải đáp lời
+        polite=_group(_leading_phrase(text, _POLITE, unaccented)),
         cancel_verb=positive(_CANCEL_VERB),
         slot_action=positive(_SLOT_ACTION),
         not_cancel=_group(not_cancel),
     )
+
+
+def _leading_phrase(text: str, phrases: PhraseSet, unaccented: bool) -> Optional[re.Match[str]]:
+    """Cụm đáp lễ chỉ là câu trả lời khi đứng riêng hoặc mở đầu câu ("vâng", "dạ, hủy đi").
+
+    Ở giữa / cuối câu ("dạo này kẹt tiền quá em ạ") nó chỉ là tiểu từ lễ phép của một câu khác.
+    """
+    for _, pattern in phrases.for_text(text, unaccented):
+        match = pattern.match(text)
+        if match is not None:
+            return match
+    return None
 
 
 def _agree_span(question_id: QuestionId, cues: _Cues) -> Optional[str]:
@@ -277,6 +324,17 @@ def _is_tag_question(text: str, words_of: _WordSets) -> bool:
     # "dạ không", "thôi không" là từ chối; "được không", "hủy luôn không" là hỏi lại
     head = [w for w in words[:-1] if w not in words_of.polite]
     return bool(head) and not all(w in words_of.refuse for w in head)
+
+
+def _split_by_clause_break(transcript: str, unaccented: bool) -> bool:
+    """Cụm "không hủy" chỉ thành hình sau khi `clean` bỏ dấu câu, nên đọc lại bản CÒN dấu câu.
+
+    "không, hủy đi" là từ chối rồi đổi ý (hoặc ASR chấm câu sai) — hai tín hiệu ngược nhau, phải
+    hỏi lại. "không hủy đi" liền mạch mới là lời giữ lịch.
+    """
+    text = normalize(transcript)
+    patterns = _SPLIT_UNACCENTED if unaccented else _SPLIT_ACCENTED
+    return any(pattern.search(text) for pattern in patterns)
 
 
 def _has_ambiguous_dung(text: str) -> bool:

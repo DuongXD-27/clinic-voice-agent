@@ -5,7 +5,13 @@ from typing import Any
 
 import pytest
 
-from callbot.engine.errors import ClinicAPIError, ClinicWriteRejected, WriteOutcomeUnknown
+from callbot.engine.errors import (
+    AppointmentNotActionable,
+    ClinicAPIError,
+    ClinicInvalidResponse,
+    ClinicWriteRejected,
+    WriteOutcomeUnknown,
+)
 from callbot.engine.extraction.schema import Agreement, Intent, QuestionId
 from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
@@ -362,7 +368,6 @@ def test_second_version_conflict_is_a_definite_rejection() -> None:
     "error, retryable",
     [
         (clinic_error(429, "RATE_LIMITED"), True),
-        (clinic_error(409, "INVALID_STATE_TRANSITION"), False),
         (clinic_error(422, "IDEMPOTENCY_CONFLICT"), False),
         (clinic_error(404, "NOT_FOUND"), False),
         (ClinicAPIError(None, "CONNECT_ERROR", "refused", outcome_known=True), True),
@@ -416,3 +421,112 @@ def test_gateway_api_calls_are_collectable_for_trace() -> None:
     operations = [c.operation for c in calls]
     assert operations == ["get_appointment", "get_appointment", "transfer_appointment"]
     assert all(c.outcome == "ok" for c in calls)
+
+
+# --- Lifecycle: chỉ thao tác trên lịch còn thao tác được ------------------------------------------
+
+ALL_STATUSES = [
+    "SCHEDULED",
+    "BOOKED",
+    "CONFIRMED",
+    "CANCELLED",
+    "RESCHEDULED",
+    "TRANSFERRED",
+    "UNREACHABLE",
+]
+ACTIONABLE = {"SCHEDULED", "BOOKED", "CONFIRMED"}
+
+
+@pytest.mark.parametrize("status", ALL_STATUSES)
+def test_actionable_read_accepts_only_scheduled_booked_confirmed(status: str) -> None:
+    fake = FakeClinicAPI()
+    fake.appointments["apt_00417"]["status"] = status
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    if status in ACTIONABLE:
+        assert gateway.get_actionable_appointment(_outbound())["status"] == status
+    else:
+        with pytest.raises(AppointmentNotActionable) as exc:
+            gateway.get_actionable_appointment(_outbound())
+        assert status not in str(exc.value)
+
+
+@pytest.mark.parametrize("status", ALL_STATUSES)
+def test_confirm_checks_lifecycle_on_the_version_read(status: str) -> None:
+    fake = FakeClinicAPI()
+    fake.appointments["apt_00417"]["status"] = status
+    ctx = _ready_to_confirm()
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+    with bind_journal(journal):
+        if status in ACTIONABLE:
+            assert ClinicGateway(fake, "cl_vinmec").confirm(ctx)["status"] == "CONFIRMED"
+            return
+        with pytest.raises(AppointmentNotActionable):
+            ClinicGateway(fake, "cl_vinmec").confirm(ctx)
+    # Chặn trước khi gửi: không có lệnh nào vào nhật ký, không request ghi nào tới Clinic
+    assert journal.statuses == [] and fake.requests == [] and fake.writes == []
+
+
+@pytest.mark.parametrize("status", ALL_STATUSES)
+def test_unreachable_keeps_its_own_lifecycle(status: str) -> None:
+    fake = FakeClinicAPI()
+    fake.appointments["apt_00417"]["status"] = status
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    with bind_journal(RecordingJournal()):
+        if status in {"SCHEDULED", "BOOKED", "UNREACHABLE"}:
+            assert gateway.mark_unreachable(_outbound(), "SILENCE")["status"] == "UNREACHABLE"
+            return
+        with pytest.raises(AppointmentNotActionable):
+            gateway.mark_unreachable(_outbound(), "SILENCE")
+    assert fake.requests == []
+
+
+def test_lifecycle_is_checked_again_after_version_conflict() -> None:
+    """Lịch bị hủy ở nơi khác đúng lúc bot ghi: lần đọc lại sau VERSION_CONFLICT phải chặn."""
+    fake = FakeClinicAPI()
+    original = fake.confirm_appointment
+
+    def cancelled_elsewhere(*args, **kwargs):
+        fake.confirm_appointment = original
+        fake.appointments["apt_00417"].update(status="CANCELLED", version=4)
+        raise clinic_error(409, "VERSION_CONFLICT")
+
+    fake.confirm_appointment = cancelled_elsewhere
+    ctx = _ready_to_confirm()
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+    with bind_journal(journal), pytest.raises(AppointmentNotActionable):
+        ClinicGateway(fake, "cl_vinmec").confirm(ctx)
+    assert journal.statuses == ["begin", "failed"] and fake.writes == []
+
+
+@pytest.mark.parametrize("operation", ["confirm_appointment", "transfer_appointment"])
+def test_invalid_state_transition_is_not_actionable_and_not_retried(operation: str) -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next(operation, clinic_error(409, "INVALID_STATE_TRANSITION"))
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    journal = RecordingJournal()
+    with bind_journal(journal), pytest.raises(AppointmentNotActionable) as exc:
+        if operation == "confirm_appointment":
+            ctx = _ready_to_confirm()
+            _agree_confirm(ctx)
+            gateway.confirm(ctx)
+        else:
+            gateway.transfer(_outbound(), "OUT_OF_SCOPE")
+    assert exc.value.cause_code == "INVALID_STATE_TRANSITION"
+    assert journal.statuses == ["begin", "failed"] and len(fake.requests) == 1
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"starts_at": None}, {"status": "WEIRD"}, {"version": "x"}, {"appointment_id": "apt_other"}],
+)
+def test_invalid_appointment_read_is_invalid_response(change: dict[str, Any]) -> None:
+    fake = FakeClinicAPI()
+    fake.appointments["apt_00417"].update(change)
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    with pytest.raises(ClinicInvalidResponse):
+        gateway.get_appointment(_outbound())
+    with bind_journal(RecordingJournal()), pytest.raises(ClinicInvalidResponse):
+        gateway.transfer(_outbound(), "OUT_OF_SCOPE")
+    assert fake.requests == []
