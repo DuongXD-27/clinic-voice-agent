@@ -1,0 +1,129 @@
+split,group,question_id,transcript,expect_behaviour
+prompt,story_polite,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,ASK_CHANGE_OR_CANCEL|REREAD
+prompt,attend_other,CONFIRM_READBACK,vợ tôi sẽ đến thay,REREAD
+prompt,agree,CONFIRM_READBACK,tôi sẽ có mặt,CONFIRM
+holdout,agree,CONFIRM_READBACK,"Có, tôi đến được.",CONFIRM
+holdout,agree,CONFIRM_READBACK,vâng,CONFIRM
+holdout,agree,CONFIRM_READBACK,dạ,CONFIRM
+holdout,agree,CONFIRM_READBACK,ừ,CONFIRM
+holdout,agree,CONFIRM_READBACK,ờ,CONFIRM
+holdout,agree,CONFIRM_READBACK,có,CONFIRM
+holdout,agree,CONFIRM_READBACK,có ạ,CONFIRM
+holdout,agree,CONFIRM_READBACK,dạ có,CONFIRM
+holdout,agree,CONFIRM_READBACK,được em,CONFIRM
+holdout,agree,CONFIRM_READBACK,dạ được ạ,CONFIRM
+holdout,agree,CONFIRM_READBACK,ok,CONFIRM
+holdout,agree,CONFIRM_READBACK,ô kê em,CONFIRM
+holdout,agree,CONFIRM_READBACK,đồng ý,CONFIRM
+holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,CONFIRM
+holdout,agree,CONFIRM_READBACK,được rồi được rồi,CONFIRM
+holdout,agree,CONFIRM_READBACK,ừ ừ,CONFIRM
+holdout,agree,CONFIRM_READBACK,vâng vâng,CONFIRM
+holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",CONFIRM
+holdout,agree,CONFIRM_READBACK,dạ vâng ạ,CONFIRM
+holdout,agree,CONFIRM_READBACK,chắc chắn rồi,CONFIRM
+holdout,agree,CONFIRM_READBACK,không sao,CONFIRM
+holdout,agree,CONFIRM_READBACK,tôi sẽ đến,CONFIRM
+holdout,agree,CONFIRM_READBACK,tôi sẽ đến đúng giờ,CONFIRM
+holdout,agree,CONFIRM_READBACK,tôi đến được ạ,CONFIRM
+holdout,agree,CONFIRM_READBACK,xác nhận,CONFIRM
+holdout,agree,CONFIRM_READBACK,giữ nguyên lịch,CONFIRM
+holdout,agree,CONFIRM_READBACK,giữ lịch nhé,CONFIRM
+holdout,agree,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",CONFIRM
+holdout,agree,CONFIRM_READBACK,"vâng, hôm đó tôi đến",CONFIRM
+holdout,agree,CONFIRM_READBACK,được chứ,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,nhất định rồi,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,đương nhiên,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,đến chứ,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,đi chứ,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,không thành vấn đề,CONFIRM
+holdout,agree_missing,CONFIRM_READBACK,không có vấn đề gì,CONFIRM
+holdout,affirm_in_story,CONFIRM_READBACK,hôm đó tôi có việc bận,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,hôm đó tôi có hẹn khác,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,tôi phải đi làm hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,affirm_in_story,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",REREAD
+holdout,story_polite,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",ASK_CHANGE_OR_CANCEL|REREAD
+holdout,story_polite,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",ASK_CHANGE_OR_CANCEL|REREAD
+holdout,story_polite,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,story_polite,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",ASK_CHANGE_OR_CANCEL|REREAD
+holdout,story_polite,CONFIRM_READBACK,vâng tôi nghe,REREAD
+holdout,story_polite,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,REREAD
+holdout,story_polite,CONFIRM_READBACK,"vâng, tôi đang lái xe",REREAD
+holdout,story_polite,CONFIRM_READBACK,à mà tôi muốn hỏi chút,REREAD
+holdout,story_polite,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,REREAD|CONFIRM
+holdout,filler_alone,CONFIRM_READBACK,à,REREAD
+holdout,filler_alone,CONFIRM_READBACK,ạ,REREAD
+holdout,filler_alone,CONFIRM_READBACK,ừm,REREAD
+holdout,attend_other,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,attend_other,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,attend_other,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,attend_other,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,attend_other,CONFIRM_READBACK,tối đó tôi đến bệnh viện khác rồi,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,hedge,CONFIRM_READBACK,chắc được,REREAD
+holdout,hedge,CONFIRM_READBACK,chắc đến được,REREAD
+holdout,hedge,CONFIRM_READBACK,hy vọng là được,REREAD
+holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,REREAD
+holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,REREAD
+holdout,hedge,CONFIRM_READBACK,chắc là được,REREAD
+holdout,hedge,CONFIRM_READBACK,ờ để xem,REREAD
+holdout,hedge,CONFIRM_READBACK,có lẽ vậy,REREAD
+holdout,hedge,CONFIRM_READBACK,không biết nữa,REREAD
+holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,REREAD
+holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",REREAD
+holdout,time,CONFIRM_READBACK,tôi đến trễ không sao chứ,REREAD
+holdout,not_refusal,CONFIRM_READBACK,không cần đổi đâu,REREAD|CONFIRM
+holdout,not_refusal,CONFIRM_READBACK,không cần hủy,REREAD|CONFIRM
+holdout,not_refusal,CONFIRM_READBACK,"không đổi gì cả, tôi đến",CONFIRM|REREAD
+holdout,refuse,CONFIRM_READBACK,không,ASK_CHANGE_OR_CANCEL
+holdout,refuse,CONFIRM_READBACK,dạ không,ASK_CHANGE_OR_CANCEL
+holdout,refuse,CONFIRM_READBACK,thôi,ASK_CHANGE_OR_CANCEL
+holdout,refuse,CONFIRM_READBACK,sai rồi,ASK_CHANGE_OR_CANCEL
+holdout,question,CONFIRM_READBACK,được không em,REREAD
+holdout,question,CONFIRM_READBACK,mấy giờ nhỉ,REREAD
+holdout,question,CONFIRM_READBACK,có mất phí không em,REREAD
+holdout,branch,CONFIRM_READBACK,không đến được,CANCEL
+holdout,branch,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,RESCHEDULE
+holdout,branch,CONFIRM_READBACK,cho tôi gặp nhân viên,TRANSFER
+holdout,unaccented,CONFIRM_READBACK,vang,CONFIRM
+holdout,unaccented,CONFIRM_READBACK,toi se den,CONFIRM
+holdout,unaccented,CONFIRM_READBACK,da vang,CONFIRM
+holdout,unaccented,CONFIRM_READBACK,toi se di cong tac,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,unaccented,CONFIRM_READBACK,chac duoc,REREAD
+holdout,unaccented,CONFIRM_READBACK,hom do toi co viec ban,ASK_CHANGE_OR_CANCEL|REREAD|NOT_UNDERSTOOD
+holdout,unaccented,CONFIRM_READBACK,khong,ASK_CHANGE_OR_CANCEL
+holdout,intent_keep,ASK_INTENT,giữ nguyên,REREAD
+holdout,intent_keep,ASK_INTENT,không đổi không hủy gì cả,REREAD
+holdout,intent_keep,ASK_INTENT,thôi tôi vẫn đến,REREAD
+holdout,intent_keep,ASK_INTENT,giữ lịch,REREAD
+holdout,intent_keep,ASK_INTENT,hủy đi,CANCEL
+holdout,slot_story,SLOT_READBACK,hôm đó tôi có việc bận,ASK_AGAIN
+holdout,slot_story,SLOT_READBACK,tôi phải đi làm hôm đó,ASK_AGAIN
+holdout,slot_story,SLOT_READBACK,chắc được,ASK_AGAIN
+holdout,slot_story,SLOT_READBACK,được nhưng để tôi xem đã,ASK_AGAIN
+holdout,slot_agree,SLOT_READBACK,được,SLOT_WRITE
+holdout,slot_agree,SLOT_READBACK,"Được, đổi giúp tôi.",SLOT_WRITE
+holdout,slot_agree,SLOT_READBACK,chốt đi em,SLOT_WRITE
+holdout,slot_agree,SLOT_READBACK,đồng ý,SLOT_WRITE
+holdout,slot_agree,SLOT_READBACK,không,ABANDON
+prompt,attend_other,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,ASK_CHANGE_OR_CANCEL|REREAD
+prompt,model_trap,CONFIRM_READBACK,không hủy đâu em,REREAD
+prompt,model_trap,CONFIRM_READBACK,hôm ấy tôi được nghỉ,REREAD|NOT_UNDERSTOOD
+prompt,intent_story,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,model_trap,CONFIRM_READBACK,hôm đó tôi rảnh,REREAD|NOT_UNDERSTOOD
+holdout,model_trap,CONFIRM_READBACK,không cần hủy em ạ,REREAD
+holdout,model_trap,CONFIRM_READBACK,đừng hủy nhé,REREAD
+holdout,model_trap,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",REREAD
+holdout,model_trap,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",REREAD
+holdout,attend_other,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,attend_other,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,intent_story,ASK_INTENT,hôm đó tôi sẽ đi công tác,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,intent_story,ASK_INTENT,tôi vẫn đi làm hôm đó,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,intent_story,ASK_INTENT,tối đó tôi đến viện khác rồi,ASK_CHANGE_OR_CANCEL|REREAD
+holdout,intent_story,ASK_INTENT,vợ tôi sẽ đến thay,REREAD|ASK_CHANGE_OR_CANCEL
+holdout,intent_story,ASK_INTENT,hôm đó tôi bận,ASK_CHANGE_OR_CANCEL|NOT_UNDERSTOOD
+holdout,intent_story,ASK_INTENT,tôi đi công tác cả tuần,ASK_CHANGE_OR_CANCEL|NOT_UNDERSTOOD
+holdout,intent_story,ASK_INTENT,đổi sang buổi chiều,RESCHEDULE
