@@ -250,6 +250,35 @@ async def test_validator_allows_real_speech_with_high_snr_during_barge_in() -> N
     assert tts.cancel_calls == 1
 
 
+async def test_validator_wait_does_not_confirm_barge_in() -> None:
+    """Tái hiện đúng log thật qua LiveKit (LIVEKIT_DEBUG_DUMP_AUDIO): SNR vừa phải
+    (~14dB, không đủ thấp để TurnValidator DROP ở min_snr_db mặc định) + text ngắn
+    hallucinate ("ĐÚNG") + stability=UNKNOWN -> validator.evaluate() trả WAIT, không
+    DROP. Trước khi sửa, `_passes_gate()` coi WAIT như ACCEPT nên vẫn xác nhận barge-in
+    giả dù user hoàn toàn im lặng — WAIT giờ phải reject như DROP."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    validator = TurnValidator(min_snr_db=3.0)
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock, validator=validator)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=250.0, noise_floor=50.0, snr_db=14.1),
+        stability=StabilityVerdict.UNKNOWN,
+    )
+
+    confirmed = await controller.on_partial_transcript(TranscriptEvent(text="ĐÚNG", is_final=False))
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
 async def test_no_validator_keeps_old_behavior() -> None:
     tts = _FakeTTS()
     clock = _FakeClock()

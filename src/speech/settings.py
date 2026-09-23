@@ -29,7 +29,15 @@ class SpeechSettings(BaseSettings):
     # "energy": RMS đơn thuần, baseline, không phân biệt giọng nói với tiếng ồn.
     # "webrtc": Google WebRTC's VAD (cần extra "vad-webrtc"), phân biệt tốt hơn nhiều —
     # khuyến nghị cho đường LiveKit streaming (energy dễ hiểu nhầm noise thành turn).
-    vad_provider: Literal["energy", "webrtc"] = "energy"
+    # "silero": ONNX model (silero_vad_model_path, cần extra "vad-silero"/sherpa-onnx) —
+    # từng chỉ dùng riêng cho NoiseTracker (Speech Admission/Turn Validator), giờ có thể
+    # chọn làm VAD chính. Đối chiếu thực nghiệm qua ASR trên audio LiveKit thật
+    # (docs/reference/livekit-architecture.md §5.4): trên MỌI file kiểm tra, Silero không
+    # bỏ sót giọng nói thật (kể cả câu dài, nội dung nghiệp vụ), và từ chối đúng các đoạn
+    # thuần noise mà WebRTC liên tục hiểu nhầm thành speech (mẫu hallucination "ĐÂY"/"Ừ"
+    # lặp lại nhiều phút liền dù không ai nói gì). Chưa đổi mặc định — cần benchmark thêm
+    # trên tập audio đa dạng hơn trước khi áp dụng cho mọi call.
+    vad_provider: Literal["energy", "webrtc", "silero"] = "energy"
     vad_rms_threshold: float = 500.0
     vad_webrtc_aggressiveness: int = 2
     vad_end_silence_ms: int = 600

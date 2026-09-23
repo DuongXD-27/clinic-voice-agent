@@ -7,8 +7,8 @@ lần ngắt lời thật — tránh false interruption từ noise/backchannel n
 nhiệm của caller (CallBridge), không phải của class này.
 
 Barge-in CHỈ được xác nhận qua `on_partial_transcript`, luôn đi qua `_passes_gate()`
-(duration + nội dung có nghĩa + confidence nếu có) — bug thật đã gặp qua 2 lỗ hổng độc
-lập, cả hai đều cho phép confirm mà không đủ điều kiện:
+(duration + nội dung có nghĩa + confidence nếu có) — bug thật đã gặp qua 4 lỗ hổng độc
+lập, cả bốn đều cho phép confirm mà không đủ điều kiện:
 1. `on_partial_transcript` từng tự xác nhận ngay khi ASR trả về BẤT KỲ text non-empty
    nào, bỏ qua hoàn toàn duration/nội dung — ASR hallucinate 1 cụm từ trông "có vẻ hợp
    lệ" từ noise nền (quạt máy) là đủ để cắt ngang TTS.
@@ -24,6 +24,12 @@ lập, cả hai đều cho phép confirm mà không đủ điều kiện:
    phải tới ASR thật để có thể tự confirm, chặn ở Admission sẽ deadlock) — `TurnValidator`
    (`min_snr_db`/`TranscriptEvidenceTracker`, xem docs/reference/livekit-architecture.md
    §5.4) là lớp phòng thủ cuối, tuỳ chọn qua tham số `validator`.
+4. `_passes_gate()` từng coi `ValidationDecision.WAIT` tương đương `ACCEPT` (chỉ DROP mới
+   reject) — log thật qua LiveKit: SNR vừa phải (~14dB, không đủ thấp để trigger DROP ở
+   `min_snr_db` mặc định) + text ngắn hallucinate ("ĐÚNG") + `stability=UNKNOWN` khiến
+   `TurnValidator.evaluate()` trả WAIT, nhưng gate vẫn xác nhận barge-in ngay. Sửa: WAIT
+   giờ cũng reject như DROP (khác biệt duy nhất là WAIT không mang ý nghĩa "chắc chắn rác"
+   — chỉ đơn giản chưa đủ bằng chứng để xác nhận NGAY LẦN NÀY).
 """
 
 import logging
@@ -69,9 +75,16 @@ class InterruptionController:
 
         `validator` (tuỳ chọn, mặc định `None` — giữ hành vi cũ 100%): dùng CHUNG
         `TurnValidator` với `TurnController` (cùng logic SNR/stability, xem module
-        docstring #3) — nhưng ở đây CHỈ có quyền CHẶN THÊM (DROP -> reject), không bao
-        giờ được xác nhận sớm hơn `_passes_gate()` hiện có (ACCEPT/WAIT đều đi tiếp qua
-        gate cũ) — barge-in thà bỏ lỡ còn hơn cắt lời bot sai."""
+        docstring #3) — nhưng ở đây CHỈ có quyền CHẶN THÊM (DROP hoặc WAIT -> reject),
+        không bao giờ được xác nhận sớm hơn `_passes_gate()` hiện có (chỉ ACCEPT đi tiếp
+        qua gate cũ) — barge-in thà bỏ lỡ còn hơn cắt lời bot sai. Khác `TurnController`
+        (nơi WAIT có cơ hội chờ event mới rồi thử lại _try_emit): `on_partial_transcript`
+        không tự lặp lại khi có evidence mới — WAIT ở đây coi như "chưa đủ bằng chứng,
+        chưa xác nhận NGAY LẦN NÀY", partial kế tiếp (nếu ASR còn gửi) sẽ được đánh giá
+        lại từ đầu. Bug thật đã gặp: SNR vừa phải (~14dB, không đủ thấp để DROP) + text
+        ngắn hallucinate ("ĐÚNG") + stability UNKNOWN -> validator trả WAIT nhưng vẫn bị
+        gate cũ cho qua vì WAIT từng bị đối xử như ACCEPT, xác nhận barge-in giả dù user
+        không nói gì."""
         self._tts = tts
         self._min_speech_s = min_speech_ms / 1000
         self._min_confidence = min_confidence
@@ -177,10 +190,12 @@ class InterruptionController:
                 self._noise_evidence.snr_db if self._noise_evidence is not None else None,
                 self._stability,
             )
-            if decision == ValidationDecision.DROP:
+            if decision != ValidationDecision.ACCEPT:
+                # DROP hoặc WAIT: chưa đủ bằng chứng để xác nhận barge-in NGAY LẦN NÀY —
+                # không tự ý confirm sớm hơn (xem docstring __init__). Khác DROP (rõ ràng
+                # là hallucination), WAIT không reset candidate — partial kế tiếp (nếu có)
+                # vẫn được đánh giá lại bình thường.
                 return False
-            # ACCEPT/WAIT: không tự ý confirm sớm hơn — chỉ dùng Validator để chặn thêm
-            # (xem docstring __init__), gate cũ ở trên đã đủ để cho qua nếu tới đây.
         return True
 
     def on_evidence_updated(

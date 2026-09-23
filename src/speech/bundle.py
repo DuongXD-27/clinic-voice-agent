@@ -69,14 +69,22 @@ def _build_vad_classifier(settings: SpeechSettings) -> FrameClassifier:
         return WebRtcVadClassifier(
             aggressiveness=settings.vad_webrtc_aggressiveness, sample_rate=settings.sample_rate
         )
+    if settings.vad_provider == "silero":
+        # Cùng classifier dùng cho NoiseTracker (_build_noise_classifier) — nhưng đây là
+        # instance RIÊNG, không share: SileroVadClassifier stateful, mỗi consumer (main
+        # VAD, ASR endpoint, Admission, Validator) cần instance độc lập (xem docstring
+        # speech/asr/vad/silero.py).
+        return _build_noise_classifier(settings)
     return EnergyFrameClassifier(settings.vad_rms_threshold)
 
 
 def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
-    """Dùng RIÊNG cho NoiseTracker (Speech Admission + TurnValidator) — LUÔN Silero VAD,
-    KHÔNG theo `vad_provider` (bug thật đã gặp: WebRTC báo speech=True gần như liên tục
-    trên noise phòng thuần, khiến noise_floor không cập nhật đúng và SNR dao động hỗn
-    loạn, xem docstring `SpeechSettings.silero_vad_model_path`)."""
+    """Dùng cho NoiseTracker (Speech Admission + TurnValidator) — LUÔN Silero VAD, không
+    đọc `vad_provider` trực tiếp (bug thật đã gặp khi `vad_provider=webrtc`: WebRTC báo
+    speech=True gần như liên tục trên noise phòng thuần, khiến noise_floor không cập
+    nhật đúng và SNR dao động hỗn loạn, xem docstring `SpeechSettings.silero_vad_model_path`).
+    Khi `vad_provider=silero`, `_build_vad_classifier()` cũng gọi hàm này (instance riêng
+    mỗi lần, xem đó) — NoiseTracker vẫn luôn dùng Silero dù main VAD là gì."""
     from speech.asr.vad.silero import SileroVadClassifier
 
     return SileroVadClassifier(settings.silero_vad_model_path, sample_rate=settings.sample_rate)
@@ -93,12 +101,20 @@ def build_streaming_bundle(
     """Bundle cho đường LiveKit streaming (transports/livekit/worker.py) — khác
     `build_speech_bundle` (HTTP batch `mode="audio"`): cần cả VAD sync/async cùng
     classifier và ASR provider có `stream()` (chỉ ZipFormer hỗ trợ hiện tại)."""
-    classifier = _build_vad_classifier(settings)
-    # ASR endpointing cần classifier riêng: WebRTC VAD có state nội bộ, không được cho
-    # hai consumer đồng thời dùng chung một instance.
+    # 2 instance riêng cho vad/async_vad (không share) — cả WebRtcVadClassifier lẫn
+    # SileroVadClassifier đều stateful (xem docstring từng module), sync/async không được
+    # cho hai consumer đồng thời dùng chung. `sync_classifier` trong thực tế chỉ phục vụ
+    # `transcribe_segment()` (đường HTTP batch), `async_classifier` phục vụ `stream()`
+    # (đường LiveKit) — không chạy đồng thời trên cùng 1 call, nhưng tách riêng để không
+    # phụ thuộc giả định đó và tránh state cũ (buffer Silero chưa flush) rò từ lần gọi
+    # trước sang lần sau.
+    sync_classifier = _build_vad_classifier(settings)
+    async_classifier = _build_vad_classifier(settings)
+    # ASR endpointing cần classifier riêng thứ 3: WebRTC/Silero đều có state nội bộ,
+    # không được cho hai consumer đồng thời dùng chung một instance.
     asr_endpoint_classifier = _build_vad_classifier(settings)
-    vad = StreamingVAD(classifier, end_silence_ms=settings.vad_end_silence_ms)
-    async_vad = AsyncStreamingVAD(classifier, end_silence_ms=settings.vad_end_silence_ms)
+    vad = StreamingVAD(sync_classifier, end_silence_ms=settings.vad_end_silence_ms)
+    async_vad = AsyncStreamingVAD(async_classifier, end_silence_ms=settings.vad_end_silence_ms)
     asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     admission = None
     admission_classifier = None

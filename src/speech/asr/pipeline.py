@@ -1,6 +1,7 @@
 """Realtime STT pipeline: Audio Input (PCM 8 kHz băng hẹp) -> VAD -> ASR -> Streaming Transcript."""
 
 import asyncio
+import logging
 from collections import deque
 from collections.abc import Mapping
 from typing import AsyncIterator, Optional
@@ -20,6 +21,8 @@ from speech.turn.interruption import InterruptionController, InterruptionState
 from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
 
 _QUEUE_DONE = object()
+
+logger = logging.getLogger(__name__)
 
 
 class STTPipeline:
@@ -183,6 +186,21 @@ class STTPipeline:
                         speech_ms_so_far=admitted_speech_ms,
                         already_admitted=currently_admitted,
                     )
+                    if decision.admit != currently_admitted:
+                        # Log THEO CHUYỂN TRẠNG THÁI (không phải mỗi frame — 30ms/frame
+                        # sẽ spam log) — đủ để chẩn đoán Admission có đang âm thầm chặn
+                        # hết audio thật hay không (trước đây quyết định này KHÔNG được
+                        # log gì cả, khiến "không bắt được âm" không có cách nào phân biệt
+                        # được với VAD không thấy speech_start/track không publish).
+                        logger.debug(
+                            "speech_admission: %s reason=%s is_speech=%s snr_db=%.1f "
+                            "speech_ms_so_far=%.0f",
+                            "ADMIT" if decision.admit else "REJECT",
+                            decision.reason,
+                            is_speech,
+                            evidence.snr_db,
+                            admitted_speech_ms,
+                        )
                     currently_admitted = decision.admit
                     if decision.admit:
                         await asr_queue.put(frame)
