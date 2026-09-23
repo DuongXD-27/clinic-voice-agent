@@ -41,6 +41,9 @@ logger = logging.getLogger(__name__)
 
 # Mock giới hạn `to - from` tối đa 14 ngày
 SLOT_WINDOW_DAYS = 14
+# Policy kỹ thuật nội bộ: tìm tuần tự tối đa 5 cửa sổ (khoảng 70 ngày), không phải yêu cầu
+# của Product Contract. Giới hạn hữu hạn này tránh quét Clinic API vô hạn trong một lượt.
+SLOT_SEARCH_MAX_WINDOWS = 5
 # Trần số trang một lần đọc: 20 × 100 bản ghi — vượt là mock trả cursor hỏng, không phải dữ liệu thật
 MAX_PAGES = 20
 ACTIONABLE_APPOINTMENT_STATUSES = frozenset({"SCHEDULED", "BOOKED", "CONFIRMED"})
@@ -87,14 +90,24 @@ class ClinicGateway:
         `now` là thời điểm tiếp nhận lượt, để xử lý lại lượt đọc đúng cửa sổ thời gian cũ.
         """
         start = now
-        from_, to = iso_local(start), iso_local(start + timedelta(days=SLOT_WINDOW_DAYS))
-        rows = self._all_pages(
-            lambda cursor: self._api.get_slots(
-                self._clinic_id, from_, to, cursor=cursor, limit=PAGE_LIMIT
+        for _ in range(SLOT_SEARCH_MAX_WINDOWS):
+            end = start + timedelta(days=SLOT_WINDOW_DAYS)
+            from_, to = iso_local(start), iso_local(end)
+            rows = self._all_pages(
+                lambda cursor, from_=from_, to=to: self._api.get_slots(
+                    self._clinic_id, from_, to, cursor=cursor, limit=PAGE_LIMIT
+                )
             )
-        )
-        ctx.slots = [normalize_slot(row) for row in rows]
-        return list(ctx.slots)
+            if rows:
+                # Các cửa sổ nối liền tại biên; dedupe bảo vệ khỏi bản ghi lặp do semantics
+                # biên hoặc pagination mà không làm thay đổi thứ tự ưu tiên của Clinic.
+                normalized = [normalize_slot(row) for row in rows]
+                ctx.slots = list({slot["slot_id"]: slot for slot in normalized}.values())
+                return list(ctx.slots)
+            start = end
+
+        ctx.slots = []
+        return []
 
     @staticmethod
     def _all_pages(fetch: Callable[[Optional[str]], Page]) -> list[dict[str, Any]]:
@@ -172,7 +185,13 @@ class ClinicGateway:
             lambda _version, key: self._api.create_appointment(patient_id, slot_id, key),
             read_version=False,
         )
-        ctx.created_appointment_id = created["appointment_id"]
+        appointment_id = created.get("appointment_id")
+        status = created.get("status")
+        if not appointment_id or status != "BOOKED":
+            raise WriteOutcomeUnknown(
+                f"{ctx.call_id}: book trả status {status}, appointment_id {appointment_id}"
+            )
+        ctx.created_appointment_id = appointment_id
         return created
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> Optional[dict[str, Any]]:

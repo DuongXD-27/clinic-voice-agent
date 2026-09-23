@@ -114,6 +114,7 @@ _AFFIRM = compile_phrases(
         "đúng vậy",
         "chính xác",
         "đồng ý",
+        "xác nhận",
         "ok",
         "oke",
         "okay",
