@@ -1,6 +1,6 @@
 """So sánh hai lần chạy `confirm_eval.py`: chỉ số tổng và các câu đổi hành vi.
 
-    python scripts/eval_compare.py outputs/eval/confirm/rule outputs/eval/confirm/semantic
+    python scripts/eval_compare.py result/23-09-2026/confirm/rule result/23-09-2026/confirm/semantic
 
 Nhiều lần lặp: chỉ số lấy theo từng lần (min–max); hành vi của một câu là danh sách qua các lần lặp,
 câu nào có kết quả khác nhau giữa các lần được đánh dấu `~`. Chỉ đọc file, không gọi API.
@@ -15,12 +15,13 @@ from collections import defaultdict
 from pathlib import Path
 
 METRICS = (
-    ("unsafe_writes", "Ghi sai"),
-    ("holdout_behaviour_accuracy", "Chấp nhận được (holdout)"),
-    ("holdout_ideal", "Lý tưởng (holdout)"),
-    ("agree_reread_rate", "Đồng ý thật không ghi ngay"),
-    ("agree_routed", "Đồng ý thật bị gọi model"),
-    ("model_calls", "Lượt gọi model"),
+    ("unsafe_writes", "Unsafe writes"),
+    ("holdout_passed", "Passed (scored cases)"),
+    ("rule_passed", "Passed, rule-decidable"),
+    ("inference_passed", "Passed, needs inference"),
+    ("agree_not_confirmed", "Agreements not confirmed"),
+    ("agree_routed", "Agreements sent to model"),
+    ("model_calls", "Model calls"),
 )
 
 
@@ -31,6 +32,26 @@ def _load(path: Path) -> tuple[dict, dict[tuple[str, str], list[dict[str, str]]]
         for row in csv.DictReader(fh):
             rows[(row["question_id"], row["transcript"])].append(row)
     return summary, rows
+
+
+_DENOMINATORS = {
+    "holdout_passed": "holdout_cases",
+    "rule_passed": "rule_cases",
+    "inference_passed": "inference_cases",
+    "agree_not_confirmed": "agree_cases",
+}
+
+
+def _metric(summary: dict, key: str) -> str:
+    """Một chỉ số qua các lần lặp (min–max); đếm được thì kèm mẫu số: "120–121/121"."""
+    runs = summary["runs"]
+    if key in _DENOMINATORS and all(key in run for run in runs):
+        return f"{_span([run[key] for run in runs])}/{runs[0][_DENOMINATORS[key]]}"
+    fallback = {
+        "holdout_passed": "holdout_behaviour_accuracy",
+        "agree_not_confirmed": "agree_reread_rate",
+    }
+    return _span([run.get(key, run.get(fallback.get(key, ""), "")) for run in runs])
 
 
 def _span(values: list) -> str:
@@ -46,18 +67,18 @@ def main() -> int:
     a, a_rows = _load(a_path)
     b, b_rows = _load(b_path)
 
-    print(f"| Chỉ số | {a_path.name} | {b_path.name} |")
+    print(f"| Metric | {a_path.name} | {b_path.name} |")
     print("| --- | --- | --- |")
     for key, name in METRICS:
-        values = [[run.get(key, "") for run in s["runs"]] for s in (a, b)]
-        print(f"| {name} | {_span(values[0])} | {_span(values[1])} |")
+        values = [_metric(s, key) for s in (a, b)]
+        print(f"| {name} | {values[0]} | {values[1]} |")
     latency = [
         [run["semantic_latency_ms"]["p95"] for run in s["runs"] if run["semantic_latency_ms"]["n"]]
         for s in (a, b)
     ]
-    print(f"| p95 lượt gọi model (ms) | {_span(latency[0] or [0])} | {_span(latency[1] or [0])} |")
+    print(f"| p95 model call (ms) | {_span(latency[0] or [0])} | {_span(latency[1] or [0])} |")
 
-    print("\nCâu đổi hành vi:")
+    print("\nCases whose behaviour changed:")
     for key in sorted(set(a_rows) | set(b_rows)):
         before = [r["observed_behaviour"] for r in a_rows.get(key, [])]
         after = [r["observed_behaviour"] for r in b_rows.get(key, [])]
@@ -66,11 +87,11 @@ def main() -> int:
         ref = (b_rows.get(key) or a_rows.get(key))[0]
         ok = [r["behaviour_ok"] == "True" for r in b_rows.get(key, [])]
         flag = "~" if len(set(after)) > 1 else " "
-        mark = "OK " if ok and all(ok) else "SAI"
+        mark = "PASS" if ok and all(ok) else "FAIL"
         kinds = sorted({r.get("semantic_kind", "") for r in b_rows.get(key, [])} - {""})
         print(
             f"  {mark}{flag} {ref['group']:16} {key[1]:40} {before} -> {after}"
-            f"  kỳ vọng={ref['expect_behaviour']} model={kinds}"
+            f"  expected={ref['expect_behaviour']} model={kinds}"
         )
     return 0
 

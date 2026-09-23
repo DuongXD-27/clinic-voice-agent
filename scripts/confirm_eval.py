@@ -3,7 +3,7 @@
     python scripts/confirm_eval.py --baseline                 # chỉ luật, KHÔNG gọi API
     python scripts/confirm_eval.py --route-only               # luật + model giả trả None: đếm lượt gọi model
     python scripts/confirm_eval.py --semantic --repeats 3     # gọi model thật, cần OPENAI_API_KEY
-    python scripts/eval_compare.py outputs/eval/confirm/<A> outputs/eval/confirm/<B>
+    python scripts/eval_compare.py result/<dd-mm-yyyy>/confirm/<A> result/<dd-mm-yyyy>/confirm/<B>
 
 Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator thật + FakeClinicAPI** ở đúng câu
 hỏi đang chờ (`question_id` trong bộ câu):
@@ -11,14 +11,19 @@ hỏi đang chờ (`question_id` trong bộ câu):
 - `ASK_INTENT`: sau khi người gọi nói "Không" ở câu tóm tắt (bot hỏi "đổi hay hủy");
 - `SLOT_READBACK`: sau "tôi muốn đổi lịch" và "khung 1".
 
-`expect_behaviour` liệt kê các hành vi chấp nhận được, ngăn bằng `|`; hành vi ĐẦU TIÊN là lý tưởng
-(vd. câu kể bận: lý tưởng là hỏi đổi / hủy, đọc lại lịch vẫn chấp nhận được). Báo cáo tách:
-- độ chính xác "chấp nhận được" và "lý tưởng" trên `holdout` (tập `prompt` là câu mẫu của prompt),
+`expect_behaviour` là nhãn nghiệp vụ theo kiến trúc §3.2 (`O_AGREE`): đồng ý → `CONFIRM`; "không" hoặc
+kể hoàn cảnh không đến được → `ASK_CHANGE_OR_CANCEL`; chưa rõ → `REREAD`. Dấu `|` chỉ dùng khi nghiệp
+vụ chấp nhận cả hai (câu mơ hồ thật, hoặc câu ngụ ý đồng ý mà đọc lại vẫn đúng §1.1.3), không dùng để
+chừa chỗ cho luật khi không có model. `needs_inference=yes`: ý người gọi phải suy ra từ hoàn cảnh, không
+có từ khóa nói thẳng; chỉ luật thì được phép sai ở các câu này nhưng không được ghi. Báo cáo tách:
+- độ chính xác trên `holdout` (tập `prompt` là câu mẫu của prompt), tách câu luật quyết được và câu
+  cần suy nghĩa,
 - số lần GHI SAI (lệnh ghi khi không có hành vi ghi nào được chấp nhận) — exit code 1 nếu > 0,
 - tỷ lệ câu đồng ý thật không được ghi ngay, số lượt gọi model theo nhóm.
 Mỗi dòng kết quả ghi nhãn model trả về (`semantic_kind`, `semantic_reason`, `semantic_intent`).
 
-Kết quả ghi ra `outputs/eval/confirm/<label>/`. Transcript là dữ liệu tổng hợp, không có PII.
+Kết quả ghi ra `result/<dd-mm-yyyy>/confirm/<label>/` (ngày theo giờ Việt Nam, thư mục được commit).
+Transcript là dữ liệu tổng hợp, không có PII.
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import fakeredis  # noqa: E402
 
 # Dùng chung bộ đếm model và cách đo với eval hủy; import cũng đặt sys.path cho src / tests.
-from cancel_eval import Counting, RecordingGateway, _latency  # noqa: E402
+from cancel_eval import Counting, RecordingGateway, _latency, result_dir  # noqa: E402
 from tests.engine.fake_clinic import FakeClinicAPI  # noqa: E402
 
 from callbot.engine import (  # noqa: E402
@@ -56,7 +61,6 @@ from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
 CASES = ROOT / "eval" / "confirm" / "cases.csv"
-OUT_ROOT = ROOT / "outputs" / "eval" / "confirm"
 VERIFIED = ["Nguyễn Văn A", "14/03/1978"]
 SETUP: dict[str, list[str]] = {
     QuestionId.CONFIRM_READBACK.value: [],
@@ -158,10 +162,10 @@ def _run_case(
         "group": row["group"],
         "question_id": row["question_id"],
         "transcript": row["transcript"],
+        "needs_inference": row.get("needs_inference") == "yes",
         "expect_behaviour": row["expect_behaviour"],
         "observed_behaviour": observed,
         "behaviour_ok": observed in accepted,
-        "ideal_ok": observed == accepted[0],
         "unsafe_write": observed in WRITE_BEHAVIOURS and observed not in accepted,
         # Câu đồng ý thật (hành vi mong đợi đầu tiên là ghi) mà bot đọc lại thay vì ghi
         "agree_reread": accepted[0] in WRITE_BEHAVIOURS and observed not in WRITE_BEHAVIOURS,
@@ -175,27 +179,132 @@ def _run_case(
     }
 
 
+class _Progress:
+    """Tiến độ kiểu pytest: mỗi câu một ký tự, phần trăm ở cuối dòng.
+
+    `.` đúng · `F` sai hành vi (không ghi) · `W` GHI SAI · `t` đúng nhưng model timeout (giữ kết quả luật).
+    """
+
+    WIDTH = 64
+
+    def __init__(self, total: int, repeats: int) -> None:
+        self._total, self._repeats = total, repeats
+        self._column = 0
+
+    def start(self, attempt: int) -> None:
+        self._prefix = f"run {attempt}/{self._repeats} "
+        self._column = 0
+        sys.stdout.write(self._prefix)
+        sys.stdout.flush()
+
+    def step(self, index: int, row: dict[str, Any]) -> None:
+        sys.stdout.write(_mark(row))
+        self._column += 1
+        if self._column == self.WIDTH or index == self._total:
+            percent = index * 100 // self._total
+            padding = " " * (self.WIDTH - self._column)
+            sys.stdout.write(f"{padding} [{percent:3d}%]\n")
+            self._column = 0
+            if index != self._total:
+                sys.stdout.write(" " * len(self._prefix))
+        sys.stdout.flush()
+
+
+def _mark(row: dict[str, Any]) -> str:
+    if row["unsafe_write"]:
+        return "W"
+    if not row["behaviour_ok"]:
+        return "F"
+    return "t" if row["semantic_status"] == "timeout" else "."
+
+
+def _print_progress(
+    attempt: int, repeats: int, index: int, total: int, row: dict[str, Any]
+) -> None:
+    """`-v`: một dòng mỗi câu, in ngay (flush) để biết đang chạy câu nào khi có model."""
+    mark = "PASS" if row["behaviour_ok"] else "FAIL"
+    if row["unsafe_write"]:
+        mark = "UNSAFE WRITE"
+    model = ""
+    if row["semantic_status"]:
+        kind = f" {row['semantic_kind']}" if row["semantic_kind"] else ""
+        model = f" · model {row['semantic_status']}{kind} {row['semantic_ms']} ms"
+    print(
+        f"[run {attempt}/{repeats}] [{index}/{total}] {mark} {row['question_id']} "
+        f"| {row['transcript']} -> {row['observed_behaviour']}{model}",
+        flush=True,
+    )
+
+
+def _print_failures(runs: list[tuple[list[dict[str, Any]], Optional[Capturing]]]) -> None:
+    """Như "short test summary" của pytest: mỗi câu sai một dòng, gộp qua các lần lặp."""
+    failed: dict[tuple[str, str], dict[str, Any]] = {}
+    for attempt, (rows, _) in enumerate(runs, start=1):
+        for row in rows:
+            if row["behaviour_ok"]:
+                continue
+            key = (row["question_id"], row["transcript"])
+            entry = failed.setdefault(
+                key, {"row": row, "runs": [], "observed": [], "unsafe": False}
+            )
+            entry["runs"].append(attempt)
+            entry["observed"].append(row["observed_behaviour"])
+            entry["unsafe"] = entry["unsafe"] or row["unsafe_write"]
+    if not failed:
+        print("No failed cases.")
+        return
+    print(f"Failed cases ({len(failed)}):")
+    for (question, transcript), entry in failed.items():
+        row = entry["row"]
+        tag = "UNSAFE WRITE" if entry["unsafe"] else "FAIL"
+        print(
+            f"  {tag} {question} | {transcript} -> {'/'.join(entry['observed'])}"
+            f" (expected {row['expect_behaviour']}; runs {entry['runs']})"
+        )
+
+
+def _run_line(attempt: int, repeats: int, summary: dict[str, Any]) -> str:
+    """ "run 1/3: passed 120/121 (99.2%) · unsafe writes 0 · ..." """
+    passed, scored = summary["holdout_passed"], summary["holdout_cases"]
+    statuses = ", ".join(f"{name} {count}" for name, count in summary["model_statuses"].items())
+    model = f"model calls {summary['model_calls']}" + (f" ({statuses})" if statuses else "")
+    return (
+        f"run {attempt}/{repeats}: passed {passed}/{scored} ({passed / max(1, scored):.1%})"
+        f" [rule {summary['rule_passed']}/{summary['rule_cases']}"
+        f", inference {summary['inference_passed']}/{summary['inference_cases']}]"
+        f" · unsafe writes {summary['unsafe_writes']}"
+        f" · agreements not confirmed {summary['agree_not_confirmed']}/{summary['agree_cases']}"
+        f" · {model}"
+    )
+
+
 def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[str, Any]:
     holdout = [r for r in rows if r["split"] == "holdout"]
     by_group: dict[str, dict[str, int]] = {}
     for row in holdout:
-        bucket = by_group.setdefault(row["group"], {"total": 0, "ok": 0, "ideal": 0, "routed": 0})
+        bucket = by_group.setdefault(row["group"], {"total": 0, "ok": 0, "routed": 0})
         bucket["total"] += 1
         bucket["ok"] += int(row["behaviour_ok"])
-        bucket["ideal"] += int(row["ideal_ok"])
         bucket["routed"] += int(row["routed"])
     agree = [r for r in rows if r["expect_behaviour"].split("|")[0] in WRITE_BEHAVIOURS]
+    inference = [r for r in holdout if r["needs_inference"]]
+    rule = [r for r in holdout if not r["needs_inference"]]
     statuses = dict(sorted(counter.statuses.items())) if counter else {}
     return {
         "cases": len(rows),
         "holdout_cases": len(holdout),
+        "holdout_passed": sum(r["behaviour_ok"] for r in holdout),
         "holdout_behaviour_accuracy": round(
             sum(r["behaviour_ok"] for r in holdout) / max(1, len(holdout)), 4
         ),
-        "holdout_ideal": sum(r["ideal_ok"] for r in holdout),
+        "rule_cases": len(rule),
+        "rule_passed": sum(r["behaviour_ok"] for r in rule),
+        "inference_cases": len(inference),
+        "inference_passed": sum(r["behaviour_ok"] for r in inference),
         "unsafe_writes": sum(r["unsafe_write"] for r in rows),
         "unsafe": sorted({r["transcript"] for r in rows if r["unsafe_write"]}),
         "agree_cases": len(agree),
+        "agree_not_confirmed": sum(r["agree_reread"] for r in agree),
         "agree_reread_rate": round(sum(r["agree_reread"] for r in agree) / max(1, len(agree)), 4),
         "agree_routed": sum(r["routed"] for r in agree),
         "by_group": {name: dict(bucket) for name, bucket in sorted(by_group.items())},
@@ -206,6 +315,7 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
                     "group",
                     "question_id",
                     "transcript",
+                    "needs_inference",
                     "expect_behaviour",
                     "observed_behaviour",
                     "semantic_kind",
@@ -223,15 +333,27 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--baseline", action="store_true", help="chỉ luật, không gọi API")
-    mode.add_argument(
-        "--route-only", action="store_true", help="model giả trả None: đếm lượt gọi, không gọi API"
+    parser = argparse.ArgumentParser(
+        description="Confirm-step eval: which answers unlock CONFIRMED / RESCHEDULED writes."
+        " Results go to result/<dd-mm-yyyy>/confirm/<label>/."
     )
-    mode.add_argument("--semantic", action="store_true", help="bật model thật (cần OPENAI_API_KEY)")
-    parser.add_argument("--repeats", type=int, default=1, help="chạy lại để đo biến thiên")
-    parser.add_argument("--label", default=None)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--baseline", action="store_true", help="rules only, no API calls")
+    mode.add_argument(
+        "--route-only",
+        action="store_true",
+        help="rules + a model stub returning None: counts model calls, no API calls",
+    )
+    mode.add_argument(
+        "--semantic", action="store_true", help="rules + real model (needs OPENAI_API_KEY)"
+    )
+    parser.add_argument(
+        "--repeats", type=int, default=1, help="number of runs, to measure model variance"
+    )
+    parser.add_argument("--label", default=None, help="result folder name (default: mode)")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="print every case instead of the progress bar"
+    )
     args = parser.parse_args()
 
     mode_name = "semantic" if args.semantic else "route-only" if args.route_only else "baseline"
@@ -241,7 +363,7 @@ def main() -> int:
     if args.semantic:
         extractor = _semantic_extractor(EngineSettings(semantic_fallback_enabled=True))
         if extractor is None:
-            print("Không dựng được tầng ngữ nghĩa — kiểm tra cấu hình.", file=sys.stderr)
+            print("Cannot build the semantic layer: check .env settings.", file=sys.stderr)
             return 2
         gateway = RecordingGateway(extractor._gateway)
         extractor._gateway = gateway
@@ -253,23 +375,33 @@ def main() -> int:
 
     runs: list[tuple[list[dict[str, Any]], Optional[Capturing]]] = []
     stamp = datetime.now(timezone.utc).strftime("%H%M%S")
+    total = len(cases)
+    scored = sum(1 for row in cases if row["split"] == "holdout")
+    print(
+        f"{mode_name} · {total} cases × {args.repeats} run(s) = {total * args.repeats} turns"
+        f" · scored: {scored} (excluding {total - scored} prompt examples) · label '{label}'",
+        flush=True,
+    )
+    if not args.verbose:
+        print("legend: . pass · t pass (model timeout, rule result kept) · F fail · W UNSAFE WRITE")
+    progress = _Progress(total, args.repeats)
     for attempt in range(args.repeats):
         counter = Capturing(extractor, gateway) if extractor is not None else None
-        rows = [
-            _run_case(row, f"ceval_{stamp}_{attempt}_{i}", counter, attempt + 1)
-            for i, row in enumerate(cases)
-        ]
+        rows = []
+        if not args.verbose:
+            progress.start(attempt + 1)
+        for i, row in enumerate(cases):
+            result = _run_case(row, f"ceval_{stamp}_{attempt}_{i}", counter, attempt + 1)
+            rows.append(result)
+            if args.verbose:
+                _print_progress(attempt + 1, args.repeats, i + 1, total, result)
+            else:
+                progress.step(i + 1, result)
         runs.append((rows, counter))
         summary = _summarise(rows, counter)
-        print(
-            f"lần {attempt + 1}: holdout {summary['holdout_behaviour_accuracy']}"
-            f" · lý tưởng {summary['holdout_ideal']}/{summary['holdout_cases']}"
-            f" · ghi sai {summary['unsafe_writes']}"
-            f" · đồng ý bị đọc lại {summary['agree_reread_rate']}"
-            f" · gọi model {summary['model_calls']} {summary['model_statuses']}"
-        )
+        print(_run_line(attempt + 1, args.repeats, summary), flush=True)
 
-    out_dir = OUT_ROOT / label
+    out_dir = result_dir("confirm", label)
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "results.csv").open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(runs[0][0][0]))
@@ -290,7 +422,7 @@ def main() -> int:
     (out_dir / "summary.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(json.dumps(per_repeat[-1]["failures"], ensure_ascii=False, indent=2))
+    _print_failures(runs)
     print(f"-> {out_dir}")
     return 0 if all(run["unsafe_writes"] == 0 for run in per_repeat) else 1
 
