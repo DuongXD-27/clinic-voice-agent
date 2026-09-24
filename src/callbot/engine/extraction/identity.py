@@ -3,7 +3,7 @@
 Tầng luật phải nói rõ *vì sao* nó không ra giá trị. "Chưa hiểu" và "đã hiểu rồi từ chối" dẫn
 tới hai hành vi khác nhau: chỉ "chưa hiểu" (`NO_SIGNAL`) hoặc chưa rõ ranh giới tên
 (`UNRESOLVED_BOUNDARY`) mới được hỏi tuyến sau. Nếu
-NER được phép trả lời cả những câu đã bị luật xác định, một câu "không phải Nguyễn Văn A"
+Slot filling họ tên được phép trả lời cả những câu đã bị luật xác định, một câu "không phải Nguyễn Văn A"
 có thể quay lại thành "Nguyễn Văn A" và đi thẳng vào Verifier — đúng thứ mà tầng luật vừa chặn.
 
 Các cụm ở đây đi chung cho cả hai trường, nhưng *phạm vi* thì không: lời sửa tên không được
@@ -30,7 +30,9 @@ class Reason(str, Enum):
 
     OK = "OK"
     NO_SIGNAL = "NO_SIGNAL"  # không luật nào khớp — tuyến sau được phép thử
-    UNRESOLVED_BOUNDARY = "UNRESOLVED_BOUNDARY"  # ứng viên tên còn lời nói — cần NER hoặc hỏi lại
+    UNRESOLVED_BOUNDARY = (
+        "UNRESOLVED_BOUNDARY"  # ứng viên tên còn lời nói — cần slot filling hoặc hỏi lại
+    )
     NEGATED = "NEGATED"  # người gọi bác bỏ chính thông tin vừa nói
     UNCERTAIN = "UNCERTAIN"  # người gọi còn phân vân — hỏi lại, không đưa vào Verifier
     AMBIGUOUS = "AMBIGUOUS"  # nhiều cách hiểu cùng hợp lệ — không chọn hộ
@@ -44,7 +46,7 @@ class Reading(Generic[T]):
     """Kết quả phân tích nội bộ: giá trị, lý do, và vùng transcript đã sinh ra nó.
 
     `zone` là đoạn *có thật* trong `clean(transcript)` — dùng để tách câu gộp tên + ngày sinh
-    và để kiểm tra tên do NER trả về có nằm trong vùng được phép hay không. `None` nghĩa là
+    và để kiểm tra tên do slot filling trả về có nằm trong vùng được phép hay không. `None` nghĩa là
     không khoanh được vùng nào, nên không ai được cắt câu dựa vào kết quả này.
     """
 

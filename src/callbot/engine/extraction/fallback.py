@@ -1,4 +1,4 @@
-"""Tuyến sau (NER / LLM tập nhãn đóng) — thiết kế v1.1 §4, §5.1, §5.4.
+"""Tuyến sau (slot filling họ tên / LLM tập nhãn đóng) — thiết kế v1.1 §4, §5.1, §5.4.
 
 Chỉ gọi khi tầng luật chưa hiểu hoặc chưa tách chắc ranh giới tên (`Provenance.NONE`),
 không dùng để lật kết luận phủ định / phân vân / thông tin người khác. Mọi kết quả
@@ -6,6 +6,8 @@ tuyến sau đi qua `guard_fallback` — chốt chặn chống bịa đặt khô
 `span` phải là chuỗi con của transcript sau chuẩn hoá, không thì coi như NONE.
 
 Prompt của tuyến sau KHÔNG được chứa hồ sơ bệnh nhân hay chi tiết lịch hẹn (nguyên tắc 2).
+Slot filling họ tên nhận thêm câu hỏi bot đang chờ làm ngữ cảnh; span vẫn phải nằm trong
+câu trả lời của khách, không bao giờ lấy từ câu hỏi của bot.
 """
 
 from typing import Optional, Protocol, TypeVar
@@ -19,7 +21,15 @@ T = TypeVar("T")
 class FallbackExtractor(Protocol):
     """Cài đặt có thể không hỗ trợ mọi trường — trả `None` nghĩa là "không xử lý trường này"."""
 
-    def full_name(self, transcript: str) -> Optional[Field[str]]: ...
+    def full_name(
+        self,
+        transcript: str,
+        *,
+        question_id: QuestionId = QuestionId.ASK_NAME,
+        bot_question: Optional[str] = None,
+    ) -> Optional[Field[str]]:
+        """`bot_question`: nội dung câu hỏi nghiệp vụ đang chờ; `None` khi phiên không có nội dung."""
+        ...
 
     def intent(self, transcript: str, allowed: frozenset[Intent]) -> Optional[Field[Intent]]: ...
 

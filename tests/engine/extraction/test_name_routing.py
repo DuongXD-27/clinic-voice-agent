@@ -1,4 +1,4 @@
-"""Residual speech must not become a NORMALIZED name or survive failed NER."""
+"""Residual speech must not become a NORMALIZED name or survive failed slot filling."""
 
 import pytest
 
@@ -24,7 +24,7 @@ def test_leftover_speech_is_not_a_settled_rule_name(text):
 
 
 @pytest.mark.parametrize("text", SUSPECT_NAMES)
-def test_suspect_boundary_routes_to_ner_and_uses_only_the_grounded_name(text):
+def test_suspect_boundary_routes_to_slot_filling_and_uses_only_the_grounded_name(text):
     fallback = FakeFallback(
         full_name=Field("nguyễn văn a", Provenance.FALLBACK, span="nguyễn văn a")
     )
@@ -109,7 +109,7 @@ def test_removing_a_greeting_clause_does_not_turn_a_relative_into_the_caller(tex
 
 def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
     class BrokenFallback(FakeFallback):
-        def full_name(self, transcript):
+        def full_name(self, transcript, **context):
             raise TimeoutError("synthetic provider timeout")
 
     result = InformationExtractor(fallback=BrokenFallback(), name_fallback=True).extract(
@@ -130,7 +130,7 @@ def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
         ("Nguyễn Văn Em nhé", "nguyễn văn em"),
     ],
 )
-def test_ambiguous_suffix_must_use_ner_instead_of_a_truncated_rule_name(text, expected):
+def test_ambiguous_suffix_must_use_slot_filling_instead_of_a_truncated_rule_name(text, expected):
     reading = read_full_name(text)
     assert reading.reason is Reason.UNRESOLVED_BOUNDARY
     assert not reading.field.found

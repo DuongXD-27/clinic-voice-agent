@@ -30,6 +30,7 @@ class FakeFallback:
     def __init__(self, intent=None, agreement=None, full_name=None) -> None:
         self._intent, self._agreement, self._full_name = intent, agreement, full_name
         self.calls: list[str] = []
+        self.name_contexts: list[tuple[QuestionId, Optional[str]]] = []
 
     def intent(self, transcript: str, allowed: frozenset[Intent]) -> Optional[Field[Intent]]:
         self.calls.append("intent")
@@ -39,8 +40,15 @@ class FakeFallback:
         self.calls.append("agreement")
         return self._agreement
 
-    def full_name(self, transcript: str) -> Optional[Field[str]]:
+    def full_name(
+        self,
+        transcript: str,
+        *,
+        question_id: QuestionId = QuestionId.ASK_NAME,
+        bot_question: Optional[str] = None,
+    ) -> Optional[Field[str]]:
         self.calls.append("full_name")
+        self.name_contexts.append((question_id, bot_question))
         return self._full_name
 
 

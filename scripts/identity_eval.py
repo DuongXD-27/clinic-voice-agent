@@ -1,13 +1,18 @@
-"""Synthetic identity audit: offline by default; --ner enables configured name NER.
+"""Synthetic identity audit: offline by default; --slot-filling enables name slot filling.
 
     python scripts/identity_eval.py
-    python scripts/identity_eval.py --ner --groups suffix_other,greeting_with_name
+    python scripts/identity_eval.py --slot-filling --groups suffix_other,greeting_with_name
+
+`--ner` remains a compatibility alias for `--slot-filling`. Each case may set `bot_question`,
+the pending question the bot actually said; empty means the inbound opening greeting, since
+every case is turn 1 of an inbound call. The question is sent only for ASK_NAME cases.
 
 This is a discovery set, not a held-out accuracy benchmark. Empty expected values mean
 NONE; '*' marks a name boundary needing human review. Exit 1 reports known mismatches.
 Dialogue state transitions are covered separately by test_identity_dialogue.py.
-Results default to result/<dd-mm-yyyy>/identity/<baseline|ner>/results.csv (Vietnam time).
-A summary.json is written beside the CSV, including counts, failures and NER transport status.
+Results default to result/<dd-mm-yyyy>/identity/<baseline|slot_filling>/results.csv (Vietnam
+time). A summary.json is written beside the CSV, including counts, failures and transport status.
+Report columns keep their ner_* names so older result files stay comparable.
 """
 
 from __future__ import annotations
@@ -21,17 +26,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from callbot.engine.dialogue import templates
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
 from callbot.engine.extraction.greeting import is_greeting, is_identity_question
-from callbot.engine.extraction.ner import NameNER
+from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.schema import VN_TZ
 from callbot.engine.settings import EngineSettings
 from inference.llm.gateway import create_gateway
-from inference.llm.prompt.ner import PROMPT_VERSION
+from inference.llm.prompt.name_slot_filling import PROMPT_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 9, 23, 9, 0, tzinfo=VN_TZ)
 FIELDS = ("name", "greeting", "identity_question", "intent", "dob")
+DIRECTION = "inbound"
+MODE = "slot_filling"
 
 
 class RecordingGateway:
@@ -59,7 +67,7 @@ def evaluate(
     groups: frozenset[str] | None = None,
 ) -> list[dict[str, str]]:
     extractor = InformationExtractor(
-        fallback=NameNER(gateway) if gateway else None, name_fallback=gateway is not None
+        fallback=NameSlotFiller(gateway) if gateway else None, name_fallback=gateway is not None
     )
     with path.open(encoding="utf-8-sig", newline="") as source:
         cases = list(csv.DictReader(source))
@@ -67,11 +75,14 @@ def evaluate(
     for case in cases:
         if groups is not None and case["group"] not in groups:
             continue
+        question_id = QuestionId(case["question_id"])
+        bot_question = bot_question_for(case, question_id)
         context = TurnContext(
             turn=1,
-            question_id=QuestionId(case["question_id"]),
-            direction="inbound",
+            question_id=question_id,
+            direction=DIRECTION,
             now=NOW,
+            question_text=bot_question,
         )
         transcript = case["transcript"]
         calls_before = gateway.calls if gateway else 0
@@ -95,12 +106,14 @@ def evaluate(
         results.append(
             {
                 **case,
+                "bot_question": bot_question or "",
                 **{f"actual_{field}": value for field, value in actual.items()},
                 "name_source": extraction.full_name.provenance.value,
                 "ner_called": str(int(called)),
                 "ner_transport_status": gateway.status if called else "not_called",
                 "elapsed_ms": str(elapsed_ms),
-                "mode": "ner" if gateway else "rules",
+                "mode": MODE if gateway else "rules",
+                "fallback_method": MODE if gateway else "",
                 "model": gateway.model if gateway else "",
                 "prompt_version": PROMPT_VERSION if gateway else "",
                 "status": "FAIL" if mismatches else "REVIEW" if review else "PASS",
@@ -108,6 +121,13 @@ def evaluate(
             }
         )
     return results
+
+
+def bot_question_for(case: dict[str, str], question_id: QuestionId) -> str | None:
+    """Pending question text as the orchestrator would pass it: ASK_NAME only."""
+    if question_id is not QuestionId.ASK_NAME:
+        return None
+    return case.get("bot_question") or templates.greeting(DIRECTION)
 
 
 def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
@@ -122,6 +142,7 @@ def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
         "evaluation_scope": "identity_extraction",
         "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
         "mode": results[0]["mode"] if results else None,
+        "fallback_method": results[0].get("fallback_method") or None if results else None,
         "models": sorted({row["model"] for row in results if row["model"]}),
         "prompt_versions": sorted(
             {row["prompt_version"] for row in results if row["prompt_version"]}
@@ -166,34 +187,44 @@ def write_summary(results: list[dict[str, str]], output: Path) -> Path:
     return summary_path
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, default=ROOT / "eval/identity/cases.csv")
     parser.add_argument(
         "--output",
         type=Path,
-        help="Override result/<dd-mm-yyyy>/identity/<baseline|ner>/results.csv",
+        help="Override result/<dd-mm-yyyy>/identity/<baseline|slot_filling>/results.csv",
     )
     parser.add_argument(
-        "--ner", action="store_true", help="Call configured NAME_FALLBACK_PROVIDER; uses API quota"
+        "--slot-filling",
+        "--ner",
+        dest="slot_filling",
+        action="store_true",
+        help="Call configured NAME_FALLBACK_PROVIDER for name slot filling; uses API quota "
+        "(--ner is a compatibility alias)",
     )
     parser.add_argument(
         "--groups", help="Comma-separated groups; omit for the complete discovery set"
     )
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     output = args.output or (
         ROOT
         / "result"
         / datetime.now(VN_TZ).strftime("%d-%m-%Y")
         / "identity"
-        / ("ner" if args.ner else "baseline")
+        / (MODE if args.slot_filling else "baseline")
         / "results.csv"
     )
     gateway = None
-    if args.ner:
+    if args.slot_filling:
         settings = EngineSettings()
         if settings.name_fallback_provider == "none":
-            parser.error("--ner requires NAME_FALLBACK_PROVIDER to be configured")
+            parser.error("--slot-filling requires NAME_FALLBACK_PROVIDER to be configured")
         gateway = RecordingGateway(create_gateway(settings.name_fallback_provider))
     results = evaluate(
         args.cases, gateway, frozenset(args.groups.split(",")) if args.groups else None
@@ -207,7 +238,8 @@ def main() -> int:
     print(f"Synthetic discovery set: {len(results)} cases; {dict(total)}")
     if gateway:
         print(
-            f"NER: {gateway.provider_name}/{gateway.model}; {gateway.calls} requests; {PROMPT_VERSION}"
+            f"Slot filling: {gateway.provider_name}/{gateway.model}; "
+            f"{gateway.calls} requests; {PROMPT_VERSION}"
         )
     for group, counts in groups.items():
         print(f"  {group}: {dict(counts)}")
