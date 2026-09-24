@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
 from callbot.transports.http.call_mode import CallModeStore
+from callbot.transports.http.config import settings as http_settings
 from callbot.transports.http.main import create_app
 from clinic_mock_sim import FakeClinicAPI
 from tests.transports.http.fakes import make_speech_bundle
@@ -27,6 +28,8 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     monkeypatch.setenv("SEMANTIC_FALLBACK_ENABLED", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setattr(engine_module, "_default_session_store", redis_store_factory)
+    # BOT_API_KEYS trong .env bật auth cho mọi request test; test_auth.py tự bật lại khi cần.
+    monkeypatch.setattr(http_settings, "bot_api_keys", "")
 
 
 @pytest.fixture

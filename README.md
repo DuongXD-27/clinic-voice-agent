@@ -25,8 +25,8 @@ phòng khám (Clinic API) để đọc/ghi lịch hẹn.
 - **Hủy lịch an toàn**: yêu cầu và xác nhận ở hai lượt riêng, ghi nhận lý do hủy.
 - **Trích xuất thông tin** bằng luật, có tầng LLM tuỳ chọn để hiểu câu nói vòng và nhận
   diện tên.
-- **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI hoặc
-  ElevenLabs, âm thanh băng hẹp 8 kHz như đường dây điện thoại.
+- **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI, ElevenLabs hoặc
+  Vbee (có thể cấu hình provider dự phòng), âm thanh băng hẹp 8 kHz như đường dây điện thoại.
 - **Session trên Redis**: chạy được nhiều worker, dữ liệu khách hàng chỉ lưu tạm và tự xoá
   khi cuộc gọi kết thúc hoặc hết hạn; chặn ghi trùng khi kết quả ghi không xác định.
 
@@ -58,9 +58,9 @@ Toàn bộ cấu hình nằm trong `.env`, xem mẫu và chú thích ở [.env.e
 
 | Nhóm | Biến chính |
 |---|---|
-| API key model | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` |
+| API key model | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `VBEE_API_TOKEN` + `VBEE_APP_ID`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` |
 | Clinic API | `CLINIC_BACKEND` (`mock` \| `sim`), `CLINIC_MOCK_BASE_URL`, `CLINIC_MOCK_API_KEY`, `CLINIC_ID`, `CLINIC_SIM_*` |
-| Voice pipeline | `ASR_PROVIDER` (`zipformer` \| `gemini` \| `phowhisper`), `TTS_PROVIDER` (`openai` \| `elevenlabs`), `PUBLIC_BASE_URL` |
+| Voice pipeline | `ASR_PROVIDER` (`zipformer` \| `gemini` \| `phowhisper`), `TTS_PROVIDER` (`openai` \| `elevenlabs` \| `vbee`), `TTS_FALLBACK_PROVIDER`, `PUBLIC_BASE_URL` |
 | Extraction qua LLM | `SEMANTIC_FALLBACK_*`, `NAME_FALLBACK_*` |
 | Session | `REDIS_URL`, `REDIS_PASSWORD`, `SESSION_*` |
 
@@ -171,13 +171,13 @@ src/
 │   │   └── tools/              # Clinic Gateway và client Clinic API
 │   └── tracing/                # log mỗi lượt ra JSONL
 ├── speech/                     # voice pipeline
-│   ├── audio/                  # codec WAV/G.711, chuẩn hoá PCM 8 kHz
+│   ├── audio/                  # codec WAV/G.711, chuẩn hoá PCM 8 kHz, lưu WAV cho audio_url
 │   ├── asr/                    # VAD → ASR → transcript
-│   └── tts/                    # tổng hợp giọng nói, phục vụ audio_url
+│   └── bundle.py               # nối ASR/TTS gateway + nơi lưu audio cho mode=audio
 ├── inference/                  # provider model dùng chung
 │   ├── llm/                    # LLM gateway, prompt, provider
 │   ├── asr/                    # Gemini / PhoWhisper / ZipFormer
-│   └── tts/                    # OpenAI / ElevenLabs
+│   └── tts/                    # OpenAI / ElevenLabs / Vbee + fallback (thư mục TTS duy nhất)
 └── clinic_mock_sim/            # clinic mock trong bộ nhớ: test + demo Docker local (deploy luôn dùng mock)
 tests/                          # cùng cấu trúc với src/
 docs/reference/                 # tài liệu thiết kế

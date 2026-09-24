@@ -10,7 +10,7 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class AudioArtifactStore:
-    """Lưu audio của bot tại <audio_dir>/<call_id>/<turn>.wav và dựng audio_url công khai.
+    """Lưu audio của bot (TTS) và clip demo upload tại <audio_dir>/<call_id>/<turn>.wav và dựng audio_url công khai.
 
     TTS thường trả 16–24 kHz; audio được hạ về băng hẹp để nghe giống hệt trên đường dây.
     """

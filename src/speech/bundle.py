@@ -6,18 +6,44 @@ Tầng transport của callbot chỉ nối bundle này vào request.
 
 import logging
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional, Protocol
 
 from inference.asr import create_asr_gateway
-from inference.tts import create_tts_gateway
+from inference.tts import TTSGateway, create_tts_gateway
 from speech.asr.recognizer import Recognizer, SpeechRecognizer
 from speech.audio.loader import load_from_url
+from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
-from speech.tts.storage import AudioArtifactStore
-from speech.tts.synthesizer import SpeechSynthesizer, Synthesizer
 from speech.types import AudioSegment
 
 logger = logging.getLogger(__name__)
+
+
+class Synthesizer(Protocol):
+    name: str
+
+    def synthesize(self, text: str) -> Optional[AudioSegment]: ...
+
+
+class SpeechSynthesizer:
+    """Bọc TTS gateway (PCM của provider) thành `AudioSegment` của miền speech."""
+
+    def __init__(self, gateway: TTSGateway) -> None:
+        self._gateway = gateway
+
+    @property
+    def name(self) -> str:
+        return self._gateway.provider_name
+
+    @property
+    def model(self) -> str:
+        return self._gateway.model
+
+    def synthesize(self, text: str) -> Optional[AudioSegment]:
+        result = self._gateway.synthesize(text)
+        if result is None:
+            return None
+        return AudioSegment(pcm=result.pcm, sample_rate=result.sample_rate)
 
 
 @dataclass
@@ -31,8 +57,17 @@ class SpeechBundle:
 
 def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
-    tts = SpeechSynthesizer(create_tts_gateway(settings.tts_provider))
-    logger.info("ASR %s (%s), TTS %s (%s)", asr.name, asr.model, tts.name, tts.model)
+    tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
+    tts = SpeechSynthesizer(tts_gateway)
+    backup = tts_gateway.fallback
+    logger.info(
+        "ASR %s (%s), TTS %s (%s), TTS fallback %s",
+        asr.name,
+        asr.model,
+        tts.name,
+        tts.model,
+        f"{backup.provider_name} ({backup.model})" if backup else "none",
+    )
     return SpeechBundle(
         asr=asr,
         tts=tts,
