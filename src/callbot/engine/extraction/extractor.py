@@ -240,7 +240,11 @@ class InformationExtractor:
             cancel_reason=cancel_reason,
             line_signal=line_signal,
         )
-        if route_reason is None or self._semantic is None:
+        if route_reason is None:
+            return result
+        if self._semantic is None:
+            if route_reason is RouteReason.CLINICAL_UNRESOLVED:
+                return merge_semantic(result, None, route_reason, ())
             return result
         return self._apply_semantic(ctx, result, route_reason)
 

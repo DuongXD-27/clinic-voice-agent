@@ -30,6 +30,8 @@ _WHO = (
 _SOCIAL = rf"(?:{_HELLO}|{_WHO}|{_CONTACT})"
 _GREETING = re.compile(rf"(?:{_FILLER} )*{_SOCIAL}(?: (?:{_SOCIAL}|{_FILLER}))*")
 _IDENTITY_QUESTION = re.compile(rf"(?<!\w){_WHO}(?!\w)")
+_HOLD = re.compile(r"(?:cho|doi|khoan)(?: toi)?(?: mot)? (?:chut|lat)(?: nhe|a|da|em)?")
+_RETURN = re.compile(r"(?:da )?(?:roi )?toi day(?: roi| a| em)?")
 
 
 def _social_text(transcript: str) -> str:
@@ -51,3 +53,13 @@ def is_identity_question(transcript: str) -> bool:
     """
     text = _social_text(transcript)
     return _GREETING.fullmatch(text) is not None and _IDENTITY_QUESTION.search(text) is not None
+
+
+def is_hold_request(transcript: str) -> bool:
+    """Xin giữ máy, chưa trả lời câu hỏi đang chờ."""
+    return _HOLD.fullmatch(strip_diacritics(clean(transcript))) is not None
+
+
+def is_return_signal(transcript: str) -> bool:
+    """Quay lại đường dây, chưa cung cấp danh tính hay xác nhận."""
+    return _RETURN.fullmatch(strip_diacritics(clean(transcript))) is not None

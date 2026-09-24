@@ -63,8 +63,8 @@ def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]
             max_completion_tokens=settings.semantic_fallback_max_tokens,
         )
     except ValidationError:
-        # Bật mặc định nhưng máy này không có OPENAI_API_KEY: chạy chỉ-luật (vẫn an toàn — hai chốt
-        # chặn ca review nằm ở tầng luật), không để cả server không khởi động được.
+        # Thiếu OPENAI_API_KEY: chạy chỉ-luật; các câu lâm sàng ngoài luật sẽ không được model phân loại.
+        # Không để cả server không khởi động được.
         logger.warning("Tầng ngữ nghĩa đang bật nhưng thiếu OPENAI_API_KEY; chạy chỉ bằng luật")
         return None
     return LLMSemanticExtractor(
