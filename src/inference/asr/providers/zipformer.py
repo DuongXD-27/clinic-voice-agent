@@ -47,6 +47,8 @@ from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
 from speech.types import NARROWBAND_RATE, TranscriptEvent
 
+_PRE_SPEECH_PREROLL_MS = 300
+
 
 class ZipFormerASR:
     input_sample_rate = 16_000
@@ -125,6 +127,8 @@ class ZipFormerASR:
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
         buffer = bytearray()
+        pre_speech = bytearray()
+        pre_speech_max_bytes = audio_sample_rate * _PRE_SPEECH_PREROLL_MS // 1000 * 2
         in_speech = False
         last_emitted_text = ""
         silent_ms = 0.0
@@ -140,8 +144,18 @@ class ZipFormerASR:
                 continue
             is_speech = silence_classifier.is_speech(frame)
             if not in_speech and not is_speech:
-                continue  # chưa có tiếng nói nào — bỏ qua, không tích buffer (tránh flush rỗng)
+                # VAD nội bộ có thể nhận ra giọng nói muộn hơn âm tiết đầu. Giữ tối đa
+                # 300ms audio trước speech_start để không vô hiệu hóa pre-roll của pipeline.
+                # Chỉ đưa vào buffer decode khi VAD xác nhận speech; silence/noise đơn lẻ
+                # vẫn không thể tạo transcript hoặc vượt ngưỡng min_decode_ms.
+                pre_speech.extend(frame)
+                if len(pre_speech) > pre_speech_max_bytes:
+                    del pre_speech[: len(pre_speech) - pre_speech_max_bytes]
+                continue
 
+            if not in_speech:
+                buffer.extend(pre_speech)
+                pre_speech.clear()
             in_speech = True
             buffer.extend(frame)
             audio_ms_since_emit += frame_ms

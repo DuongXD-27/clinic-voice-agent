@@ -6,11 +6,13 @@ SessionManager, CallBridge chỉ là caller của nó, giống transports/http/c
 """
 
 import asyncio
+import json
 import logging
 import os
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
+from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
@@ -166,7 +168,38 @@ class CallBridge:
                 appointment_id=self._appointment_id,
             )
             logger.info("call_bridge: start_call room=%s", self._room.name)
-            opening: BotAction = await asyncio.to_thread(self._orchestrator.start_call, call_start)
+            try:
+                opening: BotAction = await asyncio.to_thread(
+                    self._orchestrator.start_call, call_start
+                )
+            except OutboundStartFailed as exc:
+                # Core cố ý không tạo phiên/không phát lời chào khi lịch outbound không
+                # dùng được. Báo lỗi qua data channel để web demo không im lặng sau khi
+                # đã kết nối room; không biến lỗi nghiệp vụ dự kiến thành job crash.
+                logger.warning(
+                    "call_bridge: outbound start failed room=%s code=%s",
+                    self._room.name,
+                    exc.code or "UNKNOWN",
+                )
+                try:
+                    await self._room.local_participant.publish_data(
+                        json.dumps(
+                            {
+                                "code": "OUTBOUND_START_FAILED",
+                                "message": "Không lấy được lịch hẹn hợp lệ từ Clinic. "
+                                "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
+                            },
+                            ensure_ascii=False,
+                        ),
+                        reliable=True,
+                        topic="callbot.status",
+                    )
+                except Exception as publish_error:
+                    logger.warning(
+                        "call_bridge: không gửi được lỗi outbound tới browser (%s)",
+                        type(publish_error).__name__,
+                    )
+                return
 
             await self._publish_tts_track()
             # Bắt đầu VAD/ASR trước câu chào: barge-in hoạt động ngay từ lượt 0 và mic

@@ -259,5 +259,65 @@ async def test_stream_buffer_size_bounded_with_continuous_speech() -> None:
     assert max_pcm_len_seen <= _FRAME_BYTES * max_frames_per_segment * 2
 
 
+@pytest.mark.parametrize("frame_ms", [10, 30])
+async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> None:
+    """VAD nội bộ nhận speech trễ; không được bỏ âm tiết đầu mà pipeline đã gửi."""
+    frame_bytes = 8000 * frame_ms // 1000 * 2
+    quiet_count = 600 // frame_ms
+    speech_count = 120 // frame_ms
+    tail_count = 60 // frame_ms
+    frames = [
+        bytes((marker, 0)) * (frame_bytes // 2)
+        for marker in range(1, quiet_count + speech_count + tail_count + 1)
+    ]
+
+    class _ScriptedClassifier:
+        index = 0
+
+        def is_speech(self, _frame: bytes) -> bool:
+            self.index += 1
+            return quiet_count < self.index <= quiet_count + speech_count
+
+    class _CapturingASR(_RecordingASR):
+        def __init__(self) -> None:
+            super().__init__(_GrowingFakeRecognizer())
+            self.decoded: list[bytes] = []
+
+        def _decode_stream_pcm(self, pcm: bytes, source_rate: int) -> str:
+            assert source_rate == 8000
+            self.decoded.append(pcm)
+            return "TÔI CÓ ĐẾN ĐƯỢC"
+
+    asr = _CapturingASR()
+    events = [
+        event
+        async for event in asr.stream(
+            _aiter(frames),
+            silence_classifier=_ScriptedClassifier(),
+            end_silence_ms=60,
+            min_emit_interval_ms=10_000,
+            min_decode_ms=60,
+        )
+    ]
+
+    expected_start = quiet_count - 300 // frame_ms
+    assert asr.decoded == [b"".join(frames[expected_start:])]
+    assert len(events) == 1 and events[0].is_final
+
+    # Pre-roll không được tính thành speech để lách ngưỡng chống hallucination.
+    short_asr = _CapturingASR()
+    short_events = [
+        event
+        async for event in short_asr.stream(
+            _aiter(frames),
+            silence_classifier=_ScriptedClassifier(),
+            end_silence_ms=60,
+            min_decode_ms=400,
+        )
+    ]
+    assert short_events == []
+    assert short_asr.decoded == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

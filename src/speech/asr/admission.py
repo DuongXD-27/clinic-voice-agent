@@ -29,17 +29,27 @@ class AdmissionDecision:
 
 
 class SpeechAdmission:
-    """`min_snr_db`: SNR tối thiểu (so với noise floor ước tính) để 1 frame speech mới
-    (chưa có admission YES liền trước) được đẩy vào ASR. `min_speech_ms`: audio speech
-    liên tục tối thiểu trước khi admit — cùng tinh thần `TurnController.min_speech_ms`
-    nhưng áp dụng SỚM hơn (chặn từ nguồn, không chỉ discard candidate sau khi đã tốn
-    compute ASR). Frame NỐI TIẾP của 1 đoạn đã admit (`already_admitted=True`) luôn được
-    admit tiếp dù SNR dao động xuống thấp tạm thời — tránh cắt giữa câu khi người nói hạ
-    giọng."""
+    """Gate SNR + thời lượng; đoạn đã admit giữ thêm im lặng tới endpoint.
 
-    def __init__(self, *, min_snr_db: float = 6.0, min_speech_ms: int = 150) -> None:
+    `min_snr_db` áp dụng khi bắt đầu một đoạn speech. Sau khi admit, SNR có thể dao
+    động mà không cắt giữa câu; `end_silence_ms` chặn việc đẩy im lặng vào ASR mãi
+    mãi khi người dùng đã dứt lời.
+    """
+
+    def __init__(
+        self,
+        *,
+        min_snr_db: float = 6.0,
+        min_speech_ms: int = 150,
+        end_silence_ms: int = 600,
+    ) -> None:
         self._min_snr_db = min_snr_db
         self._min_speech_ms = min_speech_ms
+        self._end_silence_ms = end_silence_ms
+
+    @property
+    def min_snr_db(self) -> float:
+        return self._min_snr_db
 
     def evaluate(
         self,
@@ -48,11 +58,14 @@ class SpeechAdmission:
         evidence: NoiseEvidence,
         speech_ms_so_far: float,
         already_admitted: bool,
+        nonspeech_ms_so_far: float = 0.0,
     ) -> AdmissionDecision:
-        if not is_speech and not already_admitted:
-            return AdmissionDecision(admit=False, reason="no_speech")
         if already_admitted:
+            if not is_speech and nonspeech_ms_so_far >= self._end_silence_ms:
+                return AdmissionDecision(admit=False, reason="no_speech")
             return AdmissionDecision(admit=True, reason="ok")
+        if not is_speech:
+            return AdmissionDecision(admit=False, reason="no_speech")
         if evidence.snr_db < self._min_snr_db:
             return AdmissionDecision(admit=False, reason="low_snr")
         if speech_ms_so_far < self._min_speech_ms:

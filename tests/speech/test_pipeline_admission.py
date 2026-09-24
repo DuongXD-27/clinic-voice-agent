@@ -245,6 +245,31 @@ async def test_noise_before_speech_does_not_inflate_noise_floor() -> None:
     assert asr.consumed_frames == []
 
 
+async def test_loud_pre_onset_does_not_poison_floor_or_stream_silence_forever() -> None:
+    """Silero nhận speech trễ: frame đầu rất lớn không được nâng floor rồi khóa cả câu.
+
+    Khi đã ADMIT, chỉ gửi tối đa end_silence_ms im lặng cho ASR để nó chốt final.
+    """
+    asr = _RecordingASR()
+    pre_onset = _make_frame(1, 0x7F)
+    speech = _make_frame(2, 0x03)
+    silence = bytes(480)
+    admission = SpeechAdmission(min_snr_db=6.0, min_speech_ms=30, end_silence_ms=90)
+    pipeline = STTPipeline(
+        asr=asr,
+        vad=StreamingVAD(_NullEnergyClassifier()),
+        async_vad=_FakeAsyncVAD([]),
+        admission=admission,
+        admission_classifier=_ByFrameClassifier({speech}),
+    )
+
+    frames = [pre_onset] * 10 + [speech] * 5 + [silence] * 30
+    await asyncio.wait_for(_collect(pipeline.stream(_frame_sequence(frames))), timeout=2.0)
+
+    assert speech in asr.consumed_frames
+    assert asr.consumed_frames.count(silence) == 2
+
+
 async def test_vad_and_admission_disagree_does_not_crash_and_logs(caplog) -> None:
     """VAD chính (StreamingVAD) báo speech_start (candidate đang hình thành trong
     TurnController) trong khi Admission classifier RIÊNG vẫn REJECT audio khỏi ASR —
@@ -280,12 +305,15 @@ async def test_vad_and_admission_disagree_does_not_crash_and_logs(caplog) -> Non
 
     with caplog.at_level(logging.DEBUG, logger="speech.asr.pipeline"):
         await asyncio.wait_for(
-            _collect(pipeline.stream(_frames_with_yield(5), turn_controller=controller)),
+            _collect(pipeline.stream(_frames_with_yield(100), turn_controller=controller)),
             timeout=2.0,
         )
 
     assert len(asr.consumed_frames) == 1
-    assert any("VAD/Admission disagree" in record.message for record in caplog.records)
+    disagree_logs = [
+        record for record in caplog.records if "VAD/Admission disagree" in record.message
+    ]
+    assert len(disagree_logs) == 1  # không log 100 lần cho 100 frame 30ms
 
 
 async def test_already_admitted_mid_sentence_frame_not_dropped_by_preroll() -> None:

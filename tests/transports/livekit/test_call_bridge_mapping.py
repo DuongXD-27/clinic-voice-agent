@@ -1,9 +1,11 @@
 import asyncio
+import json
 
 import pytest
 
 pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
 
+from callbot.engine.errors import OutboundStartFailed  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     CallBridge,
@@ -150,9 +152,13 @@ class _FakeLocalParticipant:
 
     def __init__(self) -> None:
         self.published: list[tuple[object, object]] = []
+        self.data_packets: list[tuple[str, bool, str]] = []
 
     async def publish_track(self, track, options) -> None:
         self.published.append((track, options))
+
+    async def publish_data(self, payload, *, reliable=True, topic="") -> None:
+        self.data_packets.append((payload, reliable, topic))
 
 
 class _FakeRoom:
@@ -197,6 +203,40 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     assert len(fake_source.captured_frames) == 2
     assert fake_source.closed is True
     assert fake_source.wait_for_playout_calls == 2
+
+
+async def test_outbound_start_failure_notifies_browser_without_crashing_job() -> None:
+    class _RejectedOrchestrator(_FakeOrchestrator):
+        def start_call(self, call: CallStart) -> BotAction:
+            self.started_calls.append(call)
+            raise OutboundStartFailed("APPOINTMENT_NOT_ACTIONABLE")
+
+    orchestrator = _RejectedOrchestrator(
+        opening=BotAction(utterance="Không được phát", state="AWAITING_IDENTITY"),
+        turn_actions=[],
+    )
+    tts = _FakeTTS()
+    room = _FakeRoom("web-outbound-rejected")
+    bridge = CallBridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([]),
+        tts,
+        direction="outbound",
+        appointment_id="apt_00417",
+    )
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert orchestrator.started_calls[0].appointment_id == "apt_00417"
+    assert room.local_participant.published == []
+    assert tts.spoken == []
+    assert len(room.local_participant.data_packets) == 1
+    payload, reliable, topic = room.local_participant.data_packets[0]
+    assert json.loads(payload)["code"] == "OUTBOUND_START_FAILED"
+    assert "APPOINTMENT_NOT_ACTIONABLE" not in payload
+    assert reliable is True
+    assert topic == "callbot.status"
 
 
 async def test_speak_buffers_odd_byte_chunks_into_valid_pcm16_frames(monkeypatch) -> None:

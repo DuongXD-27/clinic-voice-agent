@@ -224,6 +224,7 @@
       }
 
       async function connect() {
+        let startFailure = null;
         ui.connectBtn.disabled = true;
         lockInputs(true);
         setStatus("connecting", "Đang lấy token…");
@@ -237,8 +238,26 @@
               track.attach(ui.botAudio);
             }
           });
+          room.on(LivekitClient.RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+            if (topic !== "callbot.status") return;
+            let status;
+            try {
+              status = JSON.parse(new TextDecoder().decode(payload));
+            } catch {
+              return;
+            }
+            if (status.code !== "OUTBOUND_START_FAILED") return;
+            startFailure = status.message || "Không thể bắt đầu cuộc gọi đi.";
+            setStatus("error", "Không thể bắt đầu cuộc gọi");
+            setNotice(startFailure, true);
+            void room.disconnect().catch(() => {});
+          });
           room.on(LivekitClient.RoomEvent.Disconnected, () => {
-            setStatus("", "Đã ngắt kết nối");
+            setStatus(
+              startFailure ? "error" : "",
+              startFailure ? "Không thể bắt đầu cuộc gọi" : "Đã ngắt kết nối",
+            );
+            if (startFailure) setNotice(startFailure, true);
             ui.connectBtn.disabled = false;
             ui.disconnectBtn.disabled = true;
             ui.muteBtn.disabled = true;
@@ -258,9 +277,12 @@
 
           setStatus("connecting", "Đang kết nối room…");
           await room.connect(url, token);
+          if (startFailure) return;
           await room.startAudio();
+          if (startFailure) return;
           setStatus("connecting", "Đang bật microphone…");
           await room.localParticipant.setMicrophoneEnabled(true);
+          if (startFailure) return;
 
           setStatus("connected", `Đã kết nối · ${roomName}`);
           setNotice("Đang nói chuyện — nói vào microphone, bot sẽ trả lời qua loa.");
@@ -269,8 +291,8 @@
           ui.muteBtn.disabled = false;
           ui.muteBtn.textContent = "Tắt microphone";
         } catch (error) {
-          setStatus("error", "Lỗi kết nối");
-          setNotice(error.message, true);
+          setStatus("error", startFailure ? "Không thể bắt đầu cuộc gọi" : "Lỗi kết nối");
+          setNotice(startFailure || error.message, true);
           ui.connectBtn.disabled = false;
           lockInputs(false);
         }

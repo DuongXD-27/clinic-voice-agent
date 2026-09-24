@@ -188,6 +188,7 @@ def build_streaming_bundle(
         admission = SpeechAdmission(
             min_snr_db=settings.speech_admission_min_snr_db,
             min_speech_ms=settings.speech_admission_min_speech_ms,
+            end_silence_ms=settings.vad_end_silence_ms,
         )
         # Classifier riêng thứ 3 — cùng lý do asr_endpoint_classifier ở trên, không share
         # instance stateful giữa 3 consumer (VAD chính, ASR endpoint, Admission). Silero

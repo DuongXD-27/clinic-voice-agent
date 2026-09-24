@@ -1,4 +1,5 @@
 temp/
+.local/
 
 __pycache__/
 *.pyc

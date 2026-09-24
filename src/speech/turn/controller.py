@@ -165,13 +165,16 @@ class TurnController:
 
     @property
     def has_active_vad_candidate(self) -> bool:
-        """True giữa lúc VAD chính đã báo speech_start và turn chưa chốt/reset — đọc bởi
-        STTPipeline.stream() CHỈ để log chẩn đoán (không ảnh hưởng quyết định chốt turn):
-        VAD chính và Speech Admission dùng 2 classifier độc lập (xem
-        docs/reference/livekit-architecture.md §5.4), nên có thể lệch nhau — VAD chính
-        coi là speech trong khi Admission vẫn REJECT (chưa đủ SNR/duration theo classifier
-        RIÊNG của nó). Không dùng property này để đổi quyết định Admission."""
-        return self._candidate.started_at is not None and not self._candidate.finalized
+        """True chỉ khi VAD đã speech_start và CHƯA speech_end.
+
+        Candidate có thể còn chờ ASR final sau speech_end, nhưng lúc đó không còn là
+        đoạn speech active. Pipeline dùng cờ này cho pre-roll và log chênh lệch với
+        Speech Admission; để True sau speech_end sẽ log sai mỗi frame im lặng."""
+        return (
+            self._candidate.started_at is not None
+            and not self._candidate.vad_ended
+            and not self._candidate.finalized
+        )
 
     async def on_vad_event(self, event: VadEvent) -> None:
         if event.kind == "speech_start":
@@ -329,6 +332,14 @@ class TurnController:
         # Timeout hết hạn -> không còn cơ hội nào khác chờ thêm event mới cho candidate
         # này -> cơ hội cuối, Validator không được WAIT nữa (xem docstring __init__).
         self._try_emit(allow_partial=True, is_last_chance=True)
+        if (
+            candidate is self._candidate
+            and candidate.vad_ended
+            and not candidate.text.strip()
+            and not self._bot_speaking
+        ):
+            logger.debug("turn_controller: discard empty candidate after VAD timeout")
+            self._reset_candidate()
 
     def _cancel_timeout(self) -> None:
         if self._timeout_task is not None and not self._timeout_task.done():

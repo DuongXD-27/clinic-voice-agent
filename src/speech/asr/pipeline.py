@@ -21,6 +21,7 @@ from speech.turn.interruption import InterruptionController, InterruptionState
 from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
 
 _QUEUE_DONE = object()
+_DISAGREEMENT_LOG_INTERVAL_S = 10.0
 
 logger = logging.getLogger(__name__)
 
@@ -142,13 +143,16 @@ class STTPipeline:
         pre_roll: deque[bytes] = deque(maxlen=self._barge_in_preroll_frames)
         was_candidate = False
         admitted_speech_ms = 0.0
+        admitted_nonspeech_ms = 0.0
         currently_admitted = False
         latest_noise_evidence = None
         had_active_vad_candidate = False
+        last_disagreement_log_at: float | None = None
 
         async def _fanout() -> None:
-            nonlocal was_candidate, admitted_speech_ms, currently_admitted
+            nonlocal was_candidate, admitted_speech_ms, admitted_nonspeech_ms, currently_admitted
             nonlocal latest_noise_evidence, had_active_vad_candidate
+            nonlocal last_disagreement_log_at
             try:
                 async for frame in frames:
                     await vad_queue.put(frame)
@@ -156,6 +160,12 @@ class STTPipeline:
                         is_speech_for_evidence = noise_classifier.is_speech(frame)
                         latest_noise_evidence = noise_tracker.observe(frame, is_speech_for_evidence)
                     if controller.is_bot_speaking:
+                        # Turn trước đã kết thúc; không mang trạng thái Admission
+                        # sang đoạn audio/echo trong lúc bot đang phát TTS.
+                        admitted_speech_ms = admitted_nonspeech_ms = 0.0
+                        currently_admitted = False
+                        if self._admission_preroll is not None:
+                            self._admission_preroll.clear()
                         # Nhường lịch cho VAD drain để nó có thể xác nhận
                         # INTERRUPTION_CANDIDATE từ chính frame vừa enqueue trước khi
                         # fanout quyết định frame này đi đâu.
@@ -224,35 +234,48 @@ class STTPipeline:
                         await asr_queue.put(frame)
                         continue
                     is_speech = self._admission_classifier.is_speech(frame)
-                    # peek() KHÔNG cập nhật noise_floor — evaluate() có thể vẫn kết luận
-                    # đây là speech thật (low_snr/too_short), cập nhật floor NGAY ở đây sẽ
-                    # kéo nền nhiễu lên bằng chính RMS của giọng nói, làm SNR các frame sau
-                    # thấp giả tạo (xem docstring PreRollBuffer). Chỉ commit_floor() sau khi
-                    # biết chắc reason == "no_speech".
+                    # Đo trước khi cập nhật floor. Một âm tiết đầu câu có thể rất lớn
+                    # nhưng Silero cần vài frame mới nhận ra speech; nếu coi các frame
+                    # đó là noise, floor sẽ tự tăng tới mức chặn cả câu nói thật.
                     evidence = self._noise_tracker.peek(frame)
+                    frame_duration_ms = len(frame) / 2 / self._sample_rate * 1000
                     if is_speech:
-                        admitted_speech_ms += len(frame) / 2 / self._sample_rate * 1000
+                        admitted_speech_ms += frame_duration_ms
+                        admitted_nonspeech_ms = 0.0
                     else:
                         admitted_speech_ms = 0.0
+                        admitted_nonspeech_ms = (
+                            admitted_nonspeech_ms + frame_duration_ms if currently_admitted else 0.0
+                        )
                     decision = self._admission.evaluate(
                         is_speech=is_speech,
                         evidence=evidence,
                         speech_ms_so_far=admitted_speech_ms,
+                        nonspeech_ms_so_far=admitted_nonspeech_ms,
                         already_admitted=currently_admitted,
                     )
-                    if decision.reason == "no_speech":
+                    # no_speech nhưng SNR cao là tín hiệu MƠ HỒ, không phải nền nhiễu
+                    # chắc chắn. Giữ floor cũ để không tự khóa đầu câu nói thật.
+                    if (
+                        decision.reason == "no_speech"
+                        and evidence.snr_db < self._admission.min_snr_db
+                    ):
                         self._noise_tracker.commit_floor(evidence)
                     if not decision.admit and controller.has_active_vad_candidate:
-                        # VAD chính (classifier RIÊNG, xem docstring has_active_vad_candidate)
-                        # đã coi đây là 1 turn đang hình thành, nhưng Admission (classifier
-                        # KHÁC) vẫn chặn audio khỏi ASR — turn có thể chốt bằng transcript
-                        # cũ/rỗng nếu tình trạng này kéo dài. Chỉ log, không tự sửa quyết định.
-                        logger.debug(
-                            "speech_admission: VAD/Admission disagree — vad_candidate=True "
-                            "admission_reason=%s snr_db=%.1f",
-                            decision.reason,
-                            evidence.snr_db,
-                        )
+                        # VAD chính còn trong đoạn speech, Admission vẫn chặn ASR.
+                        # Log tối đa một lần/10s: 30ms/frame sẽ làm đầy log rất nhanh.
+                        now = asyncio.get_running_loop().time()
+                        if (
+                            last_disagreement_log_at is None
+                            or now - last_disagreement_log_at >= _DISAGREEMENT_LOG_INTERVAL_S
+                        ):
+                            logger.debug(
+                                "speech_admission: VAD/Admission disagree — vad_candidate=True "
+                                "admission_reason=%s snr_db=%.1f",
+                                decision.reason,
+                                evidence.snr_db,
+                            )
+                            last_disagreement_log_at = now
                     if decision.admit != currently_admitted:
                         # Log THEO CHUYỂN TRẠNG THÁI (không phải mỗi frame — 30ms/frame
                         # sẽ spam log) — đủ để chẩn đoán Admission có đang âm thầm chặn

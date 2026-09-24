@@ -69,11 +69,14 @@ async def test_empty_partial_does_not_emit_turn() -> None:
     (partial rỗng) -> không được tạo UserTurnCompleted giả."""
     controller = TurnController(max_wait_after_vad_end_ms=20)
     await controller.on_vad_event(VadEvent("speech_start"))
+    assert controller.has_active_vad_candidate
     await controller.on_vad_event(VadEvent("speech_end"))
+    assert not controller.has_active_vad_candidate
 
     await asyncio.sleep(0.1)
 
     assert controller._queue.empty()
+    assert controller._candidate.started_at is None
 
 
 @pytest.mark.parametrize(
