@@ -267,6 +267,10 @@
                   <input id="apiBase" inputmode="url" />
                 </div>
                 <div class="field wide">
+                  <label for="apiKey">API key (Bearer, để trống nếu bot tắt auth)</label>
+                  <input id="apiKey" type="password" autocomplete="off" placeholder="sk_..." />
+                </div>
+                <div class="field wide">
                   <label for="callId">Call ID</label>
                   <input id="callId" maxlength="128" />
                 </div>
@@ -465,7 +469,7 @@
 
       const $ = (id) => document.getElementById(id);
       const ui = {
-        apiBase: $("apiBase"), callId: $("callId"), direction: $("direction"), mode: $("mode"),
+        apiBase: $("apiBase"), apiKey: $("apiKey"), callId: $("callId"), direction: $("direction"), mode: $("mode"),
         appointmentId: $("appointmentId"), callerSelect: $("callerSelect"), callerNumber: $("callerNumber"),
         fixturesHint: $("fixturesHint"), fixturesBtn: $("fixturesBtn"), locale: $("locale"),
         maxTurns: $("maxTurns"), appointmentField: $("appointmentField"), callerField: $("callerField"),
@@ -488,6 +492,10 @@
       };
 
       function apiBase() { return ui.apiBase.value.trim().replace(/\/$/, ""); }
+      function authHeaders(headers = {}) {
+        const key = ui.apiKey.value.trim();
+        return key ? { ...headers, Authorization: `Bearer ${key}` } : headers;
+      }
       function safeCallId() { return ui.callId.value.trim(); }
       function setNotice(message, error = false) {
         ui.notice.textContent = message;
@@ -624,7 +632,7 @@
         const started = performance.now();
         const response = await fetch(apiBase() + path, {
           method,
-          headers: { "Content-Type": "application/json", "X-Demo-Debug": "1" },
+          headers: authHeaders({ "Content-Type": "application/json", "X-Demo-Debug": "1" }),
           body: body === undefined ? undefined : JSON.stringify(body),
         });
         const requestElapsedMs = Math.round(performance.now() - started);
@@ -764,7 +772,7 @@
         const path = `/demo-api/audio/${encodeURIComponent(safeCallId())}/${turn}.wav`;
         const response = await fetch(apiBase() + path, {
           method: "PUT",
-          headers: { "Content-Type": "audio/wav" },
+          headers: authHeaders({ "Content-Type": "audio/wav" }),
           body: blob,
         });
         let data;
@@ -953,7 +961,7 @@
         ui.fixturesBtn.disabled = true;
         ui.fixturesHint.textContent = "Đang tải dữ liệu clinic…";
         try {
-          const response = await fetch(apiBase() + "/demo-api/clinic-fixtures");
+          const response = await fetch(apiBase() + "/demo-api/clinic-fixtures", { headers: authHeaders() });
           let data;
           try { data = await response.json(); } catch { data = {}; }
           if (!response.ok) throw new Error(data?.detail?.message || `HTTP ${response.status}`);
@@ -1091,6 +1099,10 @@
       ui.direction.addEventListener("change", updateDirection);
       ui.mode.addEventListener("change", updateMode);
       ui.apiBase.addEventListener("change", () => { checkHealth(); loadFixtures(); });
+      ui.apiKey.addEventListener("change", () => {
+        try { sessionStorage.setItem("callbotApiKey", ui.apiKey.value.trim()); } catch {}
+        loadFixtures();
+      });
       ui.startBtn.addEventListener("click", startCall);
       ui.resetBtn.addEventListener("click", resetSession);
       ui.clinicResetBtn.addEventListener("click", resetClinicMock);
@@ -1112,6 +1124,7 @@
       });
 
       ui.apiBase.value = window.location.origin;
+      try { ui.apiKey.value = sessionStorage.getItem("callbotApiKey") || ""; } catch {}
       resetSession();
       updateCallerInput();
       updateSlotWindowWarning();

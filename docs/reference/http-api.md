@@ -56,6 +56,20 @@ và lượt hỏi; `SessionManager` chỉ ghi phiên và áp dụng trạng thá
 
 Lỗi nghiệp vụ trong lượt (Clinic từ chối lệnh ghi, guardrail chặn) vẫn trả `200` với `outcome=TRANSFERRED`, `transfer_reason=SYSTEM_ERROR` như trước. Ngoại lệ: khi kết quả lệnh ghi không xác định, bot **không** gửi lệnh chuyển máy thay thế mà trả `409 CALL_RECONCILIATION_REQUIRED`.
 
+## Xác thực
+
+`BOT_API_KEYS` trong `.env` là danh sách Bearer key dạng `sk_...`, nhiều key cách nhau dấu phẩy. Để trống thì tắt auth (mặc định, dùng cho dev local và test).
+
+| Route | Cần key khi `BOT_API_KEYS` có giá trị |
+|---|---|
+| `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
+| `/demo-api/*` | Có |
+| `/health`, `/ready`, `/audio/*`, `/demo/` | Không. Harness tải `audio_url` không kèm header |
+
+Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/demo` có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
+
+Server production giữ nguyên `/opt/callbot/.env` qua các lần deploy (xem `cd.yml`), nên muốn thêm hay thu hồi key thì sửa `BOT_API_KEYS` trong file đó rồi `docker compose up -d` lại. Secret `BOT_API_KEYS` của GitHub chỉ được dùng khi CD tạo `.env` lần đầu.
+
 ## Probe
 
 | Endpoint | Ý nghĩa |

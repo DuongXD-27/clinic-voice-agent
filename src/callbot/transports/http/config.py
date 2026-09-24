@@ -22,5 +22,12 @@ class Settings(BaseSettings):
     # người test (engine không dùng). Đặt DEMO_CLINIC_ADMIN_ENABLED=false trước khung giờ chấm (§4.2.4).
     demo_clinic_admin_enabled: bool = True
 
+    # Bearer key cho /v1/calls và /demo-api (auth.py), dạng sk_..., nhiều key cách nhau dấu phẩy.
+    # Để trống = tắt auth.
+    bot_api_keys: str = ""
+
+    def api_keys(self) -> list[str]:
+        return [key.strip() for key in self.bot_api_keys.split(",") if key.strip()]
+
 
 settings = Settings()
