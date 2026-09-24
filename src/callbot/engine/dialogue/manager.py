@@ -29,7 +29,12 @@ from callbot.engine.errors import (
     WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
-from callbot.engine.extraction.greeting import is_greeting, is_identity_question
+from callbot.engine.extraction.greeting import (
+    is_greeting,
+    is_hold_request,
+    is_identity_question,
+    is_return_signal,
+)
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -154,6 +159,11 @@ class DialogueManager:
     # --- Điều phối theo câu hỏi đang chờ -------------------------------------------
 
     def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
+        if is_hold_request(extraction.transcript):
+            return Reply(BotAction(t.HOLD, ctx.state), "NEUTRAL")
+        if is_return_signal(extraction.transcript) and ctx.question is not None:
+            ctx.question = replace(ctx.question, turn=ctx.turn)
+            return Reply(BotAction(ctx.question.text, ctx.state), "NEUTRAL")
         if extraction.intent.value is Intent.REPEAT_REQUEST and ctx.question is not None:
             # Đọc lại đúng câu đang chờ, hỏi lại ở lượt này; không tính là không hiểu (thiết kế §6.1)
             ctx.question = replace(ctx.question, turn=ctx.turn)

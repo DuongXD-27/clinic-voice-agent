@@ -16,6 +16,7 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
+from callbot.engine.extraction.schema import ClinicalLevel
 from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
 from callbot.engine.session import CallContext
 from clinic_mock_sim import FakeClinicAPI, clinic_error
@@ -212,6 +213,7 @@ def test_cancel_or_reschedule_at_readback_does_not_confirm(answer: str, state: s
     "answer, reason",
     [
         ("vâng, à mà tôi đau ngực", "CLINICAL_QUESTION"),
+        ("thuốc huyết áp có phải ngưng trước khi khám không", "CLINICAL_QUESTION"),
         ("cho tôi gặp nhân viên", "PATIENT_REQUEST"),
     ],
 )
@@ -414,6 +416,23 @@ class _FakeSemantic:
 
     def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
         return self._replies.get(context.transcript)
+
+
+def test_model_clinical_advice_transfers_before_attendance_confirmation() -> None:
+    line = "thuốc này có cần tiếp tục dùng đến ngày khám không"
+    bot, clinic, _ = _at_readback("c_t04_model_clinical")
+    bot._extractor._semantic = _FakeSemantic(
+        {
+            line: SemanticOutcome(
+                ReplyKind.QUESTION,
+                clinical=ClinicalLevel.ADVICE_REQUEST,
+                clinical_span=line,
+            )
+        }
+    )
+    action = _run(bot, "c_t04_model_clinical", [line], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "CLINICAL_QUESTION")
+    assert _confirm_writes(clinic) == []
 
 
 def test_a_reason_read_by_the_model_asks_change_or_cancel_without_counting() -> None:

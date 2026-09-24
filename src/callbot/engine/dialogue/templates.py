@@ -67,6 +67,7 @@ ASK_CHANGE_OR_CANCEL = "Dạ, anh chị muốn đổi lịch hay hủy lịch kh
 ASK_ATTENDANCE = "Anh chị có đến khám được theo lịch này không ạ?"
 NOT_UNDERSTOOD = "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
 SILENCE = "Alo, anh chị còn nghe máy không ạ?"
+HOLD = "Dạ, em chờ anh chị ạ."
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
 # Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ.
 # Nói luôn cụm cần nói, vì ngưỡng AGREE ở đây đòi động từ hủy tường minh (SF-05).

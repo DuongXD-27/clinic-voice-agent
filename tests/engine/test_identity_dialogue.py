@@ -356,6 +356,30 @@ def test_silence_between_failures_neither_resets_nor_counts() -> None:
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
+@pytest.mark.parametrize("start", [_outbound, _inbound])
+def test_hold_two_silences_and_return_resume_identity(start) -> None:
+    actions, clinic = _call(
+        start("c_hold_return"), ["chờ chút nhé", SILENCE, SILENCE, "rồi, tôi đây", NAME, DOB]
+    )
+    assert actions[1].utterance == t.HOLD
+    assert actions[2].utterance == actions[3].utterance == f"{t.SILENCE} {actions[0].utterance}"
+    assert actions[4].utterance == actions[0].utterance
+    assert all(not action.ended for action in actions)
+    assert actions[5].utterance == t.ASK_DOB
+    assert actions[6].state == "AWAITING_INTENT"
+    assert clinic.writes == []
+
+
+def test_hold_and_return_do_not_count_as_failed_understanding() -> None:
+    actions, _ = _call(
+        _outbound("c_hold_after_failure"),
+        ["ờ để xem", "chờ chút nhé", SILENCE, SILENCE, "rồi, tôi đây", NAME, DOB],
+    )
+    assert actions[5].state == "AWAITING_IDENTITY"
+    assert actions[6].utterance == t.ASK_DOB
+    assert actions[7].state == "AWAITING_INTENT"
+
+
 # --- Không nhớ / không muốn cung cấp (§1.1.1) ---------------------------------------------------
 
 
@@ -365,6 +389,15 @@ def test_cannot_provide_twice_is_identity_failed() -> None:
     )
     assert actions[2].utterance == t.ASK_DOB_DECLINED
     _ended(actions[3], "TRANSFERRED", "IDENTITY_FAILED")
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
+
+
+def test_outbound_refuses_name_twice_and_transfers_immediately() -> None:
+    actions, clinic = _call(
+        _outbound("c_declined_name"), ["tôi không khai tên đâu", "tôi không nói tên"]
+    )
+    assert actions[1].utterance == t.ASK_NAME_DECLINED
+    _ended(actions[2], "TRANSFERRED", "IDENTITY_FAILED")
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
 
 
