@@ -10,7 +10,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from tests.engine.fake_clinic import FakeClinicAPI
 from tests.transports.http.fakes import FakeASR, FakeTTS
 
 from callbot.engine import EngineSettings
@@ -21,6 +20,7 @@ from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
+from clinic_mock_sim import FakeClinicAPI
 from speech.bundle import SpeechBundle
 from speech.tts.storage import AudioArtifactStore
 from speech.types import AudioSegment, Transcript

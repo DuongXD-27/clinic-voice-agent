@@ -1,4 +1,4 @@
-"""Clinic lỗi hoặc lịch không còn thao tác được: cuộc gọi luôn chuyển cho nhân viên.
+"""Clinic lỗi: chặn mở outbound; cuộc gọi đang diễn ra chuyển cho nhân viên.
 
 Không báo thành công giả cho lệnh nghiệp vụ (CONFIRMED / CANCELLED / UNREACHABLE). Khi chính lệnh ghi
 TRANSFERRED thất bại, bot vẫn trả TRANSFERRED để nhân viên xử lý; chỉ lệnh ghi chưa rõ kết quả mới
@@ -15,7 +15,8 @@ from callbot.engine import (
     ReconciliationRequired,
     create_orchestrator,
 )
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from callbot.engine.errors import OutboundStartFailed
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 SILENCE = None
@@ -46,7 +47,7 @@ def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
 
 
 def _set_status(clinic: FakeClinicAPI, status: str) -> None:
-    clinic.appointments["apt_00417"]["status"] = status
+    clinic.set_status("apt_00417", status)
 
 
 def _transferred(action, reason: str = "SYSTEM_ERROR") -> None:
@@ -58,13 +59,11 @@ def _transferred(action, reason: str = "SYSTEM_ERROR") -> None:
 
 
 @pytest.mark.parametrize("status", ["CANCELLED", "RESCHEDULED", "TRANSFERRED", "UNREACHABLE"])
-def test_non_actionable_appointment_is_transferred_at_turn_one(status: str) -> None:
+def test_non_actionable_appointment_prevents_outbound_start(status: str) -> None:
     clinic = FakeClinicAPI()
     _set_status(clinic, status)
-    bot, _, _ = _bot("c_open_blocked", clinic)
-
-    _transferred(_run(bot, "c_open_blocked", [NAME]))
-    # Clinic không cho /transfer từ trạng thái này: không gửi lệnh ghi nào
+    with pytest.raises(OutboundStartFailed):
+        _bot("c_open_blocked", clinic)
     assert clinic.requests == []
 
 
@@ -76,13 +75,11 @@ def test_actionable_appointments_open_normally(status: str) -> None:
     assert not _run(bot, "c_open_ok", [NAME]).ended
 
 
-def test_invalid_read_at_opening_is_transferred_at_turn_one() -> None:
+def test_invalid_read_prevents_outbound_start() -> None:
     clinic = FakeClinicAPI()
     del clinic.appointments["apt_00417"]["starts_at"]
-    bot, _, _ = _bot("c_open_invalid", clinic)
-
-    run = bot.handle_turn_with_details("c_open_invalid", _caller(1, NAME))
-    _transferred(run.action)
+    with pytest.raises(OutboundStartFailed):
+        _bot("c_open_invalid", clinic)
     assert clinic.requests == []
 
 
@@ -151,9 +148,8 @@ def test_transfer_is_recorded_on_clinic_when_it_can_be() -> None:
         clinic_error(422, "IDEMPOTENCY_CONFLICT"),
         clinic_error(404, "NOT_FOUND"),
         clinic_error(409, "INVALID_STATE_TRANSITION"),
-        clinic_error(503, "UPSTREAM"),
     ],
-    ids=["idempotency", "not_found", "invalid_state", "upstream"],
+    ids=["idempotency", "not_found", "invalid_state"],
 )
 def test_rejected_transfer_still_hands_the_call_to_staff(error) -> None:
     bot, clinic, _ = _bot("c_transfer_rejected")
@@ -217,9 +213,17 @@ def test_a_business_write_error_is_transferred_even_when_the_transfer_is_rejecte
     assert run.diagnostics.question_id == "CONFIRM_READBACK"
 
 
-def test_transfer_timeout_needs_reconciliation() -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        None,  # timeout
+        clinic_error(503, "UPSTREAM"),  # 5xx: client thật không biết mock đã ghi chưa
+    ],
+    ids=["timeout", "upstream_5xx"],
+)
+def test_transfer_timeout_needs_reconciliation(error) -> None:
     bot, clinic, _ = _bot("c_transfer_timeout")
-    clinic.fail_next("transfer_appointment", outcome_unknown=True)
+    clinic.fail_next("transfer_appointment", error, outcome_unknown=error is None)
     with pytest.raises(ReconciliationRequired) as exc:
         bot.handle_turn("c_transfer_timeout", _caller(1, "cho tôi gặp nhân viên"))
     assert exc.value.diagnostics.transfer_reason == "PATIENT_REQUEST"

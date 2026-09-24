@@ -60,6 +60,14 @@ class SessionStoreUnavailable(EngineError):
     pass
 
 
+class OutboundStartFailed(EngineError):
+    """Không đủ dữ liệu Clinic để mở outbound; chưa có cuộc gọi để chuyển máy."""
+
+    def __init__(self, error_code: Optional[str] = None) -> None:
+        self.code = error_code
+        super().__init__("Không thể chuẩn bị cuộc gọi outbound")
+
+
 # --- Gọi Clinic mock (F-05) ---------------------------------------------------------
 
 # Mã lỗi mock có thể trả (Phụ lục A + mã riêng của bản mentor) và mã do client đặt cho lỗi transport

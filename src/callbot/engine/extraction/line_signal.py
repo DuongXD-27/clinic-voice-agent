@@ -15,12 +15,45 @@ Dialogue KHÔNG để lại chi tiết lịch hẹn trên hộp thư thoại.
 from callbot.engine.extraction.schema import Field, LineSignal, Provenance
 from callbot.engine.extraction.text import clean, compile_phrases, find_phrase, is_unaccented
 
+# Lời tương tác trực tiếp phủ định việc đang nghe một thông báo tự động. Xét trước các từ
+# như "hộp thư thoại" / "để lại tin nhắn": người thật cũng nhắc đến những từ này.
+_HUMAN_SPEECH = compile_phrases(
+    [
+        "không phải hộp thư thoại",
+        "không phải lời nhắn tự động",
+        "tôi đang nghe",
+        "tôi nghe đây",
+        "có việc gì",
+        "gọi có chuyện gì",
+        "em để lại tin nhắn",
+        "em để lại lời nhắn",
+        "nhắn tin giúp tôi",
+        "gọi lại sau nhé",
+        "gọi lại sau giúp tôi",
+        "gọi lại cho tôi",
+        "call me later",
+        "call me back",
+        "this is not voicemail",
+        "this is not a voicemail",
+    ]
+    + [
+        f"{speaker} để lại {message} {request}"
+        for speaker in ("anh", "chị", "em", "bạn", "cô", "chú")
+        for message in ("lời nhắn", "tin nhắn")
+        for request in ("cho", "giúp")
+    ]
+    + [f"là của {relative} tôi" for relative in ("mẹ", "bố", "cha", "vợ", "chồng", "con")]
+)
+
 _VOICEMAIL = compile_phrases(
     [
         "để lại lời nhắn",
         "sau tiếng bíp",
         "sau tiếng tít",
         "hộp thư thoại",
+        "hợp thư thoại của thuê bao",  # lỗi ASR có ngữ cảnh tổng đài
+        "đây là hộp thư của",
+        "hộp thư của quý khách đã đầy",
         "lời nhắn thoại",
         "để lại tin nhắn",
         # clip lời chào có thể là tiếng Anh
@@ -31,16 +64,15 @@ _VOICEMAIL = compile_phrases(
         "voicemail",
         "voice mail",
         "record your message",
+        "automated voice messaging system",
+        "mailbox is full",
         # T-08: lời chào hộp thư cá nhân không nói "để lại lời nhắn". Chỉ nhận cụm người đã nghe máy
-        # gần như không nói: xưng "bạn đã gọi đến số", "hiện không ... nghe máy" dạng thông báo.
+        # gần như không nói: xưng "bạn đã gọi đến số" dạng thông báo.
         # KHÔNG nhận "không nghe máy được", "sẽ gọi lại cho bạn", "gọi lại sau": người thật đang bận
         # vẫn nói các câu đó, kết thúc UNREACHABLE với họ là case fail.
         "bạn đã gọi đến số",
+        "bạn đã gọi tới số",
         "bạn vừa gọi đến số",
-        "cảm ơn bạn đã gọi",
-        "hiện không thể nghe máy",
-        "hiện không nghe máy được",
-        "hiện không thể trả lời cuộc gọi",
         "you have reached",
         "you've reached",
         "can't take your call",
@@ -49,6 +81,11 @@ _VOICEMAIL = compile_phrases(
         "can't come to the phone",
         "please leave your name",
     ]
+)
+# Lời cảm ơn hoặc thông báo đang bận riêng lẻ chưa chứng minh là bản ghi.
+_RECORDED_GREETING = compile_phrases(["cảm ơn bạn đã gọi"])
+_RECORDED_UNAVAILABLE = compile_phrases(
+    ["hiện không thể trả lời cuộc gọi", "hiện chúng tôi không thể trả lời"]
 )
 # Chỉ tổng đài mới nói những câu này
 _OPERATOR = compile_phrases(
@@ -71,7 +108,8 @@ _OPERATOR = compile_phrases(
     ]
 )
 _BUSY = compile_phrases(
-    ["bận", "đang bận", "máy bận", "busy"], unaccented_exclude=["bận"]
+    ["bận", "đang bận", "máy bận", "busy", "đang có cuộc gọi khác"],
+    unaccented_exclude=["bận"],
 )  # "ban" = bạn
 _NO_ANSWER = compile_phrases(
     [
@@ -96,7 +134,12 @@ def extract_line_signal(transcript: str) -> Field[LineSignal]:
     def find(phrases):
         return find_phrase(text, phrases, unaccented=unaccented)
 
+    if find(_HUMAN_SPEECH) is not None:
+        return Field.nothing(LineSignal.NONE)
+
     voicemail = find(_VOICEMAIL)
+    if voicemail is None and find(_RECORDED_GREETING) is not None:
+        voicemail = find(_RECORDED_UNAVAILABLE)
     if voicemail is not None:
         return Field(LineSignal.VOICEMAIL, provenance, span=voicemail.group(0))
 

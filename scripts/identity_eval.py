@@ -1,17 +1,20 @@
 """Synthetic identity audit: offline by default; --ner enables configured name NER.
 
-    python scripts/identity_eval.py --output outputs/eval/identity/results.csv
+    python scripts/identity_eval.py
     python scripts/identity_eval.py --ner --groups suffix_other,greeting_with_name
 
 This is a discovery set, not a held-out accuracy benchmark. Empty expected values mean
 NONE; '*' marks a name boundary needing human review. Exit 1 reports known mismatches.
 Dialogue state transitions are covered separately by test_identity_dialogue.py.
+Results default to result/<dd-mm-yyyy>/identity/<baseline|ner>/results.csv (Vietnam time).
+A summary.json is written beside the CSV, including counts, failures and NER transport status.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import json
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -107,10 +110,70 @@ def evaluate(
     return results
 
 
+def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
+    """Summarise saved rows without rerunning extraction or making model requests."""
+    counts = Counter(row["status"] for row in results)
+    scored = counts["PASS"] + counts["FAIL"]
+    groups: dict[str, Counter] = defaultdict(Counter)
+    for row in results:
+        groups[row["group"]][row["status"]] += 1
+    called = [row for row in results if row["ner_called"] == "1"]
+    return {
+        "evaluation_scope": "identity_extraction",
+        "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
+        "mode": results[0]["mode"] if results else None,
+        "models": sorted({row["model"] for row in results if row["model"]}),
+        "prompt_versions": sorted(
+            {row["prompt_version"] for row in results if row["prompt_version"]}
+        ),
+        "cases": len(results),
+        "scored_cases": scored,
+        "passed_cases": counts["PASS"],
+        "failed_cases": counts["FAIL"],
+        "review_cases": counts["REVIEW"],
+        "pass_rate": round(counts["PASS"] / scored, 4) if scored else None,
+        "by_group": {group: dict(totals) for group, totals in sorted(groups.items())},
+        "mismatch_counts": dict(
+            Counter(field for row in results for field in row["mismatches"].split(";") if field)
+        ),
+        "ner_called_cases": len(called),
+        "ner_transport_statuses": dict(Counter(row["ner_transport_status"] for row in called)),
+        "failures": [
+            {
+                key: row[key]
+                for key in ("id", "group", "transcript", "mismatches", "ner_transport_status")
+            }
+            for row in results
+            if row["status"] == "FAIL"
+        ],
+        "review_ids": [row["id"] for row in results if row["status"] == "REVIEW"],
+    }
+
+
+def write_summary(results: list[dict[str, str]], output: Path) -> Path:
+    summary_path = output.with_name("summary.json")
+    report = {
+        **summarise(results),
+        "source_results": str(output.resolve()),
+        "results_modified_at": datetime.fromtimestamp(output.stat().st_mtime, VN_TZ).isoformat(
+            timespec="seconds"
+        ),
+        "generated_at": datetime.now(VN_TZ).isoformat(timespec="seconds"),
+    }
+    summary_path.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return summary_path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cases", type=Path, default=ROOT / "eval/identity/cases.csv")
-    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Override result/<dd-mm-yyyy>/identity/<baseline|ner>/results.csv",
+    )
     parser.add_argument(
         "--ner", action="store_true", help="Call configured NAME_FALLBACK_PROVIDER; uses API quota"
     )
@@ -118,6 +181,14 @@ def main() -> int:
         "--groups", help="Comma-separated groups; omit for the complete discovery set"
     )
     args = parser.parse_args()
+    output = args.output or (
+        ROOT
+        / "result"
+        / datetime.now(VN_TZ).strftime("%d-%m-%Y")
+        / "identity"
+        / ("ner" if args.ner else "baseline")
+        / "results.csv"
+    )
     gateway = None
     if args.ner:
         settings = EngineSettings()
@@ -143,13 +214,13 @@ def main() -> int:
     for row in results:
         if row["status"] == "FAIL":
             print(f"  {row['id']}: mismatch in {row['mismatches']}")
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with args.output.open("w", encoding="utf-8", newline="") as target:
-            writer = csv.DictWriter(target, fieldnames=list(results[0]) if results else [])
-            writer.writeheader()
-            writer.writerows(results)
-        print(f"Results: {args.output}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8", newline="") as target:
+        writer = csv.DictWriter(target, fieldnames=list(results[0]))
+        writer.writeheader()
+        writer.writerows(results)
+    print(f"Results: {output}")
+    print(f"Summary: {write_summary(results, output)}")
     return 1 if total["FAIL"] else 0
 
 

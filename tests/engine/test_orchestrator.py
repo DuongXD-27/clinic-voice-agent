@@ -15,7 +15,7 @@ from callbot.engine.verification import matches
 from callbot.engine.verification.names import normalize_name
 from callbot.tracing import Tracer
 from callbot.tracing.pseudonym import CallKeyFactory
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
 
@@ -188,7 +188,7 @@ def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
 
 def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
     clinic = FakeClinicAPI()
-    clinic.slots.append({"slot_id": "slot_cc03", "starts_at": "2026-10-14T16:00:00+07:00"})
+    clinic.seed_slot({"slot_id": "slot_cc03", "start_time": "2026-10-14T16:00:00+07:00"})
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_ambiguous"))
     _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])

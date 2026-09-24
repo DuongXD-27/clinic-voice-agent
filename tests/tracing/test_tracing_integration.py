@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import fakeredis
 from fastapi.testclient import TestClient
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
 from tests.transports.http.fakes import make_speech_bundle
 
 from callbot.engine import CallerInput, CallStart, EngineSettings, create_orchestrator
@@ -13,6 +12,7 @@ from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 
 class MemorySink:

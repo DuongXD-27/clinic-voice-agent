@@ -1,6 +1,6 @@
 """Contract test cạnh "API nghiệp vụ": cùng một bộ case chạy trên FakeClinicAPI và trên clinic mock thật.
 
-- `fake`: luôn chạy, dữ liệu `FakeClinicAPI.with_mock_fixtures()` (giống store.py của mock sau reset).
+- `fake`: luôn chạy, dữ liệu `FakeClinicAPI.mentor_mock()` (giống store.py của mock sau reset).
 - `live`: chỉ khi `CLINIC_MOCK_LIVE=1`; dùng CLINIC_MOCK_BASE_URL / CLINIC_MOCK_API_KEY (Settings đọc .env).
   Mỗi test gọi POST /_harness/reset TỪ FIXTURE (không phải từ client — bot không được gọi /_harness).
   Reset xóa dữ liệu của cả team trên instance chung: báo kênh team trước khi bật (clinic-mock.md §6).
@@ -18,8 +18,8 @@ import pytest
 
 from callbot.engine.errors import ClinicAPIError
 from callbot.engine.tools.clinic_mock_client import ClinicMockClient
-from callbot.engine.tools.fake_clinic import FakeClinicAPI
 from callbot.engine.tools.ports import ClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 
 APPOINTMENT = "apt_00417"
 PHONE = "0912345600"
@@ -44,7 +44,7 @@ def _error(call, status: int, code: str) -> ClinicAPIError:
 @pytest.fixture(params=["fake", "live"])
 def api(request: pytest.FixtureRequest) -> Iterator[ClinicAPI]:
     if request.param == "fake":
-        yield FakeClinicAPI.with_mock_fixtures()
+        yield FakeClinicAPI.mentor_mock()
         return
     if os.environ.get("CLINIC_MOCK_LIVE") != "1":
         pytest.skip("Đặt CLINIC_MOCK_LIVE=1 để chạy contract test trên mock thật (báo team trước)")
@@ -136,6 +136,7 @@ def test_confirm_flow_version_idempotency_and_terminal_state(api: ClinicAPI) -> 
     confirmed = api.confirm_appointment(APPOINTMENT, version, key)
     assert confirmed["status"] == "CONFIRMED" and confirmed["version"] == version + 1
     assert confirmed["confirmed_via"] == "callbot"
+    assert confirmed["confirmed_at"].endswith("Z")  # store.now_iso() của mock: UTC, hậu tố Z
 
     # Replay cùng key + cùng If-Match: trả lại đúng phản hồi cũ, không tăng version
     replay = api.confirm_appointment(APPOINTMENT, version, key)
@@ -244,3 +245,19 @@ def test_write_responses_never_include_harness_fields(api: ClinicAPI) -> None:
     """Sanity: phản hồi nghiệp vụ không rò trường quản trị (tenant_id, slot_id server-side)."""
     appointment: dict[str, Any] = api.get_appointment(APPOINTMENT)
     assert "tenant_id" not in appointment and "slot_id" not in appointment
+
+
+@pytest.mark.parametrize(
+    "write",
+    [
+        lambda api, v: api.cancel_appointment(APPOINTMENT, "BOGUS", v, _key("e1"), confirmed=True),
+        lambda api, v: api.transfer_appointment(APPOINTMENT, "BOGUS", v, _key("e2")),
+        lambda api, v: api.mark_unreachable(APPOINTMENT, "BOGUS", v, _key("e3")),
+    ],
+    ids=["cancel_reason", "transfer_reason", "unreachable_reason"],
+)
+def test_reason_outside_appendix_a_is_400_and_writes_nothing(api: ClinicAPI, write) -> None:
+    before = api.get_appointment(APPOINTMENT)
+    _error(lambda: write(api, before["version"]), 400, "INVALID_REQUEST")
+    after = api.get_appointment(APPOINTMENT)
+    assert (after["status"], after["version"]) == (before["status"], before["version"])

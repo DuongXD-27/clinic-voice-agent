@@ -6,7 +6,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis import Redis
@@ -21,11 +21,12 @@ from callbot.engine import (
 )
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
-from callbot.engine.tools.clinic_mock_client import ClinicMockClient
 from callbot.observability import JsonlSpanSource, MetricsQueryService
 from callbot.tracing import Tracer, create_tracer
+from callbot.transports.http.auth import require_api_key
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
+from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import ObservabilityApiSettings, settings
 from callbot.transports.http.demo import router as demo_router
 from callbot.transports.http.observability import router as observability_router
@@ -37,7 +38,7 @@ _TRACE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 
 
 def _default_clinic() -> ClinicAPI:
-    return ClinicMockClient(settings.clinic_mock_base_url, settings.clinic_mock_api_key)
+    return build_clinic(settings)
 
 
 def _default_session_store() -> SessionStore:
@@ -141,6 +142,8 @@ def create_app(
         try:
             store = session_store_factory()
             clinic = clinic_factory()
+            # Trang demo đọc dữ liệu sim để dựng dropdown (demo.list_clinic_fixtures)
+            app.state.clinic = clinic
             app.state.session_store = store
             app.state.orchestrator = create_orchestrator(
                 clinic, engine_settings or EngineSettings(), tracer=tracer, store=store
@@ -208,8 +211,8 @@ def create_app(
                     logger.warning("TRACE_CLOSE_FAILED")
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
-    app.include_router(calls_router)
-    app.include_router(demo_router)
+    app.include_router(calls_router, dependencies=[Depends(require_api_key)])
+    app.include_router(demo_router, dependencies=[Depends(require_api_key)])
     _configure_observability(app, observability_settings)
     demo_dir = Path(__file__).parent / "static"
     app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")
