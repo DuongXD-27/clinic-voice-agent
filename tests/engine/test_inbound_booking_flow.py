@@ -3,7 +3,7 @@ from typing import Any
 import pytest
 
 from callbot.engine.errors import ReconciliationRequired
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_orchestrator import _inbound, _run, create_orchestrator
 
 

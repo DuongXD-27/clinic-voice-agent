@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from callbot.engine.extraction.intent import extract_intent
 from callbot.engine.extraction.schema import VN_TZ, Intent
-from callbot.engine.tools.fake_clinic import FakeClinicAPI, clinic_error
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 from tests.engine.test_orchestrator import _context, _inbound, _run, create_orchestrator
 
 NOW = datetime(2026, 9, 22, 10, 0, 0, tzinfo=VN_TZ)

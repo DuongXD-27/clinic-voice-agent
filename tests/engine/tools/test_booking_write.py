@@ -7,7 +7,7 @@ from callbot.engine.journal import bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.session.context import ActionEvidence, CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 from tests.engine.tools.test_clinic_gateway import RecordingJournal
 
 
