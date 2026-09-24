@@ -1,0 +1,18 @@
+# HTTP runtime & clinic — callbot.transports.http.config.Settings.
+# Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa. CLINIC_MOCK_BASE_URL,
+# CLINIC_MOCK_API_KEY, BOT_API_KEYS và DEMO_CLINIC_ADMIN_ENABLED chỉ đặt qua env / .env.
+
+# mock: gọi mock đã deploy (cần CLINIC_MOCK_BASE_URL và CLINIC_MOCK_API_KEY).
+# sim: clinic_mock_sim trong bộ nhớ, không cần mạng/key — chỉ demo local, mất dữ liệu khi restart.
+# docker-compose.yml local đặt CLINIC_BACKEND=sim; docker-compose.prod.yml ghi cứng mock.
+clinic_backend: sim
+# Chỉ khi sim — listing3 (apt_00417 09:00, 2 slot) | mentor_mock (giống mock sau reset)
+clinic_sim_dataset: listing3
+# Chỉ khi sim — edge case dựng sẵn, cách nhau dấu phẩy (xem src/clinic_mock_sim/README.md), vd slot_race
+clinic_sim_scenario: ""
+
+# Internal read-only dashboard. Override with OBSERVABILITY_API_ENABLED and
+# OBSERVABILITY_TRACE_DIR. If trace_dir is empty, TRACE_JSONL_DIR is used.
+observability:
+  enabled: false
+  trace_dir: ""

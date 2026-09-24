@@ -3,14 +3,49 @@
 Model `csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20` đã kiểm chứng (xem
 temp/plan_mvp_zipformer.md, docs/reference/phone-leg-architecture.md §3.1) là bản
 EXPORT OFFLINE (batch) — thiếu metadata streaming (`encoder_dims`) nên chỉ nạp được
-qua `OfflineRecognizer`, không phải `OnlineRecognizer`. Vì vậy `transcribe()` nhận
-nguyên một đoạn audio đã cắt sẵn (bởi VAD), không có partial transcript tăng dần.
+qua `OfflineRecognizer`, không phải `OnlineRecognizer`. Đã tra lại model zoo chính
+thức của sherpa-onnx (2026-09): cả 3 model Zipformer tiếng Việt hiện có (kể cả bản
+mới nhất `sherpa-onnx-zipformer-vi-30M-int8-2026-02-09`) đều là offline/batch —
+không tồn tại checkpoint online/streaming thật cho tiếng Việt. Vì vậy `transcribe()`
+nhận nguyên một đoạn audio đã cắt sẵn (bởi VAD), không có partial transcript tăng dần.
+
+`stream()` giả lập streaming bằng chiến lược "chunked-offline": tích luỹ PCM vào
+buffer, decode lại toàn bộ buffer bằng `OfflineRecognizer` sau mỗi chunk mới để emit
+partial, và emit final khi phát hiện khoảng lặng đủ dài (giống endpoint) trong buffer.
+Tốn compute hơn incremental decode thật, nhưng RTF ~0.03 của model này
+(docs/reference/phone-leg-architecture.md §3.1) khiến decode lại liên tục vẫn rẻ hơn
+nhiều lần thời gian thực.
+
+`decode_stream()` của sherpa-onnx là lời gọi CPU-bound đồng bộ (blocking) — trong
+`stream()` PHẢI chạy qua `asyncio.to_thread()`, không gọi trực tiếp trên event loop.
+Từng có bug thật: gọi trực tiếp làm chặn event loop LiveKit worker ~1.2s mỗi lần decode
+(quan sát qua log "event loop blocked"), trễ toàn bộ audio publish/subscribe của MỌI
+call đang chạy chung worker process, không chỉ call đang decode.
+
+`stream()` KHÔNG được gọi decode trên buffer quá ngắn (< `config.min_decode_ms`, mặc
+định 400ms). Bug thật đã gặp: audio rất ngắn (tiếng "à", "ờm", hắng giọng — VAD đúng
+khi coi đó là speech, không phải noise) khiến ZipFormer HALLUCINATE — tự sinh ra cả
+cụm từ không tồn tại ("KHÔNG ĐƯỢC CÁC BẠN") thay vì trả rỗng, vì greedy_search
+transducer "đói" tín hiệu khi audio quá ngắn để cung cấp đủ context. Đây khác với việc
+VAD nhận nhầm noise thành speech (đã xử lý ở TurnController.min_speech_ms) — ở đây VAD
+ĐÚNG, nhưng bản thân ASR không tin cậy trên input siêu ngắn.
+
+`stream()` nằm ngoài Protocol `ASRProvider` (chỉ ZipFormer hỗ trợ, không phải
+gemini/phowhisper) — gọi qua `ASRGateway.provider` (escape hatch), không qua
+`ASRGateway.transcribe()`. `frames` nhận PCM 8 kHz (phone) hoặc 16 kHz (web) cùng
+`audio_sample_rate` tường minh — khác `transcribe()` vốn luôn nhận PCM đã ở sample
+rate của model. Web 16 kHz được decode thẳng; phone 8 kHz được resample một lần tại
+boundary của provider.
 """
 
-from typing import Any
+import asyncio
+from typing import Any, AsyncIterator
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
+from speech.asr.vad.base import FrameClassifier
+from speech.audio.codec import resample
+from speech.types import NARROWBAND_RATE, TranscriptEvent
 
 
 class ZipFormerASR:
@@ -42,11 +77,137 @@ class ZipFormerASR:
         return self._recognizer
 
     def transcribe(self, pcm: bytes) -> ASRResult:
+        return ASRResult(text=self._decode_pcm(pcm))
+
+    async def stream(
+        self,
+        frames: AsyncIterator[bytes],
+        *,
+        audio_sample_rate: int = NARROWBAND_RATE,
+        silence_classifier: FrameClassifier | None = None,
+        end_silence_ms: int = 600,
+        min_emit_interval_ms: int = 300,
+        min_decode_ms: int | None = None,
+        max_turn_speech_ms: int | None = None,
+    ) -> AsyncIterator[TranscriptEvent]:
+        """Giả lập streaming bằng chunked-offline decode (xem docstring module).
+
+        `frames` là PCM ở `audio_sample_rate` liên tục suốt cuộc gọi — không phải
+        một lượt đơn lẻ; ranh giới utterance (final) do chính hàm này tự phát hiện
+        qua khoảng lặng, giống StreamingVAD, để không phụ thuộc caller gửi tín hiệu
+        "hết câu" riêng. Dùng `silence_classifier` riêng (mặc định năng lượng RMS
+        nhẹ) thay vì tái dùng VAD của pipeline — ASR tự chủ việc endpoint hoá của nó,
+        VAD ở tầng trên (Turn Controller) là tín hiệu độc lập, không phải gatekeeper
+        duy nhất.
+
+        `min_decode_ms`: buffer ngắn hơn ngưỡng này KHÔNG được đưa vào decode — chống
+        hallucination trên audio siêu ngắn (xem docstring module). Buffer vẫn tích luỹ
+        bình thường, chỉ hoãn gọi model tới khi đủ dài hoặc hết speech (final luôn được
+        thử decode dù ngắn hơn ngưỡng, để không mất hẳn câu trả lời 1 âm tiết hợp lệ như
+        "có"/"không" — nhưng kết quả rỗng từ audio quá ngắn vẫn bị lọc như bình thường).
+        `None` (mặc định) dùng `config.min_decode_ms`.
+
+        `max_turn_speech_ms`: buộc flush buffer (giống speech_end xảy ra) khi `speech_ms`
+        vượt ngưỡng này, dù chưa đủ `end_silence_ms` — chống memory leak khi audio speech
+        liên tục không bao giờ có khoảng lặng đủ dài (docs/reference/
+        livekit-architecture.md §5.5). `None` (mặc định) dùng `config.max_turn_speech_ms`.
+        """
+        if min_decode_ms is None:
+            min_decode_ms = self._config.min_decode_ms
+        if max_turn_speech_ms is None:
+            max_turn_speech_ms = self._config.max_turn_speech_ms
+        if silence_classifier is None:
+            from speech.asr.vad.energy import EnergyFrameClassifier
+
+            silence_classifier = EnergyFrameClassifier()
+
+        if audio_sample_rate not in (8_000, 16_000):
+            raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
+
+        buffer = bytearray()
+        in_speech = False
+        last_emitted_text = ""
+        silent_ms = 0.0
+        speech_ms = 0.0  # chỉ đếm frame is_speech — KHÔNG tính đuôi silence chờ
+        # đóng turn, nếu không min_decode_ms bị "lách" bởi silent_frames tích luỹ đủ dài
+        # trong buffer dù phần speech thật rất ngắn (bug đã gặp: audio ngắn "à"/"ờm" vẫn
+        # decode được vì buffer đã có sẵn 600ms đuôi silence).
+        audio_ms_since_emit = 0.0
+
+        async for frame in frames:
+            frame_ms = len(frame) / 2 / audio_sample_rate * 1000
+            if frame_ms <= 0:
+                continue
+            is_speech = silence_classifier.is_speech(frame)
+            if not in_speech and not is_speech:
+                continue  # chưa có tiếng nói nào — bỏ qua, không tích buffer (tránh flush rỗng)
+
+            in_speech = True
+            buffer.extend(frame)
+            audio_ms_since_emit += frame_ms
+            if is_speech:
+                speech_ms += frame_ms
+                silent_ms = 0.0
+            else:
+                silent_ms += frame_ms
+            has_min_speech = speech_ms >= min_decode_ms
+
+            if is_speech and audio_ms_since_emit >= min_emit_interval_ms and has_min_speech:
+                text = await asyncio.to_thread(
+                    self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+                )
+                audio_ms_since_emit = 0.0
+                if text and text != last_emitted_text:
+                    last_emitted_text = text
+                    yield TranscriptEvent(text=text, is_final=False)
+
+            forced_flush = speech_ms >= max_turn_speech_ms
+            if silent_ms >= end_silence_ms or forced_flush:
+                if has_min_speech:
+                    text = await asyncio.to_thread(
+                        self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+                    )
+                    if text:
+                        yield TranscriptEvent(text=text, is_final=True)
+                # speech thật ngắn hơn min_decode_ms: coi là backchannel/tiếng động, bỏ
+                # qua hoàn toàn — không decode, không emit gì (kể cả rỗng). forced_flush
+                # (audio nói liên tục quá lâu) luôn có has_min_speech=True nên nhánh này
+                # không áp dụng cho nó.
+                buffer.clear()
+                in_speech = forced_flush  # forced_flush: vẫn đang nói, giữ in_speech=True
+                # để vòng lặp tiếp tục tích luỹ buffer mới ngay, không chờ frame is_speech
+                # kế tiếp mới bật lại in_speech (silent_ms/speech_ms đã reset dưới đây).
+                last_emitted_text = ""
+                silent_ms = 0.0
+                audio_ms_since_emit = 0.0
+                speech_ms = 0.0
+
+        if in_speech and buffer and speech_ms >= min_decode_ms:
+            text = await asyncio.to_thread(
+                self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+            )
+            if text:
+                yield TranscriptEvent(text=text, is_final=True)
+
+    def _decode_stream_pcm(self, pcm: bytes, source_rate: int) -> str:
+        """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
+        if source_rate != self.input_sample_rate:
+            pcm = resample(pcm, source_rate, self.input_sample_rate)
+        return self._decode_pcm(pcm)
+
+    def _decode_pcm_8k(self, pcm: bytes) -> str:
+        """Compatibility helper cho test/caller cũ."""
+        return self._decode_stream_pcm(pcm, NARROWBAND_RATE)
+
+    def _decode_pcm(self, pcm: bytes) -> str:
+        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""
         import numpy as np
 
+        if not pcm:
+            return ""
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         recognizer = self._get_recognizer()
         stream = recognizer.create_stream()
         stream.accept_waveform(self.input_sample_rate, samples)
         recognizer.decode_stream(stream)
-        return ASRResult(text=stream.result.text.strip())
+        return stream.result.text.strip()

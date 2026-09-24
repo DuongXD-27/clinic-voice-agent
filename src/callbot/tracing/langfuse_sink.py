@@ -13,8 +13,8 @@ from urllib.parse import urlparse
 
 import httpx
 from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from appconfig import YamlSettings, yaml_config
 from callbot.tracing.models import CompletedSpan, TraceEvent
 from callbot.tracing.privacy import validate_completed_span
 from callbot.tracing.sink import NullTraceSink, TraceSink
@@ -24,23 +24,19 @@ logger = logging.getLogger(__name__)
 _ENVIRONMENT_PATTERN = r"^[a-z0-9_-]{1,40}$"
 
 
-class LangfuseOtlpSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True
-    )
+class LangfuseOtlpSettings(YamlSettings):
+    model_config = yaml_config("tracing.yaml", "langfuse", populate_by_name=True)
 
-    enabled: bool = Field(default=False, validation_alias="LANGFUSE_EXPORT_ENABLED")
-    endpoint: str = Field(default="", validation_alias="LANGFUSE_OTLP_ENDPOINT")
+    enabled: bool = Field(validation_alias="LANGFUSE_EXPORT_ENABLED")
+    endpoint: str = Field(validation_alias="LANGFUSE_OTLP_ENDPOINT")
+    # Project credentials only come from env / .env.
     public_key: SecretStr = Field(default=SecretStr(""), validation_alias="LANGFUSE_PUBLIC_KEY")
     secret_key: SecretStr = Field(default=SecretStr(""), validation_alias="LANGFUSE_SECRET_KEY")
-    timeout_seconds: float = Field(default=2.0, gt=0, validation_alias="LANGFUSE_TIMEOUT_SECONDS")
-    queue_size: int = Field(default=1024, gt=0, validation_alias="LANGFUSE_QUEUE_SIZE")
-    batch_size: int = Field(default=32, gt=0, validation_alias="LANGFUSE_BATCH_SIZE")
-    flush_interval_seconds: float = Field(
-        default=1.0, gt=0, validation_alias="LANGFUSE_FLUSH_INTERVAL_SECONDS"
-    )
+    timeout_seconds: float = Field(gt=0, validation_alias="LANGFUSE_TIMEOUT_SECONDS")
+    queue_size: int = Field(gt=0, validation_alias="LANGFUSE_QUEUE_SIZE")
+    batch_size: int = Field(gt=0, validation_alias="LANGFUSE_BATCH_SIZE")
+    flush_interval_seconds: float = Field(gt=0, validation_alias="LANGFUSE_FLUSH_INTERVAL_SECONDS")
     environment: str = Field(
-        default="development",
         pattern=_ENVIRONMENT_PATTERN,
         validation_alias="LANGFUSE_ENVIRONMENT",
     )

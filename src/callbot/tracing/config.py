@@ -7,8 +7,8 @@ from pathlib import Path
 
 import httpx
 from pydantic import Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from appconfig import YamlSettings, yaml_config
 from callbot.tracing.context import Tracer, null_tracer
 from callbot.tracing.jsonl_sink import JsonlTraceSink
 from callbot.tracing.langfuse_sink import LangfuseOtlpSettings, create_langfuse_sink
@@ -18,18 +18,17 @@ from callbot.tracing.sink import CompositeTraceSink, NullTraceSink, TraceSink
 logger = logging.getLogger(__name__)
 
 
-class TracingSettings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", populate_by_name=True
-    )
+class TracingSettings(YamlSettings):
+    model_config = yaml_config("tracing.yaml", "trace", populate_by_name=True)
 
-    enabled: bool = Field(default=False, validation_alias="TRACE_ENABLED")
-    jsonl_dir: Path | None = Field(default=None, validation_alias="TRACE_JSONL_DIR")
+    enabled: bool = Field(validation_alias="TRACE_ENABLED")
+    jsonl_dir: Path | None = Field(validation_alias="TRACE_JSONL_DIR")
+    # HMAC key only comes from env / .env.
     pseudonymization_key: SecretStr = Field(
         default=SecretStr(""), validation_alias="TRACE_PSEUDONYMIZATION_KEY"
     )
-    key_version: str = Field(default="v1", validation_alias="TRACE_KEY_VERSION")
-    environment: str = Field(default="development", validation_alias="TRACE_ENVIRONMENT")
+    key_version: str = Field(validation_alias="TRACE_KEY_VERSION")
+    environment: str = Field(validation_alias="TRACE_ENVIRONMENT")
 
 
 def create_tracer(

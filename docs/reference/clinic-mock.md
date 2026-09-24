@@ -63,16 +63,16 @@ Kết luận: bản mentor đủ để phát triển và test end-to-end, chưa 
 
 ### 5.1. Kết nối tới instance chung
 
-Team triển khai một instance dùng chung tại `https://clinic-mock.vmec-callbot.tech` (EC2, region `ap-southeast-1`; hạ tầng deploy nằm trong `deploy/` của repo clinic-mock). Mỗi thành viên chỉ cần khai báo hai biến trong file cấu hình của bot:
+Team triển khai một instance dùng chung; lấy địa chỉ và key từ kênh nội bộ của team. Mỗi thành viên khai báo hai biến trong `.env` của bot:
 
 ```env
-CLINIC_MOCK_BASE_URL=https://clinic-mock.vmec-callbot.tech/v1
+CLINIC_MOCK_BASE_URL=https://<clinic-mock-host>/v1
 CLINIC_MOCK_API_KEY=sk_dev_<tên>_...    # key riêng, xin trong kênh team — không dùng chung key người khác
 ```
 
-Có thể kiểm tra kết nối bằng cách mở [https://clinic-mock.vmec-callbot.tech/health](https://clinic-mock.vmec-callbot.tech/health) trên trình duyệt, kết quả mong đợi là `{"status":"ok"}`. Giao diện Swagger để xem và thử từng endpoint nằm ở [/docs](https://clinic-mock.vmec-callbot.tech/docs).
+Có thể kiểm tra kết nối bằng cách mở `/health` trên cùng host, kết quả mong đợi là `{"status":"ok"}`. Giao diện Swagger nằm ở `/docs` trên host đó.
 
-Ai muốn kiểm thử độc lập, không phụ thuộc lịch phân lượt của team, có thể chạy thêm một bản local: clone [repo clinic-mock](https://github.com/nguyenhungict/clinic-mock) về máy riêng (không nằm trong repo bot), rồi `uv sync && uv run dev` (cần Python 3.13 + `uv`), hoặc `docker build -t clinic-mock . && docker run -p 8000:8000 --env-file .env clinic-mock` — xem README của repo đó để biết chi tiết. Sau đó đổi địa chỉ mock trong file cấu hình sang `http://localhost:8000/v1`. Khóa truy cập của bản local khai báo qua biến môi trường `MOCK_API_KEYS` của mock, dạng `sk_xxx`, nhiều khóa cách nhau bằng dấu phẩy. Repo mock có sẵn bộ test tự động (`pytest` trong thư mục repo) để tự kiểm tra bản local hoạt động đúng. Đây là lựa chọn tuỳ chọn, không bắt buộc.
+Ai muốn kiểm thử độc lập, không phụ thuộc lịch phân lượt của team, có thể chạy thêm một bản local: clone [repo clinic-mock](https://github.com/nguyenhungict/clinic-mock) về máy riêng (không nằm trong repo bot), rồi `uv sync && uv run dev` (cần Python 3.13 + `uv`), hoặc `docker build -t clinic-mock . && docker run -p 8000:8000 --env-file .env clinic-mock` — xem README của repo đó để biết chi tiết. Sau đó đặt `CLINIC_MOCK_BASE_URL=http://localhost:8000/v1` trong `.env` của bot. Khóa truy cập của bản local khai báo qua biến môi trường `MOCK_API_KEYS` của mock, dạng `sk_xxx`, nhiều khóa cách nhau bằng dấu phẩy. Repo mock có sẵn bộ test tự động (`pytest` trong thư mục repo) để tự kiểm tra bản local hoạt động đúng. Đây là lựa chọn tuỳ chọn, không bắt buộc.
 
 ### 5.2. Quy ước khi gọi API
 

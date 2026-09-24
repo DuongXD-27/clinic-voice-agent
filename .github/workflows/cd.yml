@@ -123,6 +123,7 @@ jobs:
           if ssh -o BatchMode=yes "$SSH_TARGET" "test -f '$REMOTE_DIR/.env'"; then
             echo "Keeping existing $REMOTE_DIR/.env"
           else
+            : "${CLINIC_MOCK_BASE_URL:?Missing variable CLINIC_MOCK_BASE_URL}"
             : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
             : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
             case "$NAME_FALLBACK_PROVIDER" in
@@ -137,9 +138,10 @@ jobs:
             {
               printf '%s\n' "BOT_DOMAIN=$BOT_DOMAIN"
               printf '%s\n' "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
-              printf '%s\n' "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
+              printf '%s\n' "CLINIC_MOCK_BASE_URL=$CLINIC_MOCK_BASE_URL"
               printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
               printf '%s\n' "BOT_API_KEYS=$BOT_API_KEYS"
+              printf '%s\n' "DEMO_CLINIC_ADMIN_ENABLED=false"
               printf '%s\n' "REDIS_PASSWORD=$REDIS_PASSWORD"
               printf '%s\n' "REDIS_MAXMEMORY=256mb"
               printf '%s\n' "WEB_CONCURRENCY=2"

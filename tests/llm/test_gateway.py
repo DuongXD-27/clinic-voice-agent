@@ -3,8 +3,10 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+import yaml
 from pydantic import ValidationError
 
+from appconfig import CONFIG_DIR
 from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction.name_slot_filling import NameExtraction, NameSlotFiller
 from callbot.engine.types import CallerInput, CallStart
@@ -13,11 +15,16 @@ from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRou
 from inference.llm.gateway import create_gateway
 from inference.llm.prompt.name_slot_filling import build_messages
 
+# Default model / token budget per provider come from config/llm.yaml, not from the code.
+_LLM_YAML = yaml.safe_load((CONFIG_DIR / "llm.yaml").read_text(encoding="utf-8"))
 CONFIGS = {
-    "openai": (OpenAIConfig, "gpt-4o-mini", 200),
-    "gemini": (GeminiConfig, "gemini-2.5-flash", 200),
-    "groq": (GroqConfig, "openai/gpt-oss-20b", 1024),
-    "openrouter": (OpenRouterConfig, "openai/gpt-4o-mini", 200),
+    provider: (cls, _LLM_YAML[provider]["model"], _LLM_YAML[provider]["max_completion_tokens"])
+    for provider, cls in {
+        "openai": OpenAIConfig,
+        "gemini": GeminiConfig,
+        "groq": GroqConfig,
+        "openrouter": OpenRouterConfig,
+    }.items()
 }
 NAME = "Nguyễn Văn A"
 TEXT = "À ừ thì là Nguyễn Văn A nhé em"
@@ -37,11 +44,20 @@ def response_body(provider, content=OUTPUT):
     }
 
 
+@pytest.fixture(autouse=True)
+def provider_defaults_from_yaml(monkeypatch):
+    """Blank env means config/llm.yaml per-provider values (conftest pins an OpenAI model)."""
+    monkeypatch.setenv("NAME_FALLBACK_MODEL", "")
+    monkeypatch.setenv("NAME_FALLBACK_MAX_TOKENS", "")
+
+
+def endpoint(provider):
+    return CONFIGS[provider][0](api_key=SECRET, _env_file=None).endpoint
+
+
 def mocked_gateway(provider, handler, **overrides):
     config_class, _, _ = CONFIGS[provider]
-    # Explicit blanks mean provider-specific defaults, independent of local .env.
-    values = {"api_key": SECRET, "model": "", "max_completion_tokens": "", **overrides}
-    config = config_class(_env_file=None, **values)
+    config = config_class(_env_file=None, api_key=SECRET, **overrides)
     clients = []
 
     def factory():
@@ -103,7 +119,7 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
     assert request.extensions["timeout"] == {"connect": 1.0, "read": 2.5, "write": 2.5, "pool": 2.5}
     assert SECRET not in str(request.url)
     if provider == "gemini":
-        assert str(request.url) == f"{GeminiConfig.endpoint}/gemini-2.5-flash:generateContent"
+        assert str(request.url) == f"{endpoint('gemini')}/{CONFIGS['gemini'][1]}:generateContent"
         assert request.headers["x-goog-api-key"] == SECRET
         assert "authorization" not in request.headers
         messages = build_messages(TEXT)
@@ -117,13 +133,13 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         ]
         assert payload["generationConfig"] == {
             "temperature": 0,
-            "maxOutputTokens": 200,
+            "maxOutputTokens": CONFIGS["gemini"][2],
             "responseMimeType": "application/json",
             "responseJsonSchema": NameExtraction.model_json_schema(),
             "thinkingConfig": {"thinkingBudget": 0},
         }
     else:
-        assert str(request.url) == CONFIGS[provider][0].endpoint
+        assert str(request.url) == endpoint(provider)
         assert request.headers["authorization"] == f"Bearer {SECRET}"
         assert payload["messages"] == build_messages(TEXT)
         assert payload["response_format"]["json_schema"] == {
@@ -136,10 +152,11 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         else:
             assert "store" not in payload
         if provider == "groq":
-            assert payload["max_completion_tokens"] == 1024
+            assert payload["max_completion_tokens"] == CONFIGS["groq"][2]
             assert payload["reasoning_effort"] == "low"
         elif provider == "openrouter":
-            assert payload["max_tokens"] == 200 and "max_completion_tokens" not in payload
+            assert payload["max_tokens"] == CONFIGS["openrouter"][2]
+            assert "max_completion_tokens" not in payload
             assert payload["provider"] == {"require_parameters": True, "allow_fallbacks": False}
 
 

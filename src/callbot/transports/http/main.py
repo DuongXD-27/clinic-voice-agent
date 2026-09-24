@@ -29,7 +29,9 @@ from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import ObservabilityApiSettings, settings
 from callbot.transports.http.demo import router as demo_router
+from callbot.transports.http.livekit_token import router as livekit_router
 from callbot.transports.http.observability import router as observability_router
+from callbot.transports.livekit.settings import LiveKitSettings
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
@@ -67,6 +69,10 @@ def _default_call_mode() -> CallModeStore:
     return CallModeStore(client, key_prefix=config.redis_key_prefix, ttl_s=config.session_max_age_s)
 
 
+def _default_livekit_settings() -> LiveKitSettings:
+    return LiveKitSettings()
+
+
 def _configure_observability(app: FastAPI, supplied: ObservabilityApiSettings | None) -> None:
     """Register the opt-in internal router without risking core app startup."""
     try:
@@ -91,6 +97,7 @@ def create_app(
     session_store_factory: Callable[[], SessionStore] = _default_session_store,
     speech_factory: Callable[[], SpeechBundle] = _default_speech,
     call_mode_factory: Callable[[], CallModeStore] = _default_call_mode,
+    livekit_settings_factory: Callable[[], LiveKitSettings] = _default_livekit_settings,
     tracer_factory: Callable[[], Tracer] = create_tracer,
     observability_settings: ObservabilityApiSettings | None = None,
     cleanup_interval_s: float = 30.0,
@@ -211,8 +218,10 @@ def create_app(
                     logger.warning("TRACE_CLOSE_FAILED")
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
+    app.state.livekit_settings = livekit_settings_factory()
     app.include_router(calls_router, dependencies=[Depends(require_api_key)])
     app.include_router(demo_router, dependencies=[Depends(require_api_key)])
+    app.include_router(livekit_router)
     _configure_observability(app, observability_settings)
     demo_dir = Path(__file__).parent / "static"
     app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")

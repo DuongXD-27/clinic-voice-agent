@@ -12,9 +12,9 @@ services:
       - --maxmemory-policy
       - noeviction
       - --requirepass
-      - ${REDIS_PASSWORD:-callbot}
+      - ${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-callbot}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}
     ports:
       - "127.0.0.1:6379:6379"
     healthcheck:
@@ -24,7 +24,7 @@ services:
       retries: 10
 
   # Clinic: mặc định dùng clinic_mock_sim trong bộ nhớ (không cần mạng/key). Muốn gọi mock đã deploy
-  # (clinic-mock.vmec-callbot.tech) thì đặt CLINIC_BACKEND=mock trong .env, kèm CLINIC_MOCK_API_KEY.
+  # thì đặt CLINIC_BACKEND=mock, CLINIC_MOCK_BASE_URL và CLINIC_MOCK_API_KEY trong .env.
   bot:
     build: .
     ports:
@@ -33,36 +33,22 @@ services:
       - path: .env
         required: false
     environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD:-callbot}@redis:6379/0
-      REDIS_KEY_PREFIX: ${REDIS_KEY_PREFIX:-callbot}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       # Local không cần hơn 1 worker. Khi CLINIC_BACKEND=sim, image tự ép 1 dù .env đặt bao nhiêu
       # (sim nằm trong bộ nhớ từng process — xem CMD trong Dockerfile)
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
       CLINIC_BACKEND: ${CLINIC_BACKEND:-sim}
-      CLINIC_SIM_DATASET: ${CLINIC_SIM_DATASET:-listing3}
-      CLINIC_SIM_SCENARIO: ${CLINIC_SIM_SCENARIO:-}
-      SESSION_IDLE_TTL_S: ${SESSION_IDLE_TTL_S:-1800}
-      SESSION_MAX_AGE_S: ${SESSION_MAX_AGE_S:-7200}
-      SESSION_TOMBSTONE_TTL_S: ${SESSION_TOMBSTONE_TTL_S:-86400}
-      SESSION_MAX_BYTES: ${SESSION_MAX_BYTES:-262144}
-      SESSION_LOCK_LEASE_S: ${SESSION_LOCK_LEASE_S:-60}
-      NAME_FALLBACK_PROVIDER: ${NAME_FALLBACK_PROVIDER:-none}
-      NAME_FALLBACK_MODEL: ${NAME_FALLBACK_MODEL:-}
-      NAME_FALLBACK_MAX_TOKENS: ${NAME_FALLBACK_MAX_TOKENS:-}
-      NAME_FALLBACK_TIMEOUT_S: ${NAME_FALLBACK_TIMEOUT_S:-3.0}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # mode=audio (§4.1.2): ZipFormer 68M self-host qua sherpa-onnx + OpenAI TTS.
-      # Đường dẫn model trỏ vào chỗ Dockerfile tải lúc build (/app/models/zipformer),
+      # Giá trị mặc định khác ở config/*.yaml; ở đây chỉ đặt những gì riêng cho container.
+      # Model gipformer1.5 trỏ vào chỗ Dockerfile tải lúc build (/app/models/zipformer),
       # không phải src/... — xem comment trong Dockerfile.
-      ASR_PROVIDER: ${ASR_PROVIDER:-zipformer}
-      TTS_PROVIDER: ${TTS_PROVIDER:-openai}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
-      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder-epoch-12-avg-8.int8.onnx
-      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder-epoch-12-avg-8.onnx
-      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner-epoch-12-avg-8.int8.onnx
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
     # host.docker.internal chỉ tự có trên Docker Desktop (Mac/Windows) — trên
     # Docker Linux cần khai báo tay để container gọi ngược ra service chạy
@@ -72,3 +58,27 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  livekit-worker:
+    build: .
+    command: ["python", "-m", "callbot.transports.livekit.worker", "start"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
+      ASR_PROVIDER: zipformer
+      VAD_PROVIDER: ${VAD_PROVIDER:-webrtc}
+      SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
+      ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
+      ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
+      ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
+      ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 6

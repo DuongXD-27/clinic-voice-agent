@@ -21,8 +21,8 @@ from callbot.tracing.pseudonym import CallKeyFactory
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
 from clinic_mock_sim import FakeClinicAPI
+from speech.audio.storage import AudioArtifactStore
 from speech.bundle import SpeechBundle
-from speech.tts.storage import AudioArtifactStore
 from speech.types import AudioSegment, Transcript
 
 _AUDIO = AudioSegment(pcm=b"\x00\x00" * 100, sample_rate=8000)

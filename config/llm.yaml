@@ -1,0 +1,37 @@
+# LLM providers — inference.llm.config. Dùng cho name slot filling fallback (chọn provider ở
+# engine.yaml: name_fallback_provider) và tầng ngữ nghĩa (luôn openai, model/timeout/max tokens
+# lấy từ engine.yaml: semantic_fallback_*).
+#
+# Ghi đè chung cho provider đang chọn: NAME_FALLBACK_MODEL, NAME_FALLBACK_TIMEOUT_S,
+# NAME_FALLBACK_MAX_TOKENS. API key chỉ đặt qua env (OPENAI_API_KEY, GEMINI_API_KEY, ...).
+# timeout_s là timeout httpx theo pha (không phải trần tổng); connect_timeout_s tách riêng.
+# endpoint / connect_timeout_s ghi đè theo provider: OPENAI_ENDPOINT, GROQ_CONNECT_TIMEOUT_S, ...
+
+openai: # OPENAI_API_KEY
+  endpoint: https://api.openai.com/v1/chat/completions
+  model: gpt-6-luna
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  max_completion_tokens: 200
+
+gemini: # GEMINI_API_KEY
+  endpoint: https://generativelanguage.googleapis.com/v1beta/models
+  model: gemini-2.5-flash
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  max_completion_tokens: 200
+
+groq: # GROQ_API_KEY
+  endpoint: https://api.groq.com/openai/v1/chat/completions
+  model: openai/gpt-oss-20b
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  # Reasoning model: ngân sách token chia giữa phần suy luận và JSON cuối
+  max_completion_tokens: 1024
+
+openrouter: # OPENROUTER_API_KEY
+  endpoint: https://openrouter.ai/api/v1/chat/completions
+  model: openai/gpt-6-luna
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  max_completion_tokens: 200

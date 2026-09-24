@@ -1,0 +1,84 @@
+{
+  "model": "gipformer1.5-68M-rnnt",
+  "total_cases": 40,
+  "passed": 19,
+  "failed": 21,
+  "critical_passed": 18,
+  "critical_failed": 21,
+  "hallucination_cases": 3,
+  "mean_wer": 0.39034996534996536,
+  "median_latency_ms": 68.12908099982451,
+  "p95_latency_ms": 138.91998400013094,
+  "categories": {
+    "automated_line_message": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "mean_wer": 0.0,
+      "hallucination_cases": 0
+    },
+    "background_noise": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "mean_wer": null,
+      "hallucination_cases": 1
+    },
+    "business_entity": {
+      "total": 4,
+      "passed": 1,
+      "failed": 3,
+      "mean_wer": 0.3044871794871795,
+      "hallucination_cases": 0
+    },
+    "confirmation": {
+      "total": 10,
+      "passed": 8,
+      "failed": 2,
+      "mean_wer": 0.08583333333333334,
+      "hallucination_cases": 0
+    },
+    "identity_dob": {
+      "total": 10,
+      "passed": 2,
+      "failed": 8,
+      "mean_wer": 0.9083333333333334,
+      "hallucination_cases": 0
+    },
+    "identity_name": {
+      "total": 10,
+      "passed": 5,
+      "failed": 5,
+      "mean_wer": 0.11833333333333333,
+      "hallucination_cases": 0
+    },
+    "line_signal": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "mean_wer": null,
+      "hallucination_cases": 1
+    },
+    "silence": {
+      "total": 1,
+      "passed": 0,
+      "failed": 1,
+      "mean_wer": null,
+      "hallucination_cases": 1
+    },
+    "speech_after_silence": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "mean_wer": 2.0,
+      "hallucination_cases": 0
+    },
+    "voicemail": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "mean_wer": 0.1,
+      "hallucination_cases": 0
+    }
+  }
+}

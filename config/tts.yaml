@@ -1,0 +1,28 @@
+# TTS providers — inference.tts.config. Mỗi section ứng với một provider (chọn ở speech.yaml).
+# Ghi đè bằng biến môi trường ghi cạnh từng khóa. API key/token chỉ đặt qua env, không để ở đây.
+
+openai: # OPENAI_API_KEY
+  model: tts-1 # OPENAI_TTS_MODEL
+  voice: alloy # OPENAI_TTS_VOICE
+
+# Vbee Realtime HTTP (VBEE_API_TOKEN, VBEE_APP_ID)
+vbee:
+  endpoint: https://api.vbee.vn/v1/tts # VBEE_ENDPOINT
+  voice_code: hn_female_ngochuyen_full_48k-fhg # VBEE_VOICE_CODE
+  speed: 1.0 # VBEE_SPEED
+  bitrate: 128 # VBEE_BITRATE
+  # PCM 8 kHz khớp băng hẹp, không phải resample
+  sample_rate: 8000 # VBEE_SAMPLE_RATE
+  # Trần tổng một câu; giữ thấp để còn thời gian cho provider dự phòng trong 8 giây/lượt
+  timeout_s: 3.0 # VBEE_TIMEOUT_S
+  connect_timeout_s: 1.5 # VBEE_CONNECT_TIMEOUT_S
+
+elevenlabs: # ELEVENLABS_API_KEY
+  # Bắt buộc khi dùng ElevenLabs; voice thuộc tài khoản thì đặt qua env.
+  voice_id: "" # ELEVENLABS_VOICE_ID
+  model: eleven_flash_v2_5 # ELEVENLABS_MODEL
+  timeout_s: 4.0 # ELEVENLABS_TIMEOUT_S
+  # pcm_8000 khớp băng hẹp, không phải resample; điện thoại có thể dùng ulaw_8000
+  output_format: pcm_8000 # ELEVENLABS_OUTPUT_FORMAT
+  # Ép đọc tiếng Việt kể cả câu ngắn dễ đoán nhầm ngôn ngữ; null = để model tự đoán
+  language_code: vi # ELEVENLABS_LANGUAGE_CODE

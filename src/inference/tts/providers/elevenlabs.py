@@ -13,15 +13,17 @@ Một kết nối cho mỗi utterance:
 sinh bệnh nhân (ADR-002 tiêu chí 6).
 """
 
+import asyncio
 import base64
 import json
 import logging
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import asdict, dataclass
 from typing import Any, Optional
 from urllib.parse import urlencode
 
+from websockets.asyncio.client import connect as async_ws_connect
 from websockets.exceptions import (
     ConnectionClosed,
     ConnectionClosedOK,
@@ -92,6 +94,7 @@ class ElevenLabsTTS:
         *,
         ws_url: str = DEFAULT_WS_URL,
         connect: Optional[Connect] = None,
+        async_connect: Optional[Connect] = None,
     ) -> None:
         api_key = config.api_key.get_secret_value()
         if not api_key:
@@ -108,6 +111,9 @@ class ElevenLabsTTS:
         self._language_code = config.language_code or None
         # Điểm thay thế trong unit test: cùng chữ ký `websockets.sync.client.connect`
         self._connect: Connect = connect or ws_connect
+        self._async_connect: Connect = async_connect or async_ws_connect
+        self._cancelled = asyncio.Event()
+        self._active_ws: Any = None
 
     @property
     def model(self) -> str:
@@ -115,6 +121,10 @@ class ElevenLabsTTS:
 
     @property
     def sample_rate(self) -> int:
+        return self._sample_rate
+
+    @property
+    def stream_sample_rate(self) -> int:
         return self._sample_rate
 
     def endpoint(self) -> str:
@@ -212,6 +222,75 @@ class ElevenLabsTTS:
 
         if timing.audio_bytes == 0:
             raise TTSUnavailable("provider không trả audio", code="no_audio")
+
+    async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
+        """Async WebSocket stream cho LiveKit; không chạy sync `stream()` trên event loop."""
+        if not text or not text.strip():
+            raise TTSRejected("text rỗng", code="empty_text")
+        self._cancelled.clear()
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self._timeout_s
+
+        def remaining() -> float:
+            left = deadline - loop.time()
+            if left <= 0:
+                raise TTSUnavailable(f"TTS quá {self._timeout_s:.1f}s", code="timeout")
+            return left
+
+        try:
+            async with self._async_connect(
+                self.endpoint(),
+                additional_headers={"xi-api-key": self._api_key},
+                open_timeout=remaining(),
+                close_timeout=1,
+            ) as ws:
+                self._active_ws = ws
+                await ws.send(json.dumps({"text": " "}))
+                await ws.send(json.dumps({"text": text + " ", "flush": True}))
+                await ws.send(json.dumps({"text": ""}))
+
+                while not self._cancelled.is_set():
+                    try:
+                        raw = await asyncio.wait_for(ws.recv(), timeout=remaining())
+                    except ConnectionClosedOK:
+                        break
+                    message = self._parse(raw)
+                    self._raise_if_error(message)
+                    audio = message.get("audio")
+                    if audio:
+                        chunk = base64.b64decode(audio)
+                        if chunk:
+                            yield chunk
+                    if message.get("isFinal"):
+                        break
+        except TTSError:
+            raise
+        except TimeoutError as exc:
+            raise TTSUnavailable(f"TTS quá {self._timeout_s:.1f}s", code="timeout") from exc
+        except InvalidStatus as exc:
+            raise _from_handshake_status(exc.response.status_code) from exc
+        except ConnectionClosedOK:
+            return
+        except ConnectionClosed as exc:
+            if self._cancelled.is_set():
+                return
+            raise TTSUnavailable(
+                f"kết nối TTS đóng bất thường (code={exc.rcvd.code if exc.rcvd else None})",
+                code="connection_closed",
+            ) from exc
+        except (InvalidURI, WebSocketException, OSError) as exc:
+            raise TTSUnavailable(
+                f"không nối được tới TTS: {type(exc).__name__}", code="connection_failed"
+            ) from exc
+        finally:
+            self._active_ws = None
+
+    async def cancel(self) -> None:
+        """Dừng nhận audio và đóng WebSocket đang sinh để barge-in có hiệu lực ngay."""
+        self._cancelled.set()
+        ws = self._active_ws
+        if ws is not None:
+            await ws.close()
 
     @staticmethod
     def _parse(raw: Any) -> dict[str, Any]:

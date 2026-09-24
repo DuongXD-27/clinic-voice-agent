@@ -125,6 +125,35 @@ def test_tts_gateway_skips_blank_text_and_synthesizer_wraps_pcm() -> None:
     assert (synthesizer.name, synthesizer.model) == ("openai", "fake-tts")
 
 
+@pytest.mark.asyncio
+async def test_sync_tts_stream_uses_gateway_fallback_at_track_rate() -> None:
+    class FailedVbee:
+        model = "vbee"
+        stream_sample_rate = 8000
+
+        def synthesize(self, text: str) -> TTSResult:
+            raise RuntimeError("provider unavailable")
+
+    class BackupTTS:
+        model = "backup"
+
+        def synthesize(self, text: str) -> TTSResult:
+            assert text == "xin chào"
+            return TTSResult(pcm=b"\x01\x00" * 10, sample_rate=8000)
+
+    gateway = TTSGateway(
+        FailedVbee(),
+        provider_name="vbee",
+        fallback=TTSGateway(BackupTTS(), provider_name="elevenlabs"),
+    )
+    synthesizer = SpeechSynthesizer(gateway)
+
+    assert synthesizer.stream_sample_rate == 8000
+    assert [chunk async for chunk in synthesizer.synthesize_stream("xin chào")] == [
+        b"\x01\x00" * 10
+    ]
+
+
 def test_create_tts_gateway_rejects_unknown_provider() -> None:
     with pytest.raises(UnsupportedProviderError):
         create_tts_gateway("none")  # type: ignore[arg-type]

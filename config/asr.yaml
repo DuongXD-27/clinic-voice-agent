@@ -1,0 +1,34 @@
+# ASR providers — inference.asr.config. Mỗi section ứng với một provider (chọn ở speech.yaml).
+# Ghi đè bằng biến môi trường ghi cạnh từng khóa. API key chỉ đặt qua env, không để ở đây.
+
+gemini: # GEMINI_API_KEY
+  model: gemini-2.5-flash # GEMINI_ASR_MODEL
+
+phowhisper:
+  model: vinai/PhoWhisper-large # PHOWHISPER_MODEL
+
+# Streaming thật qua WebSocket (ELEVENLABS_API_KEY) — xem src/inference/asr/providers/elevenlabs_realtime.py
+elevenlabs_realtime:
+  model: scribe_v2_realtime # ELEVENLABS_REALTIME_STT_MODEL
+  # ISO-639-3 tiếng Việt
+  language_code: vie # ELEVENLABS_STT_LANGUAGE_CODE
+  base_url: wss://api.elevenlabs.io # ELEVENLABS_REALTIME_WS_URL
+  # Chỉ ảnh hưởng ngưỡng partial_transcript nội bộ; commit turn là việc của TurnController.
+  vad_silence_threshold_secs: 1.5 # ELEVENLABS_REALTIME_VAD_SILENCE_SECS
+  # Tối đa 50 keyterm, ngăn cách dấu phẩy. Có thể tăng chi phí STT.
+  keyterms: "" # ELEVENLABS_STT_KEYTERMS
+
+# Asset tải tay theo docs/reference/zipformer-model-setup.md (bị .gitignore). Đường dẫn tính từ
+# gốc repo; Docker Compose override sang /app/models/zipformer.
+zipformer:
+  model: csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20 # ZIPFORMER_MODEL
+  encoder_path: src/inference/asr/providers/assets/zipformer/encoder-epoch-12-avg-8.int8.onnx # ZIPFORMER_ENCODER_PATH
+  decoder_path: src/inference/asr/providers/assets/zipformer/decoder-epoch-12-avg-8.onnx # ZIPFORMER_DECODER_PATH
+  joiner_path: src/inference/asr/providers/assets/zipformer/joiner-epoch-12-avg-8.int8.onnx # ZIPFORMER_JOINER_PATH
+  tokens_path: src/inference/asr/providers/assets/zipformer/tokens.txt # ZIPFORMER_TOKENS_PATH
+  num_threads: 2 # ZIPFORMER_NUM_THREADS
+  # Không decode buffer speech ngắn hơn ngưỡng này — chống hallucinate từ "à"/"ờm".
+  min_decode_ms: 400 # ZIPFORMER_MIN_DECODE_MS
+  # Flush cưỡng bức khi speech liên tục vượt ngưỡng — chống memory leak khi VAD không báo
+  # speech_end (docs/reference/livekit-architecture.md §5.5).
+  max_turn_speech_ms: 15000 # ZIPFORMER_MAX_TURN_SPEECH_MS

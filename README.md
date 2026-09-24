@@ -50,31 +50,40 @@ pip install -e ".[speech]"           # tuỳ chọn: Gemini ASR
 pip install -e ".[speech-local]"     # tuỳ chọn: PhoWhisper self-hosted
 
 cp .env.example .env
+# Nếu dùng Docker Compose, đặt REDIS_PASSWORD riêng trong .env trước khi chạy.
 ```
 
 ## Cấu hình
 
-Toàn bộ cấu hình nằm trong `.env`, xem mẫu và chú thích ở [.env.example](.env.example).
+Cấu hình mặc định nằm trong [config/](config/), mỗi module một file YAML. Code không chứa giá trị
+mặc định; secret chỉ đặt trong `.env` (mẫu: [.env.example](.env.example)).
 
-| Nhóm | Biến chính |
+| File | Nội dung |
 |---|---|
-| API key model | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `VBEE_API_TOKEN` + `VBEE_APP_ID`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` |
-| Clinic API | `CLINIC_BACKEND` (`mock` \| `sim`), `CLINIC_MOCK_BASE_URL`, `CLINIC_MOCK_API_KEY`, `CLINIC_ID`, `CLINIC_SIM_*` |
-| Voice pipeline | `ASR_PROVIDER` (`zipformer` \| `gemini` \| `phowhisper`), `TTS_PROVIDER` (`openai` \| `elevenlabs` \| `vbee`), `TTS_FALLBACK_PROVIDER`, `PUBLIC_BASE_URL` |
-| Extraction qua LLM | `SEMANTIC_FALLBACK_*`, `NAME_FALLBACK_*` |
-| Session | `REDIS_URL`, `REDIS_PASSWORD`, `SESSION_*` |
+| `speech.yaml` | Chọn provider ASR/TTS (`asr_provider`, `tts_provider`, `tts_fallback_provider`), VAD, turn-taking, `public_base_url` |
+| `asr.yaml` / `tts.yaml` | Model, voice, timeout, đường dẫn asset của từng provider |
+| `llm.yaml` | Endpoint, model, timeout, max tokens của từng provider LLM |
+| `engine.yaml` | `name_fallback_provider`, `semantic_fallback_*`, `clinic_id`, giới hạn hội thoại |
+| `session.yaml` | Redis URL local không mật khẩu, TTL và giới hạn session |
+| `http.yaml` | Clinic backend (`mock` \| `sim`), dataset/scenario của sim; quản trị demo mặc định tắt |
+| `livekit.yaml` | Frame, queue, sample rate của đường LiveKit |
+
+Thứ tự ưu tiên: biến môi trường > `.env` > YAML. Ghi đè một khóa bằng biến cùng tên viết hoa
+(vd. `VAD_PROVIDER=webrtc`); khóa nào có tên biến riêng thì được ghi ngay cạnh khóa đó trong file
+YAML. Để trống (`KEY=`) nghĩa là dùng giá trị YAML. `.env` chỉ cần API key, `CLINIC_MOCK_API_KEY`,
+`BOT_API_KEYS`, LiveKit và Redis password.
 
 Chỉ cần API key của provider đang bật. Với cấu hình mặc định (ZipFormer + OpenAI TTS) cần
-`OPENAI_API_KEY` và `CLINIC_MOCK_API_KEY` (không cần `CLINIC_MOCK_API_KEY` khi `CLINIC_BACKEND=sim`).
+`OPENAI_API_KEY`. Khi `CLINIC_BACKEND=mock`, cần thêm `CLINIC_MOCK_BASE_URL` và
+`CLINIC_MOCK_API_KEY`; chế độ `sim` không cần hai biến này.
 
 ## Sử dụng
 
 Khởi động Redis và server:
 
 ```bash
-docker run --rm -p 6379:6379 redis:7.4-alpine redis-server \
-  --save "" --appendonly no --maxmemory 256mb --maxmemory-policy noeviction \
-  --requirepass callbot
+docker run --rm -p 127.0.0.1:6379:6379 redis:7.4-alpine redis-server \
+  --save "" --appendonly no --maxmemory 256mb --maxmemory-policy noeviction
 
 uvicorn callbot.transports.http.main:app --reload
 ```
@@ -114,7 +123,8 @@ Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
 Chạy cả Redis và bot:
 
 ```bash
-docker compose up --build
+# Đặt REDIS_PASSWORD trong .env trước khi chạy.
+docker compose up -d --build
 ```
 
 Docker local mặc định dùng **clinic giả trong bộ nhớ** (`CLINIC_BACKEND=sim`, 1 worker): không cần

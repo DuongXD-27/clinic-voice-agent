@@ -43,6 +43,10 @@ class VbeeTTS:
         # Vbee không có model id riêng; mã giọng là thứ quyết định audio
         return self._config.voice_code
 
+    @property
+    def stream_sample_rate(self) -> int:
+        return self._config.sample_rate
+
     def _payload(self, text: str) -> dict[str, Any]:
         return {
             "text": text,

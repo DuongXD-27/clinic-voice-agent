@@ -1,7 +1,13 @@
 """Single entry point for configured ASR calls; no implicit retries or failover."""
 
 from inference.asr.base import ASRProvider, ASRResult, ProviderName
-from inference.asr.config import ASRConfig, GeminiASRConfig, PhoWhisperConfig, ZipFormerConfig
+from inference.asr.config import (
+    ASRConfig,
+    ElevenLabsRealtimeConfig,
+    GeminiASRConfig,
+    PhoWhisperConfig,
+    ZipFormerConfig,
+)
 from inference.common.errors import UnsupportedProviderError
 
 
@@ -18,6 +24,15 @@ class ASRGateway:
     def input_sample_rate(self) -> int:
         return self._provider.input_sample_rate
 
+    @property
+    def provider(self) -> ASRProvider:
+        """Escape hatch cho caller cần method mở rộng ngoài Protocol (vd. `stream()`
+        của ZipFormerASR cho LiveKit) — KHÔNG dùng cho `transcribe()` thường, chỉ khi
+        caller đã biết trước provider nào đang chạy và kiểm tra bằng `hasattr`/`getattr`.
+        Không phá lazy-loading: registry vẫn resolve qua `create_asr_gateway()` như cũ,
+        property này chỉ expose instance đã tạo."""
+        return self._provider
+
     def transcribe(self, pcm: bytes, sample_rate: int) -> ASRResult:
         if sample_rate != self.input_sample_rate:
             raise ValueError(
@@ -30,6 +45,7 @@ class ASRGateway:
 
 def _provider_types() -> dict[str, tuple[type[ASRConfig], type]]:
     # Import trễ: mỗi provider kéo theo SDK nặng (sherpa-onnx, transformers, google-genai).
+    from inference.asr.providers.elevenlabs_realtime import ElevenLabsRealtimeASR
     from inference.asr.providers.gemini import GeminiASR
     from inference.asr.providers.phowhisper import PhoWhisperASR
     from inference.asr.providers.zipformer import ZipFormerASR
@@ -38,6 +54,7 @@ def _provider_types() -> dict[str, tuple[type[ASRConfig], type]]:
         "gemini": (GeminiASRConfig, GeminiASR),
         "phowhisper": (PhoWhisperConfig, PhoWhisperASR),
         "zipformer": (ZipFormerConfig, ZipFormerASR),
+        "elevenlabs_realtime": (ElevenLabsRealtimeConfig, ElevenLabsRealtimeASR),
     }
 
 

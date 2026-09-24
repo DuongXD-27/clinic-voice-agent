@@ -74,7 +74,8 @@ def test_request_contract_and_private_telemetry(caplog):
     assert result.provenance is Provenance.FALLBACK
     assert len(requests) == 1 and clients[0].is_closed
     request = requests[0]
-    assert str(request.url) == OpenAIConfig.endpoint and request.method == "POST"
+    endpoint = OpenAIConfig(api_key=KEY, _env_file=None).endpoint
+    assert str(request.url) == endpoint and request.method == "POST"
     assert request.headers["Authorization"] == f"Bearer {KEY}"
     assert request.extensions["timeout"] == {"connect": 1.0, "read": 3.0, "write": 3.0, "pool": 3.0}
     payload = json.loads(request.content)

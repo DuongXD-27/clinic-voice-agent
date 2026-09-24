@@ -5,7 +5,9 @@ tường minh. Test này khóa thứ tự ưu tiên đó để không phải suy
 """
 
 import pytest
+import yaml
 
+from appconfig import CONFIG_DIR
 from callbot.engine import _semantic_extractor, create_orchestrator
 from callbot.engine.extraction.semantic import LLMSemanticExtractor
 from callbot.engine.settings import EngineSettings
@@ -45,9 +47,14 @@ def test_semantic_factory_uses_its_own_settings(monkeypatch: pytest.MonkeyPatch)
     assert extractor._gateway.provider_name == "openai"
 
 
-def test_semantic_is_on_by_default_in_code() -> None:
-    """Quyết định owner 22-09-2026: bật mặc định. Đọc default của field, không qua env của test."""
-    assert EngineSettings.model_fields["semantic_fallback_enabled"].default is True
+def _engine_yaml() -> dict:
+    """Đọc thẳng config/engine.yaml — nguồn mặc định duy nhất, không qua env của test."""
+    return yaml.safe_load((CONFIG_DIR / "engine.yaml").read_text(encoding="utf-8"))
+
+
+def test_semantic_is_on_by_default() -> None:
+    """Quyết định owner 22-09-2026: bật mặc định."""
+    assert _engine_yaml()["semantic_fallback_enabled"] is True
 
 
 def test_the_test_suite_itself_keeps_semantic_off(redis_store_factory) -> None:
@@ -81,10 +88,5 @@ def test_changing_the_name_slot_filling_provider_does_not_build_a_semantic_layer
     assert bot._extractor._semantic is None  # semantic vẫn tắt
 
 
-def test_the_semantic_timeout_is_three_seconds_everywhere() -> None:
-    """Mặc định trong code và `.env.example` là cùng một giá trị."""
-    from pathlib import Path
-
-    assert EngineSettings.model_fields["semantic_fallback_timeout_s"].default == 3.0
-    example = Path(__file__).resolve().parents[2] / ".env.example"
-    assert "SEMANTIC_FALLBACK_TIMEOUT_S=3.0" in example.read_text(encoding="utf-8").splitlines()
+def test_the_semantic_timeout_is_three_seconds_by_default() -> None:
+    assert _engine_yaml()["semantic_fallback_timeout_s"] == 3.0
