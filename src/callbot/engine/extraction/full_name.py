@@ -221,8 +221,8 @@ _NON_NAME_WORDS_UNACCENTED = frozenset(
 # không giao nhau về mặt chữ, nên hợp nhất là đủ và xử lý được cả câu mất dấu một phần.
 _REJECTED_WORDS = _NON_NAME_WORDS | _NON_NAME_WORDS_UNACCENTED
 _REJECTED_NAMES = _GREETINGS | frozenset(strip_diacritics(g) for g in _GREETINGS)
-# Qua kiểm tra số từ chưa đủ để kết luận là tên. Lời nói còn sót phải được NER khoanh
-# vùng lại; tắt/lỗi NER thì hỏi lại, không đưa cả "Nguyễn Văn A cảm ơn em" tới Verifier.
+# Qua kiểm tra số từ chưa đủ để kết luận là tên. Lời nói còn sót phải được slot filling khoanh
+# vùng lại; tắt/lỗi slot filling thì hỏi lại, không đưa cả "Nguyễn Văn A cảm ơn em" tới Verifier.
 # Các từ mất dấu trùng tên (Chu, Vang, Roi, A...) không dùng riêng làm tín hiệu này.
 _SPEECH_RESIDUE = compile_phrases(
     [
@@ -259,6 +259,18 @@ _SPEECH_RESIDUE = compile_phrases(
 _DOB_REFERENCES = compile_phrases(
     ["ngày sinh", "năm sinh", "sinh ngày", "sinh năm", "ngày tháng năm sinh"]
 )
+# ASR có thể bỏ dấu phẩy trước lời báo không nhớ ngày sinh. Chỉ tách một hậu tố
+# trọn vẹn nói về ngày sinh; không cắt theo từ "không nhớ" đứng riêng (có thể nói về tên).
+_DOB_SUBJECT = r"(?:ngày tháng năm sinh|ngày sinh|năm sinh)"
+_DOB_UNCERTAINTY = r"(?:không nhớ(?: rõ| lắm| chính xác)?|không chắc|không rõ lắm)"
+_DOB_ASIDE_PATTERN = (
+    rf"(?<!\w)(?:(?:tôi )?{_DOB_UNCERTAINTY} (?:về )?{_DOB_SUBJECT}"
+    rf"|{_DOB_SUBJECT} (?:thì )?(?:tôi )?{_DOB_UNCERTAINTY})(?: ạ)?$"
+)
+_DOB_ASIDE_SUFFIXES = (
+    re.compile(_DOB_ASIDE_PATTERN),
+    re.compile(strip_diacritics(_DOB_ASIDE_PATTERN)),
+)
 
 
 def extract_full_name(transcript: str) -> Field[str]:
@@ -266,7 +278,7 @@ def extract_full_name(transcript: str) -> Field[str]:
 
 
 def valid_name_span(name: str) -> bool:
-    """Validate an NER span without treating a possible final name syllable as a particle.
+    """Validate a slot-filling span without treating a possible final name syllable as a particle.
 
     Selecting the boundary is the model's job here. The rule extractor must remain
     conservative when it sees an entire utterance ending in an ambiguous particle.
@@ -284,7 +296,7 @@ def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Read
     if not text:
         return Reading(Field.nothing(), Reason.NO_SIGNAL)
     # Dùng chung nhận diện với Dialogue. Lời chào đã rõ nghĩa không phải tên,
-    # nên không mở tuyến NER để nhận lại "hello em" / "hi em" thành tên người gọi.
+    # nên không mở tuyến slot filling để nhận lại "hello em" / "hi em" thành tên người gọi.
     if is_greeting(text):
         return Reading(Field.nothing(), Reason.NOT_A_NAME, text)
     if find_phrase(text, _NOT_A_NAME_PHRASES, mixed=True) is not None:
@@ -294,7 +306,8 @@ def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Read
     # "Nguyễn Văn A, tôi không nhớ rõ ngày sinh" vẫn khai tên rõ ràng, chỉ thiếu ngày.
     # Giữ ranh giới mệnh đề: "alo em, tôi là A" không được ghép thành "em tôi là A"
     # rồi hiểu nhầm đó là tên người thân. Chỉ bỏ mệnh đề xã giao đã nhận chắc chắn.
-    named = " ".join(c for c in clauses if not is_greeting(c) and not _is_dob_aside(c))
+    name_clauses = [_strip_dob_aside(c) for c in clauses]
+    named = " ".join(c for c in name_clauses if c and not is_greeting(c) and not _is_dob_aside(c))
     if not named:
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
     if find_phrase(named, UNCERTAINTY, mixed=True) is not None:
@@ -316,7 +329,7 @@ def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Read
     name = _strip_repeated(segment, _PREFIXES, at_start=True)
     unstripped = name
     if preserve_final_nha and name.endswith(" nha"):
-        # NER chose the complete span "Nguyễn Thị Nha". Do not immediately undo that
+        # Slot filling chose the complete span "Nguyễn Thị Nha". Do not immediately undo that
         # choice using the whole-utterance rule that also handles "Nguyễn Văn A nha".
         name = f"{_strip_repeated(name[:-4], _SUFFIXES, at_start=False)} nha"
     else:
@@ -356,6 +369,14 @@ def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool
         ):
             return True
     return False
+
+
+def _strip_dob_aside(clause: str) -> str:
+    for pattern in _DOB_ASIDE_SUFFIXES:
+        match = pattern.search(clause)
+        if match is not None:
+            return clause[: match.start()].strip()
+    return clause
 
 
 def _is_dob_aside(clause: str) -> bool:

@@ -17,7 +17,7 @@ from callbot.engine.errors import (
     TurnOutOfOrder,
 )
 from callbot.engine.extraction import InformationExtractor
-from callbot.engine.extraction.ner import NameNER
+from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticExtractor
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
@@ -85,7 +85,7 @@ def create_orchestrator(
     gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id)
     name_fallback = None
     if settings.name_fallback_provider != "none":
-        name_fallback = NameNER(create_gateway(settings.name_fallback_provider))
+        name_fallback = NameSlotFiller(create_gateway(settings.name_fallback_provider))
     return CallOrchestrator(
         sessions=SessionManager(store if store is not None else _default_session_store()),
         extractor=InformationExtractor(

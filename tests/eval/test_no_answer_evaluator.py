@@ -210,7 +210,7 @@ def test_no_implicit_model_gateway_with_enabled_environment(monkeypatch, semanti
 
     monkeypatch.setattr(engine, "create_gateway", forbidden)
     bot, _, _, done = _start(_row(), "na_no_gateway", semantic)
-    # Cấu trúc tên chưa rõ có thể kích hoạt NER nếu còn bật ngầm.
+    # Cấu trúc tên chưa rõ có thể kích hoạt slot filling tên nếu còn bật ngầm.
     bot.handle_turn("na_no_gateway", _caller(done + 1, "à thì để tôi nhớ lại đã"))
     assert bot._extractor._semantic is semantic
 

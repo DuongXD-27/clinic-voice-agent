@@ -1,0 +1,155 @@
+{
+  "evaluation_scope": "identity_extraction",
+  "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
+  "mode": "rules",
+  "fallback_method": null,
+  "models": [],
+  "prompt_versions": [],
+  "cases": 100,
+  "scored_cases": 97,
+  "passed_cases": 90,
+  "failed_cases": 7,
+  "review_cases": 3,
+  "pass_rate": 0.9278,
+  "by_group": {
+    "boundary_review": {
+      "REVIEW": 3
+    },
+    "combined_dob": {
+      "PASS": 4
+    },
+    "contact": {
+      "PASS": 10
+    },
+    "contact_with_name": {
+      "PASS": 2
+    },
+    "correction": {
+      "PASS": 2
+    },
+    "greeting": {
+      "PASS": 4
+    },
+    "greeting_with_name": {
+      "PASS": 3,
+      "FAIL": 1
+    },
+    "listening": {
+      "PASS": 3
+    },
+    "mixed_question": {
+      "PASS": 1
+    },
+    "name_particle_collision": {
+      "FAIL": 2
+    },
+    "names": {
+      "PASS": 11
+    },
+    "normalization": {
+      "PASS": 2
+    },
+    "other_person": {
+      "PASS": 4
+    },
+    "priority": {
+      "PASS": 5
+    },
+    "punctuation_loss": {
+      "FAIL": 1
+    },
+    "reported_sentence": {
+      "PASS": 1
+    },
+    "self_intro": {
+      "PASS": 2
+    },
+    "self_intro_variants": {
+      "PASS": 3
+    },
+    "state": {
+      "PASS": 1
+    },
+    "suffix_fixed": {
+      "PASS": 7
+    },
+    "suffix_other": {
+      "PASS": 6,
+      "FAIL": 3
+    },
+    "uncertain": {
+      "PASS": 4
+    },
+    "who": {
+      "PASS": 10
+    },
+    "who_variants": {
+      "PASS": 5
+    }
+  },
+  "mismatch_counts": {
+    "name": 7,
+    "intent": 1
+  },
+  "ner_called_cases": 0,
+  "ner_transport_statuses": {},
+  "failures": [
+    {
+      "id": "ID035",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A đúng rồi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID036",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A vâng",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID037",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A chứ",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID049",
+      "group": "name_particle_collision",
+      "transcript": "Nguyễn Thị Nha",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID050",
+      "group": "name_particle_collision",
+      "transcript": "Lê Nha",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID073",
+      "group": "punctuation_loss",
+      "transcript": "Nguyễn Văn A tôi không nhớ rõ ngày sinh",
+      "mismatches": "name;intent",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID100",
+      "group": "greeting_with_name",
+      "transcript": "hello em Nguyễn Văn A",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    }
+  ],
+  "review_ids": [
+    "ID038",
+    "ID039",
+    "ID040"
+  ],
+  "source_results": "D:\\Documents\\VSF\\callbot-vinmec\\result\\24-09-2026\\identity\\baseline\\results.csv",
+  "results_modified_at": "2026-09-24T11:25:59+07:00",
+  "generated_at": "2026-09-24T11:25:59+07:00"
+}

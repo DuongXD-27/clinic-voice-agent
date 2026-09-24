@@ -87,7 +87,7 @@ class SemanticOutcome:
 
 
 class SemanticExtractor(Protocol):
-    """Interface riêng của tầng ngữ nghĩa — KHÔNG dùng lại `FallbackExtractor` của NER tên,
+    """Interface riêng của tầng ngữ nghĩa — KHÔNG dùng lại `FallbackExtractor` của slot filling tên,
     để không nhồi ngữ cảnh phiên vào prompt trích tên."""
 
     def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]: ...

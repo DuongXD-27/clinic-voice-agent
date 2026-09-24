@@ -1,4 +1,4 @@
-"""Cấu hình tầng ngữ nghĩa phải độc lập với NER tên — đổi cái này không được đổi cái kia.
+"""Cấu hình tầng ngữ nghĩa phải độc lập với slot filling tên — đổi cái này không được đổi cái kia.
 
 `ProviderConfig` đọc `NAME_FALLBACK_*` qua `validation_alias`; factory semantic truyền giá trị
 tường minh. Test này khóa thứ tự ưu tiên đó để không phải suy đoán hành vi của pydantic-settings.
@@ -68,7 +68,7 @@ def test_enabled_without_an_api_key_falls_back_to_rules_instead_of_failing(
     assert bot._extractor._semantic is None
 
 
-def test_changing_the_ner_provider_does_not_build_a_semantic_layer(
+def test_changing_the_name_slot_filling_provider_does_not_build_a_semantic_layer(
     monkeypatch: pytest.MonkeyPatch, redis_store_factory
 ) -> None:
     monkeypatch.setenv("NAME_FALLBACK_PROVIDER", "openai")
@@ -77,7 +77,7 @@ def test_changing_the_ner_provider_does_not_build_a_semantic_layer(
         settings=EngineSettings(name_fallback_provider="openai", semantic_fallback_enabled=False),
         store=redis_store_factory(),
     )
-    assert bot._extractor._fallback is not None  # NER bật
+    assert bot._extractor._fallback is not None  # slot filling họ tên bật
     assert bot._extractor._semantic is None  # semantic vẫn tắt
 
 

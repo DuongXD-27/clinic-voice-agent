@@ -6,12 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from callbot.engine import EngineSettings, create_orchestrator
-from callbot.engine.extraction.ner import NameExtraction, NameNER
+from callbot.engine.extraction.name_slot_filling import NameExtraction, NameSlotFiller
 from callbot.engine.types import CallerInput, CallStart
 from clinic_mock_sim import FakeClinicAPI
 from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
 from inference.llm.gateway import create_gateway
-from inference.llm.prompt.ner import build_messages
+from inference.llm.prompt.name_slot_filling import build_messages
 
 CONFIGS = {
     "openai": (OpenAIConfig, "gpt-4o-mini", 200),
@@ -56,7 +56,7 @@ def generate(gateway, **kwargs):
     return gateway.generate_structured(
         build_messages(TEXT),
         schema=NameExtraction.model_json_schema(),
-        schema_name="name_ner_v1",
+        schema_name="name_slot_filling_v1",
         **kwargs,
     )
 
@@ -127,7 +127,7 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         assert request.headers["authorization"] == f"Bearer {SECRET}"
         assert payload["messages"] == build_messages(TEXT)
         assert payload["response_format"]["json_schema"] == {
-            "name": "name_ner_v1",
+            "name": "name_slot_filling_v1",
             "strict": True,
             "schema": NameExtraction.model_json_schema(),
         }
@@ -274,11 +274,11 @@ def test_invalid_input_makes_no_request():
 
 
 @pytest.mark.parametrize("provider", CONFIGS)
-def test_ner_and_orchestrator_route_through_gateway(provider):
+def test_name_slot_filling_and_orchestrator_route_through_gateway(provider):
     gateway, clients = mocked_gateway(
         provider, lambda _: httpx.Response(200, json=response_body(provider))
     )
-    adapter = NameNER(gateway)
+    adapter = NameSlotFiller(gateway)
     assert adapter.full_name(TEXT).value == "nguyễn văn a"
     with patch("callbot.engine.create_gateway", return_value=gateway) as factory:
         bot = create_orchestrator(
@@ -287,11 +287,11 @@ def test_ner_and_orchestrator_route_through_gateway(provider):
         )
     factory.assert_called_once_with(provider)
     bot.start_call(
-        CallStart(call_id="gateway-ner", direction="inbound", caller_number="0912345600")
+        CallStart(call_id="gateway-slot-filling", direction="inbound", caller_number="0912345600")
     )
-    action = bot.handle_turn("gateway-ner", CallerInput(turn=1, text=TEXT))
+    action = bot.handle_turn("gateway-slot-filling", CallerInput(turn=1, text=TEXT))
     assert action.state == "AWAITING_IDENTITY"
-    session = bot.sessions.store.get_session("gateway-ner")
+    session = bot.sessions.store.get_session("gateway-slot-filling")
     assert session.context["claimed_name"] == "nguyễn văn a"
     assert session.context["identity_step"] == "ASK_DOB"
     assert len(clients) == 2 and all(client.is_closed for client in clients)
