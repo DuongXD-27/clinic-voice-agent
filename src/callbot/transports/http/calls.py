@@ -3,6 +3,7 @@
 import json
 import logging
 from collections.abc import Callable
+from time import perf_counter_ns
 from typing import Annotated, Any, Optional, TypeVar
 from urllib.parse import quote
 
@@ -24,6 +25,7 @@ from callbot.engine import (
 )
 from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
 from callbot.engine.errors import OutboundStartFailed
+from callbot.tracing import Tracer, null_tracer
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -58,6 +60,78 @@ def get_call_mode(request: Request) -> CallModeStore:
 Orchestrator = Annotated[CallOrchestrator, Depends(get_orchestrator)]
 Speech = Annotated[SpeechBundle, Depends(get_speech)]
 CallMode = Annotated[CallModeStore, Depends(get_call_mode)]
+
+
+def _tracer(orchestrator: object) -> Tracer:
+    candidate = getattr(orchestrator, "tracer", None)
+    return candidate if isinstance(candidate, Tracer) else null_tracer()
+
+
+def _safe_speech_label(component: object, attribute: str) -> Optional[str]:
+    try:
+        value = getattr(component, attribute, None)
+        return value if isinstance(value, str) and value else None
+    except Exception:
+        return None
+
+
+def _elapsed_ms(start_ns: int) -> float:
+    return max(0.0, (perf_counter_ns() - start_ns) / 1_000_000)
+
+
+def _enrich_audio(span: Any, segment: Any, *, include_bytes: bool = False) -> None:
+    try:
+        attributes: dict[str, object] = {
+            "audio_duration_ms": segment.duration_ms,
+            "sample_rate_hz": segment.sample_rate,
+        }
+        if include_bytes:
+            attributes.update(bytes=len(segment.pcm), chunks=1)
+        span.enrich(**attributes)
+    except Exception:
+        logger.warning("TRACE_SPEECH_METADATA_REJECTED")
+
+
+def _set_speech_error(span: Any, exc: BaseException, *, stage: str) -> None:
+    if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
+        code = "STT_TIMEOUT" if stage.startswith("STT") else "TTS_TIMEOUT"
+        span.set_error_code("TIMEOUT", code)
+    elif stage == "STT_LOAD":
+        span.set_error_code("UPSTREAM", "STT_DECODE_ERROR")
+    elif stage == "STT_PROVIDER":
+        span.set_error_code("PROVIDER", "STT_PROVIDER_ERROR")
+    elif stage == "TTS_STORAGE":
+        span.set_error_code("STORAGE", "TTS_STORAGE_ERROR")
+    else:
+        span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
+
+
+def _transcribe(tracer: Tracer, speech: SpeechBundle, audio_url: str) -> Transcript:
+    with tracer.span(component="STT", operation="speech.stt.transcribe") as span:
+        span.enrich(
+            provider=_safe_speech_label(speech.asr, "name"),
+            model=_safe_speech_label(speech.asr, "model"),
+            streaming=False,
+        )
+        try:
+            segment = speech.audio_loader(audio_url)
+        except Exception as exc:
+            _set_speech_error(span, exc, stage="STT_LOAD")
+            raise
+        _enrich_audio(span, segment)
+        started = perf_counter_ns()
+        try:
+            transcript = speech.asr.transcribe(segment)
+        except Exception as exc:
+            span.enrich(latency_ms=_elapsed_ms(started))
+            _set_speech_error(span, exc, stage="STT_PROVIDER")
+            raise
+        span.enrich(
+            latency_ms=_elapsed_ms(started),
+            silence_detected=transcript.is_silence,
+            transcript_empty=not bool(transcript.text.strip()),
+        )
+        return transcript
 
 
 def _error(status_code: int, code: str, message: str, **extra: Any) -> HTTPException:
@@ -138,6 +212,27 @@ def start_call(
     speech: Speech,
     call_mode: CallMode,
 ) -> StartCallResponse:
+    tracer = _tracer(orchestrator)
+    with tracer.start_trace(
+        call_id=payload.call_id, turn=0, component="TURN", operation="http.start_call"
+    ) as span:
+        span.enrich(route_template="/v1/calls", http_method="POST")
+        try:
+            result = _start_call_impl(payload, orchestrator, speech, call_mode)
+            span.enrich(http_status=200, final_state=result.state)
+            return result
+        except HTTPException as exc:
+            span.enrich(http_status=exc.status_code)
+            span.set_error(exc.__cause__ or exc)
+            raise
+
+
+def _start_call_impl(
+    payload: StartCallRequest,
+    orchestrator: Orchestrator,
+    speech: Speech,
+    call_mode: CallMode,
+) -> StartCallResponse:
     call = CallStart(
         call_id=payload.call_id,
         direction=payload.direction,
@@ -152,7 +247,9 @@ def start_call(
         audio_url = None
         if payload.mode == "audio":
             call_mode.set_audio(payload.call_id)
-            audio_url = _synthesize(speech, payload.call_id, 0, action.utterance)
+            audio_url = _synthesize(
+                _tracer(orchestrator), speech, payload.call_id, 0, action.utterance
+            )
         return action, audio_url
 
     action, audio_url = _run_engine(payload.call_id, _open)
@@ -175,6 +272,32 @@ def call_turn(
     speech: Speech,
     call_mode: CallMode,
 ) -> TurnResponse:
+    tracer = _tracer(orchestrator)
+    with tracer.start_trace(
+        call_id=call_id, turn=payload.turn, component="TURN", operation="http.call_turn"
+    ) as span:
+        span.enrich(route_template="/v1/calls/{call_id}/turn", http_method="POST")
+        try:
+            result = _call_turn_impl(
+                request, response, call_id, payload, orchestrator, speech, call_mode
+            )
+            span.enrich(http_status=200, final_state=result.state, outcome=result.outcome)
+            return result
+        except HTTPException as exc:
+            span.enrich(http_status=exc.status_code)
+            span.set_error(exc.__cause__ or exc)
+            raise
+
+
+def _call_turn_impl(
+    request: Request,
+    response: Response,
+    call_id: str,
+    payload: TurnRequest,
+    orchestrator: Orchestrator,
+    speech: Speech,
+    call_mode: CallMode,
+) -> TurnResponse:
     is_audio = call_mode.is_audio(call_id)
     if is_audio and payload.text is not None:
         raise _error(422, "TEXT_NOT_ALLOWED", "Cuộc gọi audio mode không nhận text")
@@ -185,8 +308,7 @@ def call_turn(
         text = payload.text
         confidence = None
         if payload.audio_url is not None:
-            segment = speech.audio_loader(payload.audio_url)
-            transcript: Transcript = speech.asr.transcribe(segment)
+            transcript = _transcribe(_tracer(orchestrator), speech, payload.audio_url)
             text = transcript.text
             confidence = transcript.confidence
         # silence_ms giữ nguyên giá trị harness gửi (§1.1.7) — không suy diễn lại từ ASR
@@ -200,7 +322,9 @@ def call_turn(
         run = orchestrator.handle_turn_with_details(call_id, caller)
         action = run.action
         audio_url = (
-            _synthesize(speech, call_id, payload.turn, action.utterance) if is_audio else None
+            _synthesize(_tracer(orchestrator), speech, call_id, payload.turn, action.utterance)
+            if is_audio
+            else None
         )
         return action, audio_url, run
 
@@ -272,14 +396,30 @@ def _extraction_fields(extraction: Optional[dict[str, Any]]) -> Optional[str]:
     return quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), safe="")
 
 
-def _synthesize(speech: SpeechBundle, call_id: str, turn: int, text: str) -> Optional[str]:
+def _synthesize(
+    tracer: Tracer, speech: SpeechBundle, call_id: str, turn: int, text: str
+) -> Optional[str]:
     # Lượt đã ghi vào session: TTS lỗi chỉ mất audio, vẫn trả utterance (audio_url=None).
     # Trả 500 ở đây khiến client gửi lại một lượt đã được engine nhận.
-    try:
-        segment = speech.tts.synthesize(text)
-    except Exception as exc:
-        logger.warning("TTS lỗi khi xử lý %s lượt %s: %s", call_id, turn, type(exc).__name__)
-        return None
-    if segment is None:
-        return None
-    return speech.audio_store.save(call_id, turn, segment)
+    with tracer.span(component="TTS", operation="speech.tts.synthesize") as span:
+        span.enrich(
+            provider=_safe_speech_label(speech.tts, "name"),
+            model=_safe_speech_label(speech.tts, "model"),
+        )
+        started = perf_counter_ns()
+        try:
+            segment = speech.tts.synthesize(text)
+        except Exception as exc:
+            span.enrich(latency_ms=_elapsed_ms(started))
+            _set_speech_error(span, exc, stage="TTS_PROVIDER")
+            logger.warning("TTS lỗi khi xử lý %s lượt %s: %s", call_id, turn, type(exc).__name__)
+            return None
+        span.enrich(latency_ms=_elapsed_ms(started))
+        if segment is None:
+            return None
+        _enrich_audio(span, segment, include_bytes=True)
+        try:
+            return speech.audio_store.save(call_id, turn, segment)
+        except Exception as exc:
+            _set_speech_error(span, exc, stage="TTS_STORAGE")
+            raise

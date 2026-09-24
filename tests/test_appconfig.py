@@ -86,5 +86,6 @@ def test_repo_config_dir_has_one_file_per_module() -> None:
         "llm.yaml",
         "session.yaml",
         "speech.yaml",
+        "tracing.yaml",
         "tts.yaml",
     }

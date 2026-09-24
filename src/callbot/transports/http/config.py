@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from appconfig import YamlSettings, yaml_config
 
@@ -46,6 +46,17 @@ class Settings(YamlSettings):
         if self.demo_clinic_admin_enabled and self.clinic_backend == "mock":
             self.require_clinic_mock_base_url()
         return self
+
+
+class ObservabilityApiSettings(YamlSettings):
+    """Explicitly opt-in configuration for the internal read-only API."""
+
+    model_config = yaml_config("http.yaml", "observability", populate_by_name=True)
+
+    enabled: bool = Field(validation_alias="OBSERVABILITY_API_ENABLED")
+    trace_dir: str = Field(validation_alias="OBSERVABILITY_TRACE_DIR")
+    # Deployment-specific fallback shared with the trace writer; only from env.
+    fallback_trace_dir: str = Field(default="", validation_alias="TRACE_JSONL_DIR")
 
 
 settings = Settings()

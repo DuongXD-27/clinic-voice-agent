@@ -10,3 +10,9 @@ clinic_backend: sim
 clinic_sim_dataset: listing3
 # Chỉ khi sim — edge case dựng sẵn, cách nhau dấu phẩy (xem src/clinic_mock_sim/README.md), vd slot_race
 clinic_sim_scenario: ""
+
+# Internal read-only dashboard. Override with OBSERVABILITY_API_ENABLED and
+# OBSERVABILITY_TRACE_DIR. If trace_dir is empty, TRACE_JSONL_DIR is used.
+observability:
+  enabled: false
+  trace_dir: ""

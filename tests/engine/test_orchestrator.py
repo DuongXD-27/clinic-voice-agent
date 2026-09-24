@@ -13,6 +13,8 @@ from callbot.engine.extraction import InformationExtractor, QuestionId, TurnCont
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
 from callbot.engine.verification.names import normalize_name
+from callbot.tracing import Tracer
+from callbot.tracing.pseudonym import CallKeyFactory
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
@@ -424,15 +426,34 @@ def test_extractor_never_sees_patient_identity() -> None:
 
 
 def test_trace_failure_does_not_rerun_committed_turn() -> None:
-    class BrokenTracer:
-        def log(self, call_id, turn, event):
+    class BrokenSink:
+        calls = 0
+
+        def emit(self, span) -> None:
+            del span
+            self.calls += 1
             raise OSError("disk full")
 
+    sink = BrokenSink()
+    tracer = Tracer(
+        sink,
+        CallKeyFactory("trace-test-secret-key-material-00000", version="v1", environment="test"),
+    )
     clinic = FakeClinicAPI()
-    bot = create_orchestrator(clinic, tracer=BrokenTracer())
-    bot.start_call(_outbound("c_trace_fail"))
-    first = _run(bot, "c_trace_fail", ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"])
+    bot = create_orchestrator(clinic, tracer=tracer)
+    with tracer.start_trace(
+        call_id="c_trace_fail", turn=0, component="TURN", operation="http.start_call"
+    ):
+        bot.start_call(_outbound("c_trace_fail"))
+    first = None
+    for turn, text in enumerate(["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"], start=1):
+        with tracer.start_trace(
+            call_id="c_trace_fail", turn=turn, component="TURN", operation="http.call_turn"
+        ):
+            first = bot.handle_turn("c_trace_fail", CallerInput(turn=turn, text=text))
+    assert first is not None
     assert first.outcome == "CONFIRMED"
+    assert sink.calls > 0
     with pytest.raises(CallEnded):
         bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
