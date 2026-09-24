@@ -13,6 +13,7 @@ Ghi:
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from functools import wraps
 from typing import Any, Optional
 
 from callbot.engine.errors import (
@@ -35,7 +36,9 @@ from callbot.engine.tools.normalize import (
     normalize_slot,
 )
 from callbot.engine.tools.ports import PAGE_LIMIT, ClinicAPI, Page
+from callbot.engine.tools.telemetry import ApiCallRecord, collect_api_calls
 from callbot.engine.types import CancelReason, TransferReason, UnreachableReason
+from callbot.tracing import Tracer, current_span, null_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +51,97 @@ SLOT_SEARCH_MAX_WINDOWS = 5
 MAX_PAGES = 20
 ACTIONABLE_APPOINTMENT_STATUSES = frozenset({"SCHEDULED", "BOOKED", "CONFIRMED"})
 
+_CLINIC_API_OPERATIONS = {
+    "clinic.find_patient_by_phone": "find_patient_by_phone",
+    "clinic.get_appointment": "get_appointment",
+    "clinic.get_slots": "get_slots",
+    "clinic.create_appointment": "create_appointment",
+    "clinic.confirm_appointment": "confirm_appointment",
+    "clinic.cancel_appointment": "cancel_appointment",
+    "clinic.reschedule_appointment": "reschedule_appointment",
+    "clinic.transfer_appointment": "transfer_appointment",
+    "clinic.mark_unreachable": "mark_unreachable",
+}
+
+
+def _clinic_error_code(record: ApiCallRecord) -> str | None:
+    if record.code == "VERSION_CONFLICT":
+        return "CLINIC_VERSION_CONFLICT"
+    if record.code and "TIMEOUT" in record.code:
+        return "CLINIC_TIMEOUT"
+    if record.code and "CONNECT" in record.code:
+        return "CLINIC_CONNECT_ERROR"
+    if record.outcome != "ok":
+        return "CLINIC_REJECTED"
+    return None
+
+
+def _clinic_result_code(record: ApiCallRecord) -> str:
+    return _clinic_error_code(record) or "CLINIC_OK"
+
+
+def traced_clinic(
+    operation: str, endpoint_template: str, http_method: str, *, idempotency_used: bool = False
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Trace one logical gateway operation, including its existing retry loop."""
+
+    def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(function)
+        def wrapper(self: "ClinicGateway", *args: Any, **kwargs: Any) -> Any:
+            active = current_span()
+            if active is not None and active.component == "CLINIC":
+                return function(self, *args, **kwargs)
+            if active is not None:
+                active.increment_ancestor_counter("CORE", "clinic_call_count")
+            with self._tracer.span(component="CLINIC", operation=operation) as span:
+                with collect_api_calls() as records:
+                    try:
+                        return function(self, *args, **kwargs)
+                    finally:
+                        try:
+                            expected = _CLINIC_API_OPERATIONS[operation]
+                            attempts = [
+                                record for record in records if record.operation == expected
+                            ]
+                            version_conflict = any(
+                                record.code == "VERSION_CONFLICT" for record in attempts
+                            )
+                            last = attempts[-1] if attempts else None
+                            span.enrich(
+                                endpoint_template=endpoint_template,
+                                http_method=http_method,
+                                http_status=last.status if last else None,
+                                latency_ms=sum(record.latency_ms for record in records),
+                                attempt_count=len(attempts),
+                                version_conflict=version_conflict,
+                                idempotency_used=idempotency_used and bool(attempts),
+                                result_code=_clinic_result_code(last) if last else None,
+                            )
+                            for number, record in enumerate(attempts, start=1):
+                                span.event(
+                                    "clinic.attempt",
+                                    attempt=number,
+                                    http_status=record.status,
+                                    latency_ms=record.latency_ms,
+                                    error_code=_clinic_error_code(record),
+                                )
+                        except Exception:
+                            logger.warning("TRACE_CLINIC_METADATA_REJECTED")
+
+        return wrapper
+
+    return decorate
+
 
 class ClinicGateway:
-    def __init__(self, api: ClinicAPI, clinic_id: str) -> None:
+    def __init__(self, api: ClinicAPI, clinic_id: str, tracer: Tracer | None = None) -> None:
         self._api = api
         self._clinic_id = clinic_id
+        self._tracer = tracer if isinstance(tracer, Tracer) else null_tracer()
 
     # --- Đọc -----------------------------------------------------------------
 
+    @traced_clinic("clinic.get_appointment", "/appointments/{id}", "GET")
     def get_appointment(self, ctx: CallContext) -> dict[str, Any]:
         """Appointment của cuộc gọi (SF-01). Đọc được ngay lượt 0 — SF-03 cấm tiết lộ, không cấm đọc."""
         guardrails.assert_target_appointment(ctx, ctx.target_appointment_id)
@@ -76,6 +162,7 @@ class ClinicGateway:
             raise AppointmentNotActionable()
         return appointment
 
+    @traced_clinic("clinic.find_patient_by_phone", "/patients", "GET")
     def find_patients_by_phone(self, phone: str) -> list[dict[str, Any]]:
         """Ứng viên inbound theo số đã chuẩn hóa (Verifier lo, T-01) — mọi trang, mỗi phần tử
         {patient_id, full_name, dob, verifiable}. Chỉ là tra cứu, không phải bằng chứng danh tính (§1.1.9)."""
@@ -84,6 +171,7 @@ class ClinicGateway:
         )
         return [normalize_patient_candidate(row) for row in rows]
 
+    @traced_clinic("clinic.get_slots", "/slots", "GET")
     def list_open_slots(self, ctx: CallContext, now: datetime) -> list[dict[str, Any]]:
         """Nguồn slot hợp lệ duy nhất để đề xuất; thay toàn bộ `ctx.slots` (SF-02).
 
@@ -125,6 +213,12 @@ class ClinicGateway:
 
     # --- Ghi -----------------------------------------------------------------
 
+    @traced_clinic(
+        "clinic.confirm_appointment",
+        "/appointments/{id}/confirm",
+        "POST",
+        idempotency_used=True,
+    )
     def confirm(self, ctx: CallContext) -> dict[str, Any]:
         fsm.check_write(ctx, "CONFIRM")
         guardrails.assert_action_confirmed(ctx, "CONFIRM")
@@ -137,6 +231,12 @@ class ClinicGateway:
             lambda version, key: self._api.confirm_appointment(appointment_id, version, key),
         )
 
+    @traced_clinic(
+        "clinic.cancel_appointment",
+        "/appointments/{id}/cancel",
+        "POST",
+        idempotency_used=True,
+    )
     def cancel(self, ctx: CallContext, reason: CancelReason) -> dict[str, Any]:
         fsm.check_write(ctx, "CANCEL")
         guardrails.assert_action_confirmed(ctx, "CANCEL")
@@ -151,6 +251,12 @@ class ClinicGateway:
             ),
         )
 
+    @traced_clinic(
+        "clinic.reschedule_appointment",
+        "/appointments/{id}/reschedule",
+        "POST",
+        idempotency_used=True,
+    )
     def reschedule(self, ctx: CallContext, new_slot_id: str) -> dict[str, Any]:
         fsm.check_write(ctx, "RESCHEDULE", new_slot_id)
         guardrails.assert_slot_offered(ctx, new_slot_id)
@@ -166,6 +272,7 @@ class ClinicGateway:
             ),
         )
 
+    @traced_clinic("clinic.create_appointment", "/appointments", "POST", idempotency_used=True)
     def book(self, ctx: CallContext, slot_id: str) -> dict[str, Any]:
         """§1.1.10: inbound, tạo đúng MỘT appointment trên slot đã đề xuất."""
         if ctx.call.direction != "inbound" or ctx.created_appointment_id is not None:
@@ -194,6 +301,12 @@ class ClinicGateway:
         ctx.created_appointment_id = appointment_id
         return created
 
+    @traced_clinic(
+        "clinic.transfer_appointment",
+        "/appointments/{id}/transfer",
+        "POST",
+        idempotency_used=True,
+    )
     def transfer(self, ctx: CallContext, reason: TransferReason) -> Optional[dict[str, Any]]:
         """Outbound: ghi TRANSFERRED lên appointment của cuộc gọi.
 
@@ -217,6 +330,12 @@ class ClinicGateway:
             ),
         )
 
+    @traced_clinic(
+        "clinic.mark_unreachable",
+        "/appointments/{id}/unreachable",
+        "POST",
+        idempotency_used=True,
+    )
     def mark_unreachable(self, ctx: CallContext, reason: UnreachableReason) -> dict[str, Any]:
         fsm.check_closing_write(ctx)
         if ctx.call.direction != "outbound":

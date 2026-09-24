@@ -28,6 +28,8 @@ from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
+from callbot.tracing import Tracer as SpanTracer
+from callbot.tracing import null_tracer
 from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
 
@@ -82,7 +84,8 @@ def create_orchestrator(
 ) -> CallOrchestrator:
     """Use the shared Redis session store unless an explicit test/application store is supplied."""
     settings = settings or EngineSettings()
-    gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id)
+    span_tracer = tracer if isinstance(tracer, SpanTracer) else null_tracer()
+    gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id, tracer=span_tracer)
     name_fallback = None
     if settings.name_fallback_provider != "none":
         name_fallback = NameSlotFiller(create_gateway(settings.name_fallback_provider))
