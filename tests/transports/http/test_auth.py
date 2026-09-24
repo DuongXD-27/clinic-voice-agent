@@ -65,6 +65,14 @@ def test_accepts_every_configured_key(client: TestClient, key: str) -> None:
 
 
 @pytest.mark.usefixtures("auth_on")
+def test_auth_checked_before_body_validation(client: TestClient) -> None:
+    # Smoke test CD dựa vào thứ tự này: body rỗng + key đúng -> 422, không mở phiên, không gọi Clinic
+    assert client.post("/v1/calls", json={}).status_code == 401
+    ok = client.post("/v1/calls", json={}, headers={"Authorization": f"Bearer {KEY}"})
+    assert ok.status_code == 422
+
+
+@pytest.mark.usefixtures("auth_on")
 def test_turn_requires_key(client: TestClient) -> None:
     assert _start(client, "c_auth_turn", KEY).status_code == 200
     body = {"turn": 1, "audio_url": None, "text": "Vâng", "silence_ms": 0}
