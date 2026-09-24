@@ -44,7 +44,7 @@ COPY pyproject.toml ./
 RUN mkdir -p src/callbot src/clinic_mock_sim src/inference src/speech \
     && touch src/callbot/__init__.py src/clinic_mock_sim/__init__.py src/inference/__init__.py \
         src/speech/__init__.py \
-    && pip install --no-cache-dir ".[speech-zipformer,livekit,vad-webrtc,vad-silero]" \
+    && pip install --no-cache-dir ".[speech,speech-zipformer,livekit,vad-webrtc,vad-silero]" \
     && rm -rf src
 
 COPY src ./src
