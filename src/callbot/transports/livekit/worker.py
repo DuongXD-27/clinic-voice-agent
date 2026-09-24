@@ -95,6 +95,7 @@ async def entrypoint(ctx: JobContext) -> None:
         noise_tracker=bundle.noise_tracker,
         noise_classifier=bundle.noise_classifier,
         interruption_validator=bundle.validator,
+        interruption_min_snr_db=speech_settings.interruption_min_snr_db,
         sample_rate=livekit_settings.input_sample_rate,
         frame_ms=livekit_settings.frame_ms,
         input_queue_ms=livekit_settings.input_queue_ms,

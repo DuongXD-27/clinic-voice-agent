@@ -30,6 +30,15 @@ lập, cả bốn đều cho phép confirm mà không đủ điều kiện:
    `TurnValidator.evaluate()` trả WAIT, nhưng gate vẫn xác nhận barge-in ngay. Sửa: WAIT
    giờ cũng reject như DROP (khác biệt duy nhất là WAIT không mang ý nghĩa "chắc chắn rác"
    — chỉ đơn giản chưa đủ bằng chứng để xác nhận NGAY LẦN NÀY).
+5. Echo chính giọng bot qua loa/mic: bug thật qua LiveKit — bot đang đọc câu chào (TTS),
+   browser echo cancellation không loại hết audio đó (đặc biệt loa ngoài công suất lớn/
+   phòng vang), VAD/ASR nghe lại CHÍNH câu bot đang nói và tưởng là barge-in thật. Khác
+   case #3 (hallucination từ noise ngẫu nhiên): ở đây ASR nghe ĐÚNG nội dung âm thanh thật
+   (không phải hallucinate), transcript hội tụ ổn định (`stability=CONVERGING`) — qua được
+   mọi gate hiện có (duration, meaningful text, SNR, stability) vì bản chất tín hiệu không
+   khác gì user nói thật. Sửa: `on_bot_started_speaking(bot_text)` nhận text bot ĐANG đọc,
+   `_passes_gate()` so khớp mờ (rapidfuzz, cùng thư viện `TranscriptEvidenceTracker` đã
+   dùng) giữa candidate text và `bot_text` — giống cao thì reject, không xác nhận barge-in.
 """
 
 import logging
@@ -58,6 +67,9 @@ class InterruptionState(Enum):
     INTERRUPTED = auto()
 
 
+_ECHO_SIMILARITY_THRESHOLD = 70.0
+
+
 class InterruptionController:
     def __init__(
         self,
@@ -67,6 +79,7 @@ class InterruptionController:
         min_confidence: Optional[float] = None,
         clock: Optional[object] = None,
         validator: Optional[TurnValidator] = None,
+        min_snr_db: Optional[float] = None,
     ) -> None:
         """`min_confidence`: nếu ASR provider cung cấp `TranscriptEvent.confidence` (hiện
         ZipFormer luôn trả `None` — chưa hỗ trợ), partial dưới ngưỡng này bị gate chặn
@@ -84,12 +97,24 @@ class InterruptionController:
         lại từ đầu. Bug thật đã gặp: SNR vừa phải (~14dB, không đủ thấp để DROP) + text
         ngắn hallucinate ("ĐÚNG") + stability UNKNOWN -> validator trả WAIT nhưng vẫn bị
         gate cũ cho qua vì WAIT từng bị đối xử như ACCEPT, xác nhận barge-in giả dù user
-        không nói gì."""
+        không nói gì.
+
+        `min_snr_db` (tuỳ chọn, mặc định `None` — tắt hẳn, giữ hành vi cũ): ngưỡng SNR
+        RIÊNG cho barge-in, KHÔNG dùng chung `validator.min_snr_db` — validator chỉ áp
+        dụng luật SNR cho text NGẮN (<=2 từ, xem TurnValidator.evaluate()), nhưng echo
+        giọng bot qua loa/mic vẫn có thể tạo ra text DÀI, mạch lạc, `stability=CONVERGING`
+        (âm thanh thật, chỉ sai nguồn — không phải hallucinate từ noise ngẫu nhiên như bug
+        #3), nên né được luật đó. Bug thật đã gặp: candidate 5 từ "EM ĐÃ CHUẨN BỊ Ở ĐÂY"
+        snr_db=-25.56 (rất thấp) vẫn được validator ACCEPT vì áp dụng nhánh CONVERGING,
+        không phải nhánh short-text+low-snr. Kiểm tra này áp dụng KHÔNG PHÂN BIỆT độ dài
+        text (khác validator) — trong lúc bot đang nói, chấp nhận bỏ lỡ barge-in thật SNR
+        thấp (user nói khẽ) còn hơn cắt lời bot vì nghe lại chính nó."""
         self._tts = tts
         self._min_speech_s = min_speech_ms / 1000
         self._min_confidence = min_confidence
         self._clock = clock or time.monotonic
         self._validator = validator
+        self._min_snr_db = min_snr_db
         self._noise_evidence: Optional[NoiseEvidence] = None
         self._stability: StabilityVerdict = StabilityVerdict.UNKNOWN
         self._state = InterruptionState.IDLE
@@ -97,6 +122,9 @@ class InterruptionController:
         # Counter đơn điệu để media fanout nhận biết một interruption đã được xác nhận
         # ngay cả khi state đã trở về IDLE sau khi TTS dừng.
         self._confirmed_count = 0
+        # Text bot ĐANG đọc (câu đầy đủ, không phải chunk TTS) — dùng để phát hiện echo,
+        # xem bug #5 trong docstring module.
+        self._bot_text = ""
 
     @property
     def state(self) -> InterruptionState:
@@ -106,10 +134,14 @@ class InterruptionController:
     def confirmed_count(self) -> int:
         return self._confirmed_count
 
-    def on_bot_started_speaking(self) -> None:
+    def on_bot_started_speaking(self, bot_text: str = "") -> None:
+        """`bot_text`: câu đầy đủ bot chuẩn bị đọc (TTS input, không phải PCM) — dùng để
+        `_passes_gate()` phát hiện echo (xem bug #5 trong docstring module). `""` (mặc
+        định) tắt hẳn kiểm tra này — giữ hành vi cũ cho caller chưa cập nhật."""
         self._state = InterruptionState.BOT_SPEAKING
         self._candidate_started_at = None
         self._stability = StabilityVerdict.UNKNOWN
+        self._bot_text = bot_text
 
     def on_bot_stopped_speaking(self) -> None:
         self._state = InterruptionState.IDLE
@@ -177,6 +209,26 @@ class InterruptionController:
             and event.confidence < self._min_confidence
         ):
             return False
+        if self._is_echo_of_bot(event.text):
+            logger.debug(
+                "interruption: gate REJECTED (echo of bot) text=%r bot_text=%r",
+                event.text,
+                self._bot_text,
+            )
+            return False
+        if (
+            self._min_snr_db is not None
+            and self._noise_evidence is not None
+            and self._noise_evidence.snr_db < self._min_snr_db
+        ):
+            # Áp dụng KHÔNG PHÂN BIỆT độ dài text — khác TurnValidator (chỉ xét SNR cho
+            # text ngắn), xem docstring __init__.
+            logger.debug(
+                "interruption: gate REJECTED (low snr) text=%r snr_db=%.1f",
+                event.text,
+                self._noise_evidence.snr_db,
+            )
+            return False
         if self._validator is not None:
             decision = self._validator.evaluate(
                 event.text,
@@ -198,6 +250,20 @@ class InterruptionController:
                 return False
         return True
 
+    def _is_echo_of_bot(self, candidate_text: str) -> bool:
+        """True nếu `candidate_text` giống cao với `self._bot_text` (câu bot đang đọc) —
+        dấu hiệu đây là chính giọng bot vọng lại qua mic, không phải user nói (xem bug #5
+        module docstring). `partial_ratio` (không phải `ratio` như TranscriptEvidenceTracker
+        dùng cho stability): candidate thường chỉ là 1 ĐOẠN của câu bot (ASR chưa nghe hết
+        cả câu khi bot còn đang đọc dở), `ratio` so toàn chuỗi sẽ cho điểm thấp giả tạo dù
+        đúng là echo — `partial_ratio` tìm đoạn khớp tốt nhất bên trong chuỗi dài hơn."""
+        if not self._bot_text or not candidate_text.strip():
+            return False
+        from rapidfuzz import fuzz
+
+        similarity = fuzz.partial_ratio(candidate_text.strip().lower(), self._bot_text.lower())
+        return similarity >= _ECHO_SIMILARITY_THRESHOLD
+
     def on_evidence_updated(
         self,
         *,
@@ -216,6 +282,21 @@ class InterruptionController:
         """VAD speech_end trong lúc vẫn là INTERRUPTION_CANDIDATE (chưa đủ điều kiện xác
         nhận) -> coi là backchannel/noise ngắn, quay lại BOT_SPEAKING, không cancel TTS."""
         if self._state == InterruptionState.INTERRUPTION_CANDIDATE:
+            # Nếu đây là audio user nói thật (không phải echo/backchannel), nó biến mất
+            # không có turn nào — VAD/ASR đã nhận đủ để tạo candidate nhưng
+            # _passes_gate() (duration/nội dung/validator) chưa từng qua trước khi
+            # speech_end tới. Log DEBUG only: candidate_started_at có thể None nếu chưa
+            # từng qua on_speech_started (không nên xảy ra ở nhánh này, nhưng phòng thủ).
+            duration_s = (
+                self._clock() - self._candidate_started_at
+                if self._candidate_started_at is not None
+                else None
+            )
+            logger.debug(
+                "interruption: candidate reverted to BOT_SPEAKING without confirmation "
+                "duration_s=%s",
+                duration_s,
+            )
             self._state = InterruptionState.BOT_SPEAKING
             self._candidate_started_at = None
             self._stability = StabilityVerdict.UNKNOWN

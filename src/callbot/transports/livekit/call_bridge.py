@@ -96,6 +96,7 @@ class CallBridge:
         noise_tracker: Optional[NoiseTracker] = None,
         noise_classifier: Optional[FrameClassifier] = None,
         interruption_validator: Optional[TurnValidator] = None,
+        interruption_min_snr_db: Optional[float] = None,
         frame_ms: int = 30,
         input_queue_ms: int = 1_500,
         output_queue_ms: int = 200,
@@ -138,7 +139,9 @@ class CallBridge:
         # module speech/turn/interruption.py: barge-in false-positive từ noise trong lúc
         # bot nói KHÔNG được Speech Admission chặn (audio phải tới ASR thật để tự confirm),
         # nên cần lớp phòng thủ riêng ở đây.
-        self._interruption = InterruptionController(self, validator=interruption_validator)
+        self._interruption = InterruptionController(
+            self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
+        )
 
     async def run(self) -> None:
         """Vòng đời 1 call: mở Core session, subscribe mic, publish TTS track, xử lý
@@ -316,7 +319,7 @@ class CallBridge:
             return
 
         self._turn_controller.on_bot_speaking_changed(True)
-        self._interruption.on_bot_started_speaking()
+        self._interruption.on_bot_started_speaking(text)
         self._active_speak_task = asyncio.current_task()
         # rtc.AudioFrame đòi len(data) chẵn (PCM16 = 2 byte/sample) — chunk từ
         # synthesize_stream() cắt theo byte HTTP tuỳ ý, không đảm bảo ranh giới sample;

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -77,6 +77,16 @@ class SpeechSettings(BaseSettings):
     # cho mọi call.
     turn_validator_enabled: bool = False
     turn_validator_min_snr_db: float = 3.0
+    # Ngưỡng SNR RIÊNG cho InterruptionController (barge-in) — KHÔNG dùng chung
+    # turn_validator_min_snr_db, xem docstring InterruptionController.__init__. Bug thật
+    # đã gặp: echo giọng bot qua loa/mic (browser echo cancellation không loại hết) tạo
+    # candidate text DÀI, mạch lạc (stability=CONVERGING) nên né được luật SNR của
+    # TurnValidator (chỉ áp dụng cho text <=2 từ) — candidate 5 từ vẫn ACCEPT dù
+    # snr_db=-25.56 (rất thấp, đặc trưng echo qua loa-mic khác giọng nói trực tiếp). Kiểm
+    # tra này không phân biệt độ dài text. `None` tắt hẳn (giữ hành vi cũ) — mặc định để
+    # tắt vì cần benchmark thêm trước khi áp dụng cho mọi call, cùng tinh thần các cờ
+    # turn_validator_enabled/speech_admission_enabled khác trong file này.
+    interruption_min_snr_db: Optional[float] = None
     # Bug thật đã gặp: dùng WebRTC (`vad_provider`) làm classifier cho NoiseTracker khiến
     # noise_floor không được cập nhật đúng — WebRTC báo speech=True gần như LIÊN TỤC trên
     # noise phòng thuần (0 false-negative nhưng rất nhiều false-positive), nên

@@ -292,5 +292,127 @@ async def test_no_validator_keeps_old_behavior() -> None:
     assert confirmed is True
 
 
+async def test_echo_of_bot_greeting_does_not_confirm_barge_in() -> None:
+    """Tái hiện đúng bug thật qua LiveKit (LIVEKIT_DEBUG_DUMP_AUDIO): bot đọc câu chào,
+    browser echo cancellation không loại hết audio qua loa/mic, ASR nghe lại chính giọng
+    bot và tưởng là barge-in. Candidate text giống cao với bot_text (fuzzy match) ->
+    reject dù qua được mọi gate khác (duration/meaningful text/validator)."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking(
+        "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài. "
+        "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
+    )
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="em là trợ lý ảo AI", is_final=False)
+    )
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_no_bot_text_keeps_old_behavior_for_echo_check() -> None:
+    """`on_bot_started_speaking()` không truyền bot_text (caller cũ chưa cập nhật) -> tắt
+    hẳn echo check, không đổi hành vi barge-in thật."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()  # bot_text mặc định ""
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại đi", is_final=False)
+    )
+
+    assert confirmed is True
+
+
+async def test_low_snr_rejects_long_text_during_barge_in() -> None:
+    """Tái hiện đúng log thật: candidate 5 từ 'EM ĐÃ CHUẨN BỊ Ở ĐÂY' snr_db=-25.56 (rất
+    thấp, đặc trưng echo qua loa-mic) vẫn được TurnValidator ACCEPT vì luật SNR của nó
+    chỉ áp dụng cho text <=2 từ (không kích hoạt cho text dài này). interruption_min_snr_db
+    RIÊNG phải chặn được case này mà validator bỏ lọt."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    validator = TurnValidator(min_snr_db=3.0)
+    controller = InterruptionController(
+        tts, min_speech_ms=200, clock=clock, validator=validator, min_snr_db=0.0
+    )
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=3.0, noise_floor=50.0, snr_db=-25.56),
+        stability=StabilityVerdict.CONVERGING,
+    )
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="em đã chuẩn bị ở đây", is_final=False)
+    )
+
+    assert confirmed is False
+    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
+    assert tts.cancel_calls == 0
+
+
+async def test_low_snr_threshold_none_keeps_old_behavior() -> None:
+    """min_snr_db=None (mặc định) -> không chặn gì thêm, giữ hành vi cũ 100%."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=3.0, noise_floor=50.0, snr_db=-25.56),
+        stability=StabilityVerdict.CONVERGING,
+    )
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="em đã chuẩn bị ở đây", is_final=False)
+    )
+
+    assert confirmed is True
+
+
+async def test_high_snr_real_barge_in_still_confirms_with_snr_threshold() -> None:
+    """Barge-in thật (SNR cao) vẫn hoạt động bình thường dù đã cấu hình
+    interruption_min_snr_db — ngưỡng chỉ chặn SNR THẤP, không chặn nhầm barge-in thật."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock, min_snr_db=0.0)
+    controller.on_bot_started_speaking()
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=5000.0, noise_floor=50.0, snr_db=40.0),
+        stability=StabilityVerdict.CONVERGING,
+    )
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="dừng lại đi", is_final=False)
+    )
+
+    assert confirmed is True
+    assert controller.state == InterruptionState.INTERRUPTED
+    assert tts.cancel_calls == 1
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
