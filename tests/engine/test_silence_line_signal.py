@@ -247,7 +247,31 @@ def test_human_who_is_busy_is_not_voicemail() -> None:
         "outbound",
         ["tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"],
     )
+    _ended(actions[-1], "TRANSFERRED", "OUT_OF_SCOPE")
+    assert clinic.appointments["apt_00417"]["attempt_count"] == 0
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Tôi đang bận, em để lại tin nhắn giúp tôi",
+        "Tôi hiện không thể nghe máy, gọi lại sau nhé",
+        "toi dang ban em de lai tin nhan giup toi",
+    ],
+)
+def test_human_contact_request_transfers_instead_of_marking_unreachable(line: str) -> None:
+    _, clinic, actions = _call("c_human_contact", "outbound", [line])
+    _ended(actions[-1], "TRANSFERRED", "OUT_OF_SCOPE")
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "OUT_OF_SCOPE"})]
+    assert clinic.appointments["apt_00417"]["attempt_count"] == 0
+
+
+def test_denied_voicemail_continues_identity_without_writing() -> None:
+    _, clinic, actions = _call(
+        "c_denied_vm", "outbound", ["Đây không phải hộp thư thoại, tôi đang nghe đây"]
+    )
     assert not actions[-1].ended and clinic.writes == []
+    assert clinic.appointments["apt_00417"]["attempt_count"] == 0
 
 
 # --- Kết quả ghi /unreachable -------------------------------------------------------------------

@@ -11,8 +11,8 @@
 - OUT_OF_SCOPE gồm chủ đề ngoài phạm vi (§1.2.3, địa chỉ / đường đi) và yêu cầu ngoài kịch bản mà bot
   hiểu được: người khác đi khám thay, đến muộn, xin gọi lại. Yêu cầu xếp sau đổi / hủy / đặt — câu có
   nhu cầu trong phạm vi thì làm nhu cầu đó ("tôi sợ đến trễ, dời sang 10 giờ" -> RESCHEDULE) — nhưng
-  trước CONFIRM ("vợ tôi sẽ đến thay" không phải đồng ý). Xin gọi lại chỉ xét ở bước nghiệp vụ
-  (`business_step`): ở bước danh tính người nghe đang bận vẫn được hỏi lại tên (T-08).
+  trước CONFIRM ("vợ tôi sẽ đến thay" không phải đồng ý). Cụm gọi lại ngắn xét ở bước nghiệp vụ;
+  yêu cầu trực tiếp "gọi lại cho tôi" / "giúp tôi" áp dụng cả trước xác minh (§1.1.5).
 - Transcript không dấu: khớp bản không dấu của từ khoá, provenance NORMALIZED. Từ khoá mà bản
   không dấu trùng nghĩa khác nằm trong `_UNACCENTED_EXCLUDE` ("dời" / "đợi", "tôi đến" / "tối đến").
 """
@@ -76,6 +76,20 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "thanh toán",
         "hóa đơn",
         "viện phí",
+        # Câu hỏi chi phí là ngoài phạm vi; không bắt riêng "phí" vì "đắt quá" có thể
+        # là lý do hủy COST, vẫn thuộc nghiệp vụ.
+        "mất phí không",
+        "có phí không",
+        "hết bao nhiêu tiền",
+        "chi phí bao nhiêu",
+        "giá khám bao nhiêu",
+        # Phủ nhận lịch đang được đọc: không đoán người nào đã đặt hoặc tự xác nhận.
+        "lịch này tôi có đặt đâu",
+        "tôi có đặt lịch nào đâu",
+        "tôi không đặt lịch này",
+        "tôi không nhớ là có đặt lịch này",
+        "ai đặt lịch này cho tôi",
+        "tôi có hẹn gì bên mình đâu",
         "hoàn tiền",
         "chuyển tuyến",
         "chuyển viện",
@@ -204,6 +218,13 @@ _KEYWORDS: dict[Intent, list[str]] = {
 # Yêu cầu ngoài kịch bản (§1.1.5): bot hiểu được nhưng không có luồng xử lý. Phủ định đứng trước làm
 # mất nhãn ("không đến trễ đâu").
 _OUT_OF_SCOPE_REQUESTS = [
+    "để lại tin nhắn giúp tôi",
+    "nhắn tin giúp tôi",
+    "gửi tin nhắn cho tôi",
+    "nhắn tin lịch khám",
+    "gọi lại sau nhé",
+    "gọi lại sau giúp tôi",
+    "gọi lại cho tôi",
     # người khác đi khám thay người bệnh
     "đến thay",
     "đi thay",
@@ -220,7 +241,8 @@ _OUT_OF_SCOPE_REQUESTS = [
     "tới muộn",
     "tới trễ",
 ]
-# Xin gọi lại: chỉ ở bước nghiệp vụ (xem docstring). "rồi gọi lại" (người gọi tự gọi lại) không có ở đây.
+# Cụm gọi lại ngắn chỉ ở bước nghiệp vụ; lời yêu cầu trực tiếp "gọi lại cho tôi" / "giúp tôi"
+# ở _OUT_OF_SCOPE_REQUESTS áp dụng cả trước xác minh. "rồi gọi lại" không nằm ở đây.
 _CALLBACK_REQUESTS = [
     "gọi lại sau",
     "gọi lại cho tôi",

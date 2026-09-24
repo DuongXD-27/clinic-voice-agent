@@ -291,6 +291,7 @@ class DialogueManager:
             return Reply(self._finish("CONFIRMED", t.confirmed(ctx, written)))
         if agreement is Agreement.REFUSE:
             ctx.clear_pending()
+            self._update_cancel_reason(ctx, ex)
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT"))
         if ex.agreement.found or intent is Intent.CONFIRM:
             # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
@@ -326,6 +327,8 @@ class DialogueManager:
                 )
             if intent in (Intent.CANCEL, Intent.RESCHEDULE):
                 return self._start(ctx, intent, ex, now)
+            if ex.cancel_reason.found:
+                self._update_cancel_reason(ctx, ex)
             if ex.cancel_reason.found and ex.cancel_reason.value != DEFAULT_CANCEL_REASON:
                 # "Đổi hay hủy?" -> "hôm đó tôi đi công tác": người gọi kể vì sao không đến nhưng
                 # chưa chọn. Hỏi lại đúng câu đó; lần đầu không tính §1.1.5 (T-04 §8, Q-2).
@@ -346,9 +349,17 @@ class DialogueManager:
         self, ctx: CallContext, intent: Intent, ex: ExtractionResult, now: datetime
     ) -> Reply:
         if intent is Intent.CANCEL:
-            # `set_pending` xóa bằng chứng VÀ lý do của hành động cũ: yêu cầu hủy mới bắt đầu từ
-            # trắng, mặc định UNSPECIFIED nếu lượt này không nêu lý do (T-05 §3.2.1)
+            # Lý do vừa nêu ở câu "đổi hay hủy" thuộc cùng yêu cầu. Không mang lý do
+            # của một hành động hủy/đổi đã bỏ sang yêu cầu mới.
+            prior_reason = (
+                ctx.cancel_reason
+                if ctx.pending_action is None
+                and ctx.question is not None
+                and ctx.question.question_id is QuestionId.ASK_INTENT
+                else None
+            )
             ctx.set_pending("CANCEL")
+            ctx.cancel_reason = prior_reason
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
             self._update_cancel_reason(ctx, ex)
             return Reply(

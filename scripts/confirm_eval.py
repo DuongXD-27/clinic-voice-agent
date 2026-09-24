@@ -1,4 +1,4 @@
-"""Đánh giá bước xác nhận (T-04): câu nào mở khóa lệnh ghi CONFIRMED / RESCHEDULED, câu nào hỏi đúng.
+"""Đánh giá Confirm attendance (T-04): xác nhận đến khám, hỏi lại và rẽ nhánh đúng.
 
     python scripts/confirm_eval.py --baseline                 # chỉ luật, KHÔNG gọi API
     python scripts/confirm_eval.py --route-only               # luật + model giả trả None: đếm lượt gọi model
@@ -8,8 +8,9 @@
 Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator thật + FakeClinicAPI** ở đúng câu
 hỏi đang chờ (`question_id` trong bộ câu):
 - `CONFIRM_READBACK`: outbound vừa xác minh, câu tóm tắt gộp đọc lại lịch (Figure 0);
-- `ASK_INTENT`: sau khi người gọi nói "Không" ở câu tóm tắt (bot hỏi "đổi hay hủy");
-- `SLOT_READBACK`: sau "tôi muốn đổi lịch" và "khung 1".
+- `ASK_INTENT`: sau khi người gọi nói "Không" ở câu tóm tắt (bot hỏi "đổi hay hủy").
+Không chấm SLOT_READBACK (thuộc Reschedule). Case chọn CANCEL/RESCHEDULE được giữ để
+chấm rẽ nhánh, không tính vào tỷ lệ hoàn thành xác nhận đến khám.
 
 `expect_behaviour` là nhãn nghiệp vụ theo kiến trúc §3.2 (`O_AGREE`): nói sẽ đến / đồng ý rõ với lịch
 vừa đọc → `CONFIRM` (chỉ báo đã nghe / đã nhớ như "vâng tôi nghe", "tôi nhớ rồi" chưa phải đồng ý);
@@ -22,17 +23,24 @@ từ hoàn cảnh, không có từ khóa nói thẳng; chỉ luật thì đượ
 ghi. Báo cáo tách:
 - độ chính xác trên `holdout` (tập `prompt` là câu mẫu của prompt), tách câu luật quyết được và câu
   cần suy nghĩa,
-- số lần GHI SAI (lệnh ghi khi không có hành vi ghi nào được chấp nhận) — exit code 1 nếu > 0,
+- số lần GHI SAI và lỗi record/response; exit code 1 nếu có case không đạt,
 - tỷ lệ câu đồng ý thật không được ghi ngay, số lượt gọi model theo nhóm.
+- `attendance_confirmation_*`: chỉ các câu holdout mong đợi CONFIRM; phải pass cả record.
+- `branch_routing_*`: các câu holdout mong đợi CANCEL/RESCHEDULE, chưa hoàn thành ghi lịch.
 Mỗi dòng kết quả ghi nhãn model trả về (`semantic_kind`, `semantic_reason`, `semantic_intent`) và
 `transfer_reason` khi bot chuyển máy (group `out_of_scope` phải là `OUT_OF_SCOPE`; group
 `out_of_scope_trap` là câu có từ gần giống nhưng không được chuyển máy).
+`passed` yêu cầu cả `behaviour_ok` và `contract_ok`; reason mong đợi nằm trong cột
+`expect_transfer_reason`. Mặc định exit 1 nếu bất kỳ case nào không đạt; `--safety-only`
+chỉ bỏ qua lỗi nhãn hội thoại, không bỏ qua lỗi record hoặc bỏ sót transfer bắt buộc.
+Đây là eval MỘT LƯỢT sau setup đã xác minh, không thay thế bộ full-call/SF-01..05.
 
 Nhãn hành vi (`expect_behaviour`, `observed_behaviour`) — `_behaviour` xét theo đúng thứ tự dưới đây,
-nhãn đầu tiên khớp được dùng. Hai nhãn đầu là LỆNH GHI; các nhãn còn lại không ghi gì vào Clinic.
+nhãn đầu tiên khớp được dùng. CONFIRM và TRANSFER ghi vào Clinic;
+các nhãn hỏi lại không ghi.
 
     CONFIRM               Ghi CONFIRMED (xác nhận đến khám).
-    SLOT_WRITE            Ghi RESCHEDULED / BOOKED (đổi lịch / đặt lịch sang khung mới).
+    SLOT_WRITE            Ghi RESCHEDULED / BOOKED ngoài phạm vi bộ này: luôn là lỗi.
     TRANSFER              Chuyển máy (xin nhân viên, lâm sàng, không hiểu 2 lần, ngoài phạm vi...).
     ENDED                 Cuộc gọi kết thúc mà không thuộc các nhãn trên.
     ASK_CHANGE_OR_CANCEL  Bot hỏi "Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?" — người gọi đã
@@ -41,12 +49,9 @@ nhãn đầu tiên khớp được dùng. Hai nhãn đầu là LỆNH GHI; các 
     RESCHEDULE            Bot đọc các khung giờ trống (câu hỏi đang chờ OFFER_SLOTS) — bắt đầu đổi lịch.
     CANCEL                Bot hỏi "chắc chắn muốn hủy lịch khám này..." (CANCEL_RECONFIRM) — bắt đầu
                           hủy, chưa ghi; cần xác nhận lần hai có động từ hủy.
-    ABANDON               (chỉ ở SLOT_READBACK) Bỏ việc đổi lịch, quay về hỏi giữ lịch cũ.
-    REREAD                Câu hỏi đang chờ là CONFIRM_READBACK: bot đọc lại ngày, giờ, cơ sở và hỏi có /
+    REREAD                Câu hỏi đang chờ là CONFIRM_READBACK: bot đọc lại ngày, giờ, chuyên khoa và hỏi có /
                           không ("... có đến khám được theo lịch này không ạ?" / "... đồng ý chứ ạ?").
                           "vâng" ở lượt sau sẽ ghi CONFIRMED.
-    ASK_AGAIN             Câu hỏi đang chờ là SLOT_READBACK: bot hỏi lại khung vừa chọn bằng câu lựa
-                          chọn ("chọn khung ... hay muốn nghe khung khác ạ?").
     OTHER                 Không khớp nhãn nào — luồng lạ, cần xem lại.
 
 Kết quả ghi ra `result/<dd-mm-yyyy>/confirm/<label>/` (ngày theo giờ Việt Nam, thư mục được commit).
@@ -92,9 +97,9 @@ VERIFIED = ["Nguyễn Văn A", "14/03/1978"]
 SETUP: dict[str, list[str]] = {
     QuestionId.CONFIRM_READBACK.value: [],
     QuestionId.ASK_INTENT.value: ["Không"],
-    QuestionId.SLOT_READBACK.value: ["tôi muốn đổi lịch", "khung 1"],
 }
 WRITE_BEHAVIOURS = frozenset({"CONFIRM", "SLOT_WRITE"})
+TARGET_APPOINTMENT = "apt_00417"
 
 _SERVER = fakeredis.FakeServer()
 
@@ -125,7 +130,7 @@ def _store() -> RedisSessionStore:
     )
 
 
-def _behaviour(action, ctx: Optional[CallContext], clinic: FakeClinicAPI, question: str) -> str:
+def _behaviour(action, ctx: Optional[CallContext], clinic: FakeClinicAPI) -> str:
     written = {status for _, status, _ in clinic.writes}
     if "CONFIRMED" in written:
         return "CONFIRM"
@@ -144,13 +149,70 @@ def _behaviour(action, ctx: Optional[CallContext], clinic: FakeClinicAPI, questi
         return "RESCHEDULE"
     if asked is QuestionId.CANCEL_RECONFIRM:
         return "CANCEL"
-    if question == QuestionId.SLOT_READBACK.value and ctx.pending_action is None:
-        return "ABANDON"
     if asked is QuestionId.CONFIRM_READBACK:
         return "REREAD"
-    if asked is QuestionId.SLOT_READBACK:
-        return "ASK_AGAIN"
     return "OTHER"
+
+
+def _contract_errors(
+    action, before: CallContext, clinic: FakeClinicAPI, expected_reason: str
+) -> list[str]:
+    """Kiểm record và response, độc lập với nhãn hành vi hội thoại một lượt.
+
+    Đây vẫn là eval một lượt sau setup danh tính, không thay thế full-call/SF test set.
+    """
+    errors = []
+    record = clinic.appointments[TARGET_APPOINTMENT]
+    writes = clinic.writes
+    if any(appointment != TARGET_APPOINTMENT for appointment, _, _ in writes):
+        errors.append("wrong_appointment")
+    if len(writes) > 1:
+        errors.append("multiple_writes")
+    if action.ended:
+        if not writes:
+            errors.append("ended_without_write")
+        if record["status"] != action.outcome:
+            errors.append("outcome_record_mismatch")
+        if action.state != "ENDED":
+            errors.append("ended_state_mismatch")
+    elif writes or record["status"] != "SCHEDULED" or action.outcome is not None:
+        errors.append("unfinished_call_changed_record")
+    if writes and writes[-1][1] != record["status"]:
+        errors.append("writelog_record_mismatch")
+    if expected_reason and action.outcome != "TRANSFERRED":
+        errors.append("missing_required_transfer")
+    if record["status"] == "CONFIRMED":
+        if not record.get("confirmed_at") or record.get("confirmed_via") != "callbot":
+            errors.append("confirmation_metadata")
+        question = before.question
+        if not before.identity_verified:
+            errors.append("unverified_confirmation")
+        if question is None or question.question_id is not QuestionId.CONFIRM_READBACK:
+            errors.append("missing_readback")
+        elif not all(
+            fact and fact in question.text
+            for fact in (record.get("department"), t.speak_datetime(record["starts_at"]))
+        ):
+            errors.append("incomplete_readback")
+    if any(status in {"RESCHEDULED", "BOOKED"} for _, status, _ in writes):
+        errors.append("unexpected_slot_write")
+    if action.outcome == "TRANSFERRED":
+        if not expected_reason:
+            errors.append("unexpected_transfer")
+        elif (
+            action.transfer_reason != expected_reason
+            or record.get("transfer_reason") != expected_reason
+            or not writes
+            or writes[-1][2].get("transfer_reason") != expected_reason
+        ):
+            errors.append("transfer_reason_mismatch")
+    return errors
+
+
+def _exit_code(runs: list[dict[str, Any]], safety_only: bool = False) -> int:
+    if safety_only:
+        return int(any(run["unsafe_writes"] or run["contract_failures"] for run in runs))
+    return int(any(run["failed_cases"] for run in runs))
 
 
 def _run_case(
@@ -164,7 +226,8 @@ def _run_case(
     for turn, line in enumerate(lines, start=1):
         bot.handle_turn(call_id, CallerInput(turn=turn, text=line))
     raw = bot.sessions.store.get_session(call_id).context
-    asked = CallContext.from_dict(raw).question if raw else None
+    before = CallContext.from_dict(raw)
+    asked = before.question
     assert asked is not None and asked.question_id.value == row["question_id"], row
 
     if semantic is not None:
@@ -179,8 +242,11 @@ def _run_case(
 
     raw = bot.sessions.store.get_session(call_id).context
     ctx = CallContext.from_dict(raw) if raw else None
-    observed = _behaviour(action, ctx, clinic, row["question_id"])
+    observed = _behaviour(action, ctx, clinic)
     accepted = row["expect_behaviour"].split("|")
+    expected_reason = row.get("expect_transfer_reason", "")
+    errors = _contract_errors(action, before, clinic, expected_reason)
+    behaviour_ok = observed in accepted
     semantic_status, semantic_ms = semantic.last if semantic and semantic.last else ("", None)
     outcome = semantic.outcome if semantic else None
     return {
@@ -194,7 +260,11 @@ def _run_case(
         "observed_behaviour": observed,
         # Cùng là TRANSFER: tách chuyển vì ngoài phạm vi (group out_of_scope) với lâm sàng / xin nhân viên
         "transfer_reason": action.transfer_reason or "",
-        "behaviour_ok": observed in accepted,
+        "expect_transfer_reason": expected_reason,
+        "behaviour_ok": behaviour_ok,
+        "contract_ok": not errors,
+        "contract_errors": "|".join(errors),
+        "passed": behaviour_ok and not errors,
         "unsafe_write": observed in WRITE_BEHAVIOURS and observed not in accepted,
         # Câu đồng ý thật (hành vi mong đợi đầu tiên là ghi) mà bot đọc lại thay vì ghi
         "agree_reread": accepted[0] in WRITE_BEHAVIOURS and observed not in WRITE_BEHAVIOURS,
@@ -242,7 +312,7 @@ class _Progress:
 def _mark(row: dict[str, Any]) -> str:
     if row["unsafe_write"]:
         return "W"
-    if not row["behaviour_ok"]:
+    if not row["passed"]:
         return "F"
     return "t" if row["semantic_status"] == "timeout" else "."
 
@@ -251,7 +321,7 @@ def _print_progress(
     attempt: int, repeats: int, index: int, total: int, row: dict[str, Any]
 ) -> None:
     """`-v`: một dòng mỗi câu, in ngay (flush) để biết đang chạy câu nào khi có model."""
-    mark = "PASS" if row["behaviour_ok"] else "FAIL"
+    mark = "PASS" if row["passed"] else "FAIL"
     if row["unsafe_write"]:
         mark = "UNSAFE WRITE"
     model = ""
@@ -270,7 +340,7 @@ def _print_failures(runs: list[tuple[list[dict[str, Any]], Optional[Capturing]]]
     failed: dict[tuple[str, str], dict[str, Any]] = {}
     for attempt, (rows, _) in enumerate(runs, start=1):
         for row in rows:
-            if row["behaviour_ok"]:
+            if row["passed"]:
                 continue
             key = (row["question_id"], row["transcript"])
             entry = failed.setdefault(
@@ -288,7 +358,8 @@ def _print_failures(runs: list[tuple[list[dict[str, Any]], Optional[Capturing]]]
         tag = "UNSAFE WRITE" if entry["unsafe"] else "FAIL"
         print(
             f"  {tag} {question} | {transcript} -> {'/'.join(entry['observed'])}"
-            f" (expected {row['expect_behaviour']}; runs {entry['runs']})"
+            f" (expected {row['expect_behaviour']}; runs {entry['runs']};"
+            f" contract={row['contract_errors'] or 'ok'})"
         )
 
 
@@ -298,10 +369,14 @@ def _run_line(attempt: int, repeats: int, summary: dict[str, Any]) -> str:
     statuses = ", ".join(f"{name} {count}" for name, count in summary["model_statuses"].items())
     model = f"model calls {summary['model_calls']}" + (f" ({statuses})" if statuses else "")
     return (
-        f"run {attempt}/{repeats}: passed {passed}/{scored} ({passed / max(1, scored):.1%})"
+        f"run {attempt}/{repeats}: behaviour {passed}/{scored} ({passed / max(1, scored):.1%})"
+        f" · all checks {summary['holdout_fully_passed']}/{scored}"
+        f" · confirmed {summary['attendance_confirmation_passed']}/{summary['attendance_confirmation_cases']}"
+        f" · branch routing {summary['branch_routing_passed']}/{summary['branch_routing_cases']}"
         f" [rule {summary['rule_passed']}/{summary['rule_cases']}"
         f", inference {summary['inference_passed']}/{summary['inference_cases']}]"
         f" · unsafe writes {summary['unsafe_writes']}"
+        f" · contract failures {summary['contract_failures']}"
         f" · agreements not confirmed {summary['agree_not_confirmed']}/{summary['agree_cases']}"
         f" · {model}"
     )
@@ -316,12 +391,32 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
         bucket["ok"] += int(row["behaviour_ok"])
         bucket["routed"] += int(row["routed"])
     agree = [r for r in rows if r["expect_behaviour"].split("|")[0] in WRITE_BEHAVIOURS]
+    confirmation = [r for r in holdout if r["expect_behaviour"] == "CONFIRM"]
+    branches = [
+        r for r in holdout if set(r["expect_behaviour"].split("|")) & {"CANCEL", "RESCHEDULE"}
+    ]
     inference = [r for r in holdout if r["needs_inference"]]
     rule = [r for r in holdout if not r["needs_inference"]]
     statuses = dict(sorted(counter.statuses.items())) if counter else {}
     return {
         "cases": len(rows),
+        "passed_cases": sum(r["passed"] for r in rows),
+        "failed_cases": sum(not r["passed"] for r in rows),
+        "contract_failures": sum(not r["contract_ok"] for r in rows),
         "holdout_cases": len(holdout),
+        "attendance_confirmation_cases": len(confirmation),
+        "attendance_confirmation_passed": sum(r["passed"] for r in confirmation),
+        "attendance_confirmation_rate": (
+            round(sum(r["passed"] for r in confirmation) / len(confirmation), 4)
+            if confirmation
+            else None
+        ),
+        "branch_routing_cases": len(branches),
+        "branch_routing_passed": sum(r["passed"] for r in branches),
+        "branch_routing_accuracy": (
+            round(sum(r["passed"] for r in branches) / len(branches), 4) if branches else None
+        ),
+        "holdout_fully_passed": sum(r["passed"] for r in holdout),
         "holdout_passed": sum(r["behaviour_ok"] for r in holdout),
         "holdout_behaviour_accuracy": round(
             sum(r["behaviour_ok"] for r in holdout) / max(1, len(holdout)), 4
@@ -349,10 +444,13 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
                     "observed_behaviour",
                     "semantic_kind",
                     "semantic_reason",
+                    "expect_transfer_reason",
+                    "transfer_reason",
+                    "contract_errors",
                 )
             }
             for r in holdout
-            if not r["behaviour_ok"]
+            if not r["passed"]
         ],
         "model_calls": counter.routed if counter else 0,
         "model_statuses": statuses,
@@ -363,7 +461,7 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Confirm-step eval: which answers unlock CONFIRMED / RESCHEDULED writes."
+        description="Confirm attendance eval: CONFIRMED writes, clarification and branch routing."
         " Results go to result/<dd-mm-yyyy>/confirm/<label>/."
     )
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -380,6 +478,11 @@ def main() -> int:
         "--repeats", type=int, default=1, help="number of runs, to measure model variance"
     )
     parser.add_argument("--label", default=None, help="result folder name (default: mode)")
+    parser.add_argument(
+        "--safety-only",
+        action="store_true",
+        help="Exit 0 despite dialogue mismatches only; record errors and unsafe writes still fail",
+    )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="print every case instead of the progress bar"
     )
@@ -442,6 +545,8 @@ def main() -> int:
     report = {
         "label": label,
         "mode": mode_name,
+        "evaluation_scope": "confirm_attendance_and_branch_routing",
+        "exit_policy": "safety_only" if args.safety_only else "all_cases",
         "model": gateway.model if gateway else None,
         "prompt_version": PROMPT_VERSION if gateway else None,
         "repeats": args.repeats,
@@ -453,7 +558,7 @@ def main() -> int:
     )
     _print_failures(runs)
     print(f"-> {out_dir}")
-    return 0 if all(run["unsafe_writes"] == 0 for run in per_repeat) else 1
+    return _exit_code(per_repeat, args.safety_only)
 
 
 if __name__ == "__main__":  # pragma: no cover - script chạy tay

@@ -112,6 +112,9 @@ _NOT_CHANGE_WORDS = [
 _NOT_CANCEL = compile_phrases(
     [*_NOT_CANCEL_WORDS, *_NOT_CHANGE_WORDS], unaccented_exclude=["đừng hủy"]
 )
+# Mệnh đề phụ không phủ định việc đến khám. Chỉ bỏ cả cụm có nghĩa rõ ràng,
+# không bỏ riêng "không" / "biết" rồi vô tình đồng ý một câu còn điều kiện.
+_ATTENDANCE_ASIDES = compile_phrases(["biết địa chỉ rồi", "không trễ đâu", "không muộn đâu"])
 # Ngập ngừng: người gọi chưa quyết, dù câu có "vâng" / "được" (T-04). Không có "chắc" đứng một mình:
 # "chắc chắn" là khẳng định; "chắc được", "chắc đến" là đoán (T-04 §8).
 _HEDGE = compile_phrases(
@@ -371,6 +374,7 @@ def _find_cues(text: str, unaccented: bool, attending: bool = False) -> _Cues:
         # Bỏ "không hủy" trước khi tìm từ chối, để "không" trong đó không thành REFUSE
         not_cancel = find_phrase(rest, _NOT_CANCEL, unaccented=unaccented)
         rest = remove_spans(rest, [not_cancel] if not_cancel else [])
+        rest = remove_phrases(rest, _ATTENDANCE_ASIDES, unaccented)
     refuse = find_phrase(rest, _ATTENDANCE_REFUSE if attending else _REFUSE, unaccented=unaccented)
     rest_positive = remove_spans(rest, [refuse] if refuse else [])
 
@@ -450,7 +454,14 @@ def _leaves_content(
     if question_id is QuestionId.SLOT_READBACK:
         sets = (_SLOT_COMPLEMENTS, _AGREE_IDIOMS, _AFFIRM, _SLOT_ACTION, _POLITE)
     elif question_id in _ATTENDANCE_QUESTIONS:
-        sets = (_AGREE_IDIOMS, _NOT_CANCEL, _KEEP, _ATTEND_AFFIRM, _ATTEND_COMPLEMENTS)
+        sets = (
+            _ATTENDANCE_ASIDES,
+            _AGREE_IDIOMS,
+            _NOT_CANCEL,
+            _KEEP,
+            _ATTEND_AFFIRM,
+            _ATTEND_COMPLEMENTS,
+        )
         sets = (*sets, _AFFIRM, _POLITE)
     else:
         return False

@@ -87,6 +87,8 @@ def test_unknown_clinic_id_is_not_given_a_guessed_name() -> None:
         "xác nhận",
         "giữ nguyên lịch",
         "không hủy đâu, tôi vẫn đến",
+        "tôi biết địa chỉ rồi, tôi sẽ đến",
+        "tôi sẽ đến đúng giờ, không trễ đâu",
     ],
 )
 def test_agreement_confirms_in_one_turn(answer: str) -> None:
@@ -124,6 +126,9 @@ def test_success_message_uses_the_written_record() -> None:
         "vâng để tôi xem lại",
         "được không em?",
         "mấy giờ nhỉ?",
+        "tôi không biết địa chỉ, tôi sẽ đến",
+        "tôi sẽ đến nếu không trễ",
+        "tôi sẽ đến nhưng không đúng giờ",
     ],
 )
 def test_unclear_answer_rereads_without_writing(answer: str) -> None:
@@ -224,6 +229,14 @@ def test_exceptions_at_readback_transfer_without_confirming(answer: str, reason:
         "địa chỉ ở đâu em nhỉ",
         "tôi đến trễ không sao chứ",
         "dạ, tôi đang bận, gọi lại sau",
+        "có mất phí không em",
+        "khám lần này hết bao nhiêu tiền em",
+        "kham lan nay het bao nhieu tien em",
+        "lịch này tôi có đặt đâu em",
+        "toi co dat lich nao dau",
+        "ai đặt lịch này cho tôi vậy",
+        "em nhắn tin lịch khám qua điện thoại cho tôi nhé",
+        "tôi có hẹn gì bên mình đâu em",
     ],
 )
 def test_out_of_scope_answer_at_readback_transfers_instead_of_rereading(answer: str) -> None:
@@ -420,6 +433,71 @@ def test_a_reason_read_by_the_model_asks_change_or_cancel_without_counting() -> 
     assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
     ctx = _context(bot, "c_t04s8_sem")
     assert (ctx.unclear_streak, ctx.failed_understandings) == (0, 0)
+
+
+@pytest.mark.parametrize("source", ["attendance", "intent"])
+def test_reason_before_cancel_is_kept_through_confirmation(source: str) -> None:
+    bot, clinic, _ = _at_readback("c_reason_before_cancel")
+    line = "tuần đó tôi sẽ đi nước ngoài"
+    bot._extractor._semantic = _FakeSemantic(
+        {
+            line: SemanticOutcome(
+                ReplyKind.INFORM_REASON,
+                cancel_reason="PATIENT_UNAVAILABLE",
+                reason_span=line,
+            )
+        }
+    )
+    lines = (["không"] if source == "intent" else []) + [line, "hủy giúp tôi"]
+    action = _run(bot, "c_reason_before_cancel", lines, start=3)
+    assert not action.ended and clinic.writes == []
+    # Lý do phải sống qua serialization của session và lời đáp lễ chưa xác nhận.
+    action = _run(bot, "c_reason_before_cancel", ["vâng", "đúng, hủy đi"], start=3 + len(lines))
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": "PATIENT_UNAVAILABLE"})]
+
+
+@pytest.mark.parametrize(
+    "lines, expected_reason",
+    [
+        (["hủy giúp tôi vì đắt quá", "đúng, hủy đi"], "COST"),
+        (["giữ nguyên lịch", "hủy giúp tôi", "đúng, hủy đi"], "UNSPECIFIED"),
+    ],
+)
+def test_previous_attendance_reason_is_replaced_or_cleared_on_changed_intent(
+    lines, expected_reason
+):
+    bot, clinic, _ = _at_readback("c_reason_lifecycle")
+    line = "tuần đó tôi sẽ đi nước ngoài"
+    bot._extractor._semantic = _FakeSemantic(
+        {
+            line: SemanticOutcome(
+                ReplyKind.INFORM_REASON,
+                cancel_reason="PATIENT_UNAVAILABLE",
+                reason_span=line,
+            )
+        }
+    )
+    action = _run(bot, "c_reason_lifecycle", [line, *lines], start=3)
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": expected_reason})]
+
+
+@pytest.mark.parametrize(
+    "change_request, abandon",
+    [
+        ("hủy giúp tôi", "không hủy nữa"),
+        ("tôi muốn đổi lịch", "thôi không đổi nữa"),
+    ],
+)
+def test_returning_to_attendance_reads_department_before_confirmation(
+    change_request, abandon
+) -> None:
+    bot, clinic, _ = _at_readback("c_return_readback")
+    action = _run(bot, "c_return_readback", [change_request, abandon], start=3)
+    assert "Nội tổng quát" in action.utterance and FACTS in action.utterance
+    assert clinic.writes == []
+    assert _run(bot, "c_return_readback", ["vâng"], start=5).outcome == "CONFIRMED"
 
 
 def test_a_statement_at_the_slot_readback_does_not_reschedule() -> None:

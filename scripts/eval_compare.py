@@ -16,7 +16,9 @@ from pathlib import Path
 
 METRICS = (
     ("unsafe_writes", "Unsafe writes"),
-    ("holdout_passed", "Passed (scored cases)"),
+    ("holdout_passed", "Correct behaviour (all scored cases)"),
+    ("attendance_confirmation_passed", "Attendance confirmed"),
+    ("branch_routing_passed", "Correct cancel/reschedule routing"),
     ("rule_passed", "Passed, rule-decidable"),
     ("inference_passed", "Passed, needs inference"),
     ("agree_not_confirmed", "Agreements not confirmed"),
@@ -35,6 +37,8 @@ def _load(path: Path) -> tuple[dict, dict[tuple[str, str], list[dict[str, str]]]
 
 
 _DENOMINATORS = {
+    "attendance_confirmation_passed": "attendance_confirmation_cases",
+    "branch_routing_passed": "branch_routing_cases",
     "holdout_passed": "holdout_cases",
     "rule_passed": "rule_cases",
     "inference_passed": "inference_cases",
