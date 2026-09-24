@@ -36,7 +36,7 @@ Các thay đổi về clinic mock, xử lý họ tên và các chức năng nghi
 | Giới hạn bộ đệm ASR                            | `src/inference/asr/config.py` định nghĩa `ZIPFORMER_MAX_TURN_SPEECH_MS`; `src/inference/asr/providers/zipformer.py` cưỡng bức chốt và làm mới bộ đệm khi đạt ngưỡng.                                                                                                 |
 | So sánh Silero VAD với VAD hiện tại            | `eval/vad-bench/compare_silero_webrtc.py` là công cụ chạy đối chiếu trên dữ liệu ghi âm thực tế.                                                                                                                                                                     |
 | Đồng bộ mô hình ASR khi đóng gói               | `Dockerfile` tải mô hình `g-group-ai-lab/gipformer1.5-68M-rnnt`; `docker-compose.yml` và `docker-compose.prod.yml` trỏ các biến `ZIPFORMER_*_PATH` đến đúng các tệp trong image.                                                                                     |
-| Ghi nhận giới hạn triển khai Silero            | `docs/reference/livekit-merge-to-main.md` nêu rõ môi trường production còn thiếu tệp `silero_vad.onnx` và phải bổ sung asset này trước khi đổi VAD mặc định.                                                                                                         |
+| Sẵn sàng khởi tạo Silero trong Docker          | `Dockerfile` tải `silero_vad.onnx` và cài extra `vad-silero`; `docker-compose.yml` và `docker-compose.prod.yml` thiết lập `SILERO_VAD_MODEL_PATH` tới asset trong image.                                                                                            |
 
 ## 3. Danh sách tệp thay đổi theo hạng mục
 
@@ -68,9 +68,9 @@ Các thay đổi về clinic mock, xử lý họ tên và các chức năng nghi
 | ------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------- |
 | `.env.example`            | Chỉnh sửa  | Mô tả `VAD_PROVIDER`, `SILERO_VAD_MODEL_PATH`, các ngưỡng phòng thủ và giới hạn bộ đệm ZipFormer.                    |
 | `pyproject.toml`          | Chỉnh sửa  | Bổ sung nhóm phụ thuộc cho WebRTC VAD, Silero VAD và LiveKit.                                                        |
-| `Dockerfile`              | Chỉnh sửa  | Chuyển nguồn tải mô hình ASR sang `gipformer1.5-68M-rnnt` và đóng gói đúng các tệp encoder, decoder, joiner, tokens. |
-| `docker-compose.yml`      | Chỉnh sửa  | Đồng bộ đường dẫn mô hình ASR cho môi trường chạy cục bộ bằng Docker.                                                |
-| `docker-compose.prod.yml` | Chỉnh sửa  | Đồng bộ đường dẫn mô hình ASR cho môi trường production.                                                             |
+| `Dockerfile`              | Chỉnh sửa  | Chuyển mô hình ASR sang `gipformer1.5-68M-rnnt`; tải `silero_vad.onnx` và cài dependency `vad-silero`.              |
+| `docker-compose.yml`      | Chỉnh sửa  | Đồng bộ đường dẫn mô hình ASR và mô hình Silero cho môi trường Docker cục bộ.                                        |
+| `docker-compose.prod.yml` | Chỉnh sửa  | Đồng bộ đường dẫn mô hình ASR và mô hình Silero cho môi trường production.                                          |
 
 ### 3.4. Công cụ đánh giá và tài liệu
 
@@ -78,7 +78,7 @@ Các thay đổi về clinic mock, xử lý họ tên và các chức năng nghi
 | ----------------------------------------- | -------------- | --------------------------------------------------------------------------------- |
 | `eval/vad-bench/compare_silero_webrtc.py` | Thêm mới       | So sánh kết quả phát hiện giọng nói giữa Silero và WebRTC trên các tệp ghi âm.    |
 | `docs/reference/livekit-architecture.md`  | Thêm mới       | Mô tả kiến trúc LiveKit, các lớp phòng thủ và giới hạn bộ đệm ASR.                |
-| `docs/reference/livekit-merge-to-main.md` | Thêm/chỉnh sửa | Ghi nhận cấu hình hợp nhất, trạng thái triển khai và phần asset Silero còn thiếu. |
+| `docs/reference/livekit-merge-to-main.md` | Thêm/chỉnh sửa | Ghi nhận cấu hình hợp nhất và trạng thái đóng gói mô hình Silero.                |
 
 ### 3.5. Kiểm thử liên quan
 
@@ -151,5 +151,5 @@ Kết quả tại thời điểm lập evidence: **101 test đạt**, không có
 
 - Các ngưỡng SNR, thời lượng tối thiểu và ngưỡng phát hiện dao động cần tiếp tục được hiệu chỉnh trên dữ liệu thực tế đa dạng hơn.
 - Silero chưa được chọn làm VAD mặc định của toàn hệ thống.
-- Image production chưa đóng gói tệp `silero_vad.onnx`; cần bổ sung asset trước khi bật `VAD_PROVIDER=silero` trên môi trường triển khai.
+- Mô hình Silero và dependency đã được đóng gói; việc chuyển `VAD_PROVIDER=silero` thành mặc định vẫn cần dựa trên kết quả kiểm thử end-to-end.
 - `.env.example` đang có thay đổi cục bộ bổ sung cấu hình ElevenLabs Realtime STT. Phần thay đổi này không thuộc phạm vi báo cáo phòng thủ tiếng ồn và không được dùng làm bằng chứng cho hạng mục trên.
