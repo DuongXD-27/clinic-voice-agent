@@ -19,6 +19,7 @@ Quy tắc chốt turn (UserTurnCompleted):
 """
 
 import asyncio
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -30,6 +31,8 @@ from speech.audio.noise_tracker import NoiseEvidence
 from speech.turn.events import UserTurnCompleted
 from speech.turn.validator import TurnValidator, ValidationDecision
 from speech.types import TranscriptEvent
+
+logger = logging.getLogger(__name__)
 
 # Filler word ASR có thể decode ĐÚNG (không phải hallucination — xem
 # inference/asr/providers/zipformer.py) từ audio ngắn hợp lệ, nhưng bản thân không mang
@@ -134,6 +137,17 @@ class TurnController:
         if not speaking:
             self._bot_stopped_at = self._clock()
         if not speaking and not preserve_candidate:
+            if self._candidate.started_at is not None and not self._candidate.finalized:
+                # Candidate có audio thật (VAD đã speech_start) bị huỷ vì tích luỹ TRONG
+                # LÚC bot nói và KHÔNG được InterruptionController xác nhận — nếu đây là
+                # audio user nói thật (không phải echo), nó biến mất không có turn nào,
+                # không log gì ở nơi khác (không đi qua nhánh Admission — is_bot_speaking
+                # vẫn True lúc đó). Log DEBUG only: text có thể chứa PII.
+                logger.debug(
+                    "turn_controller: discard candidate on bot_speaking->False text=%r "
+                    "(not confirmed as barge-in)",
+                    self._candidate.text,
+                )
             self._reset_candidate()
         elif not speaking:
             # Barge-in đã được xác nhận: giữ candidate VAD đang hình thành. Nếu final
@@ -148,6 +162,16 @@ class TurnController:
         thật đã gặp khi không chặn: buffer ZipFormerASR tích luỹ echo câu bot vừa nói,
         hallucinate ra cùng 1 văn bản cố định ở mọi cuộc gọi bất kể user nói gì."""
         return self._bot_speaking
+
+    @property
+    def has_active_vad_candidate(self) -> bool:
+        """True giữa lúc VAD chính đã báo speech_start và turn chưa chốt/reset — đọc bởi
+        STTPipeline.stream() CHỈ để log chẩn đoán (không ảnh hưởng quyết định chốt turn):
+        VAD chính và Speech Admission dùng 2 classifier độc lập (xem
+        docs/reference/livekit-architecture.md §5.4), nên có thể lệch nhau — VAD chính
+        coi là speech trong khi Admission vẫn REJECT (chưa đủ SNR/duration theo classifier
+        RIÊNG của nó). Không dùng property này để đổi quyết định Admission."""
+        return self._candidate.started_at is not None and not self._candidate.finalized
 
     async def on_vad_event(self, event: VadEvent) -> None:
         if event.kind == "speech_start":
@@ -290,6 +314,16 @@ class TurnController:
                 return
             # Hết hạn chờ mà turn vẫn ngắn hơn ngưỡng -> tiếng động/backchannel, discard
             # hẳn thay vì emit turn rác (mục người dùng báo: "dạ dạ" liên tục do nhiễu).
+            # Log DEBUG: nếu đây là audio user nói thật (không phải backchannel), câu đó
+            # biến mất hoàn toàn không có turn nào — guard_extra_s (post_bot_guard) có thể
+            # là nguyên nhân nếu candidate bắt đầu ngay sau khi bot vừa dứt lời.
+            logger.debug(
+                "turn_controller: discard candidate on timeout text=%r duration_required_s=%.2f "
+                "guard_extra_s=%.2f",
+                candidate.text,
+                self._min_speech_s + candidate.guard_extra_s,
+                candidate.guard_extra_s,
+            )
             self._reset_candidate()
             return
         # Timeout hết hạn -> không còn cơ hội nào khác chờ thêm event mới cho candidate

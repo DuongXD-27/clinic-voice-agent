@@ -42,3 +42,29 @@ def test_empty_frame_does_not_crash():
     tracker = NoiseTracker()
     evidence = tracker.observe(b"", is_speech=False)
     assert evidence.rms == 0.0
+
+
+def test_peek_does_not_update_floor():
+    tracker = NoiseTracker(initial_floor=50.0, floor_alpha=0.5)
+    evidence = tracker.peek(_frame(0))
+
+    assert evidence.noise_floor == 50.0
+    # Gọi lại peek() với cùng input phải ra cùng kết quả — chứng tỏ floor chưa đổi.
+    assert tracker.peek(_frame(0)).noise_floor == 50.0
+
+
+def test_commit_floor_applies_evidence_rms():
+    tracker = NoiseTracker(initial_floor=50.0, floor_alpha=0.5)
+    evidence = tracker.peek(_frame(0))
+    tracker.commit_floor(evidence)
+
+    assert tracker.peek(_frame(0)).noise_floor == pytest.approx(25.0)
+
+
+def test_peek_then_no_commit_leaves_floor_unchanged_even_for_loud_frame():
+    """Mô phỏng đúng bug Speech Admission đã gặp: frame low_snr/too_short (có thể vẫn là
+    speech thật) không được phép kéo floor lên nếu caller không tự gọi commit_floor()."""
+    tracker = NoiseTracker(initial_floor=50.0, floor_alpha=0.5)
+    tracker.peek(_frame(5000))  # "REJECT" giả định — caller CHỦ Ý không commit
+
+    assert tracker.peek(_frame(0)).noise_floor == 50.0

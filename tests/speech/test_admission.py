@@ -1,4 +1,6 @@
-from speech.asr.admission import SpeechAdmission
+import pytest
+
+from speech.asr.admission import PreRollBuffer, SpeechAdmission
 from speech.audio.noise_tracker import NoiseEvidence
 
 
@@ -49,3 +51,42 @@ def test_already_admitted_frame_keeps_admitting_despite_low_snr():
     )
     assert decision.admit is True
     assert decision.reason == "ok"
+
+
+def test_preroll_buffer_rejects_non_positive_maxlen():
+    with pytest.raises(ValueError):
+        PreRollBuffer(0)
+
+
+def test_preroll_buffer_flush_returns_frames_in_order():
+    buffer = PreRollBuffer(maxlen_frames=4)
+    buffer.push(b"a")
+    buffer.push(b"b")
+    buffer.push(b"c")
+
+    assert buffer.flush() == [b"a", b"b", b"c"]
+
+
+def test_preroll_buffer_flush_empties_buffer():
+    buffer = PreRollBuffer(maxlen_frames=4)
+    buffer.push(b"a")
+    buffer.flush()
+
+    assert buffer.flush() == []
+
+
+def test_preroll_buffer_drops_oldest_frame_beyond_maxlen():
+    buffer = PreRollBuffer(maxlen_frames=2)
+    buffer.push(b"a")
+    buffer.push(b"b")
+    buffer.push(b"c")
+
+    assert buffer.flush() == [b"b", b"c"]
+
+
+def test_preroll_buffer_clear_discards_without_returning():
+    buffer = PreRollBuffer(maxlen_frames=4)
+    buffer.push(b"a")
+    buffer.clear()
+
+    assert buffer.flush() == []

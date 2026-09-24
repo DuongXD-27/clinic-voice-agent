@@ -7,8 +7,16 @@
 cách chặn sớm hơn, dựa trên tín hiệu mạnh hơn (SNR liên tục, không chỉ 1 frame is_speech
 đơn lẻ). `vad_queue` KHÔNG bị lọc bởi Admission — VAD cần thấy MỌI frame để tự quyết định
 speech_start/speech_end đúng.
+
+`PreRollBuffer`: frame bị REJECT (chưa đủ SNR/duration) vẫn có thể là phần ĐẦU THẬT của
+câu nói — ADMIT chỉ xác nhận được sau vài frame (>= min_speech_ms), nên nếu không giữ lại
+gì thì ASR luôn mất đúng đoạn đầu câu đã dùng để xác nhận đó (~150-200ms, mẫu đã quan sát
+"Không, tôi muốn đổi lịch" mất mất chữ "Không"). Giữ N frame gần nhất trong ring buffer
+(deque maxlen); khi REJECT→ADMIT (transition), flush toàn bộ buffer vào `asr_queue` theo
+đúng thứ tự trước, rồi mới gửi frame hiện tại — bù lại đúng phần đã "trễ" lúc quyết định.
 """
 
+from collections import deque
 from dataclasses import dataclass
 
 from speech.audio.noise_tracker import NoiseEvidence
@@ -50,3 +58,30 @@ class SpeechAdmission:
         if speech_ms_so_far < self._min_speech_ms:
             return AdmissionDecision(admit=False, reason="too_short")
         return AdmissionDecision(admit=True, reason="ok")
+
+
+class PreRollBuffer:
+    """Ring buffer giữ N frame gần nhất trong lúc Admission chưa ADMIT — xem docstring
+    module. `maxlen_frames`: dung lượng buffer; caller (`pipeline.py::_fanout()`) tính từ
+    `pre_roll_ms // frame_ms` để cấu hình theo thời gian thay vì số frame cố định."""
+
+    def __init__(self, maxlen_frames: int) -> None:
+        if maxlen_frames <= 0:
+            raise ValueError("maxlen_frames phải lớn hơn 0")
+        self._buffer: "deque[bytes]" = deque(maxlen=maxlen_frames)
+
+    def push(self, frame: bytes) -> None:
+        """Gọi khi frame KHÔNG được admit — giữ lại phòng khi ADMIT xảy ra ngay sau đó."""
+        self._buffer.append(frame)
+
+    def flush(self) -> list[bytes]:
+        """Trả toàn bộ frame đang giữ theo đúng thứ tự thời gian rồi làm rỗng buffer —
+        gọi đúng 1 lần tại thời điểm REJECT→ADMIT, TRƯỚC khi gửi frame hiện tại."""
+        frames = list(self._buffer)
+        self._buffer.clear()
+        return frames
+
+    def clear(self) -> None:
+        """Gọi khi candidate bị huỷ hẳn (vd. quay lại no_speech kéo dài) — không để frame
+        noise cũ lẫn vào lần ADMIT kế tiếp, không liên quan lần speech này nữa."""
+        self._buffer.clear()

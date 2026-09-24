@@ -143,6 +143,12 @@ def build_streaming_bundle(
         },
         admission=admission,
         admission_classifier=admission_classifier,
+        admission_preroll_frames=max(1, settings.speech_admission_preroll_ms // frame_ms),
+        # VAD PreRollBuffer (speech/asr/pipeline.py) — KHÔNG opt-in như Admission, luôn
+        # bật, dùng default của STTPipeline.__init__ (10 frame = 300ms ở frame_ms=30). Bù
+        # audio TRƯỚC speech_start (giới hạn độ nhạy VAD với âm tiết đầu câu phát âm nhẹ,
+        # xem docstring __init__::_vad_preroll) — không cần benchmark riêng như Admission
+        # vì không đổi hành vi ADMIT/REJECT, chỉ bù audio đã bị "trễ" trước candidate.
     )
     tts = SpeechSynthesizer(create_tts_gateway(settings.tts_provider))
 

@@ -61,6 +61,14 @@ class SpeechSettings(BaseSettings):
     speech_admission_enabled: bool = False
     speech_admission_min_snr_db: float = 6.0
     speech_admission_min_speech_ms: int = 150
+    # Pre-roll buffer (speech/asr/admission.py::PreRollBuffer): bù lại audio bị giữ lại
+    # trong lúc chưa ADMIT (chưa đủ SNR/duration) — không có buffer, ASR luôn mất đúng
+    # khoảng thời gian REJECT trước khi ADMIT dù Admission quyết định đúng. 600ms (không
+    # phải min_speech_ms mặc định 150ms): thực nghiệm qua LiveKit thật (LIVEKIT_DEBUG_
+    # DUMP_AUDIO, xem docs/evidence/) cho thấy REJECT trước ADMIT dao động 240-510ms tuỳ
+    # SNR đầu câu (người nói nhỏ dần/to dần) — buffer 240ms từng bị tràn (rớt frame cũ
+    # nhất trước khi ADMIT tới), mất đúng chữ đầu câu ("Tôi là..." -> "là..."/"đây là...").
+    speech_admission_preroll_ms: int = 600
 
     # Turn Validator (docs/reference/livekit-architecture.md §5.4, §6): lớp quyết định
     # cuối trước khi chốt turn, dựa trên acoustic evidence (NoiseTracker) + transcript
