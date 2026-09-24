@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
+from speech.audio.storage import AudioArtifactStore
 from speech.bundle import SpeechBundle
-from speech.tts.storage import AudioArtifactStore
 from speech.types import AudioSegment, Transcript, TranscriptEvent
 
 _SILENT_SEGMENT = AudioSegment(pcm=b"\x00\x00" * 100, sample_rate=8000)

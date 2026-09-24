@@ -86,3 +86,14 @@ def test_demo_api_requires_key(client: TestClient) -> None:
 @pytest.mark.parametrize("path", ["/health", "/ready", "/demo/"])
 def test_probes_and_demo_page_stay_open(client: TestClient, path: str) -> None:
     assert client.get(path).status_code == 200
+
+
+def test_swagger_declares_bearer_auth(client: TestClient) -> None:
+    # Swagger chỉ hiện nút Authorize khi schema khai báo securitySchemes
+    spec = client.get("/openapi.json").json()
+    assert spec["components"]["securitySchemes"]["BearerAuth"] == {
+        "type": "http",
+        "scheme": "bearer",
+    }
+    assert spec["paths"]["/v1/calls"]["post"]["security"] == [{"BearerAuth": []}]
+    assert "security" not in spec["paths"]["/health"]["get"]

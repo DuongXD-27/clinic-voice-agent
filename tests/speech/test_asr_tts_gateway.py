@@ -7,7 +7,7 @@ from inference.common.errors import UnsupportedProviderError
 from inference.tts import TTSGateway, TTSResult, create_tts_gateway
 from inference.tts.config import ElevenLabsTTSConfig
 from speech.asr.recognizer import SpeechRecognizer
-from speech.tts.synthesizer import SpeechSynthesizer
+from speech.bundle import SpeechSynthesizer
 from speech.types import WIDEBAND_RATE, AudioSegment
 
 

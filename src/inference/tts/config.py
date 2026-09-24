@@ -29,6 +29,22 @@ class OpenAITTSConfig(TTSConfig):
     voice: str = Field(default="alloy", validation_alias="OPENAI_TTS_VOICE")
 
 
+class VbeeTTSConfig(TTSConfig):
+    api_token: SecretStr = Field(default=SecretStr(""), validation_alias="VBEE_API_TOKEN")
+    app_id: str = Field(default="", validation_alias="VBEE_APP_ID")
+    endpoint: str = Field(default="https://api.vbee.vn/v1/tts", validation_alias="VBEE_ENDPOINT")
+    voice_code: str = Field(
+        default="hn_female_ngochuyen_full_48k-fhg", validation_alias="VBEE_VOICE_CODE"
+    )
+    speed: float = Field(default=1.0, validation_alias="VBEE_SPEED")
+    bitrate: int = Field(default=128, validation_alias="VBEE_BITRATE")
+    # Xin PCM 8 kHz: khớp băng hẹp, không phải resample (benchmark 23/9)
+    sample_rate: int = Field(default=8000, validation_alias="VBEE_SAMPLE_RATE")
+    # Trần tổng cho một câu. Giữ thấp: lỗi thì còn thời gian cho ElevenLabs dự phòng trong 8 s/lượt
+    timeout_s: float = Field(default=3.0, validation_alias="VBEE_TIMEOUT_S")
+    connect_timeout_s: float = Field(default=1.5, validation_alias="VBEE_CONNECT_TIMEOUT_S")
+
+
 class ElevenLabsTTSConfig(TTSConfig):
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="ELEVENLABS_API_KEY")
     voice_id: str = Field(default="", validation_alias="ELEVENLABS_VOICE_ID")

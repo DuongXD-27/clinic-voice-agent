@@ -23,7 +23,7 @@ services:
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
+      test: [ "CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -59,9 +59,6 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      # mode=audio (§4.1.2): ZipFormer 68M self-host + OpenAI TTS. Đường dẫn model khớp
-      # chỗ Dockerfile tải lúc build image (/app/models/zipformer) — không đổi theo .env,
-      # nên đặt cố định ở đây thay vì cần cd.yml ghi thêm vào deploy.env.
       ASR_PROVIDER: ${ASR_PROVIDER:-zipformer}
       TTS_PROVIDER: ${TTS_PROVIDER:-openai}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}

@@ -5,11 +5,17 @@ không đi qua dependency này: probe cần mở, harness tải ``audio_url`` kh
 """
 
 import hmac
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from callbot.transports.http.config import settings
+
+# Khai báo scheme để Swagger (/docs) có nút Authorize; auto_error=False để lỗi giữ dạng BAD_KEY
+# và để route vẫn mở khi BOT_API_KEYS rỗng.
+_bearer = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
+Credentials = Annotated[Optional[HTTPAuthorizationCredentials], Security(_bearer)]
 
 
 def _bad_key(message: str) -> HTTPException:
@@ -20,19 +26,13 @@ def _bad_key(message: str) -> HTTPException:
     )
 
 
-def _bearer_token(request: Request) -> Optional[str]:
-    scheme, _, token = request.headers.get("authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token.strip():
-        return None
-    return token.strip()
-
-
-def require_api_key(request: Request) -> None:
+def require_api_key(credentials: Credentials) -> None:
     keys = settings.api_keys()
     if not keys:
         return
-    token = _bearer_token(request)
-    if token is None:
+    # HTTPBearer trả None khi thiếu header hoặc scheme khác Bearer
+    token = credentials.credentials.strip() if credentials else ""
+    if not token:
         raise _bad_key("Missing bearer token.")
     # So từng key bằng compare_digest, không dừng sớm khi khớp để thời gian không lộ vị trí key
     matched = False
