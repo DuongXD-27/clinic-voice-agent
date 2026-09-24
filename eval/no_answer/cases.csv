@@ -1,0 +1,87 @@
+id,split,scope,label_status,group,direction,question_id,turns,expect_outcome,expect_reason,end_turn,fault,note
+NA001,dev,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,Xin vui lòng để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,Mẫu luật + test_line_signal
+NA002,dev,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,Bạn đã được chuyển tới hộp thư thoại,UNREACHABLE,VOICEMAIL,,,
+NA003,dev,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Thuê bao quý khách vừa gọi tạm thời không liên lạc được, vui lòng để lại lời nhắn",UNREACHABLE,VOICEMAIL,,,Có dấu hiệu tổng đài nhưng mời để lại lời nhắn -> VOICEMAIL xét trước
+NA004,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,Quý khách vui lòng ghi âm lời nhắn sau tiếng tít,UNREACHABLE,VOICEMAIL,,,
+NA005,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Cuộc gọi của quý khách đã được chuyển vào hộp thư thoại, xin mời để lại lời nhắn",UNREACHABLE,VOICEMAIL,,,
+NA006,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Mời quý khách để lại lời nhắn thoại, bấm phím thăng khi kết thúc",UNREACHABLE,VOICEMAIL,,,
+NA007,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,Hộp thư thoại của thuê bao không chín một hai ba bốn năm sáu không không,UNREACHABLE,VOICEMAIL,,,Số đọc thành chữ như ASR trả về
+NA008,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Số máy quý khách vừa gọi hiện không trả lời, xin mời để lại tin nhắn sau tiếng bíp",UNREACHABLE,VOICEMAIL,,,Tổng đài chuyển hộp thư: VOICEMAIL chứ không NO_ANSWER
+NA009,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Hộp thư của quý khách đã đầy, không thể nhận thêm tin nhắn",UNREACHABLE,VOICEMAIL,,,Hộp thư đầy vẫn là đã vào hộp thư
+NA010,dev,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, bạn đã gọi đến số của Lan. Hiện không thể nghe máy",UNREACHABLE,VOICEMAIL,,,Lời chào cá nhân (T-08)
+NA011,dev,http,REVIEW,voicemail_personal,outbound,ASK_NAME,"Xin chào, tôi là Lan, hiện không nghe máy được",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
+NA012,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, đây là hộp thư của Minh, vui lòng nhắn lại sau tiếng bíp",UNREACHABLE,VOICEMAIL,,,
+NA013,regression,http,REVIEW,voicemail_personal,outbound,ASK_NAME,"Chào bạn, mình là Hoa, hiện không thể nghe máy, mình sẽ gọi lại sau",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
+NA014,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Bạn đã gọi tới số của Tuấn, hiện tại Tuấn không bắt máy được, vui lòng gọi lại sau",UNREACHABLE,VOICEMAIL,,,"""gọi tới"" thay cho ""gọi đến"""
+NA015,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, đây là hộp thư của Minh",UNREACHABLE,VOICEMAIL,,,"Chỉ ""hộp thư"", không có ""thoại"""
+NA016,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Cảm ơn bạn đã gọi cho cửa hàng Hoa Mai, hiện chúng tôi không thể trả lời",UNREACHABLE,VOICEMAIL,,,
+NA017,dev,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,"Hi, you've reached Lan, I can't take your call right now",UNREACHABLE,VOICEMAIL,,,
+NA018,dev,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,"The person you are calling is not available, please leave a message after the tone",UNREACHABLE,VOICEMAIL,,,
+NA019,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,"Please record your message after the beep. When you are finished, hang up",UNREACHABLE,VOICEMAIL,,,
+NA020,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,Your call has been forwarded to an automated voice messaging system,UNREACHABLE,VOICEMAIL,,,Lời chào hộp thư mặc định phổ biến
+NA021,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,The mailbox is full and cannot accept any messages,UNREACHABLE,VOICEMAIL,,,
+NA022,regression,http,REVIEW,voicemail_en,outbound,ASK_NAME,"Hello, this is Lan. Sorry I missed your call, I will get back to you",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
+NA023,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,xin vui lòng để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,ASR: chữ thường không dấu câu
+NA024,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,xin vui long de lai loi nhan sau tieng bip,UNREACHABLE,VOICEMAIL,,,ASR / gõ không dấu
+NA025,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,quy khach vui long de lai loi nhan thoai,UNREACHABLE,VOICEMAIL,,,
+NA026,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,vui lòng để lại lời nhắn sau tiếng bít,UNREACHABLE,VOICEMAIL,,,"ASR nghe ""bíp"" thành ""bít"""
+NA027,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,xin để lại lời nhắc sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,"ASR nghe ""nhắn"" thành ""nhắc"""
+NA028,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,hợp thư thoại của thuê bao,UNREACHABLE,VOICEMAIL,,,"ASR nghe ""hộp"" thành ""hợp""; có ""thuê bao"" nên dễ thành NO_ANSWER"
+NA029,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,ban da goi den hop thu thoai cua lan,UNREACHABLE,VOICEMAIL,,,
+NA030,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,you have reached the voice mail box of,UNREACHABLE,VOICEMAIL,,,
+NA031,dev,http,CONFIRMED,voicemail_turn,outbound,ASK_DOB,Xin để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,Hộp thư đến sau lượt tên
+NA032,dev,http,CONFIRMED,voicemail_turn,outbound,ASK_NAME,<silence> | <silence> | vui lòng để lại lời nhắn,UNREACHABLE,VOICEMAIL,,,Hộp thư sau 2 lượt im lặng: không thành SILENCE
+NA033,regression,http,CONFIRMED,voicemail_turn,outbound,ASK_NAME,"<silence> | Xin chào, bạn đã gọi đến số của Lan",UNREACHABLE,VOICEMAIL,,,
+NA034,regression,http,CONFIRMED,voicemail_turn,outbound,ASK_NAME,Xin vui lòng để lại lời nhắn sau tiếng bíp | <silence> | <silence> | <silence>,UNREACHABLE,VOICEMAIL,1,,Lời chào rồi im lặng sau tiếng bíp: phải kết thúc ngay lượt 1
+NA035,regression,http,CONFIRMED,voicemail_turn,outbound,ASK_NAME,"Xin chào, đây là hộp thư của Minh | <silence> | <silence> | <silence>",UNREACHABLE,VOICEMAIL,1,,Lỡ nhận lời chào thì 3 lượt im lặng cho đúng status nhưng sai reason
+NA036,regression,http,CONFIRMED,voicemail_turn,outbound,ASK_NAME,Alo ai đấy | Xin vui lòng để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,Lượt 1 là người (không đủ tin): vẫn nhận hộp thư ở lượt 2
+NA037,dev,http,CONFIRMED,human_trap,outbound,ASK_NAME,"tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi",NOT_UNREACHABLE,,,,Người thật bận: không UNREACHABLE
+NA038,dev,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Tôi hiện không thể nghe máy, gọi lại sau nhé",NOT_UNREACHABLE,,,,
+NA039,dev,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Đây không phải hộp thư thoại, tôi đang nghe đây",NOT_UNREACHABLE,,,,
+NA040,dev,http,CONFIRMED,human_trap,outbound,ASK_NAME,"tôi đang bận, lát gọi lại nhé",NOT_UNREACHABLE,,,,
+NA041,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Alo, ai gọi đấy ạ?",NOT_UNREACHABLE,,,,
+NA042,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,alo alo có nghe không,NOT_UNREACHABLE,,,,
+NA043,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Tôi đang họp, không nghe máy lâu được, nói nhanh giúp",NOT_UNREACHABLE,,,,
+NA044,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,Chị để lại lời nhắn cho chồng tôi được không,NOT_UNREACHABLE,,,,"Người nhà nhờ ""để lại lời nhắn"""
+NA045,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Vâng, cảm ơn bạn đã gọi, có việc gì không ạ",NOT_UNREACHABLE,,,,"Người thật nói ""cảm ơn bạn đã gọi"""
+NA046,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Số thuê bao này là của mẹ tôi, mẹ tôi đang bận",NOT_UNREACHABLE,,,,"Người nhà nói ""thuê bao"" + ""bận"": không phải LINE_BUSY"
+NA047,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"sóng yếu quá, tôi không nghe rõ",NOT_UNREACHABLE,,,,
+NA048,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"I'm driving, I can't talk long",NOT_UNREACHABLE,,,,
+NA049,regression,http,CONFIRMED,human_trap,outbound,ASK_DOB,"tôi đang bận chút, đợi tôi một lát",NOT_UNREACHABLE,,,,
+NA050,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,"Số máy quý khách vừa gọi hiện đang bận, xin vui lòng gọi lại sau",UNREACHABLE,LINE_BUSY,,,Chỉ gặp ở cuộc gọi thật tuần 6 (§4.2.5)
+NA051,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Thuê bao quý khách vừa gọi tạm thời không liên lạc được,UNREACHABLE,NO_ANSWER,,,
+NA052,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Số máy quý khách vừa gọi hiện đang ngoài vùng phủ sóng,UNREACHABLE,NO_ANSWER,,,
+NA053,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,The number you are calling is busy,UNREACHABLE,LINE_BUSY,,,
+NA054,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,"Thuê bao quý khách vừa gọi hiện không liên lạc được, xin quý khách vui lòng gọi lại sau",UNREACHABLE,NO_ANSWER,,,
+NA055,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Thuê bao quý khách vừa gọi hiện đang có cuộc gọi khác,UNREACHABLE,LINE_BUSY,,,"Bận nhưng không nói ""bận"""
+NA056,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,The subscriber you have dialed is not available at the moment,UNREACHABLE,NO_ANSWER,,,
+NA057,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,thue bao quy khach vua goi tam thoi khong lien lac duoc,UNREACHABLE,NO_ANSWER,,,
+NA058,dev,http,CONFIRMED,silence_outbound,outbound,ASK_NAME,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,Không ai nói gì từ đầu: không đọc lịch
+NA059,dev,http,CONFIRMED,silence_outbound,outbound,ASK_DOB,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA060,dev,http,CONFIRMED,silence_outbound,outbound,CONFIRM_READBACK,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA061,dev,http,CONFIRMED,silence_outbound,outbound,ASK_INTENT,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA062,dev,http,CONFIRMED,silence_outbound,outbound,OFFER_SLOTS,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA063,dev,http,CONFIRMED,silence_outbound,outbound,SLOT_READBACK,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA064,dev,http,CONFIRMED,silence_outbound,outbound,CANCEL_RECONFIRM,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA065,dev,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,<silence> | <silence> | Nguyễn Văn A | <silence> | <silence>,CONTINUE,,,,Lượt có lời reset bộ đếm im lặng
+NA066,regression,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,<silence> | <silence> | Nguyễn Văn A | <silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,Sau reset cần đủ 3 lượt im lặng mới kết thúc
+NA067,dev,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,<silence> | <silence> | gì cơ | <silence>,CONTINUE,,,,
+NA068,dev,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,Nguyễn Văn A | <silence> | ờ để xem | <silence>,CONTINUE,,,,Im lặng không phải lần không hiểu (§1.1.7)
+NA069,regression,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,<silence> | ờ | <silence> | <silence>,CONTINUE,,,,Câu không hiểu vẫn cắt chuỗi im lặng
+NA070,regression,http,CONFIRMED,silence_pattern,outbound,ASK_NAME,<silence> | ờ | <silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA071,regression,http,CONFIRMED,silence_pattern,outbound,ASK_DOB,<silence> | <silence> | 14/03/1978 | <silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,Im lặng sau khi đã xác minh xong
+NA072,regression,http,CONFIRMED,silence_pattern,outbound,CONFIRM_READBACK,<silence> | <silence> | vâng,CONFIRMED,,,,Người bệnh quay lại sau 2 lượt im lặng: vẫn xác nhận được
+NA073,regression,http,CONFIRMED,silence_pattern,outbound,CONFIRM_READBACK,<silence> | <silence> | alo em nghe đây | <silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
+NA074,dev,http,CONFIRMED,silence_inbound,inbound,ASK_NAME,<silence> | <silence> | <silence>,TRANSFERRED,NOT_UNDERSTOOD,,,Inbound: chuyển máy và không ghi (§1.1.7)
+NA075,dev,http,CONFIRMED,silence_inbound,inbound,ASK_DOB,<silence> | <silence> | <silence>,TRANSFERRED,NOT_UNDERSTOOD,,,
+NA076,dev,http,CONFIRMED,silence_inbound,inbound,ASK_INTENT,<silence> | <silence> | <silence>,TRANSFERRED,NOT_UNDERSTOOD,,,
+NA077,dev,http,CONFIRMED,silence_inbound,inbound,OFFER_SLOTS,<silence> | <silence> | <silence>,TRANSFERRED,NOT_UNDERSTOOD,,,
+NA078,dev,http,CONFIRMED,silence_inbound,inbound,SLOT_READBACK,<silence> | <silence> | <silence>,TRANSFERRED,NOT_UNDERSTOOD,,,
+NA079,regression,http,CONFIRMED,silence_inbound,inbound,ASK_NAME,<silence> | <silence> | Nguyễn Văn A | <silence> | <silence>,CONTINUE,,,,
+NA080,dev,http,CONFIRMED,inbound_voicemail,inbound,ASK_NAME,để lại lời nhắn sau tiếng bíp | để lại lời nhắn sau tiếng bíp,TRANSFERRED,NOT_UNDERSTOOD,,,Inbound không bao giờ UNREACHABLE
+NA081,regression,http,CONFIRMED,inbound_voicemail,inbound,ASK_NAME,"Xin chào, bạn đã gọi đến số của Lan",NOT_UNREACHABLE,,,,
+NA082,regression,recovery,CONFIRMED,write_fault,outbound,ASK_NAME,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,conflict_once,409 VERSION_CONFLICT một lần: đọc lại rồi gửi lại cùng key; attempt_count chỉ +1
+NA083,regression,recovery,CONFIRMED,write_fault,outbound,ASK_NAME,Xin vui lòng để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,conflict_once,
+NA084,regression,recovery,CONFIRMED,write_fault,outbound,ASK_NAME,<silence> | <silence> | <silence>,TRANSFERRED,SYSTEM_ERROR,,conflict_twice,Không ghi được: không được báo UNREACHABLE
+NA085,regression,recovery,CONFIRMED,write_fault,outbound,ASK_NAME,<silence> | <silence> | <silence>,TRANSFERRED,SYSTEM_ERROR,,invalid_state,
+NA086,regression,recovery,CONFIRMED,write_fault,outbound,ASK_NAME,<silence> | <silence> | <silence>,RECONCILE,,,outcome_unknown,Timeout chưa rõ kết quả: khóa phiên để đối soát

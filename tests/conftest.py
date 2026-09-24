@@ -18,7 +18,7 @@ pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
 
 @pytest.fixture(autouse=True)
 def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) -> None:
-    """A developer's .env must never turn unit tests into paid NER or semantic requests."""
+    """A developer's .env must never turn unit tests into paid name slot-filling or semantic requests."""
     monkeypatch.setenv("NAME_FALLBACK_PROVIDER", "none")
     monkeypatch.setenv("NAME_FALLBACK_MODEL", "gpt-4o-mini")
     monkeypatch.setenv("NAME_FALLBACK_TIMEOUT_S", "3.0")

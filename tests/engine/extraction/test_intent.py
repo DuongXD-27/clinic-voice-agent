@@ -95,3 +95,118 @@ def test_span_and_provenance() -> None:
     assert result.provenance is Provenance.EXACT
     assert result.span == "hủy"
     assert extract_intent("alo", "outbound").provenance is Provenance.NONE
+
+
+@pytest.mark.parametrize(
+    "text", ["giữ nguyên", "không đổi không hủy gì cả", "không đổi cũng không hủy", "không đổi gì"]
+)
+def test_keeping_the_appointment_is_confirm_outbound_only(text: str) -> None:
+    """T-04 §8: trả lời "đổi hay hủy" bằng cách giữ lịch; inbound không có lịch để giữ."""
+    assert extract_intent(text, "outbound").value is Intent.CONFIRM
+    assert extract_intent(text, "inbound").value is not Intent.CONFIRM
+
+
+# --- Ngoài phạm vi: câu hỏi / yêu cầu bot hiểu được nhưng không có luồng xử lý (§1.1.5) -------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # người khác đi khám thay
+        "vợ tôi sẽ đến thay",
+        "để con tôi đi khám thay",
+        "chồng tôi đi thay được không",
+        "cho con tôi khám hộ được không",
+        # địa chỉ / đường đi / gửi xe
+        "địa chỉ ở đâu em nhỉ",
+        "cho tôi xin địa chỉ phòng khám",
+        "phòng khám ở đâu em",
+        "gửi xe ở đâu em",
+        "em chỉ đường giúp tôi",
+        # đến muộn
+        "tôi đến trễ không sao chứ",
+        "tôi đến muộn 15 phút có được không",
+        "tôi đi trễ một chút được không em",
+        # xin gọi lại
+        "dạ, tôi đang bận, gọi lại sau",
+        "em gọi lại cho tôi lúc khác nhé",
+        "lát nữa gọi lại giúp tôi",
+        # không dấu
+        "dia chi o dau em",
+        "toi den muon duoc khong",
+        "goi lai sau nhe",
+    ],
+)
+def test_out_of_scope_requests(text: str) -> None:
+    assert extract_intent(text, "outbound").value is Intent.OUT_OF_SCOPE
+    assert extract_intent(text, "inbound").value is Intent.OUT_OF_SCOPE
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tôi biết địa chỉ rồi, tôi sẽ đến",
+        "tôi sẽ đến đúng giờ, không trễ đâu",
+        "tôi sẽ đến, không đến trễ đâu",
+        "vợ tôi sẽ đưa tôi đi",
+        "Thay vì hủy thì cho tôi dời sang thứ sáu",
+        "Để tôi hỏi vợ đã rồi gọi lại",
+        "không cần gọi lại đâu",
+        "vâng, tôi đang lái xe",
+        "vâng, tôi đang ở ngoài đường",
+        # bản không dấu trùng nghĩa khác: đến thấy, khám thấy, đi mượn, tôi trẻ, chị Dương
+        "toi den thay dong qua",
+        "kham thay binh thuong",
+        "di kham thay binh thuong",
+        "den kham thay dong qua",
+        "toi di muon xe",
+        "toi tre lam",
+        "da chi duong day",
+        # "thay" trong từ ghép khác, và phủ định có "ai" chen giữa
+        "tôi phải đi thay băng",
+        "không có ai đi thay đâu, tôi tự đến",
+        "chẳng ai đến thay đâu",
+    ],
+)
+def test_near_out_of_scope_wording_is_not_out_of_scope(text: str) -> None:
+    assert extract_intent(text, "outbound").value is not Intent.OUT_OF_SCOPE
+
+
+def test_someone_else_attending_beats_the_attendance_keyword() -> None:
+    """ "sẽ đến" là từ khóa CONFIRM, nhưng người khác đến thay thì ngoài phạm vi (PRIORITY)."""
+    result = extract_intent("vợ tôi sẽ đến thay", "outbound")
+    assert (result.value, result.span) == (Intent.OUT_OF_SCOPE, "đến thay")
+
+
+def test_explicit_callback_request_also_counts_before_identity() -> None:
+    """Yêu cầu gọi lại tường minh nằm ngoài kịch bản ở cả bước danh tính (§1.1.5)."""
+    busy = "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"
+    assert extract_intent(busy, "outbound").value is Intent.OUT_OF_SCOPE
+    assert extract_intent(busy, "outbound", business_step=False).value is Intent.OUT_OF_SCOPE
+    address = extract_intent("địa chỉ phòng khám ở đâu", "outbound", business_step=False)
+    assert address.value is Intent.OUT_OF_SCOPE
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # "toi muon" không dấu là "tôi muốn", không phải "tới muộn"
+        ("toi muon doi lich", Intent.RESCHEDULE),
+        ("toi muon huy lich", Intent.CANCEL),
+        ("da toi muon doi sang chieu", Intent.RESCHEDULE),
+        # nhu cầu trong phạm vi thắng yêu cầu ngoài kịch bản đi kèm
+        ("hôm đó tôi đến muộn mất, đổi sang chiều được không", Intent.RESCHEDULE),
+        ("tôi sợ đến trễ, cho tôi dời sang 10 giờ", Intent.RESCHEDULE),
+        ("tôi muốn đến thay đổi giờ khám", Intent.RESCHEDULE),
+        ("hủy đi rồi gọi lại cho tôi sau", Intent.CANCEL),
+        ("tôi không đến được, vợ tôi đi thay", Intent.CANCEL),
+    ],
+)
+def test_in_scope_request_wins_over_out_of_scope_request(text: str, expected: Intent) -> None:
+    assert extract_intent(text, "outbound").value is expected
+
+
+def test_booking_with_a_late_arrival_question_stays_a_booking() -> None:
+    text = "tôi muốn đặt lịch, mà tôi đến muộn chút được không"
+    assert extract_intent(text, "inbound").value is Intent.BOOK
+    assert extract_intent("toi muon dat lich kham", "inbound").value is Intent.BOOK

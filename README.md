@@ -164,7 +164,7 @@ src/
 │   ├── engine/                 # engine hội thoại, không phụ thuộc transport
 │   │   ├── orchestrator.py     # điều phối một lượt
 │   │   ├── session/            # session trên Redis: TTL, khoá, thứ tự lượt
-│   │   ├── extraction/         # trích xuất thông tin: luật, NER, tầng ngữ nghĩa
+│   │   ├── extraction/         # trích xuất thông tin: luật, slot filling tên, tầng ngữ nghĩa
 │   │   ├── dialogue/           # quản lý hội thoại và câu trả lời mẫu
 │   │   ├── policy/             # chính sách chuyển máy và guardrails
 │   │   ├── verification/       # xác minh danh tính
@@ -191,7 +191,7 @@ docs/reference/                 # tài liệu thiết kế
 | HTTP API | [http-api.md](docs/reference/http-api.md) |
 | Information Extraction | [information-extraction-design.md](docs/reference/information-extraction-design.md) |
 | LLM gateway | [llm-gateway.md](docs/reference/llm-gateway.md) |
-| NER tên | [name-ner.md](docs/reference/name-ner.md) |
+| Slot filling họ tên | [name-slot-filling.md](docs/reference/name-slot-filling.md) |
 | Vận hành session | [session-operations.md](docs/reference/session-operations.md) |
 | Luồng STT | [stt-flow.md](docs/reference/stt-flow.md) |
 | Cài model ZipFormer | [zipformer-model-setup.md](docs/reference/zipformer-model-setup.md) |

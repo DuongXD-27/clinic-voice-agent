@@ -134,7 +134,7 @@ class InformationExtractor:
         semantic: Optional[SemanticExtractor] = None,
     ) -> None:
         self._fallback = fallback
-        # Factory bật NER theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
+        # Factory bật slot filling họ tên theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
         self._name_fallback = name_fallback
         # Factory bật tầng ngữ nghĩa theo SEMANTIC_FALLBACK_ENABLED; mặc định bật, thiếu OPENAI_API_KEY thì None.
         self._semantic = semantic
@@ -179,9 +179,9 @@ class InformationExtractor:
                 # 31/02/1978" -> giữ tên, hỏi lại ngày), nhưng câu chỉ tình cờ có chữ số
                 # ("bảo hiểm có chi trả 80% không") thì không có vùng nào để cắt.
                 zone = name_before_dob(transcript) or name_after_dob(transcript)
-                full_name = self._full_name(zone, transcript) if zone else Field.nothing()
+                full_name = self._full_name(zone, transcript, ctx) if zone else Field.nothing()
             else:
-                full_name = self._full_name(transcript, transcript)
+                full_name = self._full_name(transcript, transcript, ctx)
 
         if (
             question in IDENTITY_QUESTIONS
@@ -192,7 +192,9 @@ class InformationExtractor:
             # ngày (dù không dùng được) thì họ có cung cấp được — không phải CANNOT_PROVIDE.
             and (dob_reading is None or not dob_reading.zone)
         ):
-            fallback_intent = extract_intent(transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS)
+            fallback_intent = extract_intent(
+                transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS, business_step=False
+            )
             if fallback_intent.found:
                 intent = fallback_intent
 
@@ -223,6 +225,7 @@ class InformationExtractor:
             clinical=clinical,
             agreement=agreement,
             cancel_reason=cancel_reason,
+            direction=ctx.direction,
         )
         result = ExtractionResult(
             turn=ctx.turn,
@@ -270,8 +273,12 @@ class InformationExtractor:
             return Field.nothing(Intent.NONE)
         return guarded
 
-    def _full_name(self, zone: str, transcript: str) -> Field[str]:
-        """`zone`: đoạn được phép chứa tên. `transcript`: cả câu, để mô hình còn ngữ cảnh."""
+    def _full_name(self, zone: str, transcript: str, ctx: TurnContext) -> Field[str]:
+        """`zone`: đoạn được phép chứa tên. `transcript`: cả câu, để mô hình còn ngữ cảnh.
+
+        Slot filling nhận thêm câu hỏi bot đang chờ (`ctx.question_text`) — chỉ để hiểu câu trả lời;
+        không gửi lịch sử hội thoại hay hồ sơ đối chiếu.
+        """
         reading = read_full_name(zone)
         # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
         # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
@@ -285,11 +292,17 @@ class InformationExtractor:
             return Field.nothing()
         logger.info("Name fallback route: %s", reading.reason.value)
         try:
-            guarded = guard_fallback(self._fallback.full_name(transcript), transcript, None)
+            proposed = self._fallback.full_name(
+                transcript,
+                question_id=QuestionId.ASK_NAME,
+                bot_question=ctx.question_text,
+            )
+            # Span đối chiếu với câu trả lời của khách, không với câu hỏi của bot
+            guarded = guard_fallback(proposed, transcript, None)
         except Exception:  # adapter lỗi cũng không được khôi phục ứng viên tên đáng ngờ
             logger.warning("Name fallback failed; requesting the name again", exc_info=False)
             return Field.nothing()
-        # Tên do NER trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
+        # Tên do slot filling trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
         # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
         if guarded.found and not _contains(zone, clean(guarded.value or "")):
             return Field.nothing()

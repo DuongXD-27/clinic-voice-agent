@@ -1,4 +1,4 @@
-"""Residual speech must not become a NORMALIZED name or survive failed NER."""
+"""Residual speech must not become a NORMALIZED name or survive failed slot filling."""
 
 import pytest
 
@@ -8,16 +8,10 @@ from callbot.engine.extraction.identity import Reason
 from tests.engine.extraction.test_extractor import FakeFallback, ctx
 
 SUSPECT_NAMES = [
-    "Nguyễn Văn A đây em",
-    "Nguyễn Văn A đó em",
-    "Nguyễn Văn A ạ em",
-    "Nguyễn Văn A nhé em ơi",
-    "Nguyễn Văn A cảm ơn em",
     "Nguyễn Văn A đúng rồi",
     "Nguyễn Văn A vâng",
     "Nguyễn Văn A chứ",
     "hello em Nguyễn Văn A",
-    "Nguyễn Văn A nhe em oi",
 ]
 
 
@@ -30,7 +24,7 @@ def test_leftover_speech_is_not_a_settled_rule_name(text):
 
 
 @pytest.mark.parametrize("text", SUSPECT_NAMES)
-def test_suspect_boundary_routes_to_ner_and_uses_only_the_grounded_name(text):
+def test_suspect_boundary_routes_to_slot_filling_and_uses_only_the_grounded_name(text):
     fallback = FakeFallback(
         full_name=Field("nguyễn văn a", Provenance.FALLBACK, span="nguyễn văn a")
     )
@@ -69,6 +63,18 @@ def test_known_contact_signals_never_spend_a_name_request(text):
 @pytest.mark.parametrize(
     "text, expected",
     [
+        ("Nguyễn Văn A đây em", "nguyễn văn a"),
+        ("Nguyễn Văn A đó em", "nguyễn văn a"),
+        ("Nguyễn Văn A ạ em", "nguyễn văn a"),
+        ("Nguyễn Văn A nhé em ơi", "nguyễn văn a"),
+        ("Nguyễn Văn A cảm ơn em", "nguyễn văn a"),
+        ("Nguyễn Văn A nhe em oi", "nguyễn văn a"),
+        ("Họ tên của tôi là Nguyễn Văn A", "nguyễn văn a"),
+        ("Nguyễn Văn A là tên của tôi", "nguyễn văn a"),
+        ("Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A", "nguyễn văn a"),
+        ("chào em tôi tên Nguyễn Văn A", "nguyễn văn a"),
+        ("em ơi tôi là Nguyễn Văn A", "nguyễn văn a"),
+        ("hú hú anh tên Nguyễn Văn A", "nguyễn văn a"),
         ("à thì anh tên là Nguyễn Văn A nhé em", "nguyễn văn a"),
         ("Nguyễn Thị Anh", "nguyễn thị anh"),
         ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
@@ -103,11 +109,11 @@ def test_removing_a_greeting_clause_does_not_turn_a_relative_into_the_caller(tex
 
 def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
     class BrokenFallback(FakeFallback):
-        def full_name(self, transcript):
+        def full_name(self, transcript, **context):
             raise TimeoutError("synthetic provider timeout")
 
     result = InformationExtractor(fallback=BrokenFallback(), name_fallback=True).extract(
-        ctx(QuestionId.ASK_NAME), "Nguyễn Văn A cảm ơn em"
+        ctx(QuestionId.ASK_NAME), "Nguyễn Văn A đúng rồi"
     )
     assert not result.full_name.found
 
@@ -124,7 +130,7 @@ def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
         ("Nguyễn Văn Em nhé", "nguyễn văn em"),
     ],
 )
-def test_ambiguous_suffix_must_use_ner_instead_of_a_truncated_rule_name(text, expected):
+def test_ambiguous_suffix_must_use_slot_filling_instead_of_a_truncated_rule_name(text, expected):
     reading = read_full_name(text)
     assert reading.reason is Reason.UNRESOLVED_BOUNDARY
     assert not reading.field.found

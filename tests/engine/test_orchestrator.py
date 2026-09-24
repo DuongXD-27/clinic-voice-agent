@@ -396,7 +396,8 @@ def test_extractor_never_sees_patient_identity() -> None:
 
     # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
     # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
-    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn.
+    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn. `question_text` là câu mẫu bot đã nói ở
+    # ASK_NAME (ngữ cảnh slot filling tên) — không chứa hồ sơ; vòng lặp dưới vẫn kiểm tra điều đó.
     assert {f.name for f in fields(TurnContext)} == {
         "turn",
         "question_id",
@@ -406,12 +407,18 @@ def test_extractor_never_sees_patient_identity() -> None:
         "presented_slot_ids",
         "pending_action",
         "question_turn",
+        "question_text",
     }
     verify = clinic.appointments["apt_00417"]["patient"]["verify"]
     for seen in spy.contexts:
         dumped = repr(seen)
         assert verify["full_name"] not in dumped and verify["dob"] not in dumped
         assert "pt_3391" not in dumped
+    # Câu mở đầu outbound tới IE; bước ngày sinh không mang nội dung câu hỏi
+    assert [(c.question_id, c.question_text) for c in spy.contexts] == [
+        (QuestionId.ASK_NAME, t.GREETING_OUTBOUND),
+        (QuestionId.ASK_DOB, None),
+    ]
     session = bot.sessions.store.get_session("c_private")
     assert session.context == {} and session.ended
 

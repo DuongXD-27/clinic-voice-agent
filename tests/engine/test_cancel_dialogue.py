@@ -133,7 +133,6 @@ def test_second_turn_with_an_explicit_cancel_verb_writes_with_both_evidences(mon
         "chắc là hủy",  # ngập ngừng
         "thôi hủy đi",  # mâu thuẫn
         "dung huy",  # không dấu: "đúng, hủy" hay "đừng hủy"
-        "hủy thì mất phí không em?",  # câu hỏi, không phải xác nhận
     ],
 )
 def test_answers_below_the_cancel_threshold_never_write(answer: str) -> None:
@@ -584,6 +583,7 @@ def test_two_calls_do_not_share_a_cancel_reason() -> None:
         ("Hủy đi, mà tôi đang đau ngực", "CLINICAL_QUESTION"),
         ("Cho tôi gặp nhân viên", "PATIENT_REQUEST"),
         ("Tôi muốn hỏi về bảo hiểm", "OUT_OF_SCOPE"),
+        ("hủy thì mất phí không em?", "OUT_OF_SCOPE"),
         ("Tôi là vợ anh ấy", "IDENTITY_FAILED"),
     ],
 )

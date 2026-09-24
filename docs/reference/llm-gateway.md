@@ -3,15 +3,15 @@
 `src/inference/llm/gateway.py` là điểm gọi chung cho structured generation, hiện có hai người dùng:
 
 ```text
-NameNER              → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
+NameSlotFiller       → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
 LLMSemanticExtractor → LLMGateway → OpenAI (gpt-4o-mini, cố định trong đợt T-05)
 ```
 
 Gateway chọn đúng một provider; không retry, không tự failover. Prompt và provider
 không phụ thuộc vào `callbot`. Gateway kiểm tra cú pháp JSON; caller chịu trách nhiệm
-validate schema và nghiệp vụ. NER vẫn kiểm tra tên/span sau khi nhận kết quả.
+validate schema và nghiệp vụ. Slot filling họ tên vẫn kiểm tra tên/span sau khi nhận kết quả.
 
-## Cấu hình NER
+## Cấu hình slot filling họ tên
 
 | NAME_FALLBACK_PROVIDER | Model mặc định | API key |
 |---|---|---|
@@ -28,7 +28,7 @@ model của provider được chọn. Khi đổi provider, xóa giá trị cũ h
 `NAME_FALLBACK_TIMEOUT_S` mặc định 3 giây cho read/write/pool; connect 1 giây.
 `NAME_FALLBACK_MAX_TOKENS` để trống dùng 200, riêng Groq dùng 1024 vì GPT-OSS tính cả
 reasoning token trong budget. Đặt số nguyên dương để ghi đè. Không phải deadline
-tổng lượt; lỗi API, output bị cắt hoặc sai JSON đều khiến NER trả `NONE`.
+tổng lượt; lỗi API, output bị cắt hoặc sai JSON đều khiến slot filling trả `NONE`.
 
 Gemini dùng `generateContent`, tách system instruction và ánh xạ assistant thành
 model; dùng `responseJsonSchema`. Với Gemini 2.5 Flash/Flash Lite, tắt thinking để
@@ -40,7 +40,7 @@ tham số (`require_parameters=true`), tắt fallback giữa upstream endpoints.
 
 ## Cấu hình tầng ngữ nghĩa (T-05)
 
-Tách hẳn khỏi `NAME_FALLBACK_*`: đổi provider/model của NER **không** đổi tầng ngữ nghĩa và ngược lại.
+Tách hẳn khỏi `NAME_FALLBACK_*`: đổi provider/model của slot filling họ tên **không** đổi tầng ngữ nghĩa và ngược lại.
 Factory (`callbot.engine._semantic_extractor`) dựng `OpenAIConfig` với `model`, `timeout_s`,
 `max_completion_tokens` truyền **tường minh**; pydantic-settings ưu tiên init kwargs hơn
 `validation_alias` của env, và `tests/llm/test_semantic_config.py` khoá hành vi đó.
@@ -50,7 +50,7 @@ Factory (`callbot.engine._semantic_extractor`) dựng `OpenAIConfig` với `mode
 | `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu `OPENAI_API_KEY` → tự về chỉ-luật, không chặn khởi động |
 | `SEMANTIC_FALLBACK_MODEL` | `gpt-4o-mini` | Provider cố định OpenAI trong đợt này |
 | `SEMANTIC_FALLBACK_TIMEOUT_S` | `2.0` | Timeout **từng pha** của HTTPX, không phải deadline tổng lượt |
-| `SEMANTIC_FALLBACK_MAX_TOKENS` | `400` | Không dùng ngầm mặc định 200 của NER |
+| `SEMANTIC_FALLBACK_MAX_TOKENS` | `400` | Không dùng ngầm mặc định 200 của slot filling họ tên |
 | `SEMANTIC_FALLBACK_MAX_INPUT_CHARS` | `1500` | Vượt giới hạn → hỏi ngắn lại, **không** âm thầm cắt (cắt có thể mất lời phủ định) |
 
 Tối đa **một** request cho mỗi lượt; không retry, không tự đổi model. Mọi lỗi provider (timeout,
@@ -87,12 +87,12 @@ Status: `completed`, `refusal`, `incomplete`, `invalid_response`, `timeout`,
 vào kết quả. Gemini completion usage gồm candidate + thought tokens nếu có.
 Client đóng sau request; caller có thể inject config và HTTP client factory để test.
 
-Scope hiện tại là structured generation cho NER. Gemini của Dialogue/ASR hiện có
+Scope hiện tại là structured generation cho slot filling họ tên và tầng ngữ nghĩa. Gemini của Dialogue/ASR hiện có
 chưa chuyển qua gateway; không bổ sung streaming, tools hoặc evaluation trong đợt này.
 
 ## Kiểm chứng
 
-`python -m pytest -q tests/llm tests/engine/extraction/test_ner.py` dùng HTTP mock cho
+`python -m pytest -q tests/llm tests/engine/extraction/test_name_slot_filling.py` dùng HTTP mock cho
 cả bốn provider: request/response, roles, credentials, usage, timeout, HTTP lỗi,
 refusal, JSON sai, cấu hình và đường gọi orchestrator → gateway. Không gọi API thật.
 Model availability, latency và chất lượng extraction thực tế chưa được đo.

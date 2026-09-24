@@ -75,6 +75,7 @@ jobs:
       BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
       CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
       CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
+      BOT_API_KEYS: ${{ secrets.BOT_API_KEYS }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -138,6 +139,7 @@ jobs:
               printf '%s\n' "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
               printf '%s\n' "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
               printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+              printf '%s\n' "BOT_API_KEYS=$BOT_API_KEYS"
               printf '%s\n' "REDIS_PASSWORD=$REDIS_PASSWORD"
               printf '%s\n' "REDIS_MAXMEMORY=256mb"
               printf '%s\n' "WEB_CONCURRENCY=2"
@@ -193,7 +195,13 @@ jobs:
           test "$ready" -eq 1
 
           CALL_ID="cd_smoke_${DEPLOY_SHA:0:12}_${GITHUB_RUN_ATTEMPT}"
+          # Server bật auth (BOT_API_KEYS trong /opt/callbot/.env) thì secret phải chứa một key
+          # server chấp nhận; smoke test dùng key đầu tiên. Secret trống = gọi không kèm header.
+          SMOKE_KEY="$(printf '%s' "${BOT_API_KEYS:-}" | cut -d, -f1 | tr -d '[:space:]')"
+          AUTH=()
+          if [ -n "$SMOKE_KEY" ]; then AUTH=(-H "Authorization: Bearer $SMOKE_KEY"); fi
           curl -fsS --connect-timeout 5 -X POST "https://$BOT_DOMAIN/v1/calls" \
+            "${AUTH[@]}" \
             -H "Content-Type: application/json" \
             -d '{"call_id":"'"$CALL_ID"'","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'
 

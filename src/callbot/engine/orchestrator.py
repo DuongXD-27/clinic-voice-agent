@@ -12,7 +12,7 @@ from callbot.engine.diagnostics import build_diagnostics
 from callbot.engine.dialogue.manager import DialogueManager
 from callbot.engine.errors import TURN_ABORTING_ERRORS, EngineError
 from callbot.engine.extraction.extractor import InformationExtractor
-from callbot.engine.extraction.schema import ExtractionResult, TurnContext, to_local
+from callbot.engine.extraction.schema import ExtractionResult, QuestionId, TurnContext, to_local
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.policy_engine import PolicyDecision, PolicyEngine
 from callbot.engine.session.context import CallContext
@@ -40,6 +40,12 @@ def build_turn_context(ctx: CallContext, turn: int, received_at: datetime) -> Tu
         presented_slot_ids=tuple(ctx.presented_slot_ids),
         pending_action=ctx.pending_action,
         question_turn=question.turn if question else None,
+        # Câu bot thật sự đã nói (kể cả sau nhắc im lặng / chưa hiểu); các câu hỏi khác không cần
+        question_text=(
+            question.text
+            if question and question.question_id is QuestionId.ASK_NAME and question.text
+            else None
+        ),
     )
 
 

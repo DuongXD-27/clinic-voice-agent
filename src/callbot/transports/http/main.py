@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis import Redis
@@ -20,6 +20,7 @@ from callbot.engine import (
 )
 from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
+from callbot.transports.http.auth import require_api_key
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import router as calls_router
 from callbot.transports.http.clinic_backend import build_clinic
@@ -116,6 +117,8 @@ def create_app(
 
         try:
             clinic = clinic_factory()
+            # Trang demo đọc dữ liệu sim để dựng dropdown (demo.list_clinic_fixtures)
+            app.state.clinic = clinic
             app.state.session_store = store
             app.state.orchestrator = create_orchestrator(
                 clinic, engine_settings or EngineSettings(), store=store
@@ -147,8 +150,8 @@ def create_app(
 
     app = FastAPI(title="Vinmec Callbot", lifespan=lifespan)
     app.state.livekit_settings = livekit_settings_factory()
-    app.include_router(calls_router)
-    app.include_router(demo_router)
+    app.include_router(calls_router, dependencies=[Depends(require_api_key)])
+    app.include_router(demo_router, dependencies=[Depends(require_api_key)])
     app.include_router(livekit_router)
     demo_dir = Path(__file__).parent / "static"
     app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")

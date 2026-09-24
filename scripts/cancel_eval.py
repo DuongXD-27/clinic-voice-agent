@@ -15,8 +15,8 @@ nhãn của adapter. Báo cáo tách:
 Mỗi repeat có bộ đếm riêng, kèm tổng toàn bộ repeat. Exit code xét MỌI repeat: có ca ghi hủy sai ở
 bất kỳ repeat nào là 1. Timeout là timeout theo pha của httpx (`EngineSettings`), ghi vào báo cáo.
 
-Kết quả ghi ra `outputs/eval/cancel/<label>/` kèm model, prompt version, timeout và thời
-điểm chạy.
+Kết quả ghi ra `result/<dd-mm-yyyy>/cancel/<label>/` (ngày theo giờ Việt Nam, thư mục được commit)
+kèm model, prompt version, timeout và thời điểm chạy.
 Không in khóa API; transcript trong bộ câu là dữ liệu tổng hợp, không có PII.
 """
 
@@ -44,14 +44,14 @@ from callbot.engine import (  # noqa: E402
     create_orchestrator,
 )
 from callbot.engine.dialogue import templates as t  # noqa: E402
-from callbot.engine.extraction.schema import QuestionId  # noqa: E402
+from callbot.engine.extraction.schema import VN_TZ, QuestionId  # noqa: E402
 from callbot.engine.extraction.semantic import SemanticContext, SemanticOutcome  # noqa: E402
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
 from clinic_mock_sim import FakeClinicAPI  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
 CASES = ROOT / "eval" / "cancel" / "cases.csv"
-OUT_ROOT = ROOT / "outputs" / "eval" / "cancel"
+RESULT_ROOT = ROOT / "result"
 VERIFIED = ["Nguyễn Văn A", "14/03/1978"]
 
 # Ca ghi hủy trái kỳ vọng đã biết trước đợt sửa 22-09 (luật thấy động từ "hủy" trong câu injection).
@@ -152,6 +152,11 @@ def _behaviour(
     if action.utterance == t.CANCEL_REASON_NOTED:
         return "REASON_NOTED"
     return "ASK_AGAIN"
+
+
+def result_dir(kind: str, label: str) -> Path:
+    """`result/<dd-mm-yyyy>/<kind>/<label>/`: kết quả eval lưu theo ngày chạy (giờ Việt Nam)."""
+    return RESULT_ROOT / datetime.now(VN_TZ).strftime("%d-%m-%Y") / kind / label
 
 
 def _store() -> RedisSessionStore:
@@ -357,7 +362,7 @@ def main() -> int:
             f" · model {summary['model_statuses']}"
         )
 
-    out_dir = OUT_ROOT / label
+    out_dir = result_dir("cancel", label)
     out_dir.mkdir(parents=True, exist_ok=True)
     with (out_dir / "results.csv").open("w", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=list(runs[0][0]))

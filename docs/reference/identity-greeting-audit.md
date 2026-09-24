@@ -1,5 +1,8 @@
 # Rà soát họ tên và câu chào — 2026-09-23
 
+Kết quả dưới đây là lịch sử khảo sát. Xem [đánh giá v2 ngày 24-09](../evidence/name-slot-filling-v2-eval.md)
+để đối chiếu với NER ngày 23-09: cùng 96/97 PASS, sửa ID073 nhưng phát sinh regression ID069.
+
 **Cập nhật lần 3:** [corpus](../../eval/identity/cases.csv) hiện có **100 ca tổng hợp**:
 **78 PASS, 19 FAIL, 3 REVIEW** khi chỉ dùng luật. Lượt khảo sát đầu có 80 ca với
 52 PASS / 26 FAIL / 2 REVIEW. Đây là tập khám phá lỗi có chủ đích, không phải holdout
@@ -26,9 +29,10 @@ chứng đã xác minh danh tính.
 | Agreement xác nhận hủy/đặt/đổi | Model không được nâng câu mơ hồ thành đồng ý để mở lệnh ghi | Yêu cầu xác nhận rõ |
 | Chọn lịch/slot | Chỉ chọn trong danh sách thực tế; không để model sinh slot mới | Hỏi lại tiêu chí |
 
-NER vẫn chỉ nhận transcript hiện tại, không nhận hồ sơ để đoán tên. Kết quả cần có span
+NER nay là slot filling họ tên ([chi tiết](name-slot-filling.md)): model nhận câu hỏi bot
+đang chờ cùng câu trả lời hiện tại, không nhận lịch sử hay hồ sơ để đoán tên. Kết quả cần có span
 trong vùng tên, qua kiểm tra tên sạch, và không được thêm dấu/sửa ASR. Prompt nâng lên
-`name_ner_v3`, có thêm đối chứng tên `Nha` với tiểu từ `nha` và đuôi `em nhé`.
+`name_ner_v3` (nay thay bằng `name_slot_filling_v1`), có thêm đối chứng tên `Nha` với tiểu từ `nha` và đuôi `em nhé`.
 Validator trong extractor cũng chặn adapter trả lại nguyên ứng viên bẩn. Việc chọn
 ranh giới từ cả câu thuộc NER; kiểm tra span đã chọn không được dùng lại luật cắt
 tiểu từ `nha`, nếu không sẽ bác chính tên `Nguyễn Thị Nha`.
@@ -153,12 +157,12 @@ Việc bỏ một danh xưng cuối câu vô điều kiện sẽ làm sai cả n
 
 ```powershell
 .venv\Scripts\python.exe scripts/identity_eval.py --output outputs/eval/identity/results.csv
-.venv\Scripts\python.exe scripts/identity_eval.py --ner --groups suffix_other,name_particle_collision,boundary_review,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/ner-results.csv
+.venv\Scripts\python.exe scripts/identity_eval.py --slot-filling --groups suffix_other,name_particle_collision,boundary_review,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/slot-filling-results.csv
 .venv\Scripts\python.exe -m pytest -q tests/engine/extraction tests/engine/test_identity_dialogue.py
 ```
 
-Mặc định runner không đọc `.env` hay gọi model/Clinic/ASR/TTS. `--ner` đọc cấu hình
-`NAME_FALLBACK_*` và gọi API thật, sử dụng quota. Output có nguồn tên, có gọi NER không,
+Mặc định runner không đọc `.env` hay gọi model/Clinic/ASR/TTS. `--slot-filling`
+(alias cũ `--ner`) đọc cấu hình `NAME_FALLBACK_*` và gọi API thật, sử dụng quota. Output có nguồn tên, câu hỏi bot, có gọi model không,
 trạng thái transport, model/prompt version và thời gian từng ca; không có key.
 **Exit code 1 hiện là kết quả dự kiến** vì còn 19 ca FAIL khi chạy chỉ luật; đây là
 công cụ research chạy tay, không thêm tập lỗi đã biết vào CI như thể chúng đã được sửa.

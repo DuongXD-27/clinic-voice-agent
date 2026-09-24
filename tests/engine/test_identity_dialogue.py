@@ -10,6 +10,7 @@ import pytest
 
 from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
+from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
@@ -69,7 +70,7 @@ def _ended(action: BotAction, outcome: str, reason: Optional[str] = None) -> Non
 def test_unregistered_inbound_is_transferred_at_turn_one_without_asking_name(first_turn) -> None:
     actions, clinic = _call(_inbound("c_unreg", "0999999999"), [first_turn])
     opening, action = actions
-    assert opening.utterance == t.greeting_handoff("inbound") and "?" not in opening.utterance
+    assert opening.utterance == t.GREETING_HANDOFF_INBOUND and "?" not in opening.utterance
     _ended(action, "TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.writes == [] and clinic.requests == []  # §2.1: không có lệnh ghi
 
@@ -84,17 +85,19 @@ def test_inbound_lookup_failure_is_system_error_without_write() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("find_patient_by_phone")
     actions, _ = _call(_inbound("c_in_down"), ["Nguyễn Văn A"], clinic)
-    assert actions[0].utterance == t.greeting_handoff("inbound")
+    assert actions[0].utterance == t.GREETING_HANDOFF_INBOUND
     _ended(actions[-1], "TRANSFERRED", "SYSTEM_ERROR")
     assert clinic.writes == []
 
 
-def test_outbound_unreadable_appointment_transfers_system_error_at_turn_one() -> None:
+def test_outbound_unreadable_appointment_does_not_open_a_call() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("get_appointment")
-    actions, _ = _call(_outbound("c_out_down"), [SILENCE], clinic)
-    assert actions[0].utterance == t.greeting_handoff("outbound")
-    _ended(actions[-1], "TRANSFERRED", "SYSTEM_ERROR")
+    bot = create_orchestrator(clinic)
+    with pytest.raises(OutboundStartFailed):
+        bot.start_call(_outbound("c_out_down"))
+    assert bot.sessions.store.get_session("c_out_down") is None
+    assert clinic.writes == []
 
 
 def test_policy_lookup_table_matches_verifier() -> None:
@@ -260,7 +263,16 @@ def test_identity_question_at_dob_step_reintroduces_without_asking_name_again(di
 
 
 @pytest.mark.parametrize(
-    "name", ["NGuyễn văn A nhé em", "nguyen van a nhe em", "Nguyễn Văn A nhé em, sinh ngày " + DOB]
+    "name",
+    [
+        "NGuyễn văn A nhé em",
+        "nguyen van a nhe em",
+        "Nguyễn Văn A nhé em, sinh ngày " + DOB,
+        "Nguyễn Văn A ạ em",
+        "Nguyễn Văn A cảm ơn em",
+        "Họ tên của tôi là Nguyễn Văn A",
+        "Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A",
+    ],
 )
 def test_name_with_polite_address_verifies_without_spurious_mismatch(name) -> None:
     lines = [name] if DOB in name else [name, DOB]

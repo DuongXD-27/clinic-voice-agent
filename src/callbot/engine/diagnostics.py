@@ -121,9 +121,10 @@ def summarize_extraction(extraction: Optional[dict[str, Any]]) -> tuple[Optional
     }
     provenances = list(fields.values())
     if any(fields.get(name) == "FALLBACK" for name in ("full_name", "dob")):
+        # Nhãn "NER" giữ nguyên vì là hợp đồng API debug; nguồn thực tế là slot filling họ tên
         return question_id, "NER", "FALLBACK"
     if "FALLBACK" in provenances:
-        # Ý định / đồng ý / lý do hủy từ tầng ngữ nghĩa hoặc fallback LLM — không phải NER tên
+        # Ý định / đồng ý / lý do hủy từ tầng ngữ nghĩa hoặc fallback LLM — không phải slot filling tên
         return question_id, "LLM", "FALLBACK"
     for provenance in ("EXACT", "NORMALIZED"):
         if provenance in provenances:

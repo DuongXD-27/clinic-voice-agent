@@ -1,4 +1,4 @@
-"""Luật trích xuất danh tính: phủ định, tự sửa, phân vân, câu gộp, và ranh giới với NER.
+"""Luật trích xuất danh tính: phủ định, tự sửa, phân vân, câu gộp, và ranh giới với slot filling.
 
 Mỗi ca ở đây là một câu người gọi thật sự nói được. Kỳ vọng lấy từ hợp đồng sản phẩm:
 sai một tên hay một ngày thì Verifier chuyển máy ngay, còn `INVALID` / `None` chỉ tốn một
@@ -46,14 +46,20 @@ def name_of(transcript: str) -> Optional[str]:
     return extractor.extract(ctx(QuestionId.ASK_NAME), transcript).full_name.value
 
 
-class FakeNER:
+class FakeSlotFiller:
     """Tuyến sau cố trả về một tên có thật trong transcript, kèm số lần bị gọi."""
 
     def __init__(self, name: Optional[str] = None) -> None:
         self._name = name
         self.calls = 0
 
-    def full_name(self, transcript: str) -> Optional[Field[str]]:
+    def full_name(
+        self,
+        transcript: str,
+        *,
+        question_id: QuestionId = QuestionId.ASK_NAME,
+        bot_question: Optional[str] = None,
+    ) -> Optional[Field[str]]:
         self.calls += 1
         if self._name is None:
             return None
@@ -72,13 +78,13 @@ class FakeNER:
 @pytest.mark.parametrize(
     "transcript", ["hello em", "hi em", "Hello, chị ạ!", "dạ hi anh", "alo em", "chào em"]
 )
-def test_greeting_is_not_a_name_even_with_ner_enabled(transcript: str) -> None:
-    ner = FakeNER(clean(transcript))
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_greeting_is_not_a_name_even_with_slot_filling_enabled(transcript: str) -> None:
+    filler = FakeSlotFiller(clean(transcript))
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), transcript
     )
     assert not result.full_name.found
-    assert ner.calls == 0
+    assert filler.calls == 0
 
 
 @pytest.mark.parametrize(
@@ -284,6 +290,9 @@ def test_denied_uncertain_or_borrowed_names_are_not_claimed(transcript: str) -> 
     "transcript",
     [
         "Nguyễn Văn A, tôi không nhớ rõ ngày sinh",
+        "Nguyễn Văn A tôi không nhớ rõ ngày sinh",
+        "Tôi là Nguyễn Văn A không nhớ chính xác ngày tháng năm sinh",
+        "Nguyễn Văn A ngày sinh thì tôi không chắc",
         "Nguyễn Văn A, ngày sinh thì tôi không chắc",
         "Tôi là Nguyễn Văn A, hình như sinh năm 1978",
     ],
@@ -293,6 +302,21 @@ def test_uncertainty_about_the_dob_does_not_lose_a_clear_name(transcript: str) -
     result = extractor.extract(ctx(QuestionId.ASK_NAME), transcript)
     assert result.full_name.value == "nguyễn văn a"
     assert not isinstance(result.dob.value, date)
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Chắc tên tôi là Nguyễn Văn A tôi không nhớ rõ ngày sinh",
+        "Không phải Nguyễn Văn A tôi không nhớ rõ ngày sinh",
+        "Mẹ tôi là Nguyễn Thị Hoa tôi không nhớ rõ ngày sinh",
+        "Nguyễn Văn A hay Nguyễn Văn B tôi không nhớ rõ ngày sinh",
+        "Nguyễn Văn A tôi không nhớ rõ tên và ngày sinh",
+        "Nguyễn Văn A tôi không nhớ rõ ngày sinh và họ tên",
+    ],
+)
+def test_dob_aside_does_not_override_rejected_names(transcript: str) -> None:
+    assert name_of(transcript) is None
 
 
 @pytest.mark.parametrize(
@@ -420,7 +444,7 @@ def test_two_people_in_one_answer_are_not_mixed() -> None:
     assert result.full_name.value == "nguyễn văn a"
 
 
-# --- Tuyến sau NER -----------------------------------------------------------------
+# --- Tuyến sau slot filling -----------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -433,41 +457,41 @@ def test_two_people_in_one_answer_are_not_mixed() -> None:
         ("mẹ tôi là Nguyễn Thị Hoa", "nguyễn thị hoa"),
     ],
 )
-def test_ner_cannot_overturn_a_decided_rejection(transcript: str, name: str) -> None:
-    ner = FakeNER(name)
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_slot_filling_cannot_overturn_a_decided_rejection(transcript: str, name: str) -> None:
+    filler = FakeSlotFiller(name)
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), transcript
     )
     assert result.full_name.found is False
-    assert ner.calls == 0, "luật đã quyết định, không được hỏi mô hình"
+    assert filler.calls == 0, "luật đã quyết định, không được hỏi mô hình"
 
 
-def test_ner_is_asked_only_when_the_rules_do_not_understand() -> None:
-    ner = FakeNER("nguyễn văn a")
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_slot_filling_is_asked_only_when_the_rules_do_not_understand() -> None:
+    filler = FakeSlotFiller("nguyễn văn a")
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), "à ừ thì là nguyễn văn a nhé em"
     )
     assert result.full_name.value == "nguyễn văn a"
     assert result.full_name.provenance is Provenance.FALLBACK
-    assert ner.calls == 1
+    assert filler.calls == 1
 
 
-def test_ner_name_must_lie_inside_the_allowed_name_zone() -> None:
+def test_slot_filling_name_must_lie_inside_the_allowed_name_zone() -> None:
     # Câu gộp: vùng tên chỉ là phần trước ngày sinh — mô hình không được lấy chữ từ phần ngày
-    ner = FakeNER("mười bốn tháng ba")
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+    filler = FakeSlotFiller("mười bốn tháng ba")
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), "à ừ thì là em nhé, sinh ngày mười bốn tháng ba năm 1978"
     )
     assert result.full_name.found is False
 
 
-def test_ner_failure_still_asks_again() -> None:
-    ner = FakeNER(None)  # lỗi / timeout / không có tên
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_slot_filling_failure_still_asks_again() -> None:
+    filler = FakeSlotFiller(None)  # lỗi / timeout / không có tên
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), "à ừ thì là nguyễn văn a nhé em"
     )
     assert result.full_name.found is False
-    assert ner.calls == 1
+    assert filler.calls == 1
 
 
 # --- Tích hợp: ranh giới với Verifier ----------------------------------------------
@@ -542,14 +566,14 @@ def test_a_corrected_combined_answer_hands_over_the_corrected_halves() -> None:
     assert verifier.calls == [("nguyễn văn b", DOB)]
 
 
-def test_ner_honorific_is_dropped_like_the_rule_does() -> None:
-    """Demo 22-09: NER trả "ông nguyễn văn a" — danh xưng không thuộc họ tên."""
-    transcript = "a thi toi la ong nguyen van a"  # không dấu: luật không bắt, NER bắt
-    ner = FakeNER("ong nguyen van a")
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_slot_filling_honorific_is_dropped_like_the_rule_does() -> None:
+    """Demo 22-09: model trả "ông nguyễn văn a" — danh xưng không thuộc họ tên."""
+    transcript = "a thi toi la ong nguyen van a"  # không dấu: luật không bắt, slot filling bắt
+    filler = FakeSlotFiller("ong nguyen van a")
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), transcript
     )
-    assert ner.calls == 1
+    assert filler.calls == 1
     assert result.full_name.value == "nguyen van a"
     assert result.full_name.provenance is Provenance.FALLBACK
 
@@ -557,10 +581,10 @@ def test_ner_honorific_is_dropped_like_the_rule_does() -> None:
 @pytest.mark.parametrize(
     "transcript", ["Tên chú của tôi là Nguyễn Văn A", "Nguyễn Văn A là tên ông tôi"]
 )
-def test_a_relatives_name_never_reaches_the_ner(transcript: str) -> None:
-    """Model từng nhận nhầm "tên chú của tôi" là tên người gọi: luật chặn trước khi tới NER."""
-    ner = FakeNER("Nguyễn Văn A")
-    result = InformationExtractor(fallback=ner, name_fallback=True).extract(
+def test_a_relatives_name_never_reaches_slot_filling(transcript: str) -> None:
+    """Model từng nhận nhầm "tên chú của tôi" là tên người gọi: luật chặn trước khi tới slot filling."""
+    filler = FakeSlotFiller("Nguyễn Văn A")
+    result = InformationExtractor(fallback=filler, name_fallback=True).extract(
         ctx(QuestionId.ASK_NAME), transcript
     )
-    assert ner.calls == 0 and not result.full_name.found
+    assert filler.calls == 0 and not result.full_name.found

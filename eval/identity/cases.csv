@@ -1,101 +1,101 @@
-id,group,question_id,transcript,expect_name,expect_greeting,expect_identity_question,expect_intent,expect_dob,note
-ID001,who,ASK_NAME,Ai đấy?,,1,1,NONE,,Giới thiệu AI và Vinmec trước khi hỏi tên
-ID002,who,ASK_NAME,AI đấy?,,1,1,NONE,,Không phụ thuộc viết hoa
-ID003,who,ASK_NAME,ai the,,1,1,NONE,,Không biến câu không dấu thành tên
-ID004,who,ASK_NAME,Ai gọi vậy?,,1,1,NONE,,Hỏi người gọi
-ID005,who,ASK_NAME,ai đang gọi đấy,,1,1,NONE,,Biến thể đang gọi
-ID006,who,ASK_NAME,"Dạ, cho hỏi ai đấy ạ?",,1,1,NONE,,Có lời đệm
-ID007,who,ASK_NAME,Bạn là ai vậy?,,1,1,NONE,,Đại từ hướng tới bot
-ID008,who,ASK_NAME,Bên nào gọi đấy?,,1,1,NONE,,Hỏi đơn vị gọi
-ID009,who,ASK_DOB,Ai gọi vậy?,,1,1,NONE,,Giới thiệu rồi tiếp tục hỏi ngày sinh
-ID010,who,ASK_NAME,ai vậy em,,1,1,NONE,,Có danh xưng cuối câu
-ID011,who_variants,ASK_NAME,Em gọi từ đâu?,,1,1,NONE,,Hỏi đơn vị cần trả lời Vinmec
-ID012,who_variants,ASK_NAME,Bên em là bên nào?,,1,1,NONE,,Hỏi bên gọi
-ID013,who_variants,ASK_NAME,Bệnh viện nào vậy?,,1,1,NONE,,Hỏi tổ chức
-ID014,who_variants,ASK_NAME,Vinmec à?,,1,1,NONE,,Không coi tên tổ chức là họ tên
-ID015,who_variants,ASK_NAME,Đầu dây bên kia là ai?,,1,1,NONE,,Cách hỏi gián tiếp
-ID016,greeting,ASK_NAME,alo,,1,0,NONE,,Chào lại ở lượt mở đầu
-ID017,greeting,ASK_NAME,hello em,,1,0,NONE,,Lời chào tiếng Anh
-ID018,greeting,ASK_NAME,"Hello, chị ạ!",,1,0,NONE,,Lời chào kèm danh xưng
-ID019,greeting,ASK_NAME,alo tôi nghe đây,,1,0,NONE,,Xác nhận nghe máy kèm alo
-ID020,listening,ASK_NAME,tôi nghe đây,,1,0,NONE,,Xác nhận nghe máy không có alo
-ID021,listening,ASK_NAME,vâng tôi nghe,,1,0,NONE,,Không nên tính là không hiểu
-ID022,listening,ASK_NAME,ừ tôi nghe,,1,0,NONE,,Biến thể đáp máy
-ID023,suffix_fixed,ASK_NAME,NGuyễn văn A nhé em,nguyễn văn a,0,0,NONE,,Ca người dùng báo
-ID024,suffix_fixed,ASK_NAME,"Dạ, Nguyễn Văn A nhé em ạ",nguyễn văn a,0,0,NONE,,Đệm nhiều lớp
-ID025,suffix_fixed,ASK_NAME,nguyen van a nhe em,nguyen van a,0,0,NONE,,Không dấu
-ID026,suffix_fixed,ASK_NAME,Nguyễn Văn A nhe em,nguyễn văn a,0,0,NONE,,Mất dấu một phần
-ID027,suffix_fixed,ASK_NAME,Nguyen Van A nhé em,nguyen van a,0,0,NONE,,Không tự thêm dấu cho tên
-ID028,suffix_fixed,ASK_NAME,"Nguyễn Văn A, nha chị!",nguyễn văn a,0,0,NONE,,Đuôi có danh xưng khác
-ID029,suffix_fixed,ASK_NAME,Trần Thị Bích Ngọc Anh nhé em,trần thị bích ngọc anh,0,0,NONE,,Bỏ đuôi trước khi giới hạn số từ
-ID030,suffix_other,ASK_NAME,Nguyễn Văn A ạ em,nguyễn văn a,0,0,NONE,,Tiểu từ có dấu đứng trước danh xưng
-ID031,suffix_other,ASK_NAME,Nguyễn Văn A đây em,nguyễn văn a,0,0,NONE,,Đuôi đây em
-ID032,suffix_other,ASK_NAME,Nguyễn Văn A đó em,nguyễn văn a,0,0,NONE,,Đuôi đó em
-ID033,suffix_other,ASK_NAME,Nguyễn Văn A nhé em ơi,nguyễn văn a,0,0,NONE,,Đuôi gọi người nghe
-ID034,suffix_other,ASK_NAME,Nguyễn Văn A cảm ơn em,nguyễn văn a,0,0,NONE,,Cảm ơn không thuộc tên
-ID035,suffix_other,ASK_NAME,Nguyễn Văn A đúng rồi,nguyễn văn a,0,0,NONE,,Khẳng định cuối câu
-ID036,suffix_other,ASK_NAME,Nguyễn Văn A vâng,nguyễn văn a,0,0,NONE,,Đáp lễ cuối câu
-ID037,suffix_other,ASK_NAME,Nguyễn Văn A chứ,nguyễn văn a,0,0,NONE,,Tiểu từ cuối câu
-ID038,boundary_review,ASK_NAME,Nguyễn Văn A em nhé,*,0,0,NONE,,Em có thể thuộc tên; cần gán nhãn theo ngữ cảnh
-ID039,boundary_review,ASK_NAME,Nguyễn Văn A em ạ,*,0,0,NONE,,Không tự cắt em chỉ vì đứng cuối
-ID040,boundary_review,ASK_NAME,Nguyễn Văn Em nhé,*,0,0,NONE,,Em có thể là tên hoặc danh xưng; cần ngữ cảnh
-ID041,names,ASK_NAME,Nguyễn Thị Anh nhé em,nguyễn thị anh,0,0,NONE,,Giữ tên Anh
-ID042,names,ASK_NAME,Nguyen Van A Em,nguyen van a em,0,0,NONE,,Không cắt A hoặc Em không dấu
-ID043,names,ASK_NAME,Nguyễn Thị Ái,nguyễn thị ái,0,0,NONE,,Không nhầm Ái với ai
-ID044,names,ASK_NAME,Nguyen Thi Ai,nguyen thi ai,0,0,NONE,,Tên Ái mất dấu
-ID045,names,ASK_NAME,Chu Văn An,chu văn an,0,0,NONE,,Giữ họ Chu
-ID046,names,ASK_NAME,Lê Hoa,lê hoa,0,0,NONE,,Tên hai từ
-ID047,names,ASK_NAME,Lê Văn Thôi,lê văn thôi,0,0,NONE,,Thôi là tên
-ID048,names,ASK_NAME,Trần Văn Được,trần văn được,0,0,NONE,,Được là tên
-ID049,name_particle_collision,ASK_NAME,Nguyễn Thị Nha,nguyễn thị nha,0,0,NONE,,Nha là tên trong ca tổng hợp này
-ID050,name_particle_collision,ASK_NAME,Lê Nha,lê nha,0,0,NONE,,Không để luật đuôi làm mất tên hai từ
-ID051,self_intro,ASK_NAME,Tên em là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Người gọi tự xưng em
-ID052,self_intro,ASK_NAME,à thì tôi là ông Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Đệm đầu câu và danh xưng
-ID053,self_intro_variants,ASK_NAME,Họ tên của tôi là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Tự giới thiệu có từ của
-ID054,self_intro_variants,ASK_NAME,Nguyễn Văn A là tên của tôi,nguyễn văn a,0,0,NONE,,Tự giới thiệu ở cuối câu
-ID055,self_intro_variants,ASK_NAME,Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Luật có thể cần NER
-ID056,greeting_with_name,ASK_NAME,"alo em, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Lời chào chỉ là một mệnh đề
-ID057,greeting_with_name,ASK_NAME,"hello em, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Giữ mệnh đề tên sau lời chào
-ID058,greeting_with_name,ASK_NAME,chào em tôi tên Nguyễn Văn A,nguyễn văn a,0,0,NONE,,ASR không chèn dấu phẩy
-ID059,mixed_question,ASK_NAME,"Ai đấy, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Cần thiết kế vừa nhận tên vừa trả lời câu hỏi
-ID060,other_person,ASK_NAME,Tên em tôi là Nguyễn Văn A,,0,0,NONE,,Tên của người thân
-ID061,other_person,ASK_NAME,con tôi tên Nguyễn Văn A,,0,0,NONE,,Không gán tên con cho người gọi
-ID062,other_person,ASK_NAME,Tôi gọi hộ mẹ tôi là Nguyễn Thị Hoa,,0,0,NONE,,Không lấy tên người được gọi hộ
-ID063,other_person,ASK_NAME,"Tôi tên Nguyễn Văn A, còn em tôi là Nguyễn Văn B",nguyễn văn a,0,0,NONE,,Chỉ lấy tự nhận của người gọi
-ID064,correction,ASK_NAME,"Nguyễn Văn A, à nhầm Nguyễn Văn B",nguyễn văn b,0,0,NONE,,Tên sửa sau cùng
-ID065,correction,ASK_NAME,không phải Nguyễn Văn A mà là Nguyễn Văn B,nguyễn văn b,0,0,NONE,,Phủ định rồi khẳng định
-ID066,uncertain,ASK_NAME,không phải Nguyễn Văn A,,0,0,NONE,,Không nhận tên bị phủ định
-ID067,uncertain,ASK_NAME,chắc là Nguyễn Văn A,,0,0,NONE,,Không khẳng định chắc chắn
-ID068,uncertain,ASK_NAME,Nguyễn Văn A hay Nguyễn Văn B,,0,0,NONE,,Hai tên cạnh tranh
-ID069,uncertain,ASK_NAME,Nguyễn Văn A phải không,,0,0,NONE,,Hỏi lại không phải tự khai chắc chắn
-ID070,combined_dob,ASK_NAME,"Nguyễn Văn A nhé em, sinh ngày 14/03/1978",nguyễn văn a,0,0,NONE,1978-03-14,Tên và ngày sinh cùng lượt
-ID071,combined_dob,ASK_NAME,"14/03/1978, tôi là Nguyễn Văn A nhé em",nguyễn văn a,0,0,NONE,1978-03-14,Ngày sinh đứng trước tên
-ID072,combined_dob,ASK_NAME,"Nguyễn Văn A, tôi không nhớ rõ ngày sinh",nguyễn văn a,0,0,NONE,,Phân vân chỉ về ngày sinh
-ID073,punctuation_loss,ASK_NAME,Nguyễn Văn A tôi không nhớ rõ ngày sinh,nguyễn văn a,0,0,NONE,,Mất dấu phẩy không nên mất tên
-ID074,combined_dob,ASK_NAME,Nguyễn Văn A sinh ngày 31/02/1978,nguyễn văn a,0,0,NONE,INVALID,Giữ tên dù ngày sai
-ID075,state,ASK_DOB,Nguyễn Văn A nhé em,,0,0,NONE,,Không đọc lại tên khi đang hỏi ngày sinh
-ID076,priority,ASK_NAME,"Ai đấy, tôi muốn hủy lịch",,0,0,CANCEL,,Giữ nhu cầu; không nuốt cả câu thành lời chào
-ID077,priority,ASK_NAME,"Alo, chuyển máy cho nhân viên",,0,0,REQUEST_HUMAN,,Ưu tiên yêu cầu chuyển máy
-ID078,priority,ASK_NAME,"Alo, nhầm số rồi",,0,0,NOT_PATIENT,,Không hỏi tiếp tên người nghe nhầm
-ID079,normalization,ASK_NAME,NGUYỄN VĂN A,nguyễn văn a,0,0,NONE,,Viết hoa toàn bộ
-ID080,normalization,ASK_NAME,Nguyễn   Văn    A,nguyễn văn a,0,0,NONE,,Khoảng trắng
-ID081,reported_sentence,ASK_NAME,à thì anh tên là Nguyễn Văn A nhé em,nguyễn văn a,0,0,NONE,,Nguyên câu người dùng báo; không cần model khi đã tách sạch
-ID082,contact,ASK_NAME,hú hú,,1,0,NONE,,Tiếng gọi để bắt liên lạc không phải tên
-ID083,contact,ASK_NAME,Hú hú em ơi!,,1,0,NONE,,Tiếng gọi kèm danh xưng
-ID084,contact,ASK_NAME,hu hu,,1,0,NONE,,Biến thể không dấu; chưa đánh giá audio
-ID085,contact,ASK_NAME,alo hú hú,,1,0,NONE,,Chào và gọi liên tiếp
-ID086,contact,ASK_NAME,em ơi,,1,0,NONE,,Gọi người nghe
-ID087,contact,ASK_NAME,chị ơi,,1,0,NONE,,Danh xưng khác
-ID088,contact,ASK_NAME,ừ nghe đây,,1,0,NONE,,Đáp máy
-ID089,contact,ASK_NAME,anh đang nghe đây,,1,0,NONE,,Người gọi tự xưng anh
-ID090,contact,ASK_DOB,hú hú,,1,0,NONE,,Giữ bước ngày sinh
-ID091,contact,ASK_DOB,em ơi,,1,0,NONE,,Không khởi động lại bước tên
-ID092,contact_with_name,ASK_NAME,hú hú anh tên Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Không nuốt mệnh đề tên vào lời chào
-ID093,contact_with_name,ASK_NAME,em ơi tôi là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Tên đi sau lời gọi
-ID094,priority,ASK_NAME,hú hú tôi muốn hủy lịch,,0,0,CANCEL,,Giữ nhu cầu khi chào kèm nghiệp vụ
-ID095,priority,ASK_NAME,em ơi cho tôi gặp nhân viên,,0,0,REQUEST_HUMAN,,Ưu tiên yêu cầu gặp người
-ID096,names,ASK_NAME,Nguyễn Văn Hữu,nguyễn văn hữu,0,0,NONE,,Không nhầm Hữu với tiếng hú
-ID097,names,ASK_NAME,Hà Hà,hà hà,0,0,NONE,,Không chặn mọi tên lặp âm tiết
-ID098,names,ASK_NAME,Nguyen Van Chu,nguyen van chu,0,0,NONE,,Không nhầm Chu với chứ mất dấu
-ID099,suffix_other,ASK_NAME,Nguyễn Văn A nhe em oi,nguyễn văn a,0,0,NONE,,Đuôi không dấu còn lời gọi
-ID100,greeting_with_name,ASK_NAME,hello em Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Cả câu vừa đủ năm từ vẫn phải kiểm tra ranh giới tên
+id,group,question_id,bot_question,transcript,expect_name,expect_greeting,expect_identity_question,expect_intent,expect_dob,note
+ID001,who,ASK_NAME,,Ai đấy?,,1,1,NONE,,Giới thiệu AI và Vinmec trước khi hỏi tên
+ID002,who,ASK_NAME,,AI đấy?,,1,1,NONE,,Không phụ thuộc viết hoa
+ID003,who,ASK_NAME,,ai the,,1,1,NONE,,Không biến câu không dấu thành tên
+ID004,who,ASK_NAME,,Ai gọi vậy?,,1,1,NONE,,Hỏi người gọi
+ID005,who,ASK_NAME,,ai đang gọi đấy,,1,1,NONE,,Biến thể đang gọi
+ID006,who,ASK_NAME,,"Dạ, cho hỏi ai đấy ạ?",,1,1,NONE,,Có lời đệm
+ID007,who,ASK_NAME,,Bạn là ai vậy?,,1,1,NONE,,Đại từ hướng tới bot
+ID008,who,ASK_NAME,,Bên nào gọi đấy?,,1,1,NONE,,Hỏi đơn vị gọi
+ID009,who,ASK_DOB,,Ai gọi vậy?,,1,1,NONE,,Giới thiệu rồi tiếp tục hỏi ngày sinh
+ID010,who,ASK_NAME,,ai vậy em,,1,1,NONE,,Có danh xưng cuối câu
+ID011,who_variants,ASK_NAME,,Em gọi từ đâu?,,1,1,NONE,,Hỏi đơn vị cần trả lời Vinmec
+ID012,who_variants,ASK_NAME,,Bên em là bên nào?,,1,1,NONE,,Hỏi bên gọi
+ID013,who_variants,ASK_NAME,,Bệnh viện nào vậy?,,1,1,NONE,,Hỏi tổ chức
+ID014,who_variants,ASK_NAME,,Vinmec à?,,1,1,NONE,,Không coi tên tổ chức là họ tên
+ID015,who_variants,ASK_NAME,,Đầu dây bên kia là ai?,,1,1,NONE,,Cách hỏi gián tiếp
+ID016,greeting,ASK_NAME,,alo,,1,0,NONE,,Chào lại ở lượt mở đầu
+ID017,greeting,ASK_NAME,,hello em,,1,0,NONE,,Lời chào tiếng Anh
+ID018,greeting,ASK_NAME,,"Hello, chị ạ!",,1,0,NONE,,Lời chào kèm danh xưng
+ID019,greeting,ASK_NAME,,alo tôi nghe đây,,1,0,NONE,,Xác nhận nghe máy kèm alo
+ID020,listening,ASK_NAME,,tôi nghe đây,,1,0,NONE,,Xác nhận nghe máy không có alo
+ID021,listening,ASK_NAME,,vâng tôi nghe,,1,0,NONE,,Không nên tính là không hiểu
+ID022,listening,ASK_NAME,,ừ tôi nghe,,1,0,NONE,,Biến thể đáp máy
+ID023,suffix_fixed,ASK_NAME,,NGuyễn văn A nhé em,nguyễn văn a,0,0,NONE,,Ca người dùng báo
+ID024,suffix_fixed,ASK_NAME,,"Dạ, Nguyễn Văn A nhé em ạ",nguyễn văn a,0,0,NONE,,Đệm nhiều lớp
+ID025,suffix_fixed,ASK_NAME,,nguyen van a nhe em,nguyen van a,0,0,NONE,,Không dấu
+ID026,suffix_fixed,ASK_NAME,,Nguyễn Văn A nhe em,nguyễn văn a,0,0,NONE,,Mất dấu một phần
+ID027,suffix_fixed,ASK_NAME,,Nguyen Van A nhé em,nguyen van a,0,0,NONE,,Không tự thêm dấu cho tên
+ID028,suffix_fixed,ASK_NAME,,"Nguyễn Văn A, nha chị!",nguyễn văn a,0,0,NONE,,Đuôi có danh xưng khác
+ID029,suffix_fixed,ASK_NAME,,Trần Thị Bích Ngọc Anh nhé em,trần thị bích ngọc anh,0,0,NONE,,Bỏ đuôi trước khi giới hạn số từ
+ID030,suffix_other,ASK_NAME,,Nguyễn Văn A ạ em,nguyễn văn a,0,0,NONE,,Tiểu từ có dấu đứng trước danh xưng
+ID031,suffix_other,ASK_NAME,,Nguyễn Văn A đây em,nguyễn văn a,0,0,NONE,,Đuôi đây em
+ID032,suffix_other,ASK_NAME,,Nguyễn Văn A đó em,nguyễn văn a,0,0,NONE,,Đuôi đó em
+ID033,suffix_other,ASK_NAME,,Nguyễn Văn A nhé em ơi,nguyễn văn a,0,0,NONE,,Đuôi gọi người nghe
+ID034,suffix_other,ASK_NAME,,Nguyễn Văn A cảm ơn em,nguyễn văn a,0,0,NONE,,Cảm ơn không thuộc tên
+ID035,suffix_other,ASK_NAME,,Nguyễn Văn A đúng rồi,nguyễn văn a,0,0,NONE,,Khẳng định cuối câu
+ID036,suffix_other,ASK_NAME,,Nguyễn Văn A vâng,nguyễn văn a,0,0,NONE,,Đáp lễ cuối câu
+ID037,suffix_other,ASK_NAME,,Nguyễn Văn A chứ,nguyễn văn a,0,0,NONE,,Tiểu từ cuối câu
+ID038,boundary_review,ASK_NAME,,Nguyễn Văn A em nhé,*,0,0,NONE,,Em có thể thuộc tên; cần gán nhãn theo ngữ cảnh
+ID039,boundary_review,ASK_NAME,,Nguyễn Văn A em ạ,*,0,0,NONE,,Không tự cắt em chỉ vì đứng cuối
+ID040,boundary_review,ASK_NAME,,Nguyễn Văn Em nhé,*,0,0,NONE,,Em có thể là tên hoặc danh xưng; cần ngữ cảnh
+ID041,names,ASK_NAME,,Nguyễn Thị Anh nhé em,nguyễn thị anh,0,0,NONE,,Giữ tên Anh
+ID042,names,ASK_NAME,,Nguyen Van A Em,nguyen van a em,0,0,NONE,,Không cắt A hoặc Em không dấu
+ID043,names,ASK_NAME,,Nguyễn Thị Ái,nguyễn thị ái,0,0,NONE,,Không nhầm Ái với ai
+ID044,names,ASK_NAME,,Nguyen Thi Ai,nguyen thi ai,0,0,NONE,,Tên Ái mất dấu
+ID045,names,ASK_NAME,,Chu Văn An,chu văn an,0,0,NONE,,Giữ họ Chu
+ID046,names,ASK_NAME,,Lê Hoa,lê hoa,0,0,NONE,,Tên hai từ
+ID047,names,ASK_NAME,,Lê Văn Thôi,lê văn thôi,0,0,NONE,,Thôi là tên
+ID048,names,ASK_NAME,,Trần Văn Được,trần văn được,0,0,NONE,,Được là tên
+ID049,name_particle_collision,ASK_NAME,,Nguyễn Thị Nha,nguyễn thị nha,0,0,NONE,,Nha là tên trong ca tổng hợp này
+ID050,name_particle_collision,ASK_NAME,,Lê Nha,lê nha,0,0,NONE,,Không để luật đuôi làm mất tên hai từ
+ID051,self_intro,ASK_NAME,,Tên em là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Người gọi tự xưng em
+ID052,self_intro,ASK_NAME,,à thì tôi là ông Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Đệm đầu câu và danh xưng
+ID053,self_intro_variants,ASK_NAME,,Họ tên của tôi là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Tự giới thiệu có từ của
+ID054,self_intro_variants,ASK_NAME,,Nguyễn Văn A là tên của tôi,nguyễn văn a,0,0,NONE,,Tự giới thiệu ở cuối câu
+ID055,self_intro_variants,ASK_NAME,,Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Luật có thể cần NER
+ID056,greeting_with_name,ASK_NAME,,"alo em, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Lời chào chỉ là một mệnh đề
+ID057,greeting_with_name,ASK_NAME,,"hello em, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Giữ mệnh đề tên sau lời chào
+ID058,greeting_with_name,ASK_NAME,,chào em tôi tên Nguyễn Văn A,nguyễn văn a,0,0,NONE,,ASR không chèn dấu phẩy
+ID059,mixed_question,ASK_NAME,,"Ai đấy, tôi là Nguyễn Văn A",nguyễn văn a,0,0,NONE,,Cần thiết kế vừa nhận tên vừa trả lời câu hỏi
+ID060,other_person,ASK_NAME,,Tên em tôi là Nguyễn Văn A,,0,0,NONE,,Tên của người thân
+ID061,other_person,ASK_NAME,,con tôi tên Nguyễn Văn A,,0,0,NONE,,Không gán tên con cho người gọi
+ID062,other_person,ASK_NAME,,Tôi gọi hộ mẹ tôi là Nguyễn Thị Hoa,,0,0,NONE,,Không lấy tên người được gọi hộ
+ID063,other_person,ASK_NAME,,"Tôi tên Nguyễn Văn A, còn em tôi là Nguyễn Văn B",nguyễn văn a,0,0,NONE,,Chỉ lấy tự nhận của người gọi
+ID064,correction,ASK_NAME,,"Nguyễn Văn A, à nhầm Nguyễn Văn B",nguyễn văn b,0,0,NONE,,Tên sửa sau cùng
+ID065,correction,ASK_NAME,,không phải Nguyễn Văn A mà là Nguyễn Văn B,nguyễn văn b,0,0,NONE,,Phủ định rồi khẳng định
+ID066,uncertain,ASK_NAME,,không phải Nguyễn Văn A,,0,0,NONE,,Không nhận tên bị phủ định
+ID067,uncertain,ASK_NAME,,chắc là Nguyễn Văn A,,0,0,NONE,,Không khẳng định chắc chắn
+ID068,uncertain,ASK_NAME,,Nguyễn Văn A hay Nguyễn Văn B,,0,0,NONE,,Hai tên cạnh tranh
+ID069,uncertain,ASK_NAME,,Nguyễn Văn A phải không,,0,0,NONE,,Hỏi lại không phải tự khai chắc chắn
+ID070,combined_dob,ASK_NAME,,"Nguyễn Văn A nhé em, sinh ngày 14/03/1978",nguyễn văn a,0,0,NONE,1978-03-14,Tên và ngày sinh cùng lượt
+ID071,combined_dob,ASK_NAME,,"14/03/1978, tôi là Nguyễn Văn A nhé em",nguyễn văn a,0,0,NONE,1978-03-14,Ngày sinh đứng trước tên
+ID072,combined_dob,ASK_NAME,,"Nguyễn Văn A, tôi không nhớ rõ ngày sinh",nguyễn văn a,0,0,NONE,,Phân vân chỉ về ngày sinh
+ID073,punctuation_loss,ASK_NAME,,Nguyễn Văn A tôi không nhớ rõ ngày sinh,nguyễn văn a,0,0,NONE,,Mất dấu phẩy không nên mất tên
+ID074,combined_dob,ASK_NAME,,Nguyễn Văn A sinh ngày 31/02/1978,nguyễn văn a,0,0,NONE,INVALID,Giữ tên dù ngày sai
+ID075,state,ASK_DOB,,Nguyễn Văn A nhé em,,0,0,NONE,,Không đọc lại tên khi đang hỏi ngày sinh
+ID076,priority,ASK_NAME,,"Ai đấy, tôi muốn hủy lịch",,0,0,CANCEL,,Giữ nhu cầu; không nuốt cả câu thành lời chào
+ID077,priority,ASK_NAME,,"Alo, chuyển máy cho nhân viên",,0,0,REQUEST_HUMAN,,Ưu tiên yêu cầu chuyển máy
+ID078,priority,ASK_NAME,,"Alo, nhầm số rồi",,0,0,NOT_PATIENT,,Không hỏi tiếp tên người nghe nhầm
+ID079,normalization,ASK_NAME,,NGUYỄN VĂN A,nguyễn văn a,0,0,NONE,,Viết hoa toàn bộ
+ID080,normalization,ASK_NAME,,Nguyễn   Văn    A,nguyễn văn a,0,0,NONE,,Khoảng trắng
+ID081,reported_sentence,ASK_NAME,,à thì anh tên là Nguyễn Văn A nhé em,nguyễn văn a,0,0,NONE,,Nguyên câu người dùng báo; không cần model khi đã tách sạch
+ID082,contact,ASK_NAME,,hú hú,,1,0,NONE,,Tiếng gọi để bắt liên lạc không phải tên
+ID083,contact,ASK_NAME,,Hú hú em ơi!,,1,0,NONE,,Tiếng gọi kèm danh xưng
+ID084,contact,ASK_NAME,,hu hu,,1,0,NONE,,Biến thể không dấu; chưa đánh giá audio
+ID085,contact,ASK_NAME,,alo hú hú,,1,0,NONE,,Chào và gọi liên tiếp
+ID086,contact,ASK_NAME,,em ơi,,1,0,NONE,,Gọi người nghe
+ID087,contact,ASK_NAME,,chị ơi,,1,0,NONE,,Danh xưng khác
+ID088,contact,ASK_NAME,,ừ nghe đây,,1,0,NONE,,Đáp máy
+ID089,contact,ASK_NAME,,anh đang nghe đây,,1,0,NONE,,Người gọi tự xưng anh
+ID090,contact,ASK_DOB,,hú hú,,1,0,NONE,,Giữ bước ngày sinh
+ID091,contact,ASK_DOB,,em ơi,,1,0,NONE,,Không khởi động lại bước tên
+ID092,contact_with_name,ASK_NAME,,hú hú anh tên Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Không nuốt mệnh đề tên vào lời chào
+ID093,contact_with_name,ASK_NAME,,em ơi tôi là Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Tên đi sau lời gọi
+ID094,priority,ASK_NAME,,hú hú tôi muốn hủy lịch,,0,0,CANCEL,,Giữ nhu cầu khi chào kèm nghiệp vụ
+ID095,priority,ASK_NAME,,em ơi cho tôi gặp nhân viên,,0,0,REQUEST_HUMAN,,Ưu tiên yêu cầu gặp người
+ID096,names,ASK_NAME,,Nguyễn Văn Hữu,nguyễn văn hữu,0,0,NONE,,Không nhầm Hữu với tiếng hú
+ID097,names,ASK_NAME,,Hà Hà,hà hà,0,0,NONE,,Không chặn mọi tên lặp âm tiết
+ID098,names,ASK_NAME,,Nguyen Van Chu,nguyen van chu,0,0,NONE,,Không nhầm Chu với chứ mất dấu
+ID099,suffix_other,ASK_NAME,,Nguyễn Văn A nhe em oi,nguyễn văn a,0,0,NONE,,Đuôi không dấu còn lời gọi
+ID100,greeting_with_name,ASK_NAME,,hello em Nguyễn Văn A,nguyễn văn a,0,0,NONE,,Cả câu vừa đủ năm từ vẫn phải kiểm tra ranh giới tên

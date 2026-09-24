@@ -43,7 +43,7 @@ holdout,contradiction,CANCEL_RECONFIRM,"Vừa muốn hủy vừa tiếc, em tín
 holdout,contradiction,CANCEL_RECONFIRM,Hủy thì hủy nhưng tôi chưa chắc,AMBIGUOUS,,ASK_AGAIN
 holdout,contradiction,CANCEL_RECONFIRM,Ừ thì cũng tùy em thôi,AMBIGUOUS,,ASK_AGAIN
 holdout,contradiction,CANCEL_RECONFIRM,"Để tôi xem đã, chắc là hủy",AMBIGUOUS,,ASK_AGAIN
-prompt,question,CANCEL_RECONFIRM,Hủy thì có mất phí không em,QUESTION,,ASK_AGAIN
+prompt,exception,CANCEL_RECONFIRM,Hủy thì có mất phí không em,QUESTION,,TRANSFER
 holdout,question,CANCEL_RECONFIRM,Hủy rồi đặt lại có được không,QUESTION,,ASK_AGAIN
 holdout,question,CANCEL_RECONFIRM,Bao giờ thì tôi đặt lại được,QUESTION,,ASK_AGAIN
 holdout,question,CANCEL_RECONFIRM,Em nhắc lại giúp tôi lịch hôm nào,QUESTION,,ASK_AGAIN
