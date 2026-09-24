@@ -1,7 +1,7 @@
 import os
 import time
 
-from speech.tts.storage import AudioArtifactStore
+from speech.audio.storage import AudioArtifactStore
 from speech.types import NARROWBAND_RATE, AudioSegment
 
 

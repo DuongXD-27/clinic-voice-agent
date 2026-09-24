@@ -4,7 +4,7 @@
     python scripts/tts_say.py "..." --provider elevenlabs --voice EXAVITQu4vr4xnSDxMaL --out temp/tts/x.wav
 
 `--provider` / `--voice` ghi đè TTS_PROVIDER và mã giọng của provider đó, không sửa .env. Chỉ
-`elevenlabs` có `synthesize_timed`/`stream` (đo TTFA); `openai` chỉ trả PCM một lần, không streaming.
+`elevenlabs` có `synthesize_timed`/`stream` (đo TTFA); `openai`/`vbee` chỉ đo tổng thời gian.
 """
 
 import argparse
@@ -12,17 +12,19 @@ import sys
 import time
 from pathlib import Path
 
-from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig
+from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig, VbeeTTSConfig
 from inference.tts.providers.elevenlabs import ElevenLabsTTS
 from inference.tts.providers.openai import OpenAITTS
+from inference.tts.providers.vbee import VbeeTTS
 from speech.audio.codec import encode_wav
 from speech.settings import SpeechSettings
 from speech.types import AudioSegment
 
-_VOICE_FIELD = {"elevenlabs": "voice_id", "openai": "voice"}
+_VOICE_FIELD = {"elevenlabs": "voice_id", "openai": "voice", "vbee": "voice_code"}
 _PROVIDER_TYPE = {
     "elevenlabs": (ElevenLabsTTSConfig, ElevenLabsTTS),
     "openai": (OpenAITTSConfig, OpenAITTS),
+    "vbee": (VbeeTTSConfig, VbeeTTS),
 }
 
 

@@ -1,14 +1,15 @@
 """Realtime STT pipeline + audio storage, xử lý ở băng hẹp điện thoại 8 kHz.
 
-Model ASR/TTS được gọi qua gateway `inference.asr` / `inference.tts`; `speech.asr` và
-`speech.tts` chuyển đổi giữa `AudioSegment`/`Transcript` và PCM/text của gateway.
+Model ASR/TTS được gọi qua gateway `inference.asr` / `inference.tts`; `speech.asr` chuyển
+`AudioSegment` thành `Transcript`, `speech.bundle` bọc PCM của TTS thành `AudioSegment`,
+`speech.audio.storage` ghi WAV phục vụ qua `audio_url`.
 """
 
 from typing import TYPE_CHECKING, Any
 
 from speech.asr.vad import EnergyFrameClassifier, StreamingVAD
+from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
-from speech.tts.storage import AudioArtifactStore
 
 if TYPE_CHECKING:
     from speech.asr.pipeline import STTPipeline

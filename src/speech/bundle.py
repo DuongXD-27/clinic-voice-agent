@@ -4,12 +4,13 @@ Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết
 Tầng transport của callbot chỉ nối bundle này vào request.
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import AsyncIterator, Callable, Optional, Protocol
 
 from inference.asr import create_asr_gateway
-from inference.tts import create_tts_gateway
+from inference.tts import TTSGateway, create_tts_gateway
 from speech.asr.evidence import TranscriptEvidenceTracker
 from speech.asr.pipeline import STTPipeline
 from speech.asr.recognizer import Recognizer, SpeechRecognizer
@@ -19,13 +20,67 @@ from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.streaming import StreamingVAD
 from speech.audio.loader import load_from_url
 from speech.audio.noise_tracker import NoiseTracker
+from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
-from speech.tts.storage import AudioArtifactStore
-from speech.tts.synthesizer import SpeechSynthesizer, Synthesizer
 from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
 
 logger = logging.getLogger(__name__)
+
+
+class Synthesizer(Protocol):
+    name: str
+
+    def synthesize(self, text: str) -> Optional[AudioSegment]: ...
+
+
+class SpeechSynthesizer:
+    """Bọc TTS gateway (PCM của provider) thành `AudioSegment` của miền speech."""
+
+    def __init__(self, gateway: TTSGateway) -> None:
+        self._gateway = gateway
+
+    @property
+    def name(self) -> str:
+        return self._gateway.provider_name
+
+    @property
+    def model(self) -> str:
+        return self._gateway.model
+
+    @property
+    def stream_sample_rate(self) -> int:
+        return getattr(self._gateway.provider, "stream_sample_rate", 24_000)
+
+    def synthesize(self, text: str) -> Optional[AudioSegment]:
+        result = self._gateway.synthesize(text)
+        if result is None:
+            return None
+        return AudioSegment(pcm=result.pcm, sample_rate=result.sample_rate)
+
+    async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
+        """Stream when supported; use the gateway's fallback for sync-only providers."""
+        provider = self._gateway.provider
+        stream = getattr(provider, "synthesize_stream", None)
+        if stream is not None:
+            async for chunk in stream(text):
+                yield chunk
+            return
+
+        result = await asyncio.to_thread(self._gateway.synthesize, text)
+        if result is None:
+            return
+        pcm = result.pcm
+        if result.sample_rate != self.stream_sample_rate:
+            from speech.audio.codec import resample
+
+            pcm = resample(pcm, result.sample_rate, self.stream_sample_rate)
+        yield pcm
+
+    async def cancel(self) -> None:
+        cancel = getattr(self._gateway.provider, "cancel", None)
+        if cancel is not None:
+            await cancel()
 
 
 @dataclass
@@ -39,8 +94,17 @@ class SpeechBundle:
 
 def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
-    tts = SpeechSynthesizer(create_tts_gateway(settings.tts_provider))
-    logger.info("ASR %s (%s), TTS %s (%s)", asr.name, asr.model, tts.name, tts.model)
+    tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
+    tts = SpeechSynthesizer(tts_gateway)
+    backup = tts_gateway.fallback
+    logger.info(
+        "ASR %s (%s), TTS %s (%s), TTS fallback %s",
+        asr.name,
+        asr.model,
+        tts.name,
+        tts.model,
+        f"{backup.provider_name} ({backup.model})" if backup else "none",
+    )
     return SpeechBundle(
         asr=asr,
         tts=tts,
@@ -150,7 +214,9 @@ def build_streaming_bundle(
         # xem docstring __init__::_vad_preroll) — không cần benchmark riêng như Admission
         # vì không đổi hành vi ADMIT/REJECT, chỉ bù audio đã bị "trễ" trước candidate.
     )
-    tts = SpeechSynthesizer(create_tts_gateway(settings.tts_provider))
+    tts = SpeechSynthesizer(
+        create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
+    )
 
     validator = None
     evidence_tracker = None

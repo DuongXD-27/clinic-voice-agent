@@ -35,6 +35,7 @@ from websockets.sync.client import connect as ws_connect
 
 from inference.tts.base import TTSResult
 from inference.tts.config import ElevenLabsTTSConfig
+from inference.tts.errors import TTSError, TTSRejected, TTSUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -60,22 +61,6 @@ _REJECTED_CODES = frozenset(
 )
 
 Connect = Callable[..., Any]
-
-
-class TTSError(Exception):
-    """Gốc của mọi lỗi TTS. `code` là mã ngắn để trace/log, không chứa text đã gửi."""
-
-    def __init__(self, message: str, code: str = "tts_error") -> None:
-        super().__init__(message)
-        self.code = code
-
-
-class TTSUnavailable(TTSError):
-    """Tạm thời không sinh được audio: timeout, lỗi mạng, provider quá tải (429/5xx), WS đóng bất thường."""
-
-
-class TTSRejected(TTSError):
-    """Provider từ chối yêu cầu: key sai, hết quota, gói không đủ, voice/model/text không hợp lệ."""
 
 
 @dataclass

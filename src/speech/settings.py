@@ -25,6 +25,14 @@ class SpeechSettings(BaseSettings):
     # inference.tts.config đọc từ env (GEMINI_ASR_MODEL, ZIPFORMER_*_PATH, OPENAI_TTS_MODEL...).
     asr_provider: ASRProviderName = "gemini"
     tts_provider: TTSProviderName = "openai"
+    # Provider dự phòng khi provider chính lỗi (vd. vbee -> elevenlabs); None = không fallback
+    tts_fallback_provider: Optional[TTSProviderName] = None
+
+    @field_validator("tts_fallback_provider", mode="before")
+    @classmethod
+    def _blank_fallback_is_none(cls, value: object) -> object:
+        # `TTS_FALLBACK_PROVIDER=` rỗng trong .env nghĩa là tắt fallback
+        return None if isinstance(value, str) and not value.strip() else value
 
     # "energy": RMS đơn thuần, baseline, không phân biệt giọng nói với tiếng ồn.
     # "webrtc": Google WebRTC's VAD (cần extra "vad-webrtc"), phân biệt tốt hơn nhiều —

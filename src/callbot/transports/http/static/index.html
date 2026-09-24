@@ -121,6 +121,11 @@
         box-shadow: 0 0 0 3px rgba(0, 107, 84, 0.1);
       }
 
+      input.invalid, input.invalid:focus {
+        border-color: var(--red);
+        box-shadow: 0 0 0 3px rgba(164, 60, 53, 0.12);
+      }
+
       button {
         border: 0;
         border-radius: 11px;
@@ -496,6 +501,15 @@
         const key = ui.apiKey.value.trim();
         return key ? { ...headers, Authorization: `Bearer ${key}` } : headers;
       }
+      // 401 BAD_KEY từ auth của bot: đổi thông báo thô thành hướng dẫn và trỏ vào ô API key
+      function authErrorMessage(status, data) {
+        if (status !== 401 || data?.detail?.code !== "BAD_KEY") return null;
+        ui.apiKey.classList.add("invalid");
+        ui.apiKey.focus();
+        return ui.apiKey.value.trim()
+          ? "API key không đúng. Kiểm tra lại ô API key ở mục 1."
+          : "Bot yêu cầu API key. Điền key vào ô API key ở mục 1 rồi thử lại.";
+      }
       function safeCallId() { return ui.callId.value.trim(); }
       function setNotice(message, error = false) {
         ui.notice.textContent = message;
@@ -642,7 +656,8 @@
         debugExchange(method, path, body, response.status, data);
         if (!response.ok) {
           const detail = data?.detail;
-          const message = detail?.message || detail?.[0]?.msg || data?.message || `HTTP ${response.status}`;
+          const message = authErrorMessage(response.status, data)
+            || detail?.message || detail?.[0]?.msg || data?.message || `HTTP ${response.status}`;
           const error = new Error(message);
           error.code = typeof detail?.code === "string" ? detail.code : null;
           error.status = response.status;
@@ -778,7 +793,10 @@
         let data;
         try { data = await response.json(); } catch { data = { detail: await response.text() }; }
         debugExchange("PUT", path, { content_type: "audio/wav", size_bytes: blob.size }, response.status, data);
-        if (!response.ok) throw new Error(data?.detail?.message || `Upload lỗi HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(authErrorMessage(response.status, data)
+            || data?.detail?.message || `Upload lỗi HTTP ${response.status}`);
+        }
         return data.audio_url;
       }
 
@@ -964,7 +982,10 @@
           const response = await fetch(apiBase() + "/demo-api/clinic-fixtures", { headers: authHeaders() });
           let data;
           try { data = await response.json(); } catch { data = {}; }
-          if (!response.ok) throw new Error(data?.detail?.message || `HTTP ${response.status}`);
+          if (!response.ok) {
+            throw new Error(authErrorMessage(response.status, data)
+              || data?.detail?.message || `HTTP ${response.status}`);
+          }
           renderFixtures(data);
           const source = data.source === "sim" ? "clinic mock sim (local)" : "clinic mock";
           ui.fixturesHint.textContent =
@@ -1099,6 +1120,7 @@
       ui.direction.addEventListener("change", updateDirection);
       ui.mode.addEventListener("change", updateMode);
       ui.apiBase.addEventListener("change", () => { checkHealth(); loadFixtures(); });
+      ui.apiKey.addEventListener("input", () => ui.apiKey.classList.remove("invalid"));
       ui.apiKey.addEventListener("change", () => {
         try { sessionStorage.setItem("callbotApiKey", ui.apiKey.value.trim()); } catch {}
         loadFixtures();

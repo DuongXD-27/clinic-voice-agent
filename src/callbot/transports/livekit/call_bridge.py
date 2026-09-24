@@ -20,7 +20,7 @@ from speech.asr.evidence import TranscriptEvidenceTracker
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.noise_tracker import NoiseTracker
-from speech.tts.synthesizer import Synthesizer
+from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
@@ -85,7 +85,7 @@ class CallBridge:
         room: "rtc.Room",
         orchestrator: CallOrchestrator,
         stt_pipeline: STTPipeline,
-        tts: Synthesizer,
+        tts: SpeechSynthesizer,
         *,
         sample_rate: int = NARROWBAND_RATE,
         direction: Direction = "inbound",
