@@ -1,38 +1,32 @@
-"""Provider configuration; instantiate only the selected provider's settings."""
+"""Provider configuration; instantiate only the selected provider's settings.
+
+Giá trị mặc định ở config/llm.yaml (mỗi provider một section); API key chỉ đặt qua env.
+"""
 
 from typing import ClassVar, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+
+from appconfig import YamlSettings, yaml_config
 
 
-class ProviderConfig(BaseSettings):
-    endpoint: ClassVar[str]
+class ProviderConfig(YamlSettings):
     key_env: ClassVar[str]
-    connect_timeout_s: ClassVar[float] = 1.0
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        populate_by_name=True,
-        hide_input_in_errors=True,
-    )
+    model_config = SettingsConfigDict(populate_by_name=True, hide_input_in_errors=True)
 
     api_key: SecretStr
-    model: str
-    timeout_s: float = Field(
-        default=3.0, gt=0, allow_inf_nan=False, validation_alias="NAME_FALLBACK_TIMEOUT_S"
-    )
-    max_completion_tokens: int = Field(
-        default=200, gt=0, validation_alias="NAME_FALLBACK_MAX_TOKENS"
-    )
+    # Field không alias đọc env theo env_prefix của lớp con: OPENAI_ENDPOINT, GROQ_CONNECT_TIMEOUT_S...
+    endpoint: str = Field(min_length=1)
+    model: str = Field(min_length=1, validation_alias="NAME_FALLBACK_MODEL")
+    timeout_s: float = Field(gt=0, allow_inf_nan=False, validation_alias="NAME_FALLBACK_TIMEOUT_S")
+    connect_timeout_s: float = Field(gt=0, allow_inf_nan=False)
+    max_completion_tokens: int = Field(gt=0, validation_alias="NAME_FALLBACK_MAX_TOKENS")
 
-    @field_validator("model", "max_completion_tokens", mode="before")
+    @field_validator("model", mode="before")
     @classmethod
-    def empty_uses_provider_default(cls, value, info):
-        if isinstance(value, str) and not value.strip():
-            return cls.model_fields[info.field_name].default
+    def strip_model(cls, value):
         return value.strip() if isinstance(value, str) else value
 
     @model_validator(mode="after")
@@ -43,38 +37,25 @@ class ProviderConfig(BaseSettings):
 
 
 class OpenAIConfig(ProviderConfig):
-    endpoint = "https://api.openai.com/v1/chat/completions"
+    model_config = yaml_config("llm.yaml", "openai", env_prefix="OPENAI_")
     key_env = "OPENAI_API_KEY"
+    # Secret: chỉ từ env, rỗng = chưa cấu hình (require_api_key báo lỗi)
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENAI_API_KEY")
-    model: str = Field(default="gpt-4o-mini", min_length=1, validation_alias="NAME_FALLBACK_MODEL")
 
 
 class GeminiConfig(ProviderConfig):
-    endpoint = "https://generativelanguage.googleapis.com/v1beta/models"
+    model_config = yaml_config("llm.yaml", "gemini", env_prefix="GEMINI_")
     key_env = "GEMINI_API_KEY"
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GEMINI_API_KEY")
-    model: str = Field(
-        default="gemini-2.5-flash", min_length=1, validation_alias="NAME_FALLBACK_MODEL"
-    )
 
 
 class GroqConfig(ProviderConfig):
-    endpoint = "https://api.groq.com/openai/v1/chat/completions"
+    model_config = yaml_config("llm.yaml", "groq", env_prefix="GROQ_")
     key_env = "GROQ_API_KEY"
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GROQ_API_KEY")
-    model: str = Field(
-        default="openai/gpt-oss-20b", min_length=1, validation_alias="NAME_FALLBACK_MODEL"
-    )
-    # Reasoning models share the budget between reasoning and final JSON.
-    max_completion_tokens: int = Field(
-        default=1024, gt=0, validation_alias="NAME_FALLBACK_MAX_TOKENS"
-    )
 
 
 class OpenRouterConfig(ProviderConfig):
-    endpoint = "https://openrouter.ai/api/v1/chat/completions"
+    model_config = yaml_config("llm.yaml", "openrouter", env_prefix="OPENROUTER_")
     key_env = "OPENROUTER_API_KEY"
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENROUTER_API_KEY")
-    model: str = Field(
-        default="openai/gpt-4o-mini", min_length=1, validation_alias="NAME_FALLBACK_MODEL"
-    )

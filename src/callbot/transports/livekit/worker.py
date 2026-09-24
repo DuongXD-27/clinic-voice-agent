@@ -73,7 +73,9 @@ async def entrypoint(ctx: JobContext) -> None:
         queue_max_frames=max(1, livekit_settings.input_queue_ms // livekit_settings.frame_ms),
         barge_in_preroll_ms=livekit_settings.barge_in_preroll_ms,
     )
-    clinic = ClinicMockClient(http_settings.clinic_mock_base_url, http_settings.clinic_mock_api_key)
+    clinic = ClinicMockClient(
+        http_settings.require_clinic_mock_base_url(), http_settings.clinic_mock_api_key
+    )
     orchestrator = create_orchestrator(clinic, EngineSettings())
     turn_controller = TurnController(
         min_speech_ms=speech_settings.turn_min_speech_ms,

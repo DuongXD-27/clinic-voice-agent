@@ -1,0 +1,13 @@
+# Redis session — callbot.engine.session.settings.SessionSettings.
+# Session chỉ là dữ liệu tạm; Clinic là nơi lưu hồ sơ chính thức.
+# Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa.
+
+# Redis local không mật khẩu, chỉ dùng khi chạy app trực tiếp trên máy dev.
+# Docker Compose tự dựng REDIS_URL từ REDIS_PASSWORD; nếu Redis có mật khẩu, đặt REDIS_URL trong .env.
+redis_url: redis://localhost:6379/0
+# Xóa nội dung sau 30 phút không hoạt động / tối đa 2 giờ
+session_idle_ttl_s: 1800
+session_max_age_s: 7200
+session_tombstone_ttl_s: 86400
+session_max_bytes: 262144
+session_lock_lease_s: 60

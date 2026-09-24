@@ -10,7 +10,9 @@ dependencies = [
     # TTS ElevenLabs qua WebSocket stream-input (inference/tts/providers/elevenlabs.py); uvicorn[standard] cũng kéo gói này
     "websockets>=13",
     "pydantic>=2.8",
-    "pydantic-settings>=2.4",
+    # Cấu hình mặc định ở config/*.yaml (src/appconfig) — cần yaml_config_section của pydantic-settings
+    "pydantic-settings>=2.15",
+    "pyyaml>=6.0",
     "redis>=5.2,<7",
 ]
 
@@ -55,7 +57,6 @@ dev = [
     "fakeredis>=2.26,<3",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
-    "pyyaml>=6.0",
     "ruff>=0.6",
 ]
 
@@ -64,7 +65,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/callbot", "src/clinic_mock_sim", "src/inference", "src/speech"]
+packages = ["src/appconfig", "src/callbot", "src/clinic_mock_sim", "src/inference", "src/speech"]
 
 [tool.hatch.build]
 # Cài -e: đưa src/ (không phải gốc repo) vào sys.path, để `import callbot` chạy được ngoài pytest
@@ -91,4 +92,4 @@ select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["callbot", "clinic_mock_sim", "inference", "speech"]
+known-first-party = ["appconfig", "callbot", "clinic_mock_sim", "inference", "speech"]

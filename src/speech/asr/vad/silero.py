@@ -44,7 +44,7 @@ _SILERO_SAMPLE_RATE = 16_000
 
 class SileroVadClassifier:
     """`model_path`: path tới `silero_vad.onnx` (tải từ k2-fsa/sherpa-onnx releases, xem
-    `SILERO_VAD_MODEL_PATH` trong `.env.example`). `threshold`: xác suất speech tối thiểu
+    `silero_vad_model_path` trong `config/speech.yaml`). `threshold`: xác suất speech tối thiểu
     (0-1) để `is_speech_detected()` trả True — mặc định 0.5 theo model gốc."""
 
     def __init__(

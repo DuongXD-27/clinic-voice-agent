@@ -38,7 +38,7 @@ def test_token_returns_503_when_not_configured(
 def test_token_issues_jwt_with_room_join_grant(
     clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
 ) -> None:
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-api")
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
     settings = LiveKitSettings(
         _env_file=None,
         livekit_url="wss://example.livekit.cloud",
@@ -60,7 +60,7 @@ def test_token_issues_jwt_with_room_join_grant(
 def test_token_reuses_provided_room_name(
     clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
 ) -> None:
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-api")
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
     settings = LiveKitSettings(
         _env_file=None,
         livekit_url="wss://example.livekit.cloud",
@@ -79,7 +79,7 @@ def test_token_attaches_caller_number_as_participant_attribute(
 ) -> None:
     """caller_number phải nằm trong token để worker.py đọc lại qua participant.attributes
     (xem call_bridge.py: đây là cách demo web giả lập caller ID vì không phải PSTN)."""
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-api")
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
     jwt = pytest.importorskip("jwt", reason="cần PyJWT để decode token trong test")
     secret = "test-secret-at-least-32-bytes-long"
     settings = LiveKitSettings(
@@ -120,7 +120,7 @@ def test_token_omits_caller_number_attribute_when_blank(
 ) -> None:
     """direction luôn có mặt trong attributes (worker.py cần nó để chọn nhánh
     inbound/outbound), nhưng caller_number rỗng thì không được đưa vào attributes."""
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-api")
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
     jwt = pytest.importorskip("jwt", reason="cần PyJWT để decode token trong test")
     secret = "test-secret-at-least-32-bytes-long"
     settings = LiveKitSettings(
@@ -195,7 +195,7 @@ def test_token_inbound_rejects_appointment_id(
 def test_token_outbound_attaches_appointment_id_attribute(
     clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
 ) -> None:
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-api")
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
     jwt = pytest.importorskip("jwt", reason="cần PyJWT để decode token trong test")
     secret = "test-secret-at-least-32-bytes-long"
     settings = LiveKitSettings(

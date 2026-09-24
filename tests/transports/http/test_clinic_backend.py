@@ -1,4 +1,4 @@
-"""CLINIC_BACKEND: mock đã deploy (mặc định) hoặc clinic_mock_sim để demo Docker local."""
+"""CLINIC_BACKEND: sim mặc định local, mock khi deploy."""
 
 from pathlib import Path
 from uuid import uuid4
@@ -31,14 +31,40 @@ def single_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
 
 
-def test_mock_is_the_default_backend() -> None:
-    clinic = build_clinic(_settings(clinic_mock_base_url="https://clinic.test/v1"))
+def test_mock_backend_uses_client() -> None:
+    clinic = build_clinic(
+        _settings(clinic_backend="mock", clinic_mock_base_url="https://clinic.test/v1")
+    )
     assert isinstance(clinic, ClinicMockClient)
     clinic.close()
 
 
+def test_mock_requires_explicit_base_url() -> None:
+    with pytest.raises(ValueError, match="CLINIC_MOCK_BASE_URL is required"):
+        build_clinic(_settings(clinic_backend="mock", clinic_mock_base_url=""))
+
+
+def test_demo_clinic_admin_requires_bot_api_keys() -> None:
+    assert _settings().demo_clinic_admin_enabled is False
+    with pytest.raises(ValidationError, match="requires BOT_API_KEYS"):
+        _settings(demo_clinic_admin_enabled=True, bot_api_keys="")
+    with pytest.raises(ValidationError, match="CLINIC_MOCK_BASE_URL is required"):
+        _settings(
+            clinic_backend="mock",
+            demo_clinic_admin_enabled=True,
+            bot_api_keys="sk_test",
+            clinic_mock_base_url="",
+        )
+    assert _settings(
+        clinic_backend="mock",
+        demo_clinic_admin_enabled=True,
+        bot_api_keys="sk_test",
+        clinic_mock_base_url="https://clinic.test/v1",
+    ).demo_clinic_admin_enabled
+
+
 def test_sim_uses_listing3_by_default() -> None:
-    clinic = build_clinic(_settings(clinic_backend="sim"))
+    clinic = build_clinic(_settings())
     assert isinstance(clinic, FakeClinicAPI)
     assert clinic.appointments["apt_00417"]["starts_at"] == "2026-10-14T09:00:00+07:00"
     assert clinic.strict_slot_window is False

@@ -1,0 +1,20 @@
+# LiveKit (streaming voice qua WebRTC) — callbot.transports.livekit.settings.LiveKitSettings.
+# Ghi đè bằng LIVEKIT_<KHÓA VIẾT HOA>, vd. LIVEKIT_FRAME_MS=20.
+# LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET chỉ đặt qua env / .env.
+
+# Tiền tố room cho web call — CallBridge dùng room.name làm call_id
+room_name_prefix: web-
+# Hạn token cho browser (giây)
+token_ttl_s: 3600
+# Web giữ wideband 16 kHz; phone transport sau này vẫn có thể dùng 8000
+input_sample_rate: 16000
+# Frame cho VAD/endpointing; WebRTC VAD chỉ nhận 10 | 20 | 30
+frame_ms: 30
+# Backpressure: 1,5 s đủ hấp thụ jitter ngắn nhưng buộc producer chậm lại nếu inference không kịp
+input_queue_ms: 1500
+# Giữ phần đầu câu nói chen lúc bot đang phát, replay vào ASR khi xác nhận barge-in thật
+barge_in_preroll_ms: 500
+# Queue phát càng dài thì barge-in càng chậm (default LiveKit AudioSource là 1000)
+output_queue_ms: 200
+# Mỗi process nạp một bản ZipFormer; 1 process idle hợp máy demo 2 vCPU/2 GB
+worker_num_idle_processes: 1

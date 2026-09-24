@@ -41,15 +41,20 @@ RUN mkdir -p /app/models/silero && \
 # Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
 # trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./
-RUN mkdir -p src/callbot src/clinic_mock_sim src/inference src/speech \
-    && touch src/callbot/__init__.py src/clinic_mock_sim/__init__.py src/inference/__init__.py \
-        src/speech/__init__.py \
+RUN mkdir -p src/appconfig src/callbot src/clinic_mock_sim src/inference src/speech \
+    && touch src/appconfig/__init__.py src/callbot/__init__.py src/clinic_mock_sim/__init__.py \
+        src/inference/__init__.py src/speech/__init__.py \
     && pip install --no-cache-dir ".[speech,speech-zipformer,livekit,vad-webrtc,vad-silero]" \
     && rm -rf src
 
 COPY src ./src
 
 RUN pip install --no-cache-dir --no-deps --force-reinstall .
+
+# Cấu hình mặc định (config/*.yaml); env vẫn ghi đè từng khóa. Package cài vào site-packages nên
+# phải chỉ đường tới config/ — src/appconfig chỉ tự tìm được khi cài editable.
+COPY config ./config
+ENV CALLBOT_CONFIG_DIR=/app/config
 
 EXPOSE 8000
 

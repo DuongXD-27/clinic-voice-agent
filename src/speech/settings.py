@@ -1,19 +1,21 @@
 from typing import Literal, Optional
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from appconfig import YamlSettings, yaml_config
 from inference.asr import ProviderName as ASRProviderName
 from inference.tts import ProviderName as TTSProviderName
-from speech.types import NARROWBAND_RATE, SampleRate
+from speech.types import SampleRate
 
 
-class SpeechSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+class SpeechSettings(YamlSettings):
+    """Giá trị mặc định: config/speech.yaml."""
+
+    model_config = yaml_config("speech.yaml")
 
     # Tần số chuẩn của pipeline. Mặc định băng hẹp 8 kHz như đường dây điện thoại;
     # đặt 16000 chỉ để so sánh WER, không dùng cho số liệu báo cáo.
-    sample_rate: SampleRate = NARROWBAND_RATE
+    sample_rate: SampleRate
 
     @field_validator("sample_rate", mode="before")
     @classmethod
@@ -22,11 +24,11 @@ class SpeechSettings(BaseSettings):
         return int(value) if isinstance(value, str) else value
 
     # Chỉ chọn provider; model/API key của từng provider do inference.asr.config /
-    # inference.tts.config đọc từ env (GEMINI_ASR_MODEL, ZIPFORMER_*_PATH, OPENAI_TTS_MODEL...).
-    asr_provider: ASRProviderName = "gemini"
-    tts_provider: TTSProviderName = "openai"
+    # inference.tts.config đọc (config/asr.yaml, config/tts.yaml, key từ env).
+    asr_provider: ASRProviderName
+    tts_provider: TTSProviderName
     # Provider dự phòng khi provider chính lỗi (vd. vbee -> elevenlabs); None = không fallback
-    tts_fallback_provider: Optional[TTSProviderName] = None
+    tts_fallback_provider: Optional[TTSProviderName]
 
     @field_validator("tts_fallback_provider", mode="before")
     @classmethod
@@ -45,30 +47,30 @@ class SpeechSettings(BaseSettings):
     # thuần noise mà WebRTC liên tục hiểu nhầm thành speech (mẫu hallucination "ĐÂY"/"Ừ"
     # lặp lại nhiều phút liền dù không ai nói gì). Chưa đổi mặc định — cần benchmark thêm
     # trên tập audio đa dạng hơn trước khi áp dụng cho mọi call.
-    vad_provider: Literal["energy", "webrtc", "silero"] = "energy"
-    vad_rms_threshold: float = 500.0
-    vad_webrtc_aggressiveness: int = 2
-    vad_end_silence_ms: int = 600
+    vad_provider: Literal["energy", "webrtc", "silero"]
+    vad_rms_threshold: float
+    vad_webrtc_aggressiveness: int
+    vad_end_silence_ms: int
     # Turn Controller (transports/livekit/call_bridge.py): turn ngắn hơn ngưỡng này
     # (từ VAD speech_start) bị coi là tiếng động/backchannel, không emit thành turn —
     # lớp phòng thủ thứ 2 bên cạnh vad_provider, chống "dạ dạ" liên tục do nhiễu ngoài.
-    turn_min_speech_ms: int = 250
-    turn_max_wait_after_vad_end_ms: int = 300
+    turn_min_speech_ms: int
+    turn_max_wait_after_vad_end_ms: int
     # Candidate bắt đầu quá gần thời điểm bot vừa dứt lời (< ngưỡng này) bị discard —
     # chống dư âm/tiếng vọng phòng (loa ngoài, browser echo-cancellation không hoàn hảo)
     # đủ dài để WebRTC VAD coi là speech_start thật ngay sau khi is_bot_speaking chuyển
     # False, khiến ASR hallucinate 1 cụm từ "có nghĩa" và TurnController chốt turn giả dù
     # user không hề nói gì (bug thật đã gặp qua LiveKit demo).
-    turn_post_bot_guard_ms: int = 500
+    turn_post_bot_guard_ms: int
 
     # Speech Admission (docs/reference/livekit-architecture.md §5.4): lớp lọc TRƯỚC asr_queue
     # dựa trên SNR liên tục (NoiseTracker), chặn sớm noise phòng không đồng đều mà VAD đôi
     # khi hiểu nhầm thành speech_start — nguyên nhân gốc hallucination ("ĐÂY"/"TẠI" lặp lại)
     # đã xác nhận qua LIVEKIT_DEBUG_DUMP_AUDIO. Mặc định TẮT: cần benchmark thêm trên audio
     # thật đa dạng trước khi bật mặc định cho mọi call.
-    speech_admission_enabled: bool = False
-    speech_admission_min_snr_db: float = 6.0
-    speech_admission_min_speech_ms: int = 150
+    speech_admission_enabled: bool
+    speech_admission_min_snr_db: float
+    speech_admission_min_speech_ms: int
     # Pre-roll buffer (speech/asr/admission.py::PreRollBuffer): bù lại audio bị giữ lại
     # trong lúc chưa ADMIT (chưa đủ SNR/duration) — không có buffer, ASR luôn mất đúng
     # khoảng thời gian REJECT trước khi ADMIT dù Admission quyết định đúng. 600ms (không
@@ -76,15 +78,15 @@ class SpeechSettings(BaseSettings):
     # DUMP_AUDIO, xem docs/evidence/) cho thấy REJECT trước ADMIT dao động 240-510ms tuỳ
     # SNR đầu câu (người nói nhỏ dần/to dần) — buffer 240ms từng bị tràn (rớt frame cũ
     # nhất trước khi ADMIT tới), mất đúng chữ đầu câu ("Tôi là..." -> "là..."/"đây là...").
-    speech_admission_preroll_ms: int = 600
+    speech_admission_preroll_ms: int
 
     # Turn Validator (docs/reference/livekit-architecture.md §5.4, §6): lớp quyết định
     # cuối trước khi chốt turn, dựa trên acoustic evidence (NoiseTracker) + transcript
     # stability (TranscriptEvidenceTracker) — ĐỘC LẬP với speech_admission_enabled (2
     # tracker riêng, không dùng chung). Mặc định TẮT — cần benchmark thêm trước khi bật
     # cho mọi call.
-    turn_validator_enabled: bool = False
-    turn_validator_min_snr_db: float = 3.0
+    turn_validator_enabled: bool
+    turn_validator_min_snr_db: float
     # Ngưỡng SNR RIÊNG cho InterruptionController (barge-in) — KHÔNG dùng chung
     # turn_validator_min_snr_db, xem docstring InterruptionController.__init__. Bug thật
     # đã gặp: echo giọng bot qua loa/mic (browser echo cancellation không loại hết) tạo
@@ -94,7 +96,7 @@ class SpeechSettings(BaseSettings):
     # tra này không phân biệt độ dài text. `None` tắt hẳn (giữ hành vi cũ) — mặc định để
     # tắt vì cần benchmark thêm trước khi áp dụng cho mọi call, cùng tinh thần các cờ
     # turn_validator_enabled/speech_admission_enabled khác trong file này.
-    interruption_min_snr_db: Optional[float] = None
+    interruption_min_snr_db: Optional[float]
     # Bug thật đã gặp: dùng WebRTC (`vad_provider`) làm classifier cho NoiseTracker khiến
     # noise_floor không được cập nhật đúng — WebRTC báo speech=True gần như LIÊN TỤC trên
     # noise phòng thuần (0 false-negative nhưng rất nhiều false-positive), nên
@@ -104,8 +106,8 @@ class SpeechSettings(BaseSettings):
     # Silero VAD (silero_vad_model_path) đã xác nhận qua benchmark thực nghiệm KHÔNG bị
     # lừa bởi cùng loại noise này (0/400 false-positive) — dùng riêng cho NoiseTracker,
     # tách biệt khỏi `vad_provider` (vẫn WebRTC cho turn-taking chính, chưa đổi mặc định).
-    silero_vad_model_path: str = "src/speech/asr/vad/assets/silero_vad.onnx"
+    silero_vad_model_path: str
 
     # URL công khai để dựng audio_url trả về cho harness
-    public_base_url: str = "http://localhost:8000"
-    audio_dir: str = "temp/audio"
+    public_base_url: str
+    audio_dir: str

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def build_clinic(settings: Settings) -> ClinicAPI:
     if settings.clinic_backend == "sim":
         return _build_sim(settings)
-    return ClinicMockClient(settings.clinic_mock_base_url, settings.clinic_mock_api_key)
+    return ClinicMockClient(settings.require_clinic_mock_base_url(), settings.clinic_mock_api_key)
 
 
 def _build_sim(settings: Settings) -> ClinicAPI:

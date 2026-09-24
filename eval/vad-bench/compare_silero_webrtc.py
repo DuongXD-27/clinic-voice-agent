@@ -54,7 +54,7 @@ def _run_one(path: Path) -> None:
 
 def main() -> None:
     if not _SILERO_MODEL.exists():
-        print(f"BLOCKED: model asset thiếu — tải {_SILERO_MODEL} (xem .env.example)")
+        print(f"BLOCKED: model asset thiếu — tải {_SILERO_MODEL} (xem silero_vad_model_path trong config/speech.yaml)")
         sys.exit(1)
 
     paths = [Path(p) for p in sys.argv[1:]]

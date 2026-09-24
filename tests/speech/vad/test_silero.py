@@ -13,7 +13,7 @@ _FRAME_BYTES = int(_SAMPLE_RATE * FRAME_MS / 1000) * 2
 
 pytestmark = pytest.mark.skipif(
     not _MODEL_PATH.exists(),
-    reason="silero_vad.onnx chưa tải — xem docstring SILERO_VAD_MODEL_PATH trong .env.example",
+    reason="silero_vad.onnx chưa tải — xem silero_vad_model_path trong config/speech.yaml",
 )
 
 
