@@ -68,6 +68,8 @@ def _reading(**changes: Any) -> SemanticReading:
         "reply_span": None,
         "cancel_reason": None,
         "reason_span": None,
+        "clinical": None,
+        "clinical_span": None,
     }
     return SemanticReading.model_validate({**base, **changes})
 
@@ -128,6 +130,21 @@ def test_a_settled_phrase_inside_a_longer_sentence_still_calls_the_model() -> No
 )
 def test_questions_outside_the_scope_are_never_routed(question_id) -> None:
     assert _route("tôi không đủ tiền", question_id=question_id) is None
+
+
+def test_possible_clinical_advice_is_routed_even_during_identity() -> None:
+    assert (
+        _route(
+            "thuốc này có cần tiếp tục dùng đến ngày khám không",
+            question_id=QuestionId.ASK_NAME,
+            clinical=_field(ClinicalLevel.MENTION, span="thuốc"),
+        )
+        is RouteReason.CLINICAL_UNRESOLVED
+    )
+    assert (
+        _route("trước khi khám có cần nhịn ăn không", question_id=QuestionId.ASK_NAME)
+        is RouteReason.CLINICAL_UNRESOLVED
+    )
 
 
 def test_empty_transcript_is_never_routed() -> None:
@@ -255,6 +272,28 @@ def test_a_grounded_reason_is_accepted() -> None:
     )
 
 
+def test_a_grounded_clinical_label_is_accepted() -> None:
+    line = "thuốc này có cần tiếp tục dùng đến ngày khám không"
+    outcome = ground_reading(
+        _reading(clinical="ADVICE_REQUEST", clinical_span="cần tiếp tục dùng đến ngày khám"),
+        _context(line),
+    )
+    assert outcome is not None
+    assert outcome.clinical is ClinicalLevel.ADVICE_REQUEST
+    assert outcome.clinical_span == "cần tiếp tục dùng đến ngày khám"
+
+
+@pytest.mark.parametrize("span", [None, "uống tiếp thuốc", "thuốc + khám"])
+def test_clinical_label_without_a_grounded_span_is_rejected(span: Optional[str]) -> None:
+    assert (
+        ground_reading(
+            _reading(clinical="ADVICE_REQUEST", clinical_span=span),
+            _context("thuốc này có cần tiếp tục dùng đến ngày khám không"),
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize(
     "span",
     [
@@ -310,6 +349,7 @@ def test_a_null_reason_means_the_turn_said_nothing_about_a_reason() -> None:
         {"reply_kind": "AMBIGUOUS", "cancel_reason": "NO_MONEY"},  # enum reason lạ
         {"reply_kind": "AMBIGUOUS", "intent": "DELETE_PATIENT"},
         {"reply_kind": "AMBIGUOUS", "may_write": True},  # model tự khai quyền ghi
+        {"clinical": "TRANSFER"},
     ],
 )
 def test_readings_outside_the_schema_are_refused(payload: dict) -> None:
@@ -328,6 +368,8 @@ def test_the_schema_has_no_field_that_could_grant_a_write() -> None:
         "reply_span",
         "cancel_reason",
         "reason_span",
+        "clinical",
+        "clinical_span",
     }
 
 
@@ -345,6 +387,36 @@ def test_inform_reason_updates_the_reason_and_leaves_agreement_unset() -> None:
     assert merged.cancel_reason.provenance is Provenance.FALLBACK
     # `found=False` -> Dialogue đi nhánh "đã ghi nhận lý do", không phải nhánh từ chối
     assert merged.agreement.value is Agreement.UNCLEAR and not merged.agreement.found
+
+
+def test_model_clinical_advice_preempts_out_of_scope_and_agreement() -> None:
+    line = "vâng, thuốc này có cần tiếp tục dùng đến ngày khám không"
+    merged = merge_semantic(
+        _readback(line, agreement=_field(Agreement.AGREE, span="vâng")),
+        SemanticOutcome(
+            ReplyKind.CONFIRM_ACTION,
+            "vâng",
+            intent=Intent.OUT_OF_SCOPE,
+            intent_span="thuốc này",
+            clinical=ClinicalLevel.ADVICE_REQUEST,
+            clinical_span="thuốc này có cần tiếp tục dùng đến ngày khám không",
+        ),
+        RouteReason.CLINICAL_UNRESOLVED,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.clinical.value is ClinicalLevel.ADVICE_REQUEST
+    assert merged.clinical.provenance is Provenance.FALLBACK
+    assert merged.agreement.value is not Agreement.AGREE
+
+
+def test_missing_model_on_clinical_review_cannot_confirm() -> None:
+    merged = merge_semantic(
+        _readback("vâng, tôi uống thuốc huyết áp", agreement=_field(Agreement.AGREE, span="vâng")),
+        None,
+        RouteReason.CLINICAL_UNRESOLVED,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.agreement.value is Agreement.UNCLEAR
 
 
 def test_decline_action_refuses_and_does_not_carry_a_reason_over() -> None:
@@ -494,6 +566,8 @@ def _completed(**changes: Any) -> StructuredReply:
         "reply_span": None,
         "cancel_reason": None,
         "reason_span": None,
+        "clinical": None,
+        "clinical_span": None,
     }
     return StructuredReply("completed", json.dumps({**base, **changes}, ensure_ascii=False))
 
@@ -508,6 +582,13 @@ def test_the_adapter_sends_one_request_and_returns_a_grounded_outcome() -> None:
     assert outcome is not None and outcome.cancel_reason == "COST"
     assert len(provider.calls) == 1
     assert provider.calls[0]["schema_name"] == PROMPT_VERSION
+
+
+def test_adapter_reads_clinical_label_from_structured_output() -> None:
+    line = "thuốc này có cần tiếp tục dùng đến ngày khám không"
+    extractor, _ = _extractor(_completed(clinical="ADVICE_REQUEST", clinical_span=line))
+    outcome = extractor.analyze(_context(line))
+    assert outcome is not None and outcome.clinical is ClinicalLevel.ADVICE_REQUEST
 
 
 @pytest.mark.parametrize(

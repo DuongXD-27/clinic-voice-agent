@@ -28,6 +28,7 @@ from callbot.engine.extraction.text import (
     find_phrase,
     is_unaccented,
     remove_phrases,
+    strip_diacritics,
 )
 
 _EMERGENCY = compile_phrases(
@@ -172,7 +173,23 @@ _INTERROGATIVE_FINALS = frozenset({"không", "chưa", "sao", "gì", "nào", "à"
 _INTERROGATIVE_PHRASES = compile_phrases(
     ["có phải", "liệu", "thế nào", "ra sao", "làm sao", "tại sao", "vì sao"]
 )
+_MEDICATION = compile_phrases(["thuốc"])
+_MEDICATION_ACTIONS = compile_phrases(
+    [
+        "ngưng",
+        "ngừng",
+        "dừng",
+        "bỏ thuốc",
+        "tiếp tục uống",
+        "uống tiếp",
+        "đổi thuốc",
+        "tăng liều",
+        "giảm liều",
+    ]
+)
 _TRAILING_PARTICLES = frozenset({"ạ", "vậy", "thế", "em", "chị", "anh", "bác sĩ"})
+_TRAILING_PARTICLES_UNACCENTED = frozenset(strip_diacritics(w) for w in _TRAILING_PARTICLES)
+_INTERROGATIVE_FINALS_UNACCENTED = frozenset(strip_diacritics(w) for w in _INTERROGATIVE_FINALS)
 # Có từ nói về lịch hẹn -> câu hỏi đuôi là hỏi về lịch, không phải hỏi về triệu chứng
 _SCHEDULING = compile_phrases(
     ["đặt lịch", "lịch", "hẹn", "khung", "giờ", "đổi", "hủy", "tái khám", "đăng ký", "khám"]
@@ -194,6 +211,15 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
     if advice is not None:
         return Field(ClinicalLevel.ADVICE_REQUEST, exact, span=advice.group(0))
 
+    # Câu hỏi điều chỉnh thuốc vẫn là tư vấn lâm sàng khi có chữ "khám"/"lịch".
+    # Luật câu hỏi triệu chứng phía dưới cố ý bỏ qua ngữ cảnh lịch hẹn, nên xét riêng thuốc.
+    if (
+        find_phrase(text, _MEDICATION, unaccented=unaccented) is not None
+        and find_phrase(text, _MEDICATION_ACTIONS, unaccented=unaccented) is not None
+        and _is_question(text, unaccented=unaccented)
+    ):
+        return Field(ClinicalLevel.ADVICE_REQUEST, exact, span=text)
+
     symptom_text = remove_phrases(text, _NOT_SYMPTOM, unaccented)
     symptom = find_phrase(symptom_text, _SYMPTOMS, unaccented=unaccented)
     if symptom is None:
@@ -209,10 +235,12 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
     return Field(ClinicalLevel.MENTION, exact, span=symptom.group(0))
 
 
-def _is_question(text: str) -> bool:
+def _is_question(text: str, *, unaccented: bool = False) -> bool:
     words = text.split()
-    while words and words[-1] in _TRAILING_PARTICLES:
+    trailing = _TRAILING_PARTICLES_UNACCENTED if unaccented else _TRAILING_PARTICLES
+    finals = _INTERROGATIVE_FINALS_UNACCENTED if unaccented else _INTERROGATIVE_FINALS
+    while words and words[-1] in trailing:
         words.pop()
-    if len(words) >= 2 and words[-1] in _INTERROGATIVE_FINALS:
+    if len(words) >= 2 and words[-1] in finals:
         return True
-    return find_phrase(text, _INTERROGATIVE_PHRASES) is not None
+    return find_phrase(text, _INTERROGATIVE_PHRASES, unaccented=unaccented) is not None

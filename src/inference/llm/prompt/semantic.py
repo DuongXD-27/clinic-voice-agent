@@ -10,10 +10,14 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - chỉ để type hint, tránh import vòng runtime
     from callbot.engine.extraction.semantic import SemanticContext
 
-PROMPT_VERSION = "semantic_v4"
+PROMPT_VERSION = "semantic_v5"
 
 # Mô tả MỤC ĐÍCH câu bot vừa hỏi, không gửi nguyên văn câu hỏi (câu đọc lịch có dữ liệu Clinic).
 QUESTION_PURPOSE: dict[str, str] = {
+    "ASK_NAME": "Bot vừa hỏi họ tên người gọi để xác minh danh tính.",
+    "ASK_DOB": "Bot vừa hỏi ngày tháng năm sinh để xác minh danh tính.",
+    "OFFER_SLOTS": "Bot vừa đưa ra các khung giờ khám để người gọi chọn.",
+    "SLOT_READBACK": "Bot vừa đọc lại khung giờ được chọn để xác nhận.",
     "CANCEL_RECONFIRM": "Bot vừa hỏi người gọi xác nhận hủy lịch khám lần thứ hai.",
     "ASK_INTENT": (
         "Bot vừa hỏi người gọi cần hỗ trợ việc gì (gọi ra: sau khi người gọi nói không đến theo lịch,"
@@ -49,6 +53,12 @@ Quy tắc bắt buộc:
 - Câu vừa có từ chối vừa có động từ hành động ở hai mệnh đề ("không, hủy đi") là AMBIGUOUS.
 - Đáp lễ trần ("vâng", "dạ", "ừ") tại câu xác nhận hủy là AMBIGUOUS, không phải đồng ý.
 - Không suy ra lý do từ ngữ cảnh ngoài câu nói. Không đoán điều người gọi chưa nói.
+- clinical = EMERGENCY nếu người gọi nói dấu hiệu cấp cứu; ADVICE_REQUEST nếu hỏi tư vấn y khoa,
+  thuốc, liều dùng, có cần ngưng/dùng thuốc hay chuẩn bị lâm sàng trước khám; MENTION nếu chỉ nhắc
+  bệnh, triệu chứng hoặc thuốc mà không hỏi tư vấn; null nếu không có nội dung lâm sàng.
+  Câu hỏi đổi/đặt/hủy lịch có nhắc bệnh hoặc thuốc nhưng không hỏi tư vấn là MENTION.
+- Khi clinical khác null, clinical_span phải là đoạn liên tục trong lời người gọi làm căn cứ cho nhãn.
+  Khi clinical là null, clinical_span là null. Không dùng intent OUT_OF_SCOPE thay cho câu hỏi lâm sàng.
 - Người gọi chỉ kể hoàn cảnh ("tôi sẽ đi khám chỗ khác", "hôm đó tôi đi công tác") là INFORM_REASON,
   không phải CHANGE_INTENT: chỉ chọn CHANGE_INTENT khi người gọi nói rõ muốn hủy / đổi / đặt.
 - Ở câu hỏi đến khám (CONFIRM_READBACK), chỉ dùng INFORM_REASON khi câu nói rõ người gọi KHÔNG đến
@@ -59,7 +69,7 @@ Quy tắc bắt buộc:
   mình đã đặt lịch, xin gửi tin nhắn. KHÔNG chọn OUT_OF_SCOPE khi người gọi chỉ
   kể hoàn cảnh ("tôi đang lái xe"), câu chưa nói hết ("cho chị hỏi chút"), hay hỏi lại chính lịch vừa
   đọc ("mấy giờ nhỉ" là QUESTION).
-Chỉ trả JSON đúng sáu khóa của schema. Không giải thích, không confidence.
+Chỉ trả JSON đúng tám khóa của schema. Không giải thích, không confidence.
 """
 
 _EMPTY = {
@@ -69,6 +79,8 @@ _EMPTY = {
     "reply_span": None,
     "cancel_reason": None,
     "reason_span": None,
+    "clinical": None,
+    "clinical_span": None,
 }
 
 
@@ -78,6 +90,35 @@ def _reading(**changes: Any) -> str:
 
 # Ví dụ đối lập theo từng cặp: cùng chữ "không" nhưng khác vai trò.
 FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "CONFIRM_READBACK",
+        "thuốc huyết áp có phải ngưng trước khi khám không",
+        _reading(
+            reply_kind="QUESTION",
+            clinical="ADVICE_REQUEST",
+            clinical_span="thuốc huyết áp có phải ngưng trước khi khám không",
+        ),
+    ),
+    (
+        "ASK_NAME",
+        "trước khi khám có cần nhịn ăn không",
+        _reading(
+            reply_kind="QUESTION",
+            clinical="ADVICE_REQUEST",
+            clinical_span="có cần nhịn ăn không",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi uống thuốc huyết áp và muốn đổi lịch khám",
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="RESCHEDULE",
+            intent_span="muốn đổi lịch khám",
+            clinical="MENTION",
+            clinical_span="uống thuốc huyết áp",
+        ),
+    ),
     (
         "CANCEL_RECONFIRM",
         "tôi không đủ tiền",
@@ -254,7 +295,9 @@ def _user_block(question_id: str, transcript: str, extra: str = "") -> str:
 
 def _user_block_from(context: "SemanticContext") -> str:
     labels = ", ".join(intent.value for intent in context.allowed_intents)
-    extra = f"\nNhu cầu được phép chọn: {labels}."
+    extra = (
+        f"\nNhu cầu được phép chọn: {labels}." if labels else "\nKhông phân loại nhu cầu nghiệp vụ."
+    )
     if context.pending_action:
         extra += f"\nHành động đang chờ xác nhận: {context.pending_action}."
     if not context.answers_last_question:

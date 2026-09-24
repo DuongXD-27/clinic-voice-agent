@@ -19,7 +19,7 @@ from typing import Literal, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from callbot.engine.extraction.schema import Agreement, Intent, QuestionId
+from callbot.engine.extraction.schema import Agreement, ClinicalLevel, Intent, QuestionId
 from callbot.engine.extraction.text import normalize
 from callbot.engine.types import CancelReason, Direction, PendingAction
 from inference.common.telemetry import InferenceTimer
@@ -84,6 +84,8 @@ class SemanticOutcome:
     intent_span: Optional[str] = None
     cancel_reason: Optional[CancelReason] = None
     reason_span: Optional[str] = None
+    clinical: Optional[ClinicalLevel] = None
+    clinical_span: Optional[str] = None
 
 
 class SemanticExtractor(Protocol):
@@ -102,6 +104,7 @@ _REPLY_VALUES = Literal[
 _REASON_VALUES = Literal[
     "PATIENT_UNAVAILABLE", "NO_LONGER_NEEDED", "WENT_ELSEWHERE", "COST", "UNSPECIFIED"
 ]
+_CLINICAL_VALUES = Literal["EMERGENCY", "ADVICE_REQUEST", "MENTION"]
 
 
 class SemanticReading(BaseModel):
@@ -119,6 +122,8 @@ class SemanticReading(BaseModel):
     reply_span: str | None
     cancel_reason: _REASON_VALUES | None
     reason_span: str | None
+    clinical: _CLINICAL_VALUES | None
+    clinical_span: str | None
 
 
 def ground_reading(reading: SemanticReading, context: SemanticContext) -> Optional[SemanticOutcome]:
@@ -135,12 +140,20 @@ def ground_reading(reading: SemanticReading, context: SemanticContext) -> Option
 
     intent, intent_span = _read_intent(reading, context)
     reason, reason_span = _read_reason(reading, context)
+    clinical = ClinicalLevel(reading.clinical) if reading.clinical is not None else None
+    clinical_span = _grounded(reading.clinical_span, context.transcript)
+    if (clinical is None) != (reading.clinical_span is None) or (
+        clinical is not None and clinical_span is None
+    ):
+        return None
 
     if kind is ReplyKind.INFORM_REASON and reason is None:
         return None
     if kind is ReplyKind.CHANGE_INTENT and intent is None:
         return None
-    return SemanticOutcome(kind, reply_span, intent, intent_span, reason, reason_span)
+    return SemanticOutcome(
+        kind, reply_span, intent, intent_span, reason, reason_span, clinical, clinical_span
+    )
 
 
 def _read_intent(

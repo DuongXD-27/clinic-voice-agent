@@ -29,7 +29,13 @@ from callbot.engine.extraction.semantic import (
     SemanticContext,
     SemanticOutcome,
 )
-from callbot.engine.extraction.text import clean, strip_diacritics
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    strip_diacritics,
+)
 from callbot.engine.types import CancelReason, Direction
 
 
@@ -42,6 +48,7 @@ class RouteReason(str, Enum):
     INTENT_UNCLEAR = "INTENT_UNCLEAR"  # ASK_INTENT / CONFIRM_READBACK chưa có ý định dùng được
     # Outbound: luật ra CONFIRM nhưng chính luật chưa chắc ("hôm đó tôi sẽ đi công tác") (T-04 §8)
     ATTENDANCE_UNCLEAR = "ATTENDANCE_UNCLEAR"
+    CLINICAL_UNRESOLVED = "CLINICAL_UNRESOLVED"
 
 
 # Câu rõ ràng khi khớp TOÀN CÂU — rule đã đủ, không làm chậm đường rõ bằng một request model.
@@ -95,6 +102,9 @@ _SEMANTIC_QUESTIONS = frozenset(
     {QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_INTENT, QuestionId.CONFIRM_READBACK}
 )
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
+_CLINICAL_REVIEW_CUES = compile_phrases(
+    ["nhịn ăn", "nhịn uống", "kiêng ăn", "kiêng uống", "trước phẫu thuật", "trước xét nghiệm"]
+)
 # Câu trả lời có/không dứt khoát: Dialogue đã có đường đi, không cần đọc lại bằng ngữ nghĩa.
 _DECISIVE_AGREEMENTS = frozenset({Agreement.AGREE, Agreement.REFUSE})
 # Policy đã đủ căn cứ kết thúc lượt: model không được trì hoãn hay xóa quyết định này.
@@ -115,9 +125,17 @@ def route_semantic(
 ) -> Optional[RouteReason]:
     """`None` = chỉ dùng rule. Gọi sau khi rule của mọi trường liên quan đã chạy."""
     text = clean(transcript)
-    if not text or question_id not in _SEMANTIC_QUESTIONS:
+    if not text:
         return None
-    if clinical.value in _TRANSFER_CLINICAL or intent.value in _POLICY_INTENTS:
+    if clinical.value in _TRANSFER_CLINICAL:
+        return None
+    if clinical.value is ClinicalLevel.MENTION or find_phrase(
+        text, _CLINICAL_REVIEW_CUES, unaccented=is_unaccented(text)
+    ):
+        return RouteReason.CLINICAL_UNRESOLVED
+    if intent.value in _POLICY_INTENTS:
+        return None
+    if question_id not in _SEMANTIC_QUESTIONS:
         return None
     if text in _SETTLED:
         return None
@@ -160,7 +178,9 @@ def build_semantic_context(
         transcript=result.transcript,
         question_id=result.question_id,
         direction=ctx.direction,
-        allowed_intents=_allowed_intents(ctx.direction),
+        allowed_intents=(
+            _allowed_intents(ctx.direction) if result.question_id in _SEMANTIC_QUESTIONS else ()
+        ),
         route_reason=route_reason.value,
         pending_action=ctx.pending_action,
         answers_last_question=ctx.question_turn is not None and ctx.question_turn == ctx.turn - 1,
@@ -188,12 +208,22 @@ def merge_semantic(
     """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật."""
     if outcome is None:
         return _without_model(result, route_reason)
+    if outcome.clinical in _TRANSFER_CLINICAL:
+        return _replace(
+            result,
+            clinical=Field(outcome.clinical, Provenance.FALLBACK, span=outcome.clinical_span),
+            agreement=Field.nothing(Agreement.UNCLEAR),
+        )
+    clinical = result.clinical
+    if outcome.clinical is ClinicalLevel.MENTION and clinical.value is ClinicalLevel.NONE:
+        clinical = Field(ClinicalLevel.MENTION, Provenance.FALLBACK, span=outcome.clinical_span)
     if outcome.intent is Intent.OUT_OF_SCOPE and outcome.intent in allowed_intents:
         # Ngoài phạm vi thắng mọi kiểu trả lời, như thứ tự PRIORITY của luật ("vâng, à mà địa chỉ ở
         # đâu"): Policy chuyển máy. Bỏ tín hiệu đồng ý để không lượt nào dùng nó làm bằng chứng ghi.
         return _replace(
             result,
             intent=Field(Intent.OUT_OF_SCOPE, Provenance.FALLBACK, span=outcome.intent_span),
+            clinical=clinical,
             agreement=Field.nothing(Agreement.UNCLEAR),
         )
 
@@ -262,7 +292,9 @@ def merge_semantic(
         # Dialogue hỏi lại thay vì đọc lại lịch. Còn lại (mơ hồ, câu hỏi) giữ kết luận của luật.
         intent = Field.nothing(Intent.NONE)
 
-    return _replace(result, intent=intent, agreement=agreement, cancel_reason=reason)
+    return _replace(
+        result, intent=intent, clinical=clinical, agreement=agreement, cancel_reason=reason
+    )
 
 
 def _unclear(span: Optional[str]) -> Field[Agreement]:
@@ -281,6 +313,11 @@ def _without_model(result: ExtractionResult, route_reason: RouteReason) -> Extra
     Lời từ chối hủy tường minh ("không hủy nữa, dù tôi không đủ tiền") vẫn là từ chối — đó là rule
     rõ, không phải trường đang nghi ngờ. Ngược lại, AGREE trong một câu mâu thuẫn thì hạ UNCLEAR.
     """
+    if (
+        route_reason is RouteReason.CLINICAL_UNRESOLVED
+        and result.agreement.value is Agreement.AGREE
+    ):
+        return _replace(result, agreement=_unclear(result.agreement.span or result.transcript))
     if (
         route_reason is RouteReason.CANCEL_CONTRADICTION
         and result.agreement.value is Agreement.AGREE
