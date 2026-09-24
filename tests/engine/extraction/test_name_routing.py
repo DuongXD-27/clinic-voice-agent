@@ -8,16 +8,10 @@ from callbot.engine.extraction.identity import Reason
 from tests.engine.extraction.test_extractor import FakeFallback, ctx
 
 SUSPECT_NAMES = [
-    "Nguyễn Văn A đây em",
-    "Nguyễn Văn A đó em",
-    "Nguyễn Văn A ạ em",
-    "Nguyễn Văn A nhé em ơi",
-    "Nguyễn Văn A cảm ơn em",
     "Nguyễn Văn A đúng rồi",
     "Nguyễn Văn A vâng",
     "Nguyễn Văn A chứ",
     "hello em Nguyễn Văn A",
-    "Nguyễn Văn A nhe em oi",
 ]
 
 
@@ -69,6 +63,18 @@ def test_known_contact_signals_never_spend_a_name_request(text):
 @pytest.mark.parametrize(
     "text, expected",
     [
+        ("Nguyễn Văn A đây em", "nguyễn văn a"),
+        ("Nguyễn Văn A đó em", "nguyễn văn a"),
+        ("Nguyễn Văn A ạ em", "nguyễn văn a"),
+        ("Nguyễn Văn A nhé em ơi", "nguyễn văn a"),
+        ("Nguyễn Văn A cảm ơn em", "nguyễn văn a"),
+        ("Nguyễn Văn A nhe em oi", "nguyễn văn a"),
+        ("Họ tên của tôi là Nguyễn Văn A", "nguyễn văn a"),
+        ("Nguyễn Văn A là tên của tôi", "nguyễn văn a"),
+        ("Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A", "nguyễn văn a"),
+        ("chào em tôi tên Nguyễn Văn A", "nguyễn văn a"),
+        ("em ơi tôi là Nguyễn Văn A", "nguyễn văn a"),
+        ("hú hú anh tên Nguyễn Văn A", "nguyễn văn a"),
         ("à thì anh tên là Nguyễn Văn A nhé em", "nguyễn văn a"),
         ("Nguyễn Thị Anh", "nguyễn thị anh"),
         ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
@@ -107,7 +113,7 @@ def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
             raise TimeoutError("synthetic provider timeout")
 
     result = InformationExtractor(fallback=BrokenFallback(), name_fallback=True).extract(
-        ctx(QuestionId.ASK_NAME), "Nguyễn Văn A cảm ơn em"
+        ctx(QuestionId.ASK_NAME), "Nguyễn Văn A đúng rồi"
     )
     assert not result.full_name.found
 

@@ -60,6 +60,9 @@ _SELF_INTRO_PHRASES = [
         f"{speaker} tên là",
         f"tên {speaker}",
         f"tên {speaker} là",
+        f"họ tên của {speaker} là",
+        f"họ và tên của {speaker} là",
+        f"tên đầy đủ của {speaker} trên giấy tờ là",
     )
 ]
 # "X tôi là ...": người gọi khai tên người khác, không phải tên mình.
@@ -89,7 +92,7 @@ _PREFIXES = compile_phrases(
     ["dạ", "vâng", "ạ", "alo", "a lô", "vâng ạ", "dạ vâng"]
     + _FILLERS
     + _SELF_INTRO_PHRASES
-    + ["họ tên là", "họ và tên là", "họ tên", "họ và tên"],
+    + ["họ tên là", "họ và tên là", "họ tên", "họ và tên", "chào em", "em ơi", "hú hú"],
     unaccented_exclude=["ạ", *_FILLERS],  # "a" có thể là tên ("Nguyễn Văn A")
 )
 # Họ tên đầy đủ tối thiểu còn lại sau khi bỏ danh xưng ("ông Nguyễn Văn A" -> 3 từ). Tên ngắn hơn
@@ -99,20 +102,38 @@ MIN_WORDS_AFTER_HONORIFIC = 3
 # tự xưng ông / bà / chú / bác thay cho "tôi"; không kèm "tôi / của tôi" thì là chính người gọi —
 # có từ sở hữu ("là tên ông tôi") là người thân, xem `_RELATIVE_CLAIMS`.
 _SELF_OUTRO_PHRASES = [
-    f"{lead}là tên {speaker}"
+    f"{lead}là tên {possessive}{speaker}"
     for speaker in _SPEAKERS
     for lead in ("", "đấy ", "đó ", "đây ", "thì ")
+    for possessive in ("", "của ")
 ]
 # Chỉ bỏ danh xưng cuối câu khi có tiểu từ đứng TRƯỚC: "nhé em", "nha chị".
 # Không bỏ riêng "em" / "anh", hay cả "em nhé": đó có thể là tên Nguyễn Văn Em.
 _POLITE_ADDRESSES = [
     f"{particle} {addressee}"
-    for particle in ("nhé", "nha")
+    for particle in ("nhé", "nha", "ạ", "đây", "đó", "cảm ơn", "cám ơn")
     for addressee in ("em", "anh", "chị", "bạn", "cô", "chú", "bác", "ông", "bà", "con", "cháu")
 ]
 _SUFFIXES = compile_phrases(
-    ["ạ", "đây", "đây ạ", "nhé", "nha", "ấy ạ", "mà", *_SELF_OUTRO_PHRASES, *_POLITE_ADDRESSES],
-    unaccented_exclude=["ạ", "ấy ạ", "mà"],
+    [
+        "ạ",
+        "đây",
+        "đây ạ",
+        "nhé",
+        "nha",
+        "ấy ạ",
+        "mà",
+        *_SELF_OUTRO_PHRASES,
+        *_POLITE_ADDRESSES,
+        *(f"{phrase} ơi" for phrase in _POLITE_ADDRESSES),
+    ],
+    unaccented_exclude=[
+        "ạ",
+        "ấy ạ",
+        "mà",
+        *(p for p in _POLITE_ADDRESSES if p.startswith("ạ ")),
+        *(f"{p} ơi" for p in _POLITE_ADDRESSES if p.startswith("ạ ")),
+    ],
 )
 _SELF_INTRODUCTIONS = compile_phrases(_SELF_INTRO_PHRASES)
 _OTHER_PERSON_INTRODUCTIONS = compile_phrases([f"còn {relative} tôi là" for relative in _RELATIVES])
@@ -222,7 +243,16 @@ _SPEECH_RESIDUE = compile_phrases(
         *_POLITE_ADDRESSES,
         *(f"{particle} {addressee}" for particle in ("đây", "đó") for addressee in _SPEAKERS),
     ],
-    unaccented_exclude=["ạ", "nhé", "ơi", "vâng", "chứ", "rồi", "nè"],
+    unaccented_exclude=[
+        "ạ",
+        "nhé",
+        "ơi",
+        "vâng",
+        "chứ",
+        "rồi",
+        "nè",
+        *(p for p in _POLITE_ADDRESSES if p.startswith("ạ ")),
+    ],
 )
 # Cách người gọi trỏ tới trường ngày sinh — dùng để biết một mệnh đề đang nói về ngày sinh
 # chứ không phải về tên.

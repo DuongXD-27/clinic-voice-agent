@@ -416,11 +416,12 @@ def test_out_of_scope_request_at_business_steps(question: QuestionId, text: str)
     assert result.agreement.value is not Agreement.AGREE
 
 
-def test_callback_request_at_the_name_step_is_not_out_of_scope() -> None:
-    """T-08: người nghe đang bận ở bước hỏi tên được hỏi lại tên, không chuyển máy."""
+def test_explicit_callback_request_at_the_name_step_is_out_of_scope() -> None:
+    """§1.1.5 áp dụng cả trước xác minh khi người thật xin gọi lại."""
     busy = "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"
     assert (
-        InformationExtractor().extract(ctx(QuestionId.ASK_NAME), busy).intent.value is Intent.NONE
+        InformationExtractor().extract(ctx(QuestionId.ASK_NAME), busy).intent.value
+        is Intent.OUT_OF_SCOPE
     )
     address = InformationExtractor().extract(ctx(QuestionId.ASK_NAME), "địa chỉ phòng khám ở đâu")
     assert address.intent.value is Intent.OUT_OF_SCOPE

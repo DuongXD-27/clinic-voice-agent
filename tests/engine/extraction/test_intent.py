@@ -178,11 +178,11 @@ def test_someone_else_attending_beats_the_attendance_keyword() -> None:
     assert (result.value, result.span) == (Intent.OUT_OF_SCOPE, "đến thay")
 
 
-def test_callback_request_counts_only_at_business_steps() -> None:
-    """Bước danh tính: người nghe bận vẫn được hỏi lại tên (T-08); câu hỏi địa chỉ thì vẫn chuyển."""
+def test_explicit_callback_request_also_counts_before_identity() -> None:
+    """Yêu cầu gọi lại tường minh nằm ngoài kịch bản ở cả bước danh tính (§1.1.5)."""
     busy = "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"
     assert extract_intent(busy, "outbound").value is Intent.OUT_OF_SCOPE
-    assert extract_intent(busy, "outbound", business_step=False).value is Intent.NONE
+    assert extract_intent(busy, "outbound", business_step=False).value is Intent.OUT_OF_SCOPE
     address = extract_intent("địa chỉ phòng khám ở đâu", "outbound", business_step=False)
     assert address.value is Intent.OUT_OF_SCOPE
 

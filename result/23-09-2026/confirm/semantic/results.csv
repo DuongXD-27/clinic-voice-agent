@@ -1,577 +1,538 @@
-repeat,split,group,question_id,transcript,needs_inference,expect_behaviour,observed_behaviour,transfer_reason,behaviour_ok,unsafe_write,agree_reread,routed,semantic_status,semantic_kind,semantic_reason,semantic_intent,semantic_ms,elapsed_ms
-1,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2645.9,2648.9
-1,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1878.3,1880.8
-1,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-1,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1963.5,1966.4
-1,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2478.3,2480.9
-1,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2125.8,2128.4
-1,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1940.6,1944.1
-1,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1605.0,1609.7
-1,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-1,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-1,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.8
-1,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-1,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-1,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,9.3
-1,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.3
-1,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.0
-1,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-1,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.5
-1,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,6.0
-1,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-1,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-1,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,5.4
-1,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.8
-1,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-1,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-1,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-1,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.7
-1,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-1,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-1,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-1,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.5
-1,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-1,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,10.4
-1,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.9
-1,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-1,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-1,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1584.1,1589.0
-1,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1806.5,1809.1
-1,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1836.9,1841.3
-1,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1689.0,1693.4
-1,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,2170.3,2173.9
-1,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1765.3,1768.4
-1,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1508.9,1511.4
-1,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1764.4,1769.1
-1,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,3.3
-1,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.7
-1,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,3.3
-1,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,3.3
-1,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,3.2
-1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1638.6,1642.1
-1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1482.6,1487.1
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2011.3,2013.8
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1851.4,1855.4
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1594.5,1597.6
-1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1574.9,1577.5
-1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1533.5,1538.4
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2052.8,2057.7
-1,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1896.3,1898.9
-1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2224.3,2227.7
-1,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1863.3,1867.0
-1,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1684.8,1689.5
-1,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2601.3,2604.4
-1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,INFORM_REASON,UNSPECIFIED,,2154.3,2157.2
-1,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1818.1,1820.8
-1,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1799.2,1801.7
-1,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1727.0,1730.1
-1,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1640.7,1643.4
-1,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1591.0,1593.9
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1945.1,1948.4
-1,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1775.6,1778.1
-1,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1623.6,1628.3
-1,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.5
-1,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,COST,,1824.2,1827.0
-1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1687.2,1690.0
-1,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1780.6,1783.5
-1,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1788.2,1790.7
-1,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1709.2,1711.8
-1,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,3013.0,3015.7
-1,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1625.2,1629.6
-1,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1932.7,1937.2
-1,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1614.1,1617.2
-1,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-1,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1547.1,1549.6
-1,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1562.3,1567.1
-1,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1811.7,1814.4
-1,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1636.4,1639.1
-1,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1876.2,1883.2
-1,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2046.2,2048.5
-1,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2008.8,2011.3
-1,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1459.4,1463.8
-1,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1492.2,1496.9
-1,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1663.0,1666.4
-1,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1510.2,1515.3
-1,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1423.6,1425.8
-1,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1501.2,1503.7
-1,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1628.8,1631.9
-1,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1639.4,1642.5
-1,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,CONFIRM,1544.1,1547.1
-1,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1445.3,1448.1
-1,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1903.3,1906.5
-1,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2907.1,2911.7
-1,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2085.4,2088.1
-1,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1629.1,1633.5
-1,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2237.4,2240.1
-1,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1615.9,1618.5
-1,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1704.1,1706.6
-1,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1619.9,1622.9
-1,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1404.7,1407.2
-1,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1680.4,1685.8
-1,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1627.1,1629.6
-1,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1815.2,1820.1
-1,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1667.6,1671.1
-1,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-1,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1696.5,1699.4
-1,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1694.9,1697.3
-1,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-1,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.8
-1,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,True,False,False,False,,,,,,3.3
-1,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,3.3
-1,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,3.6
-1,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1676.7,1680.2
-1,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,1741.8,1747.8
-1,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,True,False,False,False,,,,,,4.6
-1,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,True,False,False,False,,,,,,3.9
-1,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,4.0
-1,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1580.4,1586.2
-1,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1593.8,1597.6
-1,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-1,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-1,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.6
-1,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-1,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.9
-1,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,4.5
-1,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,5.2
-1,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,4.4
-1,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,4.9
-1,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1833.7,1839.6
-1,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1891.5,1895.0
-1,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1861.9,1865.6
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1702.5,1705.6
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1865.1,1868.5
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1681.7,1687.2
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1841.6,1846.5
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.4
-1,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,3.2
-1,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,True,False,False,False,,,,,,2.2
-1,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,True,False,False,False,,,,,,2.5
-1,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,True,False,False,False,,,,,,2.3
-1,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,True,False,False,False,,,,,,4.9
-1,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,REREAD,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,1802.9,1805.4
-1,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,3206.9,3210.5
-1,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1574.3,1579.2
-1,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2253.9,2256.5
-1,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1683.1,1686.1
-1,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2011.0,2016.9
-1,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1764.5,1767.0
-1,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1556.0,1558.5
-1,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1758.9,1761.4
-1,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-1,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.4
-1,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,1854.5,1857.2
-1,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.3
-1,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1938.4,1941.1
-1,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-1,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,5.3
-1,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1831.2,1834.5
-1,holdout,slot_agree,SLOT_READBACK,được,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.6
-1,holdout,slot_agree,SLOT_READBACK,"Được, đổi giúp tôi.",False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.4
-1,holdout,slot_agree,SLOT_READBACK,chốt đi em,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,4.1
-1,holdout,slot_agree,SLOT_READBACK,đồng ý,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.2
-1,holdout,slot_agree,SLOT_READBACK,"được, khung đó tiện cho tôi",True,SLOT_WRITE,ASK_AGAIN,,False,False,True,False,,,,,,2.5
-1,holdout,slot_refuse,SLOT_READBACK,không,False,ABANDON,ABANDON,,True,False,False,False,,,,,,2.6
-1,holdout,hedge,SLOT_READBACK,chắc được,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,4.8
-1,holdout,hedge,SLOT_READBACK,được nhưng để tôi xem đã,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,2.8
-1,holdout,slot_unsuitable,SLOT_READBACK,hôm đó tôi có việc bận,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,4.2
-1,holdout,slot_unsuitable,SLOT_READBACK,tôi phải đi làm hôm đó,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,2.5
-1,holdout,slot_unsuitable,SLOT_READBACK,giờ đó sớm quá em,True,RESCHEDULE,NOT_UNDERSTOOD,,False,False,False,False,,,,,,2.2
-1,holdout,out_of_scope,SLOT_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-1,holdout,out_of_scope,SLOT_READBACK,tôi đến muộn chút được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.6
-2,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-2,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1778.0,1780.6
-2,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1766.1,1770.9
-2,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-2,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1939.9,1944.0
-2,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1732.6,1735.1
-2,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1986.1,1991.2
-2,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1968.6,1972.9
-2,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1935.3,1937.8
-2,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-2,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,6.5
-2,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-2,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.7
-2,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-2,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,5.0
-2,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-2,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-2,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-2,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-2,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-2,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-2,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.1
-2,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-2,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-2,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,5.8
-2,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-2,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-2,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-2,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-2,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,7.7
-2,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-2,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-2,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.3
-2,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,4.2
-2,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-2,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-2,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.6
-2,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-2,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-2,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,5.7
-2,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.6
-2,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-2,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.6
-2,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-2,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1789.5,1792.3
-2,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1797.6,1800.3
-2,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1908.2,1911.6
-2,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1909.8,1915.5
-2,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1823.5,1831.5
-2,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,2000.7,2006.5
-2,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1563.0,1567.7
-2,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1629.6,1635.1
-2,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.4
-2,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.7
-2,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,1.9
-2,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,1.9
-2,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.1
-2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1421.8,1424.8
-2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1961.7,1966.5
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1488.6,1492.0
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1831.8,1835.8
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1426.8,1431.0
-2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1896.6,1901.3
-2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1765.7,1768.4
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1584.0,1586.6
-2,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1484.5,1489.2
-2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1412.4,1414.9
-2,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1942.4,1945.2
-2,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2310.3,2313.1
-2,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1418.2,1421.0
-2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1496.9,1499.4
-2,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1512.7,1515.3
-2,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,2277.8,2280.4
-2,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1892.7,1895.4
-2,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1564.3,1567.1
-2,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1539.9,1543.6
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2006.2,2009.8
-2,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1792.4,1795.3
-2,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2120.1,2122.9
-2,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,3.1
-2,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,COST,,2071.1,2074.2
-2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1433.2,1436.0
-2,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1608.2,1612.6
-2,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1545.7,1548.1
-2,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1754.1,1757.0
-2,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1718.7,1723.2
-2,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1515.5,1518.2
-2,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1835.5,1840.0
-2,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1542.1,1544.7
-2,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-2,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1366.7,1370.8
-2,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1625.1,1627.6
-2,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1579.8,1582.3
-2,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1572.4,1575.1
-2,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1671.4,1674.7
-2,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1782.2,1784.8
-2,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1685.2,1688.7
-2,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1639.0,1643.1
-2,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1565.6,1568.0
-2,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1780.9,1783.4
-2,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1564.1,1566.6
-2,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1468.3,1470.6
-2,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1595.2,1597.7
-2,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1446.8,1449.2
-2,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1585.5,1587.9
-2,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1670.1,1672.7
-2,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1431.4,1434.8
-2,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2082.1,2084.9
-2,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1747.7,1750.4
-2,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1531.9,1534.4
-2,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1446.8,1449.2
-2,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1578.8,1581.5
-2,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1656.2,1658.6
-2,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1527.7,1531.2
-2,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,2063.3,2065.6
-2,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1499.2,1501.5
-2,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1852.0,1855.4
-2,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1949.3,1951.8
-2,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1453.6,1456.3
-2,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1717.6,1720.0
-2,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.3
-2,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1764.6,1767.2
-2,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1420.5,1423.1
-2,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-2,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.2
-2,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.3
-2,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.2
-2,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.3
-2,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1630.1,1632.8
-2,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,1788.5,1791.2
-2,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,True,False,False,False,,,,,,4.8
-2,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,True,False,False,False,,,,,,4.9
-2,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.4
-2,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1459.8,1463.0
-2,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1718.6,1723.2
-2,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-2,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-2,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-2,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.3
-2,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.4
-2,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-2,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-2,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,6.0
-2,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,5.5
-2,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1698.9,1706.8
-2,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1551.7,1557.4
-2,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1756.7,1760.6
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1728.1,1731.7
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1619.5,1623.1
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1817.8,1820.7
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1457.6,1460.8
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.3
-2,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.4
-2,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,True,False,False,False,,,,,,2.2
-2,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,True,False,False,False,,,,,,2.0
-2,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,True,False,False,False,,,,,,3.3
-2,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,True,False,False,False,,,,,,2.2
-2,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,NOT_UNDERSTOOD,,False,False,False,True,accepted,AMBIGUOUS,,,1917.9,1920.3
-2,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,1795.6,1798.4
-2,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1571.2,1573.4
-2,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2313.6,2316.1
-2,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1407.9,1410.2
-2,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1895.0,1897.3
-2,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1786.6,1789.0
-2,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2027.2,2029.5
-2,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1592.3,1594.8
-2,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-2,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.0
-2,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,2010.3,2012.7
-2,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.2
-2,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1752.2,1754.6
-2,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-2,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.5
-2,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1943.3,1946.5
-2,holdout,slot_agree,SLOT_READBACK,được,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.5
-2,holdout,slot_agree,SLOT_READBACK,"Được, đổi giúp tôi.",False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.9
-2,holdout,slot_agree,SLOT_READBACK,chốt đi em,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.2
-2,holdout,slot_agree,SLOT_READBACK,đồng ý,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.2
-2,holdout,slot_agree,SLOT_READBACK,"được, khung đó tiện cho tôi",True,SLOT_WRITE,ASK_AGAIN,,False,False,True,False,,,,,,2.6
-2,holdout,slot_refuse,SLOT_READBACK,không,False,ABANDON,ABANDON,,True,False,False,False,,,,,,2.4
-2,holdout,hedge,SLOT_READBACK,chắc được,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,2.1
-2,holdout,hedge,SLOT_READBACK,được nhưng để tôi xem đã,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,2.3
-2,holdout,slot_unsuitable,SLOT_READBACK,hôm đó tôi có việc bận,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,4.5
-2,holdout,slot_unsuitable,SLOT_READBACK,tôi phải đi làm hôm đó,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,2.5
-2,holdout,slot_unsuitable,SLOT_READBACK,giờ đó sớm quá em,True,RESCHEDULE,NOT_UNDERSTOOD,,False,False,False,False,,,,,,2.5
-2,holdout,out_of_scope,SLOT_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.1
-2,holdout,out_of_scope,SLOT_READBACK,tôi đến muộn chút được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-3,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1658.3,1661.5
-3,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1722.3,1725.1
-3,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-3,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1494.1,1496.8
-3,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1522.1,1525.6
-3,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1498.8,1501.2
-3,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,2189.7,2193.8
-3,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1990.3,1992.8
-3,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-3,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-3,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-3,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-3,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-3,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.5
-3,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,5.2
-3,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.4
-3,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-3,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.8
-3,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-3,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.7
-3,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-3,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.0
-3,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,2.9
-3,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.9
-3,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.2
-3,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.1
-3,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,True,False,False,False,,,,,,3.3
-3,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1634.9,1637.7
-3,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1576.2,1581.3
-3,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1850.4,1853.2
-3,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1581.3,1584.2
-3,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1896.1,1899.5
-3,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1575.4,1579.6
-3,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1804.3,1806.8
-3,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1674.4,1677.0
-3,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.2
-3,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.0
-3,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.0
-3,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.0
-3,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.1
-3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1703.3,1706.0
-3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1679.5,1682.0
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1433.7,1436.2
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1377.9,1380.4
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1644.9,1647.8
-3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2650.3,2652.9
-3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1741.6,1746.1
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1596.7,1599.3
-3,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1406.7,1409.5
-3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1928.4,1931.6
-3,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2258.6,2261.2
-3,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1616.2,1618.7
-3,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1954.8,1957.7
-3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1737.1,1740.0
-3,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,timeout,,,,3291.5,3294.1
-3,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1611.9,1614.5
-3,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1606.2,1609.1
-3,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1586.8,1589.5
-3,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1463.1,1465.6
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1699.2,1702.1
-3,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,INFORM_REASON,UNSPECIFIED,,1811.9,1815.0
-3,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1663.3,1666.0
-3,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,False,,,,,,2.3
-3,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,COST,,2922.9,2927.5
-3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1697.2,1699.7
-3,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,REREAD,,False,False,False,True,accepted,AMBIGUOUS,,,1510.8,1513.8
-3,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1632.0,1634.6
-3,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1859.9,1862.5
-3,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1576.0,1578.8
-3,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1329.0,1331.5
-3,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1642.2,1644.7
-3,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1508.7,1511.9
-3,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-3,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1603.2,1605.7
-3,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1704.9,1707.5
-3,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1452.7,1455.5
-3,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1495.2,1498.2
-3,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1676.8,1680.5
-3,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1392.4,1394.8
-3,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1371.8,1374.5
-3,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1550.4,1552.7
-3,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1504.8,1507.3
-3,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1504.6,1507.1
-3,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1562.0,1564.4
-3,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1812.4,1816.2
-3,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1670.8,1673.9
-3,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1489.5,1492.1
-3,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1770.0,1772.3
-3,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1481.8,1484.4
-3,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1792.3,1797.5
-3,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1425.6,1428.7
-3,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1642.6,1645.4
-3,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1433.0,1435.9
-3,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1831.1,1833.7
-3,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1812.1,1816.4
-3,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1367.3,1371.5
-3,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1856.8,1859.1
-3,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1683.3,1685.8
-3,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1291.7,1294.5
-3,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,True,False,False,True,accepted,CONFIRM_ACTION,,,1316.2,1319.4
-3,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1549.3,1551.8
-3,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1479.1,1481.6
-3,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,True,False,False,True,accepted,QUESTION,,,1504.2,1506.7
-3,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-3,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1527.8,1530.4
-3,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,True,False,False,True,accepted,AMBIGUOUS,,,1532.1,1536.6
-3,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-3,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.4
-3,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.3
-3,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.0
-3,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.6
-3,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,RESCHEDULE,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,1581.7,1586.0
-3,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,1527.6,1531.4
-3,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,True,False,False,False,,,,,,3.2
-3,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,True,False,False,False,,,,,,3.1
-3,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-3,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1415.5,1418.2
-3,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,REREAD,,False,False,False,True,accepted,QUESTION,,,1578.9,1581.4
-3,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-3,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-3,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-3,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-3,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
-3,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.2
-3,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.3
-3,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.5
-3,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-3,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1690.2,1693.3
-3,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1544.2,1548.6
-3,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1826.6,1830.0
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1320.6,1325.5
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,REREAD,,False,False,True,True,accepted,CONFIRM_ACTION,,,1303.0,1305.7
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,REREAD,,False,False,True,True,accepted,AMBIGUOUS,,,1618.9,1621.6
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,TRANSFER,OUT_OF_SCOPE,False,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1586.4,1591.2
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.3
-3,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.3
-3,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,True,False,False,False,,,,,,2.1
-3,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,True,False,False,False,,,,,,2.0
-3,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,True,False,False,False,,,,,,2.2
-3,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,True,False,False,False,,,,,,2.2
-3,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,NOT_UNDERSTOOD,,False,False,False,True,accepted,AMBIGUOUS,,,1551.9,1554.3
-3,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,1416.2,1419.8
-3,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1641.3,1643.5
-3,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1684.6,1687.7
-3,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1412.1,1416.5
-3,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1446.7,1449.2
-3,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2493.7,2498.6
-3,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1719.2,1721.5
-3,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1448.3,1450.6
-3,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-3,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,True,False,False,False,,,,,,2.0
-3,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,2318.4,2322.5
-3,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,True,False,False,False,,,,,,2.1
-3,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1451.9,1456.3
-3,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.8
-3,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,5.4
-3,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1633.7,1637.0
-3,holdout,slot_agree,SLOT_READBACK,được,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,2.9
-3,holdout,slot_agree,SLOT_READBACK,"Được, đổi giúp tôi.",False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.3
-3,holdout,slot_agree,SLOT_READBACK,chốt đi em,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.1
-3,holdout,slot_agree,SLOT_READBACK,đồng ý,False,SLOT_WRITE,SLOT_WRITE,,True,False,False,False,,,,,,3.2
-3,holdout,slot_agree,SLOT_READBACK,"được, khung đó tiện cho tôi",True,SLOT_WRITE,ASK_AGAIN,,False,False,True,False,,,,,,2.5
-3,holdout,slot_refuse,SLOT_READBACK,không,False,ABANDON,ABANDON,,True,False,False,False,,,,,,2.3
-3,holdout,hedge,SLOT_READBACK,chắc được,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,2.9
-3,holdout,hedge,SLOT_READBACK,được nhưng để tôi xem đã,False,ASK_AGAIN,ASK_AGAIN,,True,False,False,False,,,,,,2.2
-3,holdout,slot_unsuitable,SLOT_READBACK,hôm đó tôi có việc bận,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,2.3
-3,holdout,slot_unsuitable,SLOT_READBACK,tôi phải đi làm hôm đó,True,RESCHEDULE,ASK_AGAIN,,False,False,False,False,,,,,,2.3
-3,holdout,slot_unsuitable,SLOT_READBACK,giờ đó sớm quá em,True,RESCHEDULE,NOT_UNDERSTOOD,,False,False,False,False,,,,,,2.3
-3,holdout,out_of_scope,SLOT_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,2.9
-3,holdout,out_of_scope,SLOT_READBACK,tôi đến muộn chút được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,True,False,False,False,,,,,,3.0
+repeat,split,group,question_id,transcript,needs_inference,expect_behaviour,observed_behaviour,transfer_reason,expect_transfer_reason,behaviour_ok,contract_ok,contract_errors,passed,unsafe_write,agree_reread,routed,semantic_status,semantic_kind,semantic_reason,semantic_intent,semantic_ms,elapsed_ms
+1,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.1
+1,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,timeout,,,,3511.7,3518.7
+1,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2569.7,2574.0
+1,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.3
+1,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3453.9,3460.2
+1,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2140.7,2146.4
+1,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2047.1,2054.1
+1,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.6
+1,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1823.1,1828.1
+1,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.9
+1,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.7
+1,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.6
+1,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.2
+1,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.8
+1,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.7
+1,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+1,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.2
+1,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.5
+1,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.9
+1,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.5
+1,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.3
+1,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.6
+1,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.0
+1,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.5
+1,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+1,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.0
+1,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.2
+1,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.2
+1,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.0
+1,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+1,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.1
+1,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+1,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.3
+1,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.6
+1,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.9
+1,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.7
+1,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.7
+1,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.9
+1,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.4
+1,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.5
+1,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.3
+1,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.9
+1,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.6
+1,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.8
+1,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.6
+1,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,15.6
+1,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.7
+1,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.1
+1,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.4
+1,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2010.1,2013.5
+1,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2255.7,2260.1
+1,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1745.6,1750.0
+1,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2180.6,2184.5
+1,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1856.8,1859.9
+1,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,NOT_UNDERSTOOD,,,False,True,,False,False,True,True,timeout,,,,3311.0,3313.8
+1,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1918.1,1922.5
+1,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,NOT_UNDERSTOOD,,,False,True,,False,False,True,True,timeout,,,,3339.5,3343.9
+1,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,2.9
+1,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.7
+1,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,2.2
+1,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,4.4
+1,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.6
+1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2175.9,2180.1
+1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,3259.8,3265.0
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2012.1,2019.0
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,1735.6,1740.6
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2238.5,2241.6
+1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2023.6,2027.4
+1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2313.1,2319.2
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1792.9,1797.3
+1,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1873.3,1878.2
+1,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,timeout,,,,3432.4,3438.5
+1,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2040.5,2044.4
+1,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1784.9,1788.1
+1,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,3135.6,3139.4
+1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,3159.1,3164.4
+1,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2044.7,2051.6
+1,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2340.2,2346.6
+1,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2343.8,2350.2
+1,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2954.9,2962.3
+1,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2344.4,2349.2
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2226.6,2232.7
+1,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2048.5,2054.7
+1,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2008.3,2016.5
+1,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,4.5
+1,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,COST,,2189.1,2196.4
+1,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1882.0,1888.0
+1,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2070.3,2076.1
+1,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2547.6,2554.9
+1,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1903.9,1914.3
+1,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2021.3,2026.5
+1,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2155.5,2162.5
+1,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,3164.5,3169.5
+1,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,3203.9,3210.3
+1,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,12.3
+1,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1992.1,1998.3
+1,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2046.9,2051.2
+1,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2064.7,2069.5
+1,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,3057.5,3060.7
+1,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+1,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1865.8,1870.7
+1,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2031.3,2037.3
+1,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1857.4,1860.8
+1,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2439.0,2443.6
+1,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3419.5,3427.3
+1,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1844.7,1847.7
+1,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,3571.8,3577.7
+1,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1944.1,1946.9
+1,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2066.1,2069.9
+1,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1912.5,1916.4
+1,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,CONFIRM,2231.2,2234.7
+1,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2290.4,2296.3
+1,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1822.3,1825.6
+1,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,TRANSFER,OUT_OF_SCOPE,,False,False,unexpected_transfer,False,False,False,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,2177.9,2184.9
+1,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1960.8,1964.3
+1,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1873.8,1878.6
+1,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1792.5,1798.2
+1,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,CANCEL,,,False,True,,False,False,False,True,accepted,CHANGE_INTENT,,CANCEL,2218.8,2224.9
+1,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1832.4,1836.7
+1,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1878.4,1885.4
+1,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1895.3,1899.5
+1,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,CONFIRM,2300.7,2304.7
+1,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2127.3,2130.8
+1,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,QUESTION,,,2169.2,2171.7
+1,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3401.9,3411.9
+1,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.2
+1,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1980.9,1987.3
+1,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1957.6,1961.9
+1,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.0
+1,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,2.6
+1,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,4.0
+1,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,4.1
+1,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,7.6
+1,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2047.0,2053.1
+1,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,2846.1,2852.8
+1,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,PATIENT_REQUEST,True,True,,True,False,False,False,,,,,,5.8
+1,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,CLINICAL_QUESTION,True,True,,True,False,False,False,,,,,,6.4
+1,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.1
+1,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.9
+1,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.6
+1,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.9
+1,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+1,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.9
+1,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,7.8
+1,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.5
+1,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,8.7
+1,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,11.2
+1,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.5
+1,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+1,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.0
+1,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.6
+1,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,9.9
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.5
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.3
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2101.9,2106.1
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,3288.7,3293.6
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,3.4
+1,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,7.3
+1,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,4.6
+1,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,4.8
+1,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,3.3
+1,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,3.4
+1,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,NOT_UNDERSTOOD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2067.6,2071.7
+1,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,2573.5,2578.5
+1,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2080.5,2083.9
+1,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,rejected,,,,2827.2,2831.8
+1,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2194.8,2199.3
+1,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,timeout,,,,3490.3,3503.1
+1,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2347.4,2352.6
+1,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2066.0,2068.8
+1,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,2403.5,2406.0
+1,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.5
+1,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,2.3
+1,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,1971.7,1976.7
+1,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,4.7
+1,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2430.6,2435.1
+1,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.0
+1,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.7
+1,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.9
+2,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.4
+2,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2250.8,2256.6
+2,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2139.8,2144.7
+2,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.1
+2,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2117.0,2119.9
+2,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1813.2,1817.5
+2,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2976.2,2979.9
+2,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.9
+2,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2267.6,2270.5
+2,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.5
+2,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,9.2
+2,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.6
+2,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,13.2
+2,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.7
+2,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.7
+2,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.7
+2,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+2,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,9.7
+2,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.1
+2,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,12.5
+2,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.9
+2,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.6
+2,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,8.4
+2,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.2
+2,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,10.7
+2,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.4
+2,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.4
+2,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+2,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.4
+2,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+2,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.4
+2,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,12.0
+2,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.0
+2,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.4
+2,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.7
+2,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.8
+2,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.9
+2,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.5
+2,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.6
+2,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.0
+2,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.3
+2,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.2
+2,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.6
+2,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,10.0
+2,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.5
+2,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.1
+2,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.8
+2,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.4
+2,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,8.1
+2,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1954.1,1958.3
+2,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1683.3,1688.8
+2,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1906.7,1911.1
+2,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1731.1,1736.8
+2,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,1893.3,1899.1
+2,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,CONFIRM,2153.6,2158.2
+2,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,,1945.3,1950.4
+2,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2122.1,2126.7
+2,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.0
+2,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.2
+2,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,4.2
+2,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,5.0
+2,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.5
+2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2088.1,2091.6
+2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2298.7,2303.5
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1935.8,1941.2
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1845.9,1849.3
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2208.7,2213.5
+2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2255.2,2260.5
+2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2246.3,2251.9
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2012.1,2015.7
+2,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2157.2,2160.5
+2,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2102.3,2106.2
+2,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2092.2,2098.4
+2,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2340.0,2344.7
+2,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2276.4,2281.2
+2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,3057.6,3061.0
+2,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2298.6,2304.0
+2,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2115.9,2120.1
+2,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1787.7,1791.8
+2,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1846.2,1850.5
+2,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1820.1,1823.1
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2253.9,2258.0
+2,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2216.8,2221.2
+2,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2044.7,2048.8
+2,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,4.4
+2,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,timeout,,,,3366.7,3373.8
+2,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2100.7,2104.4
+2,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2299.7,2303.5
+2,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1857.5,1861.4
+2,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1976.9,1982.7
+2,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1968.8,1972.2
+2,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2138.7,2144.3
+2,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2020.1,2023.4
+2,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,3013.5,3019.7
+2,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.2
+2,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1927.9,1930.7
+2,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2223.1,2227.3
+2,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3392.1,3397.5
+2,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2034.2,2038.2
+2,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.8
+2,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1791.0,1795.2
+2,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1773.7,1778.5
+2,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1952.2,1957.2
+2,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1849.3,1852.7
+2,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1804.1,1809.1
+2,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2210.9,2216.1
+2,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2230.8,2234.7
+2,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2173.8,2177.7
+2,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1745.8,1748.7
+2,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2306.0,2310.9
+2,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,,1898.8,1903.7
+2,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1968.3,1973.9
+2,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2010.6,2015.2
+2,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2037.3,2042.8
+2,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1825.6,1828.3
+2,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2004.5,2009.4
+2,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2177.4,2180.8
+2,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2298.1,2301.3
+2,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1923.8,1927.1
+2,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1805.2,1809.5
+2,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3413.1,3417.6
+2,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,,2095.6,2099.1
+2,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2462.3,2466.4
+2,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,QUESTION,,,1829.9,1833.9
+2,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,QUESTION,,,2001.4,2005.1
+2,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,7.8
+2,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2093.9,2097.4
+2,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1729.8,1733.5
+2,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,8.8
+2,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,2.6
+2,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,4.8
+2,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,2.6
+2,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,4.1
+2,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2339.1,2342.2
+2,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,2377.9,2383.4
+2,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,PATIENT_REQUEST,True,True,,True,False,False,False,,,,,,4.3
+2,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,CLINICAL_QUESTION,True,True,,True,False,False,False,,,,,,5.8
+2,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.2
+2,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.3
+2,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.1
+2,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.5
+2,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.9
+2,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+2,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.1
+2,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.4
+2,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.5
+2,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.7
+2,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.1
+2,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.9
+2,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.2
+2,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.9
+2,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.4
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.3
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,TRANSFER,OUT_OF_SCOPE,,False,False,unexpected_transfer,False,False,True,True,accepted,CHANGE_INTENT,,OUT_OF_SCOPE,1919.9,1923.8
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2498.9,2502.3
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,3.2
+2,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,4.6
+2,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,2.2
+2,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,4.2
+2,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,2.6
+2,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,4.9
+2,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,2125.6,2132.2
+2,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,1968.7,1971.4
+2,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2227.3,2230.5
+2,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2187.7,2190.8
+2,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2181.4,2186.2
+2,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1996.5,2001.1
+2,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,timeout,,,,3407.1,3411.5
+2,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,NOT_UNDERSTOOD,,,False,True,,False,False,False,True,accepted,INFORM_REASON,UNSPECIFIED,,2005.7,2008.2
+2,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1974.9,1977.5
+2,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.4
+2,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,4.5
+2,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,1799.7,1802.6
+2,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,2.4
+2,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2464.7,2468.8
+2,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.2
+2,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.0
+2,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+3,prompt,agree_attend,CONFIRM_READBACK,tôi sẽ có mặt,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+3,prompt,cannot_attend,CONFIRM_READBACK,dạ hôm đó tôi bận rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2550.0,2554.7
+3,prompt,cannot_attend,CONFIRM_READBACK,tuần đó tôi sẽ đi nước ngoài,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1850.6,1854.6
+3,prompt,out_of_scope,CONFIRM_READBACK,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.3
+3,prompt,unclear,CONFIRM_READBACK,hôm ấy tôi được nghỉ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1651.9,1655.3
+3,prompt,not_cancel,CONFIRM_READBACK,không hủy đâu em,False,REREAD,REREAD,,,True,True,,True,False,False,True,timeout,,,,3395.2,3399.3
+3,prompt,reason,ASK_INTENT,tôi sẽ đi khám bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2139.0,2143.1
+3,prompt,out_of_scope,CONFIRM_READBACK,lịch này tôi có đặt đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.5
+3,prompt,busy_now,CONFIRM_READBACK,tôi đang ở ngoài chợ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1703.3,1708.3
+3,holdout,agree,CONFIRM_READBACK,vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.6
+3,holdout,agree,CONFIRM_READBACK,dạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.0
+3,holdout,agree,CONFIRM_READBACK,ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.5
+3,holdout,agree,CONFIRM_READBACK,ờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.5
+3,holdout,agree,CONFIRM_READBACK,có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+3,holdout,agree,CONFIRM_READBACK,có ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+3,holdout,agree,CONFIRM_READBACK,dạ có,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.8
+3,holdout,agree,CONFIRM_READBACK,được em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,agree,CONFIRM_READBACK,dạ được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.8
+3,holdout,agree,CONFIRM_READBACK,được chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.4
+3,holdout,agree,CONFIRM_READBACK,ok,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+3,holdout,agree,CONFIRM_READBACK,ô kê em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.9
+3,holdout,agree,CONFIRM_READBACK,đồng ý,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,8.9
+3,holdout,agree,CONFIRM_READBACK,xác nhận,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.6
+3,holdout,agree,CONFIRM_READBACK,dạ đúng rồi em,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.5
+3,holdout,agree,CONFIRM_READBACK,được rồi được rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.9
+3,holdout,agree,CONFIRM_READBACK,ừ ừ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.9
+3,holdout,agree,CONFIRM_READBACK,vâng vâng,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,agree,CONFIRM_READBACK,"vâng, cảm ơn em",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,8.8
+3,holdout,agree,CONFIRM_READBACK,dạ vâng ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,agree,CONFIRM_READBACK,chắc chắn rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+3,holdout,agree,CONFIRM_READBACK,nhất định rồi,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+3,holdout,agree,CONFIRM_READBACK,đương nhiên,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,agree,CONFIRM_READBACK,không sao,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.6
+3,holdout,agree,CONFIRM_READBACK,không thành vấn đề,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.5
+3,holdout,agree,CONFIRM_READBACK,không có vấn đề gì,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.8
+3,holdout,agree,CONFIRM_READBACK,vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.6
+3,holdout,agree,CONFIRM_READBACK,da vang,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,3.5
+3,holdout,agree_attend,CONFIRM_READBACK,"Có, tôi đến được.",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,8.8
+3,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.5
+3,holdout,agree_attend,CONFIRM_READBACK,tôi sẽ đến đúng giờ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.7
+3,holdout,agree_attend,CONFIRM_READBACK,tôi đến được ạ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.5
+3,holdout,agree_attend,CONFIRM_READBACK,"vâng, hôm đó tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,6.3
+3,holdout,agree_attend,CONFIRM_READBACK,đến chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.5
+3,holdout,agree_attend,CONFIRM_READBACK,đi chứ,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.6
+3,holdout,agree_attend,CONFIRM_READBACK,"không hủy đâu, tôi vẫn đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,5.0
+3,holdout,agree_attend,CONFIRM_READBACK,"không đổi gì cả, tôi đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.6
+3,holdout,agree_attend,CONFIRM_READBACK,toi se den,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.2
+3,holdout,agree_keep,CONFIRM_READBACK,giữ nguyên lịch,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.3
+3,holdout,agree_keep,CONFIRM_READBACK,giữ lịch nhé,False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,7.1
+3,holdout,agree_attend,CONFIRM_READBACK,"hôm đó tôi nghỉ phép rồi, đi được",False,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2365.6,2370.9
+3,holdout,unclear,CONFIRM_READBACK,dạ vâng ạ tôi nhớ rồi,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1840.5,1846.0
+3,holdout,agree_implicit,CONFIRM_READBACK,hôm đó tôi qua sớm,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2309.9,2312.9
+3,holdout,agree_implicit,CONFIRM_READBACK,tôi sắp xếp được rồi em,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2026.9,2030.4
+3,holdout,agree_implicit,CONFIRM_READBACK,để hôm đó con tôi chở tôi qua,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,,2092.0,2095.5
+3,holdout,agree_implicit,CONFIRM_READBACK,lịch đó ổn em ạ,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,,1973.5,1977.6
+3,holdout,agree_implicit,CONFIRM_READBACK,ừ thế cũng được,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,,1802.0,1807.1
+3,holdout,agree_implicit,CONFIRM_READBACK,"hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,CONFIRM_ACTION,,,1825.8,1829.4
+3,holdout,refuse,CONFIRM_READBACK,không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,2.7
+3,holdout,refuse,CONFIRM_READBACK,dạ không,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,5.2
+3,holdout,refuse,CONFIRM_READBACK,thôi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.5
+3,holdout,refuse,CONFIRM_READBACK,sai rồi,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,3.7
+3,holdout,refuse,CONFIRM_READBACK,khong,False,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,2.2
+3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có việc bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2002.4,2008.1
+3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi có hẹn khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1975.3,1979.6
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi phải đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1824.0,1828.3
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1735.3,1739.6
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi vẫn đi làm bình thường hôm đó,True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2090.8,2097.9
+3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1997.3,2001.4
+3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công tác",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1833.0,1839.1
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1987.3,1990.6
+3,holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1973.4,1977.5
+3,holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1956.1,1960.5
+3,holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1985.3,1988.5
+3,prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1982.8,1986.3
+3,holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,1831.0,1835.2
+3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,1563.5,1567.1
+3,holdout,cannot_attend,CONFIRM_READBACK,toi se di cong tac,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2076.9,2080.1
+3,holdout,cannot_attend,CONFIRM_READBACK,hom do toi co viec ban,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2074.7,2078.0
+3,holdout,cannot_attend,CONFIRM_READBACK,"hôm đó con tôi thi, tôi phải đưa cháu đi",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1951.1,1956.3
+3,holdout,cannot_attend,CONFIRM_READBACK,sáng hôm đó tôi có ca trực,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1962.4,1968.5
+3,holdout,cannot_attend,CONFIRM_READBACK,cả tuần đó tôi ở quê ăn cưới,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1781.0,1786.1
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi chuyển vào Sài Gòn sống rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2339.2,2344.0
+3,holdout,cannot_attend,CONFIRM_READBACK,tôi đang nằm viện ở Huế,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2114.7,2118.9
+3,holdout,cannot_attend,CONFIRM_READBACK,bác sĩ ở viện tỉnh khám cho tôi rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2042.5,2045.6
+3,holdout,cannot_attend,CONFIRM_READBACK,"tôi hết đau rồi, chắc không cần nữa đâu",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,False,,,,,,5.6
+3,holdout,cannot_attend,CONFIRM_READBACK,"chi phí cao quá, đợt này tôi chưa khám được",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,COST,,1831.3,1834.6
+3,holdout,cannot_attend,CONFIRM_READBACK,"vâng, nhưng hôm đó tôi lại có lịch họp",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1970.0,1973.0
+3,holdout,cannot_attend,CONFIRM_READBACK,"dạ được, mà hôm đó tôi phải trông cháu",True,ASK_CHANGE_OR_CANCEL,REREAD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,1873.7,1877.0
+3,holdout,cannot_attend,CONFIRM_READBACK,"ok em, có điều hôm đó tôi đi Đà Nẵng",True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2059.0,2064.7
+3,holdout,cannot_attend,CONFIRM_READBACK,hom do toi phai di lam,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1904.5,1908.8
+3,holdout,unclear,CONFIRM_READBACK,tôi phải hỏi lại vợ tôi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1740.3,1746.4
+3,holdout,unclear,CONFIRM_READBACK,tôi được nghỉ hôm đó mà,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1924.3,1927.9
+3,holdout,unclear,CONFIRM_READBACK,hôm đó tôi rảnh,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2311.5,2317.4
+3,holdout,unclear,CONFIRM_READBACK,"tôi ở xa quá, đi được mất cả ngày",True,REREAD,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2465.7,2470.8
+3,holdout,out_of_scope,CONFIRM_READBACK,"dạ, tôi đang bận, gọi lại sau",False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.6
+3,holdout,unclear,CONFIRM_READBACK,vâng tôi nghe,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1909.4,1913.7
+3,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang lái xe",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,3189.1,3193.7
+3,holdout,busy_now,CONFIRM_READBACK,"vâng, tôi đang ở ngoài đường",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1815.3,1822.0
+3,holdout,unclear,CONFIRM_READBACK,tôi có đi Hà Nội hôm đó,True,REREAD|ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2063.8,2070.9
+3,holdout,out_of_scope,CONFIRM_READBACK,tôi không nhớ là có đặt lịch này,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.7
+3,holdout,hedge,CONFIRM_READBACK,chắc được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2846.6,2850.9
+3,holdout,hedge,CONFIRM_READBACK,chắc đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1979.5,1983.3
+3,holdout,hedge,CONFIRM_READBACK,chắc là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1864.8,1869.8
+3,holdout,hedge,CONFIRM_READBACK,hy vọng là được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1979.7,1985.4
+3,holdout,hedge,CONFIRM_READBACK,tôi cố gắng đến được,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1515.1,1518.9
+3,holdout,hedge,CONFIRM_READBACK,nếu rảnh thì tôi đến,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2155.3,2159.9
+3,holdout,hedge,CONFIRM_READBACK,ờ để xem,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2191.2,2195.7
+3,holdout,hedge,CONFIRM_READBACK,có lẽ vậy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1832.7,1837.6
+3,holdout,hedge,CONFIRM_READBACK,không biết nữa,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2346.6,2349.5
+3,holdout,hedge,CONFIRM_READBACK,chac duoc,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2077.1,2081.0
+3,holdout,hedge,CONFIRM_READBACK,được thì tôi đi,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,,2107.9,2112.4
+3,holdout,hedge,CONFIRM_READBACK,còn tùy sức khỏe em ạ,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2072.6,2076.4
+3,holdout,hedge,CONFIRM_READBACK,tôi tính rồi báo em sau,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2198.7,2203.3
+3,holdout,hedge,CONFIRM_READBACK,con tôi đưa đi thì tôi mới đi được,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2134.0,2138.0
+3,holdout,not_cancel,CONFIRM_READBACK,không cần hủy,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1734.6,1738.8
+3,holdout,not_cancel,CONFIRM_READBACK,không cần hủy em ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1966.2,1970.1
+3,holdout,not_cancel,CONFIRM_READBACK,đừng hủy nhé,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1869.2,1873.9
+3,holdout,not_cancel,CONFIRM_READBACK,không cần đổi đâu,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1820.0,1823.1
+3,holdout,filler,CONFIRM_READBACK,à,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,1639.5,1642.4
+3,holdout,filler,CONFIRM_READBACK,ạ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2701.2,2705.8
+3,holdout,filler,CONFIRM_READBACK,ừm,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2058.6,2062.5
+3,holdout,time,CONFIRM_READBACK,tôi sẽ đến lúc 10 giờ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CONFIRM_ACTION,,,1861.1,1866.4
+3,holdout,time,CONFIRM_READBACK,"vâng, 3 giờ chiều nhé",False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,CONFIRM,2020.0,2028.3
+3,holdout,question,CONFIRM_READBACK,được không em,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,QUESTION,,,1636.9,1640.5
+3,prompt,question,CONFIRM_READBACK,mấy giờ nhỉ,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,QUESTION,,,2044.4,2047.8
+3,holdout,out_of_scope,CONFIRM_READBACK,tôi đến trễ không sao chứ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,question,CONFIRM_READBACK,dạ em ơi cho chị hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2196.8,2202.1
+3,holdout,question,CONFIRM_READBACK,à mà tôi muốn hỏi chút,False,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2241.1,2248.6
+3,holdout,out_of_scope,CONFIRM_READBACK,địa chỉ ở đâu em nhỉ,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.9
+3,holdout,cancel,CONFIRM_READBACK,không đến được,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,3.9
+3,holdout,cancel,CONFIRM_READBACK,hôm đó tôi không đi được đâu,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,6.2
+3,holdout,cancel,CONFIRM_READBACK,hủy giúp tôi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,2.6
+3,holdout,reschedule,CONFIRM_READBACK,vâng nhưng tôi muốn đổi giờ,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,5.3
+3,holdout,reschedule,CONFIRM_READBACK,"hôm đó không được, hôm sau thì được",True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2128.8,2134.7
+3,holdout,reschedule,CONFIRM_READBACK,tuần sau cho tôi khám được không em,True,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,RESCHEDULE,2300.9,2305.8
+3,holdout,exception,CONFIRM_READBACK,cho tôi gặp nhân viên,False,TRANSFER,TRANSFER,PATIENT_REQUEST,PATIENT_REQUEST,True,True,,True,False,False,False,,,,,,5.8
+3,holdout,exception,CONFIRM_READBACK,"vâng, à mà tôi đau ngực",False,TRANSFER,TRANSFER,CLINICAL_QUESTION,CLINICAL_QUESTION,True,True,,True,False,False,False,,,,,,5.3
+3,holdout,exception,CONFIRM_READBACK,bảo hiểm có chi trả không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.0
+3,holdout,exception,CONFIRM_READBACK,có mất phí không em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.8
+3,holdout,exception,CONFIRM_READBACK,khám lần này hết bao nhiêu tiền em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.3
+3,holdout,out_of_scope,CONFIRM_READBACK,cho tôi xin địa chỉ phòng khám,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.4
+3,holdout,out_of_scope,CONFIRM_READBACK,gửi xe ở đâu em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.9
+3,holdout,out_of_scope,CONFIRM_READBACK,tôi đến muộn 15 phút có được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,6.0
+3,holdout,out_of_scope,CONFIRM_READBACK,tôi đi trễ một chút được không em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.2
+3,holdout,out_of_scope,CONFIRM_READBACK,em gọi lại cho tôi lúc khác nhé,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.8
+3,holdout,out_of_scope,CONFIRM_READBACK,lát gọi lại giúp tôi,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.8
+3,holdout,out_of_scope,CONFIRM_READBACK,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+3,holdout,out_of_scope,CONFIRM_READBACK,chồng tôi đi thay được không,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,7.6
+3,holdout,out_of_scope,CONFIRM_READBACK,dia chi o dau em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.5
+3,holdout,out_of_scope,CONFIRM_READBACK,ai đặt lịch này cho tôi vậy,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,7.1
+3,holdout,out_of_scope,CONFIRM_READBACK,tôi có đặt lịch nào đâu,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,5.7
+3,holdout,out_of_scope,CONFIRM_READBACK,em nhắn tin lịch khám qua điện thoại cho tôi nhé,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.4
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi biết địa chỉ rồi, tôi sẽ đến",False,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,4.8
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,"tôi sẽ đến đúng giờ, không trễ đâu",True,CONFIRM,CONFIRM,,,True,True,,True,False,False,False,,,,,,9.6
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,vợ tôi sẽ đưa tôi đi,True,CONFIRM,REREAD,,,False,True,,False,False,True,True,accepted,AMBIGUOUS,,,2116.8,2122.9
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,tôi đang họp,True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,AMBIGUOUS,,,2136.4,2139.8
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,toi muon doi sang chieu,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,3.4
+3,holdout,out_of_scope_trap,CONFIRM_READBACK,"hôm đó tôi đến muộn mất, đổi sang chiều được không",False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,5.7
+3,holdout,keep,ASK_INTENT,giữ nguyên,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,5.0
+3,holdout,keep,ASK_INTENT,giữ lịch,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,4.2
+3,holdout,keep,ASK_INTENT,không đổi không hủy gì cả,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,5.1
+3,holdout,keep,ASK_INTENT,thôi tôi vẫn đến,False,REREAD,REREAD,,,True,True,,True,False,False,False,,,,,,3.6
+3,holdout,keep,ASK_INTENT,thôi cứ để như cũ đi em,True,REREAD,NOT_UNDERSTOOD,,,False,True,,False,False,False,True,accepted,AMBIGUOUS,,,2189.3,2192.3
+3,holdout,keep,ASK_INTENT,"tôi đi được, em cứ để lịch đấy",True,REREAD,REREAD,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CONFIRM,2162.9,2166.8
+3,holdout,reason,ASK_INTENT,hôm đó tôi bận,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1874.5,1877.8
+3,holdout,reason,ASK_INTENT,hôm đó tôi sẽ đi công tác,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2335.4,2339.1
+3,holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1975.8,1979.9
+3,holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,1918.7,1921.9
+3,holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,WENT_ELSEWHERE,,2210.5,2214.4
+3,holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2064.8,2068.1
+3,holdout,reason,ASK_INTENT,tôi khỏi rồi em,True,ASK_CHANGE_OR_CANCEL,ASK_CHANGE_OR_CANCEL,,,True,True,,True,False,False,True,accepted,INFORM_REASON,NO_LONGER_NEEDED,,2499.8,2503.6
+3,holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,3.7
+3,holdout,cancel,ASK_INTENT,hủy đi,False,CANCEL,CANCEL,,,True,True,,True,False,False,False,,,,,,4.2
+3,holdout,cancel,ASK_INTENT,lịch đó em xóa đi,True,CANCEL,CANCEL,,,True,True,,True,False,False,True,accepted,CHANGE_INTENT,,CANCEL,1932.1,1937.2
+3,holdout,reschedule,ASK_INTENT,đổi sang buổi chiều,False,RESCHEDULE,RESCHEDULE,,,True,True,,True,False,False,False,,,,,,4.0
+3,holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,True,RESCHEDULE,ASK_CHANGE_OR_CANCEL,,,False,True,,False,False,False,True,accepted,INFORM_REASON,PATIENT_UNAVAILABLE,,2641.9,2647.4
+3,holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,7.2
+3,holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,False,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.9
+3,holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,True,TRANSFER,TRANSFER,OUT_OF_SCOPE,OUT_OF_SCOPE,True,True,,True,False,False,False,,,,,,4.2

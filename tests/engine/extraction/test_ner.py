@@ -219,7 +219,7 @@ def test_settings_reject_invalid_timeout(timeout):
 
 
 @pytest.mark.parametrize("success", [True, False])
-@pytest.mark.parametrize("transcript", [TRANSCRIPT, "Nguyễn Văn A cảm ơn em"])
+@pytest.mark.parametrize("transcript", [TRANSCRIPT, "Nguyễn Văn A đúng rồi"])
 def test_orchestrator_uses_normalized_name_or_reprompts(success, transcript, monkeypatch):
     adapter, clients = adapter_for(
         lambda _: httpx.Response(200, json=completion()) if success else httpx.Response(503)

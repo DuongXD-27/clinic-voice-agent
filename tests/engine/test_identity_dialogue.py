@@ -263,7 +263,16 @@ def test_identity_question_at_dob_step_reintroduces_without_asking_name_again(di
 
 
 @pytest.mark.parametrize(
-    "name", ["NGuyễn văn A nhé em", "nguyen van a nhe em", "Nguyễn Văn A nhé em, sinh ngày " + DOB]
+    "name",
+    [
+        "NGuyễn văn A nhé em",
+        "nguyen van a nhe em",
+        "Nguyễn Văn A nhé em, sinh ngày " + DOB,
+        "Nguyễn Văn A ạ em",
+        "Nguyễn Văn A cảm ơn em",
+        "Họ tên của tôi là Nguyễn Văn A",
+        "Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A",
+    ],
 )
 def test_name_with_polite_address_verifies_without_spurious_mismatch(name) -> None:
     lines = [name] if DOB in name else [name, DOB]
