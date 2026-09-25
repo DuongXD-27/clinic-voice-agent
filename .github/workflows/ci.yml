@@ -182,6 +182,10 @@ jobs:
           UI_DIST_DIR: ui/dist
           REDIS_URL: redis://127.0.0.1:6379/0
           TRACE_ENABLED: "false"
+          # E2E chạy offline, chỉ-luật: runner không có OPENAI_API_KEY, mà config mặc định có thể
+          # bật LLM (pull_request chạy trên commit merge với main).
+          NAME_FALLBACK_PROVIDER: none
+          SEMANTIC_FALLBACK_ENABLED: "false"
         run: |
           nohup python -m uvicorn callbot.transports.http.main:app --host 127.0.0.1 --port 8000             > uvicorn.log 2>&1 &
           for _ in $(seq 1 60); do
