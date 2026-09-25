@@ -1,0 +1,142 @@
+.conversation {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-height: 360px;
+  max-height: min(56vh, 560px);
+  padding: var(--space-5);
+  overflow-y: auto;
+  background: var(--surface-muted);
+}
+
+.empty {
+  margin: auto;
+  max-width: 320px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: 86%;
+}
+
+.bot {
+  align-self: flex-start;
+}
+
+.caller {
+  flex-direction: row-reverse;
+  align-self: flex-end;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin-bottom: 20px;
+  border-radius: 50%;
+  background: var(--brand-50);
+  color: var(--brand-600);
+}
+
+.caller .avatar {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+.avatar svg {
+  width: 16px;
+  height: 16px;
+}
+
+.content {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bot .bubble {
+  border: 1px solid var(--border);
+  border-bottom-left-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.caller .bubble {
+  border-bottom-right-radius: var(--radius-sm);
+  background: var(--brand-600);
+  color: var(--text-on-brand);
+}
+
+.meta {
+  margin: 0 var(--space-1);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+}
+
+.caller .meta {
+  text-align: right;
+}
+
+.audio {
+  display: block;
+  width: min(100%, 300px);
+  height: 36px;
+  margin-top: var(--space-2);
+}
+
+.typing {
+  display: flex;
+  gap: 4px;
+  padding: var(--space-4);
+}
+
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+  animation: bounce 1s infinite ease-in-out;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .row {
+    max-width: 96%;
+  }
+}

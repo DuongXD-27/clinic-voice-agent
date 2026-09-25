@@ -1,0 +1,89 @@
+.view {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.waterfall {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.track {
+  height: 12px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--text-subtle);
+}
+
+.barTurn {
+  background: var(--chart-turn);
+}
+
+.barStt {
+  background: var(--chart-stt);
+}
+
+.barCore {
+  background: var(--chart-core);
+}
+
+.barTts {
+  background: var(--chart-tts);
+}
+
+.duration {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--space-3);
+}
+
+.stage {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.stage header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
+.stage dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.stage dt {
+  color: var(--text-subtle);
+}
+
+.stage dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

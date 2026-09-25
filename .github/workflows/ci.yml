@@ -6,6 +6,8 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "ui/**"
+      - "scripts/export_openapi.py"
       - "config/**"
       - "pyproject.toml"
       - "Makefile"
@@ -18,6 +20,8 @@ on:
     paths:
       - "src/**"
       - "tests/**"
+      - "ui/**"
+      - "scripts/export_openapi.py"
       - "config/**"
       - "pyproject.toml"
       - "Makefile"
@@ -77,4 +81,125 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           overwrite: true
+          retention-days: 14
+
+  # UI (ui/): lint, format, type, test, build. Chạy song song với job Python; CD chỉ deploy khi
+  # cả workflow xanh. Type sinh từ ui/openapi.json phải khớp file đã commit — job Python kiểm
+  # openapi.json khớp backend (`make check`), job này kiểm schema.d.ts khớp openapi.json.
+  ui:
+    name: UI lint, test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generated API types match openapi.json
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/lib/api/schema.d.ts
+
+      - name: Lint, format check, typecheck and test
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+  # Luồng thật qua UI: build UI, chạy uvicorn trên clinic giả (sim) + Redis, Playwright điều khiển
+  # Chromium. Chạy mọi lần CI vì hai kịch bản đi xuyên engine hội thoại, không chỉ phần UI.
+  e2e:
+    name: UI end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        # Bot kiểm cấu hình Redis lúc khởi động (maxmemory + noeviction, session-operations.md).
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      E2E_BASE_URL: http://127.0.0.1:8000
+      E2E_API_KEY: sk_e2e
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+
+      - name: Configure Redis like production
+        # redis-cli chạy trong chính container service, không phụ thuộc runner có cài hay không.
+        run: |
+          docker exec ${{ job.services.redis.id }} redis-cli config set maxmemory 64mb
+          docker exec ${{ job.services.redis.id }} redis-cli config set maxmemory-policy noeviction
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install backend
+        run: python -m pip install -e ".[dev,speech]"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install and build UI
+        working-directory: ui
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx playwright install --with-deps chromium
+
+      - name: Start backend
+        env:
+          CLINIC_BACKEND: sim
+          BOT_API_KEYS: sk_e2e
+          DEMO_CLINIC_ADMIN_ENABLED: "true"
+          UI_DIST_DIR: ui/dist
+          REDIS_URL: redis://127.0.0.1:6379/0
+          TRACE_ENABLED: "false"
+        run: |
+          nohup python -m uvicorn callbot.transports.http.main:app --host 127.0.0.1 --port 8000             > uvicorn.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS "$E2E_BASE_URL/ready" && exit 0
+            sleep 1
+          done
+          cat uvicorn.log
+          exit 1
+
+      - name: Run Playwright
+        working-directory: ui
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: |
+            ui/playwright-report/
+            ui/test-results/
+            uvicorn.log
           retention-days: 14

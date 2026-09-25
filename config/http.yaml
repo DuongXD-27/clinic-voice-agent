@@ -11,6 +11,10 @@ clinic_sim_dataset: listing3
 # Chỉ khi sim — edge case dựng sẵn, cách nhau dấu phẩy (xem src/clinic_mock_sim/README.md), vd slot_race
 clinic_sim_scenario: ""
 
+# Thư mục bản build UI (Vite, `npm run build` trong ui/) phục vụ tại /ui. Rỗng = không mount.
+# Image Docker đặt UI_DIST_DIR=/app/ui. Local: UI_DIST_DIR=ui/dist (tính từ thư mục chạy uvicorn).
+ui_dist_dir: ""
+
 # Internal read-only dashboard. Override with OBSERVABILITY_API_ENABLED and
 # OBSERVABILITY_TRACE_DIR. If trace_dir is empty, TRACE_JSONL_DIR is used.
 observability:

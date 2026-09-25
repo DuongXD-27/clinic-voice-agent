@@ -84,12 +84,10 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_demo_page_is_served(client: TestClient) -> None:
-    response = client.get("/demo/")
-    assert response.status_code == 200
-    assert "Vinmec Callbot Console" in response.text
-    assert "/v1/calls" in response.text
-    assert "Extraction:" in response.text
+def test_legacy_demo_page_redirects_to_new_ui(client: TestClient) -> None:
+    response = client.get("/demo/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/ui/call"
 
 
 def test_extraction_debug_does_not_credit_ner_for_a_semantic_reading() -> None:

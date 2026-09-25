@@ -1,0 +1,71 @@
+.composer {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.send {
+  min-width: 128px;
+}
+
+.record {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 84px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.recording {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.dot {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-subtle);
+}
+
+.recording .dot {
+  background: var(--danger);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.recordText {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.recordText small {
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview {
+  width: min(100%, 260px);
+  height: 36px;
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.35);
+    opacity: 0.6;
+  }
+}
