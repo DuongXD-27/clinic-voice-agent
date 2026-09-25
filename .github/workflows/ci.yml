@@ -129,7 +129,8 @@ jobs:
         image: redis:7.4-alpine
         ports:
           - 6379:6379
-        # Bot kiểm cấu hình Redis lúc khởi động (maxmemory + noeviction, session-operations.md).
+        # Bot kiểm cấu hình Redis lúc khởi động (không persist + maxmemory + noeviction,
+        # session-operations.md).
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 5s
@@ -145,6 +146,7 @@ jobs:
       - name: Configure Redis like production
         # redis-cli chạy trong chính container service, không phụ thuộc runner có cài hay không.
         run: |
+          docker exec ${{ job.services.redis.id }} redis-cli config set save ""
           docker exec ${{ job.services.redis.id }} redis-cli config set maxmemory 64mb
           docker exec ${{ job.services.redis.id }} redis-cli config set maxmemory-policy noeviction
 

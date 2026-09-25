@@ -2,15 +2,7 @@ import type { Overview } from "./types";
 import { formatCount, formatDuration, formatRate } from "./format";
 
 /** Thẻ KPI ở trang tổng quan; bấm vào để mở phần chi tiết tương ứng (`?metric=`). */
-const METRICS = [
-  "turn",
-  "stt",
-  "core",
-  "tts",
-  "error",
-  "slow_turn",
-  "empty_transcript",
-] as const;
+const METRICS = ["turn", "stt", "core", "tts", "error", "slow_turn", "empty_transcript"] as const;
 
 export type Metric = (typeof METRICS)[number];
 

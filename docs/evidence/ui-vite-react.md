@@ -89,6 +89,7 @@ Python chạy trong venv có đúng phiên bản CI (FastAPI 0.141.1, Pydantic 2
 
 ## Ghi chú
 
+- **CI lần đầu đỏ (commit `3b1f08f`), đã sửa:** job `ui` — `overview.ts` sai Prettier sau khi bỏ `export`; job `e2e` — Redis service để `save` mặc định nên bot từ chối khởi động (`save must be empty`), thêm `config set save ""`. Đã tái hiện và chạy lại trên clone sạch (không `.env`, Redis `redis:7.4-alpine` mặc định): `npm run check`, `npm run build`, e2e 2/2 pass.
 - **Test CallBridge chưa chạy ở đâu cả:** `tests/transports/livekit/test_call_bridge_mapping.py` bị `importorskip("livekit")`; máy dev và job CI (`.[dev,speech]`) đều chưa cài `livekit`, nên hai test transcript mới cũng bị bỏ qua. Nên thêm `.[livekit]` vào job test CI.
 - **LiveKit chưa ghi trace:** worker tạo orchestrator không kèm tracer, nên cuộc gọi LiveKit không hiện trên Observability; chỉ đường HTTP có dữ liệu.
 - **Observability API không có auth:** chỉ bật ở local (`docker-compose.yml`); production giữ tắt.
