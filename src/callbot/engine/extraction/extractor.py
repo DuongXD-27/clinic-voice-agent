@@ -17,9 +17,11 @@ Thứ tự trong một lượt:
 """
 
 import logging
+from dataclasses import replace
 from typing import Optional
 
 from callbot.engine.extraction.agreement import extract_agreement
+from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import read_dob
@@ -48,7 +50,7 @@ from callbot.engine.extraction.schema import (
     QuestionId,
     TurnContext,
 )
-from callbot.engine.extraction.semantic import SemanticExtractor
+from callbot.engine.extraction.semantic import ReplyKind, SemanticExtractor, SemanticOutcome
 from callbot.engine.extraction.semantic_router import (
     RouteReason,
     build_semantic_context,
@@ -122,6 +124,65 @@ def _resolve_refusal_inside_reason(
     return Field.nothing(Agreement.UNCLEAR)
 
 
+# Sau merge, AGREE nâng từ model chỉ giữ được khi lượt vẫn là câu trả lời thuần cho câu hỏi hủy
+_PROMOTION_INTENTS = frozenset({Intent.NONE, Intent.CANCEL})
+
+
+def _keep_cancel_threshold(
+    rule: Field[Agreement],
+    result: ExtractionResult,
+    ctx: TurnContext,
+    outcome: Optional[SemanticOutcome],
+    *,
+    promotion_enabled: bool,
+) -> ExtractionResult:
+    """SF-05: ở câu xác nhận hủy, AGREE chỉ đến từ luật toàn câu (`agreement._cancel_leaves_content`),
+    hoặc — khi bật `CANCEL_SEMANTIC_CONFIRM_ENABLED` — từ đề xuất của model ĐÃ KIỂM CHỨNG.
+
+    Chốt này giữ bất biến ở một chỗ cho mọi nhánh hợp nhất (model lỗi, timeout, CONFIRM_ACTION sai),
+    kể cả khi bảng quyền `merge_semantic` đổi sau này. Không tin nhãn route hay kết quả merge: mọi
+    điều kiện nâng được tính lại từ transcript, outcome và `TurnContext` (evidence T-05, đợt 3).
+    """
+    if (
+        result.question_id is not QuestionId.CANCEL_RECONFIRM
+        or result.agreement.value is not Agreement.AGREE
+        or rule.value is Agreement.AGREE
+    ):
+        return result
+    rejection = _promotion_rejection(result, ctx, outcome) if promotion_enabled else "disabled"
+    if promotion_enabled:
+        # Không log transcript hay span — chỉ mã điều kiện
+        logger.info(
+            "Cancel promotion: %s",
+            "accepted" if rejection is None else f"rejected_{rejection}",
+            extra={"cancel_promotion": rejection or "accepted"},
+        )
+    if rejection is None:
+        return result
+    return replace(
+        result,
+        agreement=Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=result.agreement.span),
+    )
+
+
+def _promotion_rejection(
+    result: ExtractionResult, ctx: TurnContext, outcome: Optional[SemanticOutcome]
+) -> Optional[str]:
+    """Năm điều kiện của plan §3: `None` khi được nâng, ngược lại là mã điều kiện không đạt."""
+    if outcome is None or outcome.reply_kind is not ReplyKind.CONFIRM_ACTION:
+        return "outcome"
+    if not outcome.reply_span or result.agreement.span != outcome.reply_span:
+        return "outcome"
+    if ctx.question_id is not QuestionId.CANCEL_RECONFIRM or ctx.question_turn != ctx.turn - 1:
+        return "stale"
+    if (
+        result.intent.value not in _PROMOTION_INTENTS
+        or result.clinical.value is not ClinicalLevel.NONE
+    ):
+        return "context"
+    return promotion_rejection(result.transcript, outcome.reply_span)
+
+
 def _within(outer: str, inner: str) -> bool:
     return f" {inner} " in f" {outer} "
 
@@ -132,12 +193,15 @@ class InformationExtractor:
         fallback: Optional[FallbackExtractor] = None,
         name_fallback: bool = False,
         semantic: Optional[SemanticExtractor] = None,
+        cancel_semantic_confirm: bool = False,
     ) -> None:
         self._fallback = fallback
         # Factory bật slot filling họ tên theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
         self._name_fallback = name_fallback
         # Factory bật tầng ngữ nghĩa theo SEMANTIC_FALLBACK_ENABLED; mặc định bật, thiếu OPENAI_API_KEY thì None.
         self._semantic = semantic
+        # CANCEL_SEMANTIC_CONFIRM_ENABLED (mặc định tắt): cho model đề xuất xác nhận hủy có kiểm chứng
+        self._cancel_semantic_confirm = cancel_semantic_confirm
 
     def extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
@@ -226,6 +290,7 @@ class InformationExtractor:
             agreement=agreement,
             cancel_reason=cancel_reason,
             direction=ctx.direction,
+            cancel_promotion=self._cancel_semantic_confirm and self._semantic is not None,
         )
         result = ExtractionResult(
             turn=ctx.turn,
@@ -246,12 +311,17 @@ class InformationExtractor:
             if route_reason is RouteReason.CLINICAL_UNRESOLVED:
                 return merge_semantic(result, None, route_reason, ())
             return result
-        return self._apply_semantic(ctx, result, route_reason)
+        merged, outcome = self._apply_semantic(ctx, result, route_reason)
+        return _keep_cancel_threshold(
+            agreement, merged, ctx, outcome, promotion_enabled=self._cancel_semantic_confirm
+        )
 
     def _apply_semantic(
         self, ctx: TurnContext, result: ExtractionResult, route_reason: RouteReason
-    ) -> ExtractionResult:
-        """Một lần gọi model cho cả lượt; kết quả hợp nhất theo bảng quyền ở `semantic.merge`."""
+    ) -> tuple[ExtractionResult, Optional[SemanticOutcome]]:
+        """Một lần gọi model cho cả lượt; kết quả hợp nhất theo bảng quyền ở `semantic.merge`.
+
+        Trả kèm outcome để chốt SF-05 tự kiểm chứng, không tin kết quả merge."""
         assert self._semantic is not None
         context = build_semantic_context(ctx, result, route_reason)
         try:
@@ -259,7 +329,7 @@ class InformationExtractor:
         except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
             logger.warning("Tầng ngữ nghĩa lỗi, dùng kết quả thận trọng", exc_info=False)
             outcome = None
-        return merge_semantic(result, outcome, route_reason, context.allowed_intents)
+        return merge_semantic(result, outcome, route_reason, context.allowed_intents), outcome
 
     # --- Từng trường có tuyến sau ------------------------------------------------
 
