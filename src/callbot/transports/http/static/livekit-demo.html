@@ -4,7 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Vinmec Callbot · LiveKit Streaming Demo</title>
-    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+    <!-- Ghim phiên bản: mặc định thu âm (khử vọng/khử nhiễu/voiceIsolation) quyết định chất
+         lượng audio vào ASR, không để bản phát hành mới đổi ngầm. -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js"></script>
     <style>
       :root {
         color-scheme: light;
@@ -232,7 +234,17 @@
         try {
           const { url, token, room_name: roomName } = await fetchToken();
 
-          room = new LivekitClient.Room();
+          // Tường minh thay vì dựa vào mặc định của SDK. voiceIsolation (trình duyệt hỗ trợ
+          // thì dùng, không thì bỏ qua) giảm giọng người xung quanh ngay tại nguồn.
+          room = new LivekitClient.Room({
+            audioCaptureDefaults: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              voiceIsolation: true,
+              channelCount: 1,
+            },
+          });
           room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => {
             if (track.kind === LivekitClient.Track.Kind.Audio) {
               track.attach(ui.botAudio);
