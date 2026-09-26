@@ -62,28 +62,36 @@ có barge-in (`state == INTERRUPTION_CANDIDATE`), kèm replay `pre_roll` (buffer
 `InterruptionController` tự xác nhận qua `on_partial_transcript`, chặn ở đây sẽ
 deadlock (ASR không có gì decode → không bao giờ confirm được).
 
+Khi frame KHÔNG được đưa vào ASR ở nhánh này (bot vừa bắt đầu nói, hoặc candidate bị
+bác), `_fanout()` gửi `AsrSegmentEnd.DISCARD` để ASR bỏ phần câu đang dở — TurnController
+cũng bỏ đoạn này khi bot dứt lời. Ngoại lệ: `state == INTERRUPTED` (ngắt lời đã xác nhận,
+bot chưa dừng hẳn) — phần người dùng đã nói được giữ để chốt thành turn. Xem mục 10.6.
+
 ### 2.2. Nhánh B — bot không nói (turn-taking bình thường)
 
 Mỗi frame đi qua theo thứ tự:
 
-1. **VAD PreRollBuffer** (`_vad_preroll`, luôn bật, không opt-in) — ghi mọi frame vào
-   ring buffer 10 frame (300ms). Khi `TurnController.has_active_vad_candidate` chuyển
-   `False → True` (VAD chính vừa báo `speech_start`), buffer được flush thẳng vào
-   `asr_queue` — bù lại audio bị "trễ" trước ngưỡng nhạy của VAD.
-2. **Speech Admission** (tuỳ chọn, `SPEECH_ADMISSION_ENABLED`) — classifier riêng
+1. **Speech Admission** (tuỳ chọn, `SPEECH_ADMISSION_ENABLED`) — classifier riêng
    (`admission_classifier`) tự phân loại `is_speech`, tính SNR qua `NoiseTracker.peek()`
    (không cập nhật floor ngay), rồi `SpeechAdmission.evaluate()` quyết định ADMIT/REJECT.
-   Nếu REJECT: frame vào `_admission_preroll` (buffer riêng, 20 frame ≈ 600ms). Nếu
-   ADMIT lần đầu (transition REJECT→ADMIT): flush `_admission_preroll` trước, rồi mới
-   gửi frame hiện tại.
-3. Nếu Admission tắt: frame đi thẳng `asr_queue`, không qua bước 2.
+   Nếu REJECT: frame vào `_admission_preroll` (20 frame ≈ 600ms). Nếu ADMIT lần đầu
+   (transition REJECT→ADMIT): flush `_admission_preroll` trước, rồi mới gửi frame hiện
+   tại.
+2. Nếu Admission tắt: frame đi thẳng `asr_queue`.
 
-**2 buffer preroll này độc lập nhau, không dùng chung:**
+**Mỗi frame tới `asr_queue` đúng một lần, đúng thứ tự thời gian.** `_admission_preroll`
+là bộ đệm duy nhất ở tầng pipeline. Âm tiết đầu câu mà VAD nhận muộn được
+`ZipFormerASR.stream()` tự giữ bằng pre-speech 300 ms của nó.
 
-| Buffer | Bù cái gì | Bật khi nào |
-|---|---|---|
-| `_vad_preroll` | Audio TRƯỚC `speech_start` (VAD chưa kịp nhận ra) | Luôn bật |
-| `_admission_preroll` | Audio bị Admission REJECT (SNR/duration chưa đủ) SAU `speech_start` | Chỉ khi `SPEECH_ADMISSION_ENABLED=true` |
+Khi Admission kết thúc một đoạn đã ADMIT (ADMIT→REJECT sau `end_silence_ms` im lặng),
+`_fanout()` gửi `AsrSegmentEnd.FINALIZE` để ASR chốt câu ngay. ASR tự chốt bằng khoảng
+lặng trong các frame nó nhận, nhưng Admission ngừng gửi đúng ở ngưỡng đó nên ASR luôn
+thiếu (đo được 570/600 ms). Xem mục 10.6.
+
+Trước 25/09 còn một `_vad_preroll` flush 300 ms khi VAD chính báo `speech_start`. Nó giữ
+chính các frame đã gửi (Admission tắt) hoặc đang nằm trong `_admission_preroll`
+(Admission bật), nên ASR nhận đầu câu hai lần và có lúc đảo thứ tự (`[90..99]` rồi
+`[83..]`). Đã gỡ bỏ — số liệu trong `docs/evidence/livekit-noise-robustness-2026-09-25.md`.
 
 Song song, `vad_queue` nhận **mọi frame không điều kiện** — VAD chính không bao giờ bị
 Admission lọc, để nó luôn thấy đủ dữ liệu quyết định `speech_start`/`speech_end` đúng.
@@ -103,14 +111,17 @@ asr_task    = _drain_asr() # tiêu thụ asr_queue → TurnController + Interrup
   `speech_start`/`speech_end` cho `InterruptionController` nếu có cấu hình.
 - **`_drain_asr()`**: mỗi `TranscriptEvent` (partial/final) từ ASR (`ZipFormerASR`) —
   nếu có `evidence_tracker`/`noise_tracker` cấu hình (Turn Validator bật), tính
-  `StabilityVerdict` (CONVERGING/OSCILLATING/UNKNOWN) và cập nhật vào cả
-  `TurnController` lẫn `InterruptionController` qua `on_evidence_updated()`, rồi mới
-  gọi `on_transcript_event()`/`on_partial_transcript()`.
+  `StabilityVerdict` (CONVERGING/OSCILLATING/UNKNOWN) và cập nhật bằng chứng qua
+  `on_evidence_updated()`, rồi mới gọi `on_transcript_event()`/`on_partial_transcript()`.
+  - `TurnController` nhận SNR của **cả đoạn nói gần nhất** (`UtteranceEvidenceTracker`,
+    giữ tối đa 3 s sau frame speech cuối), so với nền nhiễu riêng của tracker (trung vị
+    3 s frame không-speech, bù độ trễ Silero 300 ms — mục 10.7). `InterruptionController`
+    vẫn nhận SNR theo frame mới nhất với nền EMA của `NoiseTracker` như trước.
+  - Sau mỗi final, `evidence_tracker.reset()`: độ ổn định chỉ xét trong một câu.
 
 3 task này **không đồng bộ tuyệt đối theo frame** — `_drain_vad()` có thể xử lý event
-trễ tối đa 1 frame (30ms) so với lúc `_fanout()` đọc `has_active_vad_candidate`, đây là
-đánh đổi có chủ đích (thêm `sleep(0)` ép đồng bộ đã thử và gây tác dụng phụ dây chuyền
-lên timing các nơi khác, xem comment trong `pipeline.py::_fanout()`).
+trễ tối đa 1 frame (30ms) so với lúc `_fanout()` đọc `has_active_vad_candidate`. Cờ này
+giờ chỉ dùng cho log "VAD/Admission disagree", không quyết định frame nào tới ASR.
 
 ---
 
@@ -154,6 +165,7 @@ File: `src/speech/asr/admission.py`.
 
 ```
 is_speech=False và chưa admitted  → REJECT (no_speech)
+already_admitted=True, im lặng liên tục >= end_silence_ms → REJECT (no_speech) — hết đoạn
 already_admitted=True             → ADMIT (ok)   ← giữ nguyên suốt câu, kể cả SNR tụt
 SNR < min_snr_db (mặc định 6.0)   → REJECT (low_snr)
 speech_ms_so_far < min_speech_ms (150ms) → REJECT (too_short)
@@ -189,7 +201,14 @@ còn lại (thường là UNKNOWN — chưa đủ dữ liệu)             → W
 `StabilityVerdict` (`src/speech/asr/evidence.py`, `TranscriptEvidenceTracker`) so sánh
 các partial transcript liên tiếp: `CONVERGING` nếu text đang dài dần và giống chuỗi
 trước (`rapidfuzz.fuzz.ratio ≥ 60`); `OSCILLATING` nếu 1 text ngắn (≤2 từ) lặp lại xen
-kẽ với text ngắn khác trong cửa sổ 5 event gần nhất.
+kẽ với text ngắn khác trong cửa sổ 5 event gần nhất. Cửa sổ được reset sau mỗi final —
+trước 25/09 nó kéo dài qua nhiều câu, nên chuỗi trả lời thật "vâng" → "có" → "vâng" bị
+coi là dao động.
+
+`noise_evidence` là SNR của cả câu vừa nói (`UtteranceEvidenceTracker`). Trước 25/09 là
+SNR của frame mới nhất — luôn là im lặng lúc ASR final tới, nên mọi câu ≤ 2 từ ("Dạ
+không", "Có") bị DROP dù nói rõ (đo được snr = −13,6 dB cho "DẠ KHÔNG" trên audio sạch).
+Trước 26/09 nền nhiễu còn bị phần đầu câu (Silero báo trễ) đẩy lên — mục 10.7.
 
 **Lưu ý quan trọng đã xác nhận qua log thật**: luật DROP theo SNR chỉ áp dụng cho text
 **ngắn** (≤2 từ). Text dài (5+ từ) dù SNR rất thấp (ví dụ -25dB) vẫn có thể ACCEPT nếu
@@ -274,10 +293,6 @@ worker.py::entrypoint() ── TurnController(validator=bundle.validator) ──
 | `INTERRUPTION_MIN_SNR_DB` | *(trống = tắt)* | Ngưỡng SNR riêng cho barge-in, không phân biệt độ dài text |
 | `VAD_PROVIDER` | `energy` | `energy` \| `webrtc` \| `silero` — VAD chính dùng cho turn-taking |
 
-`_vad_preroll` (mục 2.2, bù audio trước `speech_start`) **không có cờ bật/tắt** — luôn
-hoạt động, không cần benchmark riêng vì không đổi hành vi ADMIT/REJECT, chỉ bù lại
-audio đã bị bỏ lỡ.
-
 ### Trạng thái `.env` local hiện tại (máy dev, không phải production)
 
 ```
@@ -339,7 +354,9 @@ khi ADMIT dao động 240-510ms tuỳ SNR đầu câu — buffer 240ms bị trà
 Đây là bug khác hẳn 10.3 — không liên quan Admission. Xác nhận bằng cách decode trực
 tiếp audio dump thật qua `ZipFormerASR._decode_stream_pcm()`: decode đúng cửa sổ VAD
 (`speech_start` → `speech_end`) ra thiếu chữ đầu; decode thêm 300ms audio trước đó ra
-đúng. Sửa bằng `_vad_preroll` (mục 2.2, mục 9).
+đúng. Từng sửa bằng `_vad_preroll`; ngày 25/09 bộ đệm này bị gỡ vì gây nhân đôi/đảo thứ
+tự audio (mục 2.2). Âm tiết đầu câu giờ do pre-speech 300 ms trong `ZipFormerASR.stream()`
+giữ lại.
 
 **Thử nghiệm sai đã bị revert**: lần đầu sửa bug này, code cho phép frame đầu tiên của
 candidate bypass hẳn Admission + set `already_admitted=True` giả — khiến Admission gần
@@ -350,6 +367,43 @@ bù preroll, không đụng quyết định Admission cho các frame sau.
 ### 10.5. Echo giọng bot bị nhận nhầm thành barge-in
 Xem mục 7, bug #5. Sửa bằng `on_bot_started_speaking(bot_text)` + fuzzy match, và
 `interruption_min_snr_db` (không phân biệt độ dài text, khác `TurnValidator`).
+
+### 10.6. Câu dở nằm lại trong buffer ASR — lượt giả và câu bị ghép (26/09)
+Cuộc gọi thật: lượt 2 lặp nguyên văn lượt 1 ("ANH TÊN LÀ NGUYỄN VĂN A NHÁ"), bot trả lời
+lượt giả đó và nói đè lên câu ngày sinh; lượt 3 thành "ANH SINH ANH SINH NGÀY ...". Decode
+audio dump cho thấy người dùng nói ngày sinh 2 lần, mỗi lần một "anh sinh".
+
+Nguyên nhân: ASR chỉ chốt câu khi thấy đủ `end_silence_ms` im lặng trong các frame nó
+nhận, còn `_fanout()` ngừng đưa frame ở 2 chỗ mà không báo: (1) Admission hết đoạn đúng
+ở ngưỡng đó — ASR chỉ thấy 570 ms, câu nằm lại rồi thành final giả khi preroll của câu sau
+được flush; (2) bot bắt đầu nói giữa câu — "anh sinh" nằm lại rồi ghép vào câu sau. Code
+trước 25/09 cũng sai trên cùng file dump ("ANH ANH SINH ...", lượt giả "ANH ANH").
+
+Sửa: `AsrSegmentEnd` (`speech/types.py`) — `_fanout()` gửi FINALIZE (mục 2.2) hoặc DISCARD
+(mục 2.1). ZipFormer xử lý cả hai; ElevenLabs chỉ FINALIZE (commit) — audio đã gửi lên
+server không rút lại được. Phát lại file dump: đúng 3 lượt ở cả 4 kịch bản (Admission
+bật/tắt × có/không bot nói đè). Test: `tests/speech/test_pipeline_asr_segments.py`, 3 test
+marker trong `tests/speech/test_zipformer_stream.py`.
+
+Còn lại: ngắt lời đã xác nhận mà người dùng ngừng nói đúng lúc bot dừng (Admission bật,
+chưa ADMIT lại) — phần ngắt lời vẫn có thể nằm lại buffer. Chưa gặp thực tế, chưa xử lý.
+
+### 10.7. Câu trả lời ngắn bị Turn Validator bỏ vì nền nhiễu bị đầu câu đẩy lên (26/09)
+Cuộc gọi thật: câu "hủy lịch" (ASR ra "THÙY LINH") bị DROP với snr −3,2 dB, trong khi
+Admission đo 17,7 dB. Silero báo speech trễ ~270 ms (`min_speech_duration` 0,25 s mặc định
+của sherpa-onnx) đúng phần to nhất của câu; `NoiseTracker.observe()` cập nhật floor bằng các
+frame đó (145 → 1337). Trên 350 đoạn của các bản ghi thật, 70 đoạn bị tính < 3 dB dù đều to
+hơn nền ≥ 10 dB.
+
+Sửa trong `UtteranceEvidenceTracker` (chỉ đường TurnController; Admission và Interruption
+không đổi): frame không-speech chỉ vào nền sau 300 ms — nếu Silero báo speech trước đó thì
+chúng là đầu câu, tính vào năng lượng câu; nền = trung vị 3 s frame không-speech gần nhất.
+Đã so với B (EMA hoãn), C (phân vị 20) — phân vị thấp làm nhiễu dao động luôn "to hơn nền",
+mất tác dụng chặn ảo giác. Đo trên dữ liệu biết chắc thật/giả
+(`eval/noise-bench/validator_snr_eval.py`, ngưỡng 3 dB): câu thật ngắn bị bỏ ở sạch/15/8 dB
+37/217 → 0/217, ở 3 dB 29/70 → 6/70; đoạn chỉ có nhiễu bị chặn 24/91 → 20/91. Test:
+`test_loud_onset_reported_late_by_vad_counts_as_speech_not_noise` và 2 test canh chừng
+trong `tests/speech/audio/test_noise_tracker.py`.
 
 ---
 
@@ -379,23 +433,20 @@ cũng không phải VAD "kẹt" theo nghĩa logic sai.
 Audio thô
     │
     ▼
-[Lớp 1] VAD PreRollBuffer          — bù audio trước speech_start (luôn bật)
+[Lớp 1] Speech Admission (opt-in)  — chặn sớm noise SNR thấp trước khi vào ASR
+    │                                 (bộ đệm preroll duy nhất, mỗi frame tới ASR 1 lần)
+    ▼
+ASR (ZipFormer, chunked-offline decode, pre-speech 300 ms giữ âm tiết đầu câu)
     │
     ▼
-[Lớp 2] Speech Admission (opt-in)  — chặn sớm noise SNR thấp trước khi vào ASR
+[Lớp 2] is_meaningful_text()       — lọc filler word, chuỗi chỉ dấu câu
     │
     ▼
-ASR (ZipFormer, chunked-offline decode)
+[Lớp 3] min_speech_ms + post_bot_guard — lọc tiếng động ngắn/echo ngay sau bot dứt lời
     │
     ▼
-[Lớp 3] is_meaningful_text()       — lọc filler word, chuỗi chỉ dấu câu
-    │
-    ▼
-[Lớp 4] min_speech_ms + post_bot_guard — lọc tiếng động ngắn/echo ngay sau bot dứt lời
-    │
-    ▼
-[Lớp 5] TurnValidator (opt-in)     — DROP theo dao động transcript (OSCILLATING) hoặc
-    │                                 SNR thấp+text ngắn; ACCEPT khi hội tụ (CONVERGING)
+[Lớp 4] TurnValidator (opt-in)     — DROP theo dao động transcript trong câu (OSCILLATING)
+    │                                 hoặc SNR cả câu thấp + text ngắn; ACCEPT khi hội tụ
     ▼
 UserTurnCompleted → CallOrchestrator
 
@@ -406,7 +457,7 @@ Riêng nhánh barge-in (InterruptionController), độc lập hoàn toàn:
 [Lớp B] is_meaningful_text()
 [Lớp C] So khớp echo với câu bot đang đọc (fuzzy match)
 [Lớp D] SNR riêng, không phân biệt độ dài text (opt-in)
-[Lớp E] TurnValidator (opt-in, dùng chung instance với Lớp 5 nếu cùng bật)
+[Lớp E] TurnValidator (opt-in, dùng chung instance với Lớp 4 nếu cùng bật)
 ```
 
 Mỗi lớp giải quyết đúng 1 loại lỗi cụ thể đã quan sát được qua log thật — không có lớp
