@@ -2,7 +2,7 @@
 # Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. SEMANTIC_FALLBACK_ENABLED=false).
 
 # Name slot filling fallback: none | openai | gemini | groq | openrouter (cấu hình ở llm.yaml)
-name_fallback_provider: none
+name_fallback_provider: openai
 
 # Tầng ngữ nghĩa (T-05 §8), luôn OpenAI. Bật theo quyết định owner 22-09-2026; thiếu
 # OPENAI_API_KEY thì tự chạy chỉ-luật, không chặn khởi động.

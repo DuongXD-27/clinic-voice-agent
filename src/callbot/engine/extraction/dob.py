@@ -39,7 +39,7 @@ from callbot.engine.extraction.identity import (
 from callbot.engine.extraction.schema import INVALID, DobValue, Field, Provenance
 from callbot.engine.extraction.spoken_numbers import (
     is_number_token,
-    parse_number,
+    parse_spoken_number,
     restore_number_words,
     spoken_digits,
 )
@@ -318,7 +318,7 @@ def _date_extent(tokens: list[str]) -> tuple[int, int]:
 
 def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> tuple[DobValue, int, int]:
     day_tokens = _number_run_before(tokens, at)
-    day = parse_number(day_tokens) if day_tokens else None
+    day = parse_spoken_number(day_tokens) if day_tokens else None
     lo = at - len(day_tokens)
     if day is None or not 1 <= day <= 31:
         return INVALID, lo, at + 1
@@ -328,7 +328,7 @@ def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> tuple[D
     candidates: set[date] = set()
     saw_invalid = False
     for split in range(1, min(len(after), 3) + 1):
-        month = parse_number(after[:split])
+        month = parse_spoken_number(after[:split])
         if month is None or not 1 <= month <= 12:
             continue
         rest = after[split:]
@@ -382,7 +382,7 @@ def _resolve_date(day: int, month: int, year_tokens: list[str], today: date) -> 
             return INVALID
         return _checked(day, month, int(raw), today)
 
-    year = parse_number(year_tokens)
+    year = parse_spoken_number(year_tokens)
     if year is None:
         return None
     if year < 100:
