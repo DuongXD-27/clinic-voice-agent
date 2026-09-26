@@ -181,7 +181,10 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
       return { ...state, audioBlocked: action.blocked };
 
     case "transcript": {
-      if (state.phase !== "connected" && state.phase !== "reconnecting") return state;
+      // Nhận cả khi connecting: bot chào ngay khi mình vào room, lúc trình duyệt còn đang xin
+      // quyền mic (chưa "connected"). connecting luôn bắt đầu với transcript rỗng nên không lẫn
+      // cuộc gọi cũ.
+      if (state.phase === "idle") return state;
       const { line } = action;
       const next = { ...state, transcript: [...state.transcript, line] };
       if (line.role !== "bot") return next;

@@ -97,3 +97,26 @@ Python chạy trong venv có đúng phiên bản CI (FastAPI 0.141.1, Pydantic 2
 - **TypeScript ghim `~5.9`:** `typescript-eslint` 8.70 chỉ hỗ trợ `<6.1`, `openapi-typescript` 7 cần `^5`.
 - **Máy dev nên cập nhật Python deps** (`pip install -U -e ".[dev,speech]"`): FastAPI 0.116 sinh `openapi.json` hơi khác bản 0.141 của CI nên `make check` báo lệch.
 - **Production chưa đổi:** chưa deploy. Trên EC2 còn thiếu `TTS_PROVIDER=vbee` trong `/opt/callbot/.env` (worker production crash vì OpenAI TTS 403) — việc riêng, chờ người vận hành.
+
+## Sửa sau review (2026-09-26)
+
+| Lỗi | Sửa | Test (đỏ trên code cũ, xanh sau khi sửa) |
+| --- | --- | --- |
+| `/ui/livekit` mất câu chào của bot: worker gửi transcript lượt 0 khi trình duyệt còn đang xin quyền mic (pha `connecting`), reducer bỏ qua | `liveKitReducer` nhận transcript ở mọi pha trừ `idle` (`connecting` luôn bắt đầu với transcript rỗng) | `giữ câu chào bot gửi khi trình duyệt còn đang bật mic` trong `session.test.ts` |
+| Rời `/ui/livekit` khi đang chờ token: cleanup chạy trước khi tạo `Room`, sau đó room vẫn được tạo, mic vẫn bật, không ai ngắt | `useLiveKitCall` đếm lượt kết nối (`attemptRef`); cleanup tăng bộ đếm, `connect()` kiểm sau mỗi `await` và tự ngắt room | `rời trang khi đang chờ token: không vào room, không bật mic` trong `LiveKitPage.test.tsx` |
+| Bấm Ghi âm hai lần khi hộp xin quyền còn mở: mở hai stream, stream đầu không bao giờ tắt; `clear()`/rời trang lúc đang xin quyền cũng để lại mic bật | `useRecorder` chặn `start` chồng nhau; `clear()` và unmount huỷ lần start đang chờ, stream vừa mở bị tắt | `useRecorder.test.ts` (3 test, hook trước đó chưa có test) |
+| Test observability đỏ ngẫu nhiên khi chạy cả bộ (`findByText` chờ mặc định 1 giây) | `configure({ asyncUtilTimeout: 5000 })` trong `src/test/setup.ts` | `npm run check` chạy lại 3 lần: pass cả 3 |
+
+`npm run check` (ui/): Pass — 184 tests, 20 files.
+
+### RAM khi phục vụ UI
+
+Đo trên máy dev, uvicorn thật chạy riêng một process chỉ mount `ui/dist` (`mount_ui`), client ở process khác, tính RSS của process server:
+
+| Thời điểm | RSS |
+| --- | --- |
+| Vừa khởi động | 46.7 MiB |
+| Sau 4050 request tuần tự (27 file: index, route SPA, mọi asset) | 47.2 MiB (+0.5) |
+| 200 request file lớn nhất (`LiveKitPage-*.js`, 520 KB), 50 đồng thời | đỉnh 53.9 MiB, sau đó 51.6 MiB |
+
+RAM đi ngang, không rò: `StaticFiles` đọc file từ đĩa theo từng khối, không giữ nội dung trong RAM. Phần tăng khi có đợt request đồng thời là bộ đệm kết nối. Production 2 worker nên tính tối đa khoảng 10–15 MiB lúc cao điểm. Build UI chạy trên GitHub runner nên Node không tốn RAM của EC2. (Lần đo đầu bằng `TestClient` cho +45 MiB: client và app chạy chung một process nên số đó gồm cả bộ nhớ phía client, không phản ánh server; đo tách process như trên thì không thấy.)

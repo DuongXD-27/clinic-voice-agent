@@ -28,6 +28,10 @@ export function useRecorder() {
   const [state, setState] = useState<RecorderState>({ status: "idle" });
   const session = useRef<Session | null>(null);
   const previewUrl = useRef<string | null>(null);
+  // Lần start đang chờ quyền mic / nạp worklet. Tăng `attempt` (clear, rời trang) để lần đó
+  // tự tắt mic khi xong, thay vì để lại một stream không ai giữ.
+  const starting = useRef(false);
+  const attempt = useRef(0);
 
   const releasePreview = useCallback(() => {
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
@@ -39,16 +43,32 @@ export function useRecorder() {
     if (!("mediaDevices" in navigator)) {
       throw new Error("Trình duyệt không hỗ trợ thu microphone (cần HTTPS hoặc localhost).");
     }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-    });
-    const context = new AudioContext();
+    // Bấm Ghi âm lần hai khi hộp xin quyền còn mở: bỏ qua, không mở stream thứ hai.
+    if (starting.current || session.current) return;
+    starting.current = true;
+    const mine = ++attempt.current;
+    let stream: MediaStream;
+    let context: AudioContext;
     try {
-      await context.audioWorklet.addModule(workletUrl);
-    } catch (error) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+      context = new AudioContext();
+      try {
+        await context.audioWorklet.addModule(workletUrl);
+      } catch (error) {
+        for (const track of stream.getTracks()) track.stop();
+        void context.close();
+        throw error;
+      }
+    } finally {
+      starting.current = false;
+    }
+    if (mine !== attempt.current) {
+      // clear() hoặc rời trang trong lúc chờ: tắt mic vừa mở.
       for (const track of stream.getTracks()) track.stop();
       void context.close();
-      throw error;
+      return;
     }
     const source = context.createMediaStreamSource(stream);
     // Không có output: node là điểm cuối nên vẫn được xử lý mà không phát ngược ra loa.
@@ -89,6 +109,7 @@ export function useRecorder() {
   }, []);
 
   const clear = useCallback(() => {
+    attempt.current += 1;
     if (session.current) release(session.current);
     session.current = null;
     releasePreview();
@@ -98,6 +119,7 @@ export function useRecorder() {
   // Rời trang khi đang ghi: tắt mic và giải phóng URL preview.
   useEffect(
     () => () => {
+      attempt.current += 1;
       if (session.current) release(session.current);
       session.current = null;
       releasePreview();

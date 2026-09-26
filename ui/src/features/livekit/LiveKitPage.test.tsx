@@ -293,4 +293,28 @@ describe("LiveKitPage", () => {
     // Không có handler /livekit/token: nếu có request, MSW làm test lỗi.
     expect(await screen.findByText("Cuộc gọi outbound cần Appointment ID.")).toBeInTheDocument();
   });
+
+  it("rời trang khi đang chờ token: không vào room, không bật mic", async () => {
+    let releaseToken: () => void = () => undefined;
+    const tokenRequested = new Promise<void>((requested) => {
+      server.use(
+        http.post("/livekit/token", async () => {
+          requested();
+          await new Promise<void>((resolve) => {
+            releaseToken = resolve;
+          });
+          return HttpResponse.json(TOKEN);
+        }),
+      );
+    });
+    const { unmount } = render(<LiveKitPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" }));
+    await tokenRequested;
+    unmount();
+    releaseToken();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(livekit.FakeRoom.instances).toHaveLength(0);
+  });
 });

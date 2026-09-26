@@ -183,6 +183,18 @@ describe("transcript", () => {
 
     expect(liveKitReducer(initialSession, action)).toBe(initialSession);
   });
+
+  it("giữ câu chào bot gửi khi trình duyệt còn đang bật mic (chưa connected)", () => {
+    const state = run(
+      { type: "connecting", step: "Đang bật microphone…" },
+      { type: "transcript", line: bot(0, "Xin chào"), at: 1 },
+      { type: "connected", roomName: "web-1", botPresent: true, at: 2 },
+    );
+
+    expect(state.phase).toBe("connected");
+    expect(state.transcript.map((line) => line.text)).toEqual(["Xin chào"]);
+    expect(state.botState).toBe("AWAITING_INTENT");
+  });
 });
 
 describe("describeConnection", () => {

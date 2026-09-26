@@ -13,6 +13,9 @@ import { parseTranscript, TRANSCRIPT_TOPIC } from "./model/transcript";
 export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
   const [session, dispatch] = useReducer(liveKitReducer, initialSession);
   const roomRef = useRef<Room | null>(null);
+  // Tăng khi rời trang: lần connect đang dở (chờ token, vào room, xin quyền mic) biết mình đã
+  // bị huỷ, tự ngắt room thay vì để mic bật và bot nói tiếp trong một room không ai thấy.
+  const attemptRef = useRef(0);
 
   const connect = useCallback(
     async (config: LiveKitConfig) => {
@@ -21,18 +24,24 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
         dispatch({ type: "notice", notice: { tone: "error", text: invalid } });
         return;
       }
+      const attempt = ++attemptRef.current;
+      const cancelled = () => attempt !== attemptRef.current;
       dispatch({ type: "connecting", step: "Đang lấy token…" });
+      let room: Room | null = null;
       try {
         const { url, token, room_name: roomName } = await requestToken(toTokenRequest(config));
-        const room = new Room();
+        if (cancelled()) return;
+        room = new Room();
         roomRef.current = room;
         subscribe(room, dispatch, audio);
 
         dispatch({ type: "connecting", step: "Đang vào room…" });
         await room.connect(url, token);
+        if (cancelled()) return;
         await room.startAudio();
         dispatch({ type: "connecting", step: "Đang bật microphone…" });
         await room.localParticipant.setMicrophoneEnabled(true);
+        if (cancelled()) return;
         dispatch({
           type: "connected",
           roomName,
@@ -40,12 +49,18 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
           at: Date.now(),
         });
       } catch (error) {
+        if (cancelled()) return;
         // Bỏ listener trước khi ngắt để sự kiện Disconnected không ghi đè thông báo lỗi.
-        const room = roomRef.current;
         roomRef.current = null;
         room?.removeAllListeners();
         void room?.disconnect();
         dispatch({ type: "failed", message: describe(error), at: Date.now() });
+      } finally {
+        // Đã rời trang giữa chừng: cleanup có thể đã chạy trước khi room này được tạo.
+        if (cancelled() && room) {
+          room.removeAllListeners();
+          void room.disconnect();
+        }
       }
     },
     [audio],
@@ -77,6 +92,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
 
   useEffect(
     () => () => {
+      attemptRef.current += 1;
       const room = roomRef.current;
       roomRef.current = null;
       room?.removeAllListeners();
