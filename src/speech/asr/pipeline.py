@@ -14,11 +14,11 @@ from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.streaming import StreamingVAD, split_frames
 from speech.audio.codec import to_sample_rate
 from speech.audio.loader import load_from_url
-from speech.audio.noise_tracker import NoiseTracker
+from speech.audio.noise_tracker import NoiseTracker, UtteranceEvidenceTracker
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
-from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
+from speech.types import NARROWBAND_RATE, AsrSegmentEnd, AudioSegment, Transcript
 
 _QUEUE_DONE = object()
 _DISAGREEMENT_LOG_INTERVAL_S = 10.0
@@ -39,7 +39,6 @@ class STTPipeline:
         admission: Optional[SpeechAdmission] = None,
         admission_classifier: Optional[FrameClassifier] = None,
         admission_preroll_frames: int = 20,
-        vad_preroll_frames: int = 10,
     ) -> None:
         self._asr = asr
         self._vad = vad
@@ -71,18 +70,17 @@ class STTPipeline:
         # PreRollBuffer (xem docstring speech/asr/admission.py): bù lại đúng phần audio
         # "trễ" trong lúc Admission còn REJECT (chưa đủ SNR/duration) — không có buffer thì
         # ASR luôn mất khoảng min_speech_ms đầu câu, kể cả khi Admission quyết định đúng.
+        #
+        # Đây là bộ đệm DUY NHẤT ở tầng pipeline: mỗi frame tới asr_queue đúng một lần,
+        # đúng thứ tự thời gian. Từng có thêm một `_vad_preroll` flush khi VAD chính báo
+        # speech_start — nó giữ CÙNG các frame đã được gửi (Admission tắt) hoặc đang nằm
+        # trong bộ đệm này (Admission bật), nên ASR nhận đầu câu hai lần và có lúc đảo thứ
+        # tự ([90..99] rồi [83..]). Đo trên eval/noise-bench, audio sạch: "A LÔ" ->
+        # "A LÔ A LÔ", "TÔI LÀ ĐỖ ĐỨC DŨNG" -> "DŨNG". Âm tiết đầu câu mà VAD
+        # nhận muộn đã được ZipFormerASR.stream() giữ lại bằng pre-speech riêng của nó.
         self._admission_preroll = (
             PreRollBuffer(admission_preroll_frames) if admission is not None else None
         )
-        # VAD PreRollBuffer — KHÁC admission_preroll (chỉ bù frame bị Admission REJECT):
-        # bù audio TRƯỚC CẢ speech_start, luôn ghi mọi frame bất kể VAD/Admission nói gì.
-        # Bug thật đã gặp (xác nhận qua LIVEKIT_DEBUG_DUMP_AUDIO + decode trực tiếp
-        # ZipFormerASR): "Tôi tên là Nguyễn Văn A" -> "TÊN LÀ NGUYỄN VĂN A" dù Admission
-        # ADMIT ngay từ speech_start (không REJECT gì) — chữ "Tôi" phát âm nhẹ/lướt nằm
-        # TRƯỚC thời điểm CHÍNH Silero VAD (main VAD) mới nhận ra là speech, không phải
-        # lỗi Admission. Không opt-in như admission_preroll: đây là giới hạn độ nhạy VAD
-        # cơ bản, áp dụng bất kể admission có cấu hình hay không.
-        self._vad_preroll = PreRollBuffer(vad_preroll_frames)
 
     def transcribe_turn(
         self, text: Optional[str], audio_url: Optional[str], silence_ms: int
@@ -146,19 +144,40 @@ class STTPipeline:
         admitted_nonspeech_ms = 0.0
         currently_admitted = False
         latest_noise_evidence = None
-        had_active_vad_candidate = False
+        # TurnValidator đọc SNR của CẢ câu vừa nói, không phải frame mới nhất (luôn là im
+        # lặng lúc ASR final tới) — xem UtteranceEvidenceTracker. InterruptionController vẫn
+        # nhận evidence theo frame như trước.
+        utterance_tracker = UtteranceEvidenceTracker() if noise_tracker is not None else None
+        latest_utterance_evidence = None
         last_disagreement_log_at: float | None = None
+        # ASR tự chốt câu bằng khoảng lặng trong các frame NÓ nhận; mỗi khi _fanout ngừng
+        # đưa frame, phải báo tường minh để câu dở không nằm lại trong buffer ASR (xem
+        # docstring AsrSegmentEnd). True = đã gửi frame từ lần báo gần nhất.
+        asr_segment_open = False
+
+        async def _send_to_asr(frame: bytes) -> None:
+            nonlocal asr_segment_open
+            await asr_queue.put(frame)
+            asr_segment_open = True
+
+        async def _end_asr_segment(kind: AsrSegmentEnd) -> None:
+            nonlocal asr_segment_open
+            if asr_segment_open:
+                await asr_queue.put(kind)
+                asr_segment_open = False
 
         async def _fanout() -> None:
             nonlocal was_candidate, admitted_speech_ms, admitted_nonspeech_ms, currently_admitted
-            nonlocal latest_noise_evidence, had_active_vad_candidate
-            nonlocal last_disagreement_log_at
+            nonlocal latest_noise_evidence, latest_utterance_evidence, last_disagreement_log_at
             try:
                 async for frame in frames:
                     await vad_queue.put(frame)
                     if noise_tracker is not None:
                         is_speech_for_evidence = noise_classifier.is_speech(frame)
                         latest_noise_evidence = noise_tracker.observe(frame, is_speech_for_evidence)
+                        latest_utterance_evidence = utterance_tracker.observe(
+                            latest_noise_evidence, is_speech_for_evidence
+                        )
                     if controller.is_bot_speaking:
                         # Turn trước đã kết thúc; không mang trạng thái Admission
                         # sang đoạn audio/echo trong lúc bot đang phát TTS.
@@ -185,53 +204,36 @@ class STTPipeline:
                             # tại — an toàn vì is_bot_speaking vẫn chặn TurnController
                             # chốt turn thật, audio này chỉ phục vụ việc CONFIRM barge-in.
                             if not was_candidate:
+                                # Phần còn trong ASR là audio TRƯỚC khi bot nói, không
+                                # thuộc lần ngắt lời này.
+                                await _end_asr_segment(AsrSegmentEnd.DISCARD)
                                 for buffered in pre_roll:
-                                    await asr_queue.put(buffered)
+                                    await _send_to_asr(buffered)
                                 pre_roll.clear()
                                 was_candidate = True
-                            await asr_queue.put(frame)
+                            await _send_to_asr(frame)
                         else:
                             # Chưa có dấu hiệu gì (hoặc candidate đã bị bác bỏ) — giữ
                             # echo tiềm năng trong pre-roll có giới hạn, không đưa vào
                             # ASR để không tốn compute decode noise/echo thuần tuý.
                             was_candidate = False
                             pre_roll.append(frame)
+                            # Bot vừa bắt đầu nói, hoặc candidate bị bác: TurnController
+                            # cũng bỏ đoạn này khi bot dứt lời. Không bỏ lúc INTERRUPTED —
+                            # đó là câu ngắt lời đã xác nhận, được giữ để chốt thành turn.
+                            # Bug thật: bot nói đè giữa câu, "ANH SINH" còn lại trong ASR
+                            # bị ghép vào câu sau thành "ANH SINH ANH SINH NGÀY ...".
+                            if (
+                                interruption is None
+                                or interruption.state != InterruptionState.INTERRUPTED
+                            ):
+                                await _end_asr_segment(AsrSegmentEnd.DISCARD)
                         continue
 
                     pre_roll.clear()
                     was_candidate = False
-                    # VAD PreRollBuffer — luôn ghi TRƯỚC khi biết candidate hiện tại có
-                    # active hay không, độc lập với Admission bật/tắt (xem docstring
-                    # __init__::_vad_preroll). Transition False->True: flush audio ĐÃ QUA
-                    # (trước speech_start) thẳng vào asr_queue — không thể "chạy lại"
-                    # Admission cho quá khứ một cách có ý nghĩa. CHỈ bù phần preroll này;
-                    # KHÔNG bypass Admission cho frame hiện tại hay các frame sau đó — thử
-                    # nghiệm ban đầu (bypass + already_admitted=True) khiến Admission gần
-                    # như mất tác dụng bất cứ khi nào VAD chính tự tin là speech, kể cả khi
-                    # VAD sai (đúng kịch bản Admission sinh ra để chặn) — đã bỏ.
-                    #
-                    # `has_active_vad_candidate` đọc ở đây có thể TRỄ ĐÚNG 1 FRAME so với
-                    # lúc TurnController thực sự cập nhật (_drain_vad() là task riêng, chỉ
-                    # được lên lịch chạy khi _fanout() nhường CPU qua 1 `await` nào đó —
-                    # `vad_queue.put()` ở đầu vòng lặp không đảm bảo _drain_vad() kịp xử lý
-                    # xong TRƯỚC khi dòng này chạy). Chủ ý KHÔNG thêm `await asyncio.sleep(0)`
-                    # để ép đồng bộ tuyệt đối — đã thử, gây thay đổi timing dây chuyền phá
-                    # nhiều test khác dựa trên nhịp hiện có (nhánh is_bot_speaking đã có
-                    # sleep(0) riêng, không dùng chung). Hệ quả chấp nhận được: frame ĐÚNG
-                    # LÚC speech_start có thể vẫn bị coi "chưa active" và vào vad_preroll,
-                    # được bù ở lượt flush kế tiếp (frame sau) — trễ 1 frame (30ms), không
-                    # mất audio.
-                    is_vad_candidate_now = controller.has_active_vad_candidate
-                    if is_vad_candidate_now and not had_active_vad_candidate:
-                        for buffered in self._vad_preroll.flush():
-                            await asr_queue.put(buffered)
-                    elif not is_vad_candidate_now:
-                        # Chưa có candidate (hoặc vừa reset) — giữ frame trong buffer
-                        # phòng khi candidate mới xuất hiện ngay sau đó.
-                        self._vad_preroll.push(frame)
-                    had_active_vad_candidate = is_vad_candidate_now
                     if self._admission is None or self._noise_tracker is None:
-                        await asr_queue.put(frame)
+                        await _send_to_asr(frame)
                         continue
                     is_speech = self._admission_classifier.is_speech(frame)
                     # Đo trước khi cập nhật floor. Một âm tiết đầu câu có thể rất lớn
@@ -291,6 +293,12 @@ class STTPipeline:
                             evidence.snr_db,
                             admitted_speech_ms,
                         )
+                    if currently_admitted and not decision.admit:
+                        # Admission kết thúc đoạn sau end_silence_ms im lặng — cùng ngưỡng
+                        # ASR cần để tự chốt, nên ASR luôn thiếu (đo được 570/600 ms): câu
+                        # nằm lại trong buffer rồi thành final giả khi preroll của câu sau
+                        # được flush. Bug thật: lượt 2 lặp nguyên văn lượt 1.
+                        await _end_asr_segment(AsrSegmentEnd.FINALIZE)
                     if (
                         decision.admit
                         and not currently_admitted
@@ -301,10 +309,10 @@ class STTPipeline:
                         # PHẢI flush trước khi gửi frame hiện tại để giữ đúng thứ tự thời
                         # gian (xem docstring speech/asr/admission.py::PreRollBuffer).
                         for buffered in self._admission_preroll.flush():
-                            await asr_queue.put(buffered)
+                            await _send_to_asr(buffered)
                     currently_admitted = decision.admit
                     if decision.admit:
-                        await asr_queue.put(frame)
+                        await _send_to_asr(frame)
                     elif self._admission_preroll is not None:
                         self._admission_preroll.push(frame)
             finally:
@@ -337,7 +345,7 @@ class STTPipeline:
                         evidence_tracker.observe(event) if evidence_tracker is not None else None
                     )
                     controller.on_evidence_updated(
-                        noise_evidence=latest_noise_evidence, stability=stability
+                        noise_evidence=latest_utterance_evidence, stability=stability
                     )
                     if interruption is not None:
                         interruption.on_evidence_updated(
@@ -346,6 +354,11 @@ class STTPipeline:
                 await controller.on_transcript_event(event)
                 if interruption is not None:
                     await interruption.on_partial_transcript(event)
+                if event.is_final and evidence_tracker is not None:
+                    # Độ ổn định là chuyện BÊN TRONG một câu. Không reset thì chuỗi câu trả
+                    # lời thật "vâng" -> "có" -> "vâng" khớp mẫu dao động và câu thứ ba bị
+                    # DROP; đo được "A LÔ" bị bỏ vì ảo giác "ĐÂY" của câu trước.
+                    evidence_tracker.reset()
 
         fanout_task = asyncio.ensure_future(_fanout())
         vad_task = asyncio.ensure_future(_drain_vad())

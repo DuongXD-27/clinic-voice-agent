@@ -274,15 +274,13 @@ async def test_vad_and_admission_disagree_does_not_crash_and_logs(caplog) -> Non
     """VAD chính (StreamingVAD) báo speech_start (candidate đang hình thành trong
     TurnController) trong khi Admission classifier RIÊNG vẫn REJECT audio khỏi ASR —
     2 classifier độc lập lệch nhau là kịch bản hợp lệ, không được crash, chỉ log để
-    chẩn đoán (has_active_vad_candidate, xem controller.py). Admission vẫn REJECT bình
-    thường cho MỌI frame sau preroll — vad_preroll (xem test riêng ở dưới) chỉ bù đúng
-    audio TRƯỚC speech_start, không bypass Admission cho frame nào khác."""
+    chẩn đoán (has_active_vad_candidate, xem controller.py). VAD chính không phải cổng
+    vào ASR: Admission REJECT thì không frame nào tới ASR."""
     import logging
 
     # VAD chính (async, đọc bởi _drain_vad -> controller.on_vad_event) báo speech_start
     # ngay từ frame đầu -> controller.has_active_vad_candidate=True từ đó về sau. Admission
-    # classifier (độc lập, dùng cho _fanout) luôn báo KHÔNG speech -> REJECT toàn bộ, trừ
-    # đúng 1 frame preroll (frame 0, đã push vào vad_preroll trước khi candidate active).
+    # classifier (độc lập, dùng cho _fanout) luôn báo KHÔNG speech -> REJECT toàn bộ.
     vad = _FakeAsyncVAD([VadEvent("speech_start")])
     asr = _RecordingASR()
     controller = TurnController(min_speech_ms=0)
@@ -309,7 +307,7 @@ async def test_vad_and_admission_disagree_does_not_crash_and_logs(caplog) -> Non
             timeout=2.0,
         )
 
-    assert len(asr.consumed_frames) == 1
+    assert asr.consumed_frames == []
     disagree_logs = [
         record for record in caplog.records if "VAD/Admission disagree" in record.message
     ]
@@ -338,97 +336,48 @@ async def test_already_admitted_mid_sentence_frame_not_dropped_by_preroll() -> N
     assert asr.consumed_frames == frames
 
 
-async def test_vad_preroll_bridges_audio_before_speech_start() -> None:
-    """Tái hiện đúng bug thật (LIVEKIT_DEBUG_DUMP_AUDIO + decode trực tiếp ZipFormerASR):
-    "Tôi tên là Nguyễn Văn A" -> "TÊN LÀ NGUYỄN VĂN A" dù Admission ADMIT ngay từ
-    speech_start (không REJECT gì) — âm tiết đầu ("Tôi", phát âm nhẹ/lướt) nằm TRƯỚC thời
-    điểm mà CHÍNH Silero VAD (main VAD) mới nhận ra là speech. vad_preroll (độc lập
-    Admission, KHÔNG opt-in) phải bù đúng phần audio đó vào asr_queue trước frame đầu
-    tiên có speech_start, không cần Admission cấu hình.
+async def _yielding(frames: list[bytes]) -> AsyncIterator[bytes]:
+    """Như audio live: nhường lịch sau mỗi frame để task VAD kịp xử lý frame vừa gửi."""
+    for frame in frames:
+        yield frame
+        await asyncio.sleep(0)
 
-    `VadEvent("speech")` filler cho 2 frame đầu (không đổi candidate state, xem
-    TurnController.on_vad_event — chỉ speech_start/speech_end có tác dụng) mô phỏng đúng
-    "VAD chưa coi là active", để speech_start CHỈ gắn với frame thứ 3 — nếu dùng thẳng
-    `VadEvent("speech_start")` (gắn với frame ĐẦU TIÊN, xem _FakeAsyncVAD.process()), mọi
-    frame đều "sau" speech_start, không thực sự test được việc bù audio TRƯỚC nó."""
-    frame_before_1, frame_before_2, frame_speech_start = (
-        _make_frame(1),
-        _make_frame(2),
-        _make_frame(3),
-    )
+
+async def test_each_frame_reaches_asr_once_in_order_without_admission() -> None:
+    """Hồi quy: VAD chính báo speech_start giữa luồng KHÔNG được làm ASR nhận lại audio.
+
+    Bug thật (eval/noise-bench): một bộ preroll riêng của VAD chính flush lại các frame
+    đã gửi, ASR nhận [1, 2, 3, 1, 2, 3, 4, ...] — "A LÔ" thành "A LÔ A LÔ"."""
+    frames = [_make_frame(i) for i in range(1, 9)]
+    vad = _FakeAsyncVAD([VadEvent("speech"), VadEvent("speech"), VadEvent("speech_start")])
+    asr = _RecordingASR()
+    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+
+    await asyncio.wait_for(_collect(pipeline.stream(_yielding(frames))), timeout=2.0)
+
+    assert asr.consumed_frames == frames
+
+
+async def test_each_frame_reaches_asr_once_in_order_with_admission() -> None:
+    """Hồi quy: preroll của Admission và speech_start của VAD chính không được chồng lấn.
+
+    Bug thật: hai bộ preroll cùng flush các frame chồng nhau, ASR nhận [90..99] rồi
+    [83..] — đầu câu bị đảo thứ tự, "TÔI LÀ ĐỖ ĐỨC DŨNG" chỉ còn "DŨNG"."""
+    frames = [_make_frame(i) for i in range(1, 9)]
     vad = _FakeAsyncVAD([VadEvent("speech"), VadEvent("speech"), VadEvent("speech_start")])
     asr = _RecordingASR()
     pipeline = STTPipeline(
         asr=asr,
         vad=StreamingVAD(_NullEnergyClassifier()),
         async_vad=vad,
-        vad_preroll_frames=8,
-    )
-
-    await asyncio.wait_for(
-        _collect(
-            pipeline.stream(_frame_sequence([frame_before_1, frame_before_2, frame_speech_start]))
-        ),
-        timeout=2.0,
-    )
-
-    assert asr.consumed_frames == [frame_before_1, frame_before_2, frame_speech_start]
-
-
-async def test_vad_preroll_works_without_admission_configured() -> None:
-    """vad_preroll KHÔNG opt-in (khác admission_preroll) — phải hoạt động ngay cả khi
-    Speech Admission hoàn toàn tắt (admission=None, mặc định)."""
-    frame_before, frame_speech_start = _make_frame(1), _make_frame(2)
-    vad = _FakeAsyncVAD([VadEvent("speech"), VadEvent("speech_start")])
-    asr = _RecordingASR()
-    pipeline = STTPipeline(
-        asr=asr,
-        vad=StreamingVAD(_NullEnergyClassifier()),
-        async_vad=vad,
-        vad_preroll_frames=8,
-    )
-
-    await asyncio.wait_for(
-        _collect(pipeline.stream(_frame_sequence([frame_before, frame_speech_start]))),
-        timeout=2.0,
-    )
-
-    assert asr.consumed_frames == [frame_before, frame_speech_start]
-
-
-async def test_vad_preroll_does_not_bypass_admission_for_later_frames() -> None:
-    """vad_preroll chỉ bù audio TRƯỚC speech_start — KHÔNG bypass Admission cho các frame
-    SAU đó (khác thiết kế ban đầu đã bỏ: bypass khiến Admission mất tác dụng bất cứ khi
-    nào VAD chính tự tin là speech, kể cả khi VAD sai). `has_active_vad_candidate` có thể
-    trễ 1 frame so với speech_start thật (xem comment trong _fanout()) — test này chỉ
-    khẳng định phần cốt lõi: sau khi buffer preroll (dung lượng nhỏ) đã chắc chắn hết hạn
-    (nhiều frame REJECT liên tục sau đó), Admission vẫn REJECT bình thường, không có
-    "cửa sổ bypass" kéo dài vô thời hạn."""
-    frame_speech_start = _make_frame(1)
-    later_frames = [_make_frame(i) for i in range(2, 6)]  # 4 frame RÕ RÀNG sau candidate
-    vad = _FakeAsyncVAD([VadEvent("speech_start")])
-    asr = _RecordingASR()
-    admission = SpeechAdmission(min_snr_db=6.0, min_speech_ms=1000)  # ngưỡng cao -> luôn REJECT
-    pipeline = STTPipeline(
-        asr=asr,
-        vad=StreamingVAD(_NullEnergyClassifier()),
-        async_vad=vad,
-        admission=admission,
+        admission=SpeechAdmission(min_snr_db=6.0, min_speech_ms=60),
         admission_classifier=_AlwaysSpeechClassifier(),
-        vad_preroll_frames=1,  # buffer nhỏ -> hết hạn "trễ 1 frame" nhanh, không che khuất assert
+        admission_preroll_frames=20,
     )
 
-    async def _yielding_frames() -> AsyncIterator[bytes]:
-        for frame in [frame_speech_start, *later_frames]:
-            yield frame
-            await asyncio.sleep(0)
+    await asyncio.wait_for(_collect(pipeline.stream(_yielding(frames))), timeout=2.0)
 
-    await asyncio.wait_for(_collect(pipeline.stream(_yielding_frames())), timeout=2.0)
-
-    # 4 frame cuối đủ xa candidate start để chắc chắn không còn nằm trong "cửa sổ trễ 1
-    # frame" của has_active_vad_candidate — phải bị Admission REJECT (too_short), không
-    # lọt qua nhờ vad_preroll (buffer dung lượng 1, đã flush/tràn từ lâu).
-    assert set(later_frames).isdisjoint(asr.consumed_frames)
+    assert asr.consumed_frames == frames
 
 
 async def test_stream_with_min_speech_ms_zero_still_works_with_turn_controller() -> None:

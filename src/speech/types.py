@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import Enum
 from typing import Literal, Optional
 
 # Băng hẹp điện thoại (300–3400 Hz): pipeline xử lý đúng chất lượng audio mà
@@ -32,6 +33,23 @@ class TranscriptEvent:
     confidence: Optional[float] = None
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
+
+
+class AsrSegmentEnd(Enum):
+    """Tín hiệu `STTPipeline` chèn vào luồng frame của `stream()` khi NGỪNG đưa audio vào ASR.
+
+    ASR streaming tự chốt câu bằng khoảng lặng trong CHÍNH các frame nó nhận. Khi pipeline
+    ngừng đưa frame (Speech Admission hết đoạn nói, bot bắt đầu nói), ASR không bao giờ
+    thấy đủ khoảng lặng: câu dở nằm lại trong buffer rồi thành final giả ở đầu câu sau,
+    hoặc bị ghép vào câu sau. Bug thật (cuộc gọi LiveKit 2026-09-26): lượt 2 lặp lại
+    nguyên văn lượt 1, lượt 3 thành "ANH SINH ANH SINH NGÀY ...".
+
+    FINALIZE: chốt ngay phần đang có, như khi gặp đủ khoảng lặng. DISCARD: bỏ phần đang
+    có, không phát event nào.
+    """
+
+    FINALIZE = "finalize"
+    DISCARD = "discard"
 
 
 @dataclass(frozen=True)

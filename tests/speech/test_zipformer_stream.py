@@ -6,6 +6,7 @@ import pytest
 from inference.asr.config import ZipFormerConfig
 from inference.asr.providers.zipformer import ZipFormerASR
 from speech.asr.vad.streaming import FRAME_MS
+from speech.types import AsrSegmentEnd
 
 _FRAME_BYTES = int(8000 * FRAME_MS / 1000) * 2  # PCM16 mono @ 8kHz, frame chuẩn 30ms
 _LOUD = b"\x00\x10" * (_FRAME_BYTES // 2)
@@ -317,6 +318,55 @@ async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> No
     ]
     assert short_events == []
     assert short_asr.decoded == []
+
+
+_UTTERANCE_A = b"\x01\x10" * (_FRAME_BYTES // 2)
+_UTTERANCE_B = b"\x02\x10" * (_FRAME_BYTES // 2)
+
+
+class _LabellingASR(_RecordingASR):
+    """Decode ra nhãn câu có mặt trong buffer ("A", "B", "A B") — thấy được câu cũ có
+    còn nằm lại trong buffer khi câu mới tới hay không."""
+
+    def __init__(self) -> None:
+        super().__init__(_GrowingFakeRecognizer())
+
+    def _decode_stream_pcm(self, pcm: bytes, source_rate: int) -> str:
+        labels: list[str] = []
+        for start in range(0, len(pcm), _FRAME_BYTES):
+            label = {_UTTERANCE_A[:2]: "A", _UTTERANCE_B[:2]: "B"}.get(pcm[start : start + 2])
+            if label and (not labels or labels[-1] != label):
+                labels.append(label)
+        return " ".join(labels)
+
+
+async def _finals(asr: ZipFormerASR, frames: list, **options) -> list[str]:
+    options = {"end_silence_ms": 600, "min_emit_interval_ms": 10_000, **options}
+    return [e.text async for e in asr.stream(_aiter(frames), **options) if e.is_final]
+
+
+async def test_finalize_marker_closes_utterance_before_silence_endpoint() -> None:
+    """Hồi quy (cuộc gọi LiveKit 2026-09-26): pipeline ngừng đưa audio khi ASR mới thấy
+    570/600 ms im lặng -> câu cũ nằm lại buffer rồi bị chốt/ghép cùng câu sau. FINALIZE
+    phải chốt ngay câu đang có, câu sau bắt đầu từ buffer rỗng."""
+    frames = [_UTTERANCE_A] * 5 + [_SILENT] * 3 + [AsrSegmentEnd.FINALIZE] + [_UTTERANCE_B] * 5
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["A", "B"]
+
+
+async def test_discard_marker_drops_utterance_without_event() -> None:
+    """Bot bắt đầu nói giữa câu: phần dở bị bỏ, không phát final, không ghép vào câu sau
+    (bug thật: "ANH SINH ANH SINH NGÀY ...")."""
+    frames = [_UTTERANCE_A] * 5 + [AsrSegmentEnd.DISCARD] + [_UTTERANCE_B] * 5
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["B"]
+
+
+async def test_finalize_marker_keeps_min_decode_guard() -> None:
+    """FINALIZE không được lách ngưỡng chống hallucination trên audio siêu ngắn."""
+    frames = [_UTTERANCE_A] * 2 + [AsrSegmentEnd.FINALIZE]
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=400) == []
 
 
 if __name__ == "__main__":

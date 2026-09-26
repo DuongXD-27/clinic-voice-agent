@@ -45,7 +45,7 @@ from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
-from speech.types import NARROWBAND_RATE, TranscriptEvent
+from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
 
 _PRE_SPEECH_PREROLL_MS = 300
 
@@ -83,7 +83,7 @@ class ZipFormerASR:
 
     async def stream(
         self,
-        frames: AsyncIterator[bytes],
+        frames: AsyncIterator[bytes | AsrSegmentEnd],
         *,
         audio_sample_rate: int = NARROWBAND_RATE,
         silence_classifier: FrameClassifier | None = None,
@@ -113,6 +113,10 @@ class ZipFormerASR:
         vượt ngưỡng này, dù chưa đủ `end_silence_ms` — chống memory leak khi audio speech
         liên tục không bao giờ có khoảng lặng đủ dài (docs/reference/
         livekit-architecture.md §5.5). `None` (mặc định) dùng `config.max_turn_speech_ms`.
+
+        `AsrSegmentEnd` trong `frames`: pipeline ngừng đưa audio (xem docstring enum).
+        FINALIZE chốt buffer như khi đủ `end_silence_ms`; DISCARD bỏ buffer không phát
+        event. Cả hai xoá luôn pre-speech — audio trước và sau chỗ ngắt không liền nhau.
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
@@ -139,6 +143,21 @@ class ZipFormerASR:
         audio_ms_since_emit = 0.0
 
         async for frame in frames:
+            if isinstance(frame, AsrSegmentEnd):
+                if frame is AsrSegmentEnd.FINALIZE and buffer and speech_ms >= min_decode_ms:
+                    text = await asyncio.to_thread(
+                        self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+                    )
+                    if text:
+                        yield TranscriptEvent(text=text, is_final=True)
+                buffer.clear()
+                pre_speech.clear()
+                in_speech = False
+                last_emitted_text = ""
+                silent_ms = 0.0
+                audio_ms_since_emit = 0.0
+                speech_ms = 0.0
+                continue
             frame_ms = len(frame) / 2 / audio_sample_rate * 1000
             if frame_ms <= 0:
                 continue
