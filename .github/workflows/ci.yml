@@ -186,6 +186,10 @@ jobs:
           # bật LLM (pull_request chạy trên commit merge với main).
           NAME_FALLBACK_PROVIDER: none
           SEMANTIC_FALLBACK_ENABLED: "false"
+          # TTS mặc định là Vbee, dựng provider lúc khởi động nên cần token; E2E chỉ chạy mode
+          # text, không gọi TTS, nên giá trị giả là đủ.
+          VBEE_API_TOKEN: e2e-offline
+          VBEE_APP_ID: e2e-offline
         run: |
           nohup python -m uvicorn callbot.transports.http.main:app --host 127.0.0.1 --port 8000             > uvicorn.log 2>&1 &
           for _ in $(seq 1 60); do
