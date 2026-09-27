@@ -10,13 +10,19 @@ from callbot.engine.errors import (
     ClinicAPIError,
     ClinicInvalidResponse,
     ClinicWriteRejected,
+    SlotTaken,
     WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.schema import Agreement, Intent, QuestionId
 from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.session.context import ActionEvidence, CallContext, Question
-from callbot.engine.tools.clinic_gateway import ClinicGateway
+from callbot.engine.tools.clinic_gateway import (
+    WRITE_BACKOFF_S,
+    WRITE_BUDGET_S,
+    WRITE_MAX_SENDS,
+    ClinicGateway,
+)
 from callbot.engine.tools.telemetry import collect_api_calls
 from callbot.engine.types import CallStart
 from clinic_mock_sim import FakeClinicAPI, clinic_error
@@ -138,6 +144,60 @@ def _agree_cancel(ctx: CallContext) -> None:
             span=None,
         )
     )
+
+
+def _ready_to_reschedule(slot_id: str, call_id: str = "c_rs") -> CallContext:
+    """§1.1.6: slot lấy từ GET /slots của cuộc gọi, đã đọc lại và người gọi vừa đồng ý."""
+    ctx = _outbound(call_id)
+    _verify(ctx)
+    ctx.state = "AWAITING_CONFIRMATION"
+    ctx.set_pending("RESCHEDULE")
+    ctx.slots = [{"slot_id": slot_id}]
+    ctx.select_slot(slot_id)
+    ctx.question = Question(
+        QuestionId.SLOT_READBACK,
+        "Anh chị đổi sang khung giờ này đúng không ạ?",
+        turn=2,
+        action="RESCHEDULE",
+        slot_id=slot_id,
+    )
+    ctx.add_evidence(
+        ActionEvidence(
+            kind="CONFIRMATION",
+            action="RESCHEDULE",
+            slot_id=slot_id,
+            turn=ctx.turn,
+            question_id=QuestionId.SLOT_READBACK,
+            question_turn=2,
+            transcript="Vâng, đổi giúp tôi.",
+            label=Agreement.AGREE.value,
+            provenance="EXACT",
+            span=None,
+        )
+    )
+    return ctx
+
+
+class FakeClock:
+    """Đồng hồ giả cho ngân sách ghi của Gateway: `sleep` tiến thời gian, không chờ thật."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def _gateway(fake: FakeClinicAPI) -> tuple[ClinicGateway, FakeClock]:
+    clock = FakeClock()
+    # Độ trễ giả của fake (`delay`) cũng tiến đồng hồ này
+    fake.sleep = clock.sleep
+    return ClinicGateway(fake, clinic_id="cl_vinmec", sleep=clock.sleep, clock=clock), clock
 
 
 # --- Đọc -----------------------------------------------------------------------------
@@ -374,9 +434,11 @@ def test_second_version_conflict_is_a_definite_rejection() -> None:
     ],
 )
 def test_definite_rejections_carry_retryable_flag(error: ClinicAPIError, retryable: bool) -> None:
+    # Lỗi tạm thời được gửi lại tới giới hạn (T-12); lỗi cố định chỉ gửi một lần
+    sends = WRITE_MAX_SENDS if retryable else 1
     fake = FakeClinicAPI()
-    fake.fail_next("transfer_appointment", error)
-    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    fake.fail_times("transfer_appointment", sends, error)
+    gateway, _ = _gateway(fake)
     journal = RecordingJournal()
     with bind_journal(journal), pytest.raises(ClinicWriteRejected) as exc:
         gateway.transfer(_outbound("c_rej"), "OUT_OF_SCOPE")
@@ -385,13 +447,14 @@ def test_definite_rejections_carry_retryable_flag(error: ClinicAPIError, retryab
         error.code,
         retryable,
     )
-    assert journal.statuses == ["begin", "failed"] and fake.writes == []
+    assert journal.statuses == ["begin", "failed"] * sends and fake.writes == []
+    assert [key for key, _ in fake.requests] == ["c_rej:3:transfer"] * sends
 
 
 def test_read_failure_before_send_is_rejection_without_journal_entry() -> None:
     fake = FakeClinicAPI()
-    fake.fail_next("get_appointment", clinic_error(503, "UPSTREAM"))
-    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    fake.fail_times("get_appointment", WRITE_MAX_SENDS, clinic_error(503, "UPSTREAM"))
+    gateway, _ = _gateway(fake)
     journal = RecordingJournal()
     with bind_journal(journal), pytest.raises(ClinicWriteRejected) as exc:
         gateway.transfer(_outbound("c_read"), "OUT_OF_SCOPE")
@@ -399,17 +462,18 @@ def test_read_failure_before_send_is_rejection_without_journal_entry() -> None:
     assert journal.events == [] and fake.requests == []  # chưa gửi lệnh ghi nào
 
 
-def test_unknown_outcome_is_journaled_and_not_retried() -> None:
+def test_unknown_outcome_on_every_send_is_journaled_as_unknown() -> None:
     fake = FakeClinicAPI()
-    fake.fail_next("transfer_appointment", outcome_unknown=True, apply_first=True)
-    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    fake.fail_unknown("transfer_appointment", WRITE_MAX_SENDS, apply_first=True)
+    gateway, clock = _gateway(fake)
     journal = RecordingJournal()
     with bind_journal(journal), pytest.raises(WriteOutcomeUnknown):
         gateway.transfer(_outbound("c_unk"), "OUT_OF_SCOPE")
-    # Mock đã ghi nhưng bot không biết: nhật ký UNKNOWN, không gửi lại
+    # Mock đã ghi nhưng mọi lần gửi lại đều timeout: nhật ký UNKNOWN, không ghi thêm lần nào
     assert journal.statuses == ["begin", "unknown"]
     assert fake.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "OUT_OF_SCOPE"})]
-    assert len(fake.requests) == 1
+    assert [key for key, _ in fake.requests] == ["c_unk:3:transfer"] * WRITE_MAX_SENDS
+    assert clock.sleeps == list(WRITE_BACKOFF_S)
 
 
 def test_gateway_api_calls_are_collectable_for_trace() -> None:
@@ -530,3 +594,181 @@ def test_invalid_appointment_read_is_invalid_response(change: dict[str, Any]) ->
     with bind_journal(RecordingJournal()), pytest.raises(ClinicInvalidResponse):
         gateway.transfer(_outbound(), "OUT_OF_SCOPE")
     assert fake.requests == []
+
+
+# --- T-12: phục hồi lỗi ghi ------------------------------------------------------------------
+
+
+def _version_reads(fake: FakeClinicAPI) -> int:
+    return sum(call.operation == "get_appointment" for call in fake.calls)
+
+
+@pytest.mark.parametrize("apply_first", [True, False], ids=["applied", "not_applied"])
+def test_timeout_resends_the_identical_request_and_writes_once(apply_first: bool) -> None:
+    """Chưa rõ kết quả: gửi lại cùng key + cùng If-Match. Mock đã ghi thì replay, chưa thì ghi lần đầu.
+
+    Đọc lại version trước khi gửi lại sẽ đổi If-Match -> mock trả 422 thay vì replay; test này đỏ
+    nếu Gateway làm vậy (fake mô phỏng đúng dấu vân tay idempotency của mock).
+    """
+    fake = FakeClinicAPI()
+    fake.fail_next("confirm_appointment", outcome_unknown=True, apply_first=apply_first)
+    gateway, clock = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_timeout")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        result = gateway.confirm(ctx)
+
+    assert result["status"] == "CONFIRMED"
+    assert [status for _, status, _ in fake.writes] == ["CONFIRMED"]
+    assert [key for key, _ in fake.requests] == ["c_t12_timeout:3:confirm"] * 2
+    assert _version_reads(fake) == 1
+    # Lệnh vẫn PENDING giữa hai lần gửi: nhật ký không có UNKNOWN (UNKNOWN xóa nội dung phiên)
+    assert journal.statuses == ["begin", "succeeded"]
+    assert clock.sleeps == [WRITE_BACKOFF_S[0]]
+
+
+def test_timeout_after_the_write_budget_is_spent_is_not_resent() -> None:
+    fake = FakeClinicAPI()
+    fake.delay("transfer_appointment", WRITE_BUDGET_S - 0.5, times=1)
+    fake.fail_next("transfer_appointment", outcome_unknown=True, apply_first=True)
+    gateway, clock = _gateway(fake)
+    journal = RecordingJournal()
+
+    with bind_journal(journal), pytest.raises(WriteOutcomeUnknown):
+        gateway.transfer(_outbound("c_t12_budget"), "OUT_OF_SCOPE")
+
+    assert len(fake.requests) == 1
+    assert journal.statuses == ["begin", "unknown"]
+    assert WRITE_BACKOFF_S[0] not in clock.sleeps
+
+
+def test_rate_limited_once_is_resent_with_the_same_key() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+    gateway, clock = _gateway(fake)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        result = gateway.transfer(_outbound("c_t12_429"), "OUT_OF_SCOPE")
+
+    assert result["status"] == "TRANSFERRED"
+    assert [key for key, _ in fake.requests] == ["c_t12_429:3:transfer"] * 2
+    assert journal.statuses == ["begin", "failed", "begin", "succeeded"]
+    assert clock.sleeps == [WRITE_BACKOFF_S[0]]
+
+
+def test_version_conflict_then_timeout_after_apply_still_writes_once() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    fake.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    gateway, _ = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_vc")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        assert gateway.confirm(ctx)["status"] == "CONFIRMED"
+
+    assert [status for _, status, _ in fake.writes] == ["CONFIRMED"]
+    assert [key for key, _ in fake.requests] == ["c_t12_vc:3:confirm"] * 3
+    # Đọc lại version đúng một lần, sau VERSION_CONFLICT; lần gửi sau timeout giữ version đó
+    assert _version_reads(fake) == 2
+    assert journal.statuses == ["begin", "failed", "begin", "succeeded"]
+
+
+def test_transient_version_read_failure_is_read_again_before_any_write() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("get_appointment", clinic_error(503, "UPSTREAM"))
+    gateway, _ = _gateway(fake)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        assert gateway.transfer(_outbound("c_t12_read"), "OUT_OF_SCOPE")["status"] == "TRANSFERRED"
+
+    assert journal.statuses == ["begin", "succeeded"] and len(fake.requests) == 1
+
+
+def test_unreachable_resent_after_timeout_increments_attempt_count_once() -> None:
+    """§4.2.5: cùng Idempotency-Key không được tăng attempt_count hai lần."""
+    fake = FakeClinicAPI()
+    fake.fail_next("mark_unreachable", outcome_unknown=True, apply_first=True)
+    gateway, _ = _gateway(fake)
+
+    with bind_journal(RecordingJournal()):
+        assert gateway.mark_unreachable(_outbound("c_t12_ur"), "SILENCE")["status"] == "UNREACHABLE"
+
+    assert fake.appointments["apt_00417"]["attempt_count"] == 1
+    assert [key for key, _ in fake.requests] == ["c_t12_ur:3:unreachable"] * 2
+
+
+def test_slot_taken_is_not_resent() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("reschedule_appointment", clinic_error(409, "SLOT_TAKEN"))
+    gateway, _ = _gateway(fake)
+
+    with bind_journal(RecordingJournal()), pytest.raises(SlotTaken):
+        gateway.reschedule(_ready_to_reschedule("slot_91d2"), "slot_91d2")
+
+    assert len(fake.requests) == 1 and fake.writes == []
+
+
+def test_reschedule_reports_success_only_for_the_chosen_slot() -> None:
+    fake = FakeClinicAPI()
+    gateway, _ = _gateway(fake)
+    with bind_journal(RecordingJournal()):
+        result = gateway.reschedule(_ready_to_reschedule("slot_91d2"), "slot_91d2")
+    assert (result["status"], result["new_slot_id"]) == ("RESCHEDULED", "slot_91d2")
+
+    fake = FakeClinicAPI()
+    fake.after_next("reschedule_appointment", lambda body: body.update(new_slot_id="slot_aa01"))
+    gateway, _ = _gateway(fake)
+    with bind_journal(RecordingJournal()), pytest.raises(WriteOutcomeUnknown):
+        gateway.reschedule(_ready_to_reschedule("slot_91d2", "c_rs_other"), "slot_91d2")
+
+
+def _confirm(gateway: ClinicGateway) -> Any:
+    ctx = _ready_to_confirm("c_t12_status")
+    _agree_confirm(ctx)
+    return gateway.confirm(ctx)
+
+
+def _cancel(gateway: ClinicGateway) -> Any:
+    ctx = _ready_to_cancel("c_t12_status")
+    _agree_cancel(ctx)
+    return gateway.cancel(ctx, "PATIENT_UNAVAILABLE")
+
+
+@pytest.mark.parametrize(
+    "operation, write",
+    [
+        ("confirm_appointment", _confirm),
+        ("cancel_appointment", _cancel),
+        ("transfer_appointment", lambda g: g.transfer(_outbound("c_t12_status"), "OUT_OF_SCOPE")),
+        ("mark_unreachable", lambda g: g.mark_unreachable(_outbound("c_t12_status"), "SILENCE")),
+        (
+            "reschedule_appointment",
+            lambda g: g.reschedule(_ready_to_reschedule("slot_91d2", "c_t12_status"), "slot_91d2"),
+        ),
+    ],
+)
+def test_a_2xx_with_the_wrong_status_is_not_success(operation: str, write) -> None:
+    """D-2: Gateway chỉ trả thành công khi body ở đúng trạng thái đích, cho mọi thao tác ghi."""
+    fake = FakeClinicAPI()
+    fake.after_next(operation, lambda body: body.update(status="SCHEDULED"))
+    gateway, _ = _gateway(fake)
+    with bind_journal(RecordingJournal()), pytest.raises(WriteOutcomeUnknown) as exc:
+        write(gateway)
+    assert "trả status SCHEDULED" in str(exc.value)
+    assert len(fake.requests) == 1  # không gửi lại khi mock đã trả lời
+
+
+def test_each_send_is_a_traced_clinic_attempt() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("transfer_appointment", outcome_unknown=True, apply_first=True)
+    gateway, _ = _gateway(fake)
+    with collect_api_calls() as calls, bind_journal(RecordingJournal()):
+        gateway.transfer(_outbound("c_t12_trace"), "OUT_OF_SCOPE")
+    sends = [c for c in calls if c.operation == "transfer_appointment"]
+    assert [c.outcome for c in sends] == ["unknown", "ok"]

@@ -35,8 +35,8 @@ class ClinicMockClient:
         self,
         base_url: str,
         api_key: str = "",
-        timeout: float = 5.0,
-        connect_timeout: float = 2.0,
+        timeout: float = 2.0,
+        connect_timeout: float = 1.0,
     ) -> None:
         # Mock chỉ nhận key `sk_...`; sai prefix thì mọi request 401 — báo ngay lúc khởi tạo
         if api_key and not api_key.startswith(API_KEY_PREFIX):
@@ -49,7 +49,9 @@ class ClinicMockClient:
                 "CLINIC_MOCK_BASE_URL %r không kết thúc bằng /v1 — mock sẽ trả 404", base
             )
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-        # read/write theo ngân sách 8 s một lượt (S-03); connect ngắn để lỗi mạng lộ sớm
+        # read/write theo ngân sách 8 s một lượt (S-03): 2 s để còn chỗ gửi lại một lần sau timeout
+        # trong ngân sách ghi của Gateway (T-12 Q-1); mock thật trả trong vài chục ms. connect ngắn
+        # để lỗi mạng lộ sớm
         self._client = httpx.Client(
             base_url=base,
             headers=headers,

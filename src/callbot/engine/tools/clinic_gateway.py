@@ -7,10 +7,15 @@ Ghi:
 - Idempotency-Key cố định theo call_id + lượt + thao tác (+ slot): gửi lại không tạo bản ghi trùng
 - Lệnh được commit vào nhật ký trước khi gửi; kết quả về ba lớp (F-05 §5.4):
   thành công có bằng chứng | từ chối xác định `ClinicWriteRejected` | chưa rõ `WriteOutcomeUnknown`
-- VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần cùng key. Retry cho lỗi tạm thời khác: T-12.
+- VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần cùng key (§4.2.5).
+- Phục hồi lỗi ghi (T-12), giới hạn `WRITE_MAX_SENDS` lần gửi trong `WRITE_BUDGET_S`:
+  chưa rõ (timeout, 5xx) → gửi lại Y HỆT, cùng key và cùng If-Match, để mock replay phản hồi cũ;
+  lỗi tạm thời chắc chắn chưa ghi (429, không kết nối được) → chờ ngắn rồi gửi lại cùng key.
+- Thành công chỉ khi body có đúng trạng thái đích; 2xx mà trạng thái sai là chưa rõ (T-12 D-2).
 """
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
@@ -50,6 +55,14 @@ SLOT_SEARCH_MAX_WINDOWS = 5
 # Trần số trang một lần đọc: 20 × 100 bản ghi — vượt là mock trả cursor hỏng, không phải dữ liệu thật
 MAX_PAGES = 20
 ACTIONABLE_APPOINTMENT_STATUSES = frozenset({"SCHEDULED", "BOOKED", "CONFIRMED"})
+
+# T-12: một thao tác ghi (kể cả đọc version) gửi tối đa 3 lần và dừng thử lại khi còn dưới 1 giây
+# của ngân sách 4 giây — phần còn lại của 8 giây/lượt dành cho ASR, IE và TTS.
+WRITE_MAX_SENDS = 3
+WRITE_BUDGET_S = 4.0
+WRITE_MIN_ATTEMPT_S = 1.0
+# Chờ trước lần gửi thứ 2, thứ 3 khi lỗi tạm thời
+WRITE_BACKOFF_S = (0.2, 0.5)
 
 _CLINIC_API_OPERATIONS = {
     "clinic.find_patient_by_phone": "find_patient_by_phone",
@@ -134,10 +147,21 @@ def traced_clinic(
 
 
 class ClinicGateway:
-    def __init__(self, api: ClinicAPI, clinic_id: str, tracer: Tracer | None = None) -> None:
+    def __init__(
+        self,
+        api: ClinicAPI,
+        clinic_id: str,
+        tracer: Tracer | None = None,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._api = api
         self._clinic_id = clinic_id
         self._tracer = tracer if isinstance(tracer, Tracer) else null_tracer()
+        # Điểm thay thế trong test: không chờ thật, đồng hồ giả để thử hết ngân sách
+        self._sleep = sleep
+        self._clock = clock
 
     # --- Đọc -----------------------------------------------------------------
 
@@ -223,13 +247,14 @@ class ClinicGateway:
         fsm.check_write(ctx, "CONFIRM")
         guardrails.assert_action_confirmed(ctx, "CONFIRM")
         appointment_id = self._target(ctx)
-        return self._write(
+        written = self._write(
             ctx,
             "confirm",
             f"/appointments/{appointment_id}/confirm",
             {},
             lambda version, key: self._api.confirm_appointment(appointment_id, version, key),
         )
+        return self._require_written(ctx, "confirm", written, "CONFIRMED")
 
     @traced_clinic(
         "clinic.cancel_appointment",
@@ -241,7 +266,7 @@ class ClinicGateway:
         fsm.check_write(ctx, "CANCEL")
         guardrails.assert_action_confirmed(ctx, "CANCEL")
         appointment_id = self._target(ctx)
-        return self._write(
+        written = self._write(
             ctx,
             "cancel",
             f"/appointments/{appointment_id}/cancel",
@@ -250,6 +275,7 @@ class ClinicGateway:
                 appointment_id, reason, version, key, confirmed=True
             ),
         )
+        return self._require_written(ctx, "cancel", written, "CANCELLED")
 
     @traced_clinic(
         "clinic.reschedule_appointment",
@@ -262,7 +288,7 @@ class ClinicGateway:
         guardrails.assert_slot_offered(ctx, new_slot_id)
         guardrails.assert_action_confirmed(ctx, "RESCHEDULE", new_slot_id)
         appointment_id = self._target(ctx)
-        return self._write(
+        written = self._write(
             ctx,
             f"reschedule:{new_slot_id}",
             f"/appointments/{appointment_id}/reschedule",
@@ -270,6 +296,10 @@ class ClinicGateway:
             lambda version, key: self._api.reschedule_appointment(
                 appointment_id, new_slot_id, version, key
             ),
+        )
+        # Listing 4: slot mới phải đúng slot người gọi đã chọn và xác nhận
+        return self._require_written(
+            ctx, "reschedule", written, "RESCHEDULED", new_slot_id=new_slot_id
         )
 
     @traced_clinic("clinic.create_appointment", "/appointments", "POST", idempotency_used=True)
@@ -320,7 +350,7 @@ class ClinicGateway:
             )
             return None
         appointment_id = self._target(ctx)
-        return self._write(
+        written = self._write(
             ctx,
             "transfer",
             f"/appointments/{appointment_id}/transfer",
@@ -329,6 +359,7 @@ class ClinicGateway:
                 appointment_id, reason, version, key
             ),
         )
+        return self._require_written(ctx, "transfer", written, "TRANSFERRED")
 
     @traced_clinic(
         "clinic.mark_unreachable",
@@ -341,7 +372,7 @@ class ClinicGateway:
         if ctx.call.direction != "outbound":
             raise guardrails.SevereFailureBlocked("SF-01", "Inbound không ghi UNREACHABLE")
         appointment_id = self._target(ctx)
-        return self._write(
+        written = self._write(
             ctx,
             "unreachable",
             f"/appointments/{appointment_id}/unreachable",
@@ -349,6 +380,7 @@ class ClinicGateway:
             lambda version, key: self._api.mark_unreachable(appointment_id, reason, version, key),
             allowed_statuses=frozenset({"SCHEDULED", "BOOKED", "UNREACHABLE"}),
         )
+        return self._require_written(ctx, "unreachable", written, "UNREACHABLE")
 
     # --- Thực thi lệnh ghi qua nhật ký --------------------------------------------
 
@@ -364,28 +396,42 @@ class ClinicGateway:
     ) -> dict[str, Any]:
         journal = current_journal()
         key = f"{ctx.call_id}:{ctx.turn}:{operation}"
-        # VERSION_CONFLICT: đọc lại version, gửi lại MỘT lần với cùng Idempotency-Key
         kind = operation.split(":")[0]
-        for attempt in (1, 2):
-            try:
-                version = (
-                    self.get_actionable_appointment(ctx, allowed_statuses)["version"]
-                    if read_version
-                    else None
-                )
-            except ClinicAPIError as exc:
-                # Chưa gửi lệnh ghi nào: từ chối xác định, có thể thử lại nếu lỗi tạm thời
-                raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
-            command = ClinicCommand(kind, endpoint, payload, version, key)
-            # Không lưu được nhật ký -> SessionStoreUnavailable, lệnh không được gửi
-            journal.begin(command)
+        deadline = self._clock() + WRITE_BUDGET_S
+        version = self._read_version(ctx, allowed_statuses, deadline) if read_version else None
+        command = ClinicCommand(kind, endpoint, payload, version, key)
+        # Không lưu được nhật ký -> SessionStoreUnavailable, lệnh không được gửi
+        journal.begin(command)
+        sends = 0
+        conflict_retried = False
+        while True:
+            sends += 1
             try:
                 result = send(version, key)
             except ClinicAPIError as exc:
                 if not exc.outcome_known:
+                    # Không biết mock đã áp dụng chưa: gửi lại Y HỆT (cùng key, cùng If-Match) — đã áp
+                    # dụng thì mock replay 200 cũ, chưa thì xử lý lần đầu. Đọc lại version ở đây sẽ đổi
+                    # If-Match, mock coi là payload khác và trả 422 thay vì replay. Lệnh vẫn PENDING.
+                    if self._may_resend(sends, deadline, self._backoff(sends)):
+                        continue
                     raise self._unknown(journal, command, f"{exc.code} {exc.message}") from exc
                 journal.failed(command, f"HTTP {exc.status} {exc.code}")
-                if exc.code == "VERSION_CONFLICT" and attempt == 1:
+                if exc.code == "VERSION_CONFLICT":
+                    # §4.2.5: đọc lại version, gửi lại MỘT lần với cùng Idempotency-Key
+                    if not conflict_retried and self._may_resend(sends, deadline, 0.0):
+                        conflict_retried = True
+                        version = (
+                            self._read_version(ctx, allowed_statuses, deadline)
+                            if read_version
+                            else None
+                        )
+                        command = ClinicCommand(kind, endpoint, payload, version, key)
+                        journal.begin(command)
+                        continue
+                elif exc.retryable and self._may_resend(sends, deadline, self._backoff(sends)):
+                    # 429 / không kết nối được: lệnh chắc chắn chưa áp dụng, gửi lại cùng key
+                    journal.begin(command)
                     continue
                 if exc.code == "SLOT_TAKEN":
                     raise SlotTaken(exc.status, exc.code) from exc
@@ -397,7 +443,50 @@ class ClinicGateway:
                 raise self._unknown(journal, command, repr(exc)) from exc
             journal.succeeded(command, result if isinstance(result, dict) else {"result": result})
             return result
-        raise AssertionError("unreachable")
+
+    def _read_version(
+        self, ctx: CallContext, allowed_statuses: frozenset[str], deadline: float
+    ) -> int:
+        reads = 0
+        while True:
+            reads += 1
+            try:
+                return self.get_actionable_appointment(ctx, allowed_statuses)["version"]
+            except ClinicAPIError as exc:
+                # Chưa gửi lệnh ghi nào nên đọc lại luôn an toàn; hết lượt là từ chối xác định
+                if exc.retryable and self._may_resend(reads, deadline, self._backoff(reads)):
+                    continue
+                raise ClinicWriteRejected(exc.status, exc.code, retryable=exc.retryable) from exc
+
+    def _may_resend(self, sends: int, deadline: float, pause: float) -> bool:
+        """Còn lượt và còn đủ ngân sách cho một lần gửi nữa (sau khi chờ `pause`) thì chờ rồi trả True."""
+        if sends >= WRITE_MAX_SENDS:
+            return False
+        if deadline - self._clock() - pause < WRITE_MIN_ATTEMPT_S:
+            return False
+        if pause > 0:
+            self._sleep(pause)
+        return True
+
+    @staticmethod
+    def _backoff(sends: int) -> float:
+        return WRITE_BACKOFF_S[min(sends, len(WRITE_BACKOFF_S)) - 1]
+
+    @staticmethod
+    def _require_written(
+        ctx: CallContext, operation: str, written: dict[str, Any], status: str, **fields: Any
+    ) -> dict[str, Any]:
+        """2xx chưa đủ: body phải ở đúng trạng thái đích, nếu không thì chưa rõ Clinic đã ghi gì.
+
+        Lệnh đã được mock nhận nên không ghi /transfer thay thế — chặn lượt để đối soát.
+        """
+        if written.get("status") != status or any(
+            written.get(name) != value for name, value in fields.items()
+        ):
+            raise WriteOutcomeUnknown(
+                f"{ctx.call_id}: {operation} trả status {written.get('status')}"
+            )
+        return written
 
     @staticmethod
     def _unknown(journal: Any, command: ClinicCommand, error: str) -> WriteOutcomeUnknown:

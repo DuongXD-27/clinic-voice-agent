@@ -98,7 +98,7 @@ class ClinicAPIError(EngineError):
 
     @property
     def retryable(self) -> bool:
-        """Lỗi tạm thời: cùng request có thể thành công nếu gửi lại (T-12 quyết định có gửi không)."""
+        """Lỗi tạm thời: cùng request có thể thành công nếu gửi lại (Gateway gửi lại có giới hạn, T-12)."""
         return self.code in RETRYABLE_CLINIC_CODES or (
             self.status is not None and self.status >= 500
         )
@@ -114,7 +114,8 @@ class WriteOutcomeUnknown(EngineError):
 class ClinicWriteRejected(EngineError):
     """Clinic trả lỗi xác định: lệnh chắc chắn không được áp dụng.
 
-    `retryable=True` (429, lỗi kết nối trước khi gửi): T-12 có thể thử lại cùng key; mặc định là lỗi cố định.
+    `retryable=True` (429, lỗi kết nối trước khi gửi): Gateway đã gửi lại cùng key tới giới hạn (T-12)
+    mà vẫn lỗi; mặc định là lỗi cố định.
     """
 
     def __init__(self, status: Optional[int], code: Optional[str], retryable: bool = False) -> None:

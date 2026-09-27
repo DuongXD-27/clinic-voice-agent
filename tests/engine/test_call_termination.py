@@ -16,6 +16,7 @@ from callbot.engine import (
     create_orchestrator,
 )
 from callbot.engine.errors import OutboundStartFailed
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -164,7 +165,7 @@ def test_rejected_transfer_still_hands_the_call_to_staff(error) -> None:
 def test_unreadable_clinic_still_hands_the_call_to_staff() -> None:
     bot, clinic, _ = _bot("c_transfer_down")
     _run(bot, "c_transfer_down", [NAME])
-    clinic.fail_next("get_appointment", clinic_error(None, "CONNECT_ERROR"))
+    clinic.fail_times("get_appointment", WRITE_MAX_SENDS, clinic_error(None, "CONNECT_ERROR"))
 
     action = bot.handle_turn("c_transfer_down", _caller(2, "cho tôi gặp nhân viên"))
 
@@ -187,7 +188,7 @@ def test_rejected_unreachable_transfers_instead() -> None:
 def test_rejected_unreachable_and_transfer_still_hands_the_call_to_staff() -> None:
     bot, clinic, _ = _bot("c_unreachable_double")
     clinic.fail_next("mark_unreachable", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
-    clinic.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+    clinic.fail_times("transfer_appointment", WRITE_MAX_SENDS, clinic_error(429, "RATE_LIMITED"))
 
     action = _run(bot, "c_unreachable_double", [SILENCE, SILENCE, SILENCE])
 
@@ -199,7 +200,7 @@ def test_a_business_write_error_is_transferred_even_when_the_transfer_is_rejecte
     bot, clinic, _ = _bot("c_double_reject")
     _run(bot, "c_double_reject", [NAME, DOB])
     clinic.fail_next("confirm_appointment", clinic_error(422, "IDEMPOTENCY_CONFLICT"))
-    clinic.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+    clinic.fail_times("transfer_appointment", WRITE_MAX_SENDS, clinic_error(429, "RATE_LIMITED"))
 
     run = bot.handle_turn_with_details("c_double_reject", _caller(3, "Vâng"))
 
@@ -223,7 +224,7 @@ def test_a_business_write_error_is_transferred_even_when_the_transfer_is_rejecte
 )
 def test_transfer_timeout_needs_reconciliation(error) -> None:
     bot, clinic, _ = _bot("c_transfer_timeout")
-    clinic.fail_next("transfer_appointment", error, outcome_unknown=error is None)
+    clinic.fail_times("transfer_appointment", WRITE_MAX_SENDS, error, outcome_unknown=error is None)
     with pytest.raises(ReconciliationRequired) as exc:
         bot.handle_turn("c_transfer_timeout", _caller(1, "cho tôi gặp nhân viên"))
     assert exc.value.diagnostics.transfer_reason == "PATIENT_REQUEST"
