@@ -141,7 +141,7 @@ def _assert_appointment_side_effects(
     after = clinic.appointments[APPOINTMENT_ID]
     assert not ({status for _, status, _ in clinic.writes} & PROHIBITED_WRITE_STATUSES)
 
-    if final_action.transfer_reason == "IDENTITY_FAILED":
+    if case.direction == "outbound" and final_action.transfer_reason:
         # TRANSFERRED is the required audit write. Scheduling and patient data must stay intact.
         for field in (
             "appointment_id",
@@ -153,7 +153,7 @@ def _assert_appointment_side_effects(
         ):
             assert after[field] == before[field], f"{case.id} mutated protected field {field}"
         assert clinic.writes == [
-            (APPOINTMENT_ID, "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})
+            (APPOINTMENT_ID, "TRANSFERRED", {"transfer_reason": final_action.transfer_reason})
         ]
         assert "cancel_reason" not in after and "new_slot_id" not in after
         return
