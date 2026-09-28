@@ -27,9 +27,8 @@ _SIMILARITY_THRESHOLD = 60.0
 
 class TranscriptEvidenceTracker:
     """`window`: số text gần nhất giữ lại để đánh giá. `oscillation_repeat_threshold`: số
-    lần 1 text NGẮN (<= `_MAX_OSCILLATION_WORDS` từ) phải xuất hiện lặp lại trong window
-    (không tính liên tiếp — xen kẽ vẫn tính, đúng mẫu "đây"→"tại"→"có"→"đây") để coi là
-    OSCILLATING."""
+    lần 1 text NGẮN (<= `_MAX_OSCILLATION_WORDS` từ) phải xuất hiện trở lại trong window,
+    mỗi lần cách nhau bởi text khác (mẫu "đây"→"tại"→"có"→"đây"), để coi là OSCILLATING."""
 
     def __init__(self, *, window: int = 5, oscillation_repeat_threshold: int = 2) -> None:
         self._window: "deque[str]" = deque(maxlen=window)
@@ -60,18 +59,18 @@ class TranscriptEvidenceTracker:
         return self._last_verdict
 
     def _is_oscillating(self) -> bool:
-        short_texts = [t for t in self._window if len(t.split()) <= _MAX_OSCILLATION_WORDS]
-        if not short_texts:
-            return False
-        counts: dict[str, int] = {}
-        for t in short_texts:
-            counts[t] = counts.get(t, 0) + 1
-        most_common = max(counts.values())
-        # "Dao động" nghĩa là KHÔNG đơn điệu tăng dần độ dài — nếu toàn bộ window chỉ có
-        # 1 giá trị duy nhất lặp lại (không đổi qua lại giữa nhiều giá trị), đó là hội tụ
-        # ổn định (ví dụ "có" lặp lại vì user thật sự chỉ nói "có"), không phải hallucination.
-        distinct_short = len(counts)
-        return most_common >= self._repeat_threshold and distinct_short >= 2
+        """Dao động = một text ngắn QUAY LẠI sau khi đã đổi sang text khác (A→B→A, vd.
+        "đây"→"tại"→"có"→"đây"). Lặp liền nhau không tính ("có"→"có"→"có" là người dùng
+        thật sự nói "có"); đổi một lần rồi giữ nguyên là hội tụ. Bug đo 28/09 (bộ câu ngắn
+        của eval/noise-bench): "ĐƯỢC"→"VÂNG"→"VÂNG", SNR 58 dB, bị DROP vì luật cũ chỉ đếm
+        "một text xuất hiện >= 2 lần và có >= 2 text khác nhau"."""
+        runs: list[str] = []
+        for text in self._window:
+            if len(text.split()) > _MAX_OSCILLATION_WORDS:
+                continue
+            if not runs or runs[-1] != text:
+                runs.append(text)
+        return any(runs.count(text) >= self._repeat_threshold for text in set(runs))
 
     def _is_converging(self, previous: str, current: str) -> bool:
         from rapidfuzz import fuzz

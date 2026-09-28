@@ -46,7 +46,7 @@ def _zipformer(fake: _FakeRecognizer) -> ASRGateway:
 def test_zipformer_gateway_exposes_provider_and_model() -> None:
     gateway = _zipformer(_FakeRecognizer())
     assert gateway.provider_name == "zipformer"
-    assert gateway.model == "csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20"
+    assert gateway.model == "g-group-ai-lab/gipformer1.5-68M-rnnt"
     assert gateway.input_sample_rate == WIDEBAND_RATE
 
 

@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
@@ -38,6 +39,17 @@ _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
 _PLAYOUT_TIMEOUT_S = 20.0
+# Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
+_SILENCE_POLL_S = 0.25
+
+
+@dataclass(frozen=True)
+class _SilenceTimeout:
+    """Hẹn giờ im lặng đã hết. `generation` khớp lượt đang chờ; lệch nghĩa là đã có lượt khác
+    được xử lý sau khi hẹn giờ bắt đầu — bỏ qua, không gửi lượt im lặng cũ cho core."""
+
+    generation: int
+    silence_ms: int
 
 
 def call_start_from_room(
@@ -69,6 +81,9 @@ def call_start_from_room(
 
 
 def caller_input_from_turn(turn_number: int, turn: UserTurnCompleted) -> CallerInput:
+    """Lượt im lặng (`silence_ms > 0`, hợp đồng core: Phụ lục A) không mang text."""
+    if turn.silence_ms > 0:
+        return CallerInput(turn=turn_number, text=None, silence_ms=turn.silence_ms)
     return CallerInput(
         turn=turn_number,
         text=turn.text,
@@ -102,6 +117,8 @@ class CallBridge:
         frame_ms: int = 30,
         input_queue_ms: int = 1_500,
         output_queue_ms: int = 200,
+        caller_identity: Optional[str] = None,
+        silence_timeout_ms: int = 0,
     ) -> None:
         self._room = room
         self._orchestrator = orchestrator
@@ -129,6 +146,16 @@ class CallBridge:
         self._active_speak_task: Optional[asyncio.Task] = None
         self._closing = False
         self._input_done = False
+        # Chỉ nghe mic của người gọi (participant worker.py đã chờ). None: khoá vào participant
+        # đầu tiên có track mic. Trước đây mọi track audio của mọi participant (người thứ hai,
+        # track share màn hình) cùng đổ vào MỘT hàng đợi — hai luồng PCM xen kẽ nhau.
+        self._caller_identity = caller_identity
+        self._pump_task: Optional[asyncio.Task] = None
+        # Core đã có luật im lặng (silence_ms > 0, max_silent_turns) nhưng LiveKit chưa từng gửi
+        # lượt im lặng: người dùng im thì bot chờ mãi. 0 = tắt.
+        self._silence_timeout_ms = silence_timeout_ms
+        self._silence_task: Optional[asyncio.Task] = None
+        self._silence_generation = 0
         # 1 TurnController + 1 InterruptionController riêng cho call này — không tạo
         # qua default của STTPipeline.stream() để CallBridge điều khiển được
         # bot-speaking state của TurnController khi barge-in xảy ra. worker.py truyền
@@ -139,8 +166,8 @@ class CallBridge:
         # `interruption_validator` dùng CHUNG TurnValidator với turn_controller (nếu
         # turn_validator_enabled) — xem docstring InterruptionController.__init__ #3 và
         # module speech/turn/interruption.py: barge-in false-positive từ noise trong lúc
-        # bot nói KHÔNG được Speech Admission chặn (audio phải tới ASR thật để tự confirm),
-        # nên cần lớp phòng thủ riêng ở đây.
+        # bot nói không thể lọc trước ASR (audio phải tới ASR thật để tự confirm), nên cần lớp
+        # phòng thủ riêng ở đây.
         self._interruption = InterruptionController(
             self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
         )
@@ -210,6 +237,7 @@ class CallBridge:
             await self._speak(opening.utterance)
             if opening.ended:
                 return
+            self._start_silence_timer()
 
             while True:
                 item = await self._turn_queue.get()
@@ -217,7 +245,16 @@ class CallBridge:
                     if self._pipeline_error is not None:
                         raise self._pipeline_error
                     return
-                turn = item
+                if isinstance(item, _SilenceTimeout):
+                    if item.generation != self._silence_generation:
+                        continue
+                    logger.info(
+                        "call_bridge: im lặng %d ms -> gửi lượt im lặng cho core", item.silence_ms
+                    )
+                    turn = UserTurnCompleted(text="", silence_ms=item.silence_ms)
+                else:
+                    turn = item
+                self._stop_silence_timer()
                 self._turn_number += 1
                 logger.info(
                     "call_bridge: turn %d completed confidence=%s",
@@ -243,8 +280,37 @@ class CallBridge:
                 await self._speak(action.utterance)
                 if action.ended:
                     return
+                self._start_silence_timer()
         finally:
             await self.aclose()
+
+    def _start_silence_timer(self) -> None:
+        self._stop_silence_timer()
+        if self._silence_timeout_ms > 0:
+            self._silence_task = asyncio.create_task(self._watch_silence(self._silence_generation))
+
+    def _stop_silence_timer(self) -> None:
+        """Mọi lượt (thật hoặc im lặng) được lấy ra xử lý đều làm hẹn giờ đang chạy hết hiệu
+        lực — kể cả `_SilenceTimeout` đã nằm sẵn trong hàng đợi (lệch generation)."""
+        self._silence_generation += 1
+        task = self._silence_task
+        self._silence_task = None
+        if task is not None and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+
+    async def _watch_silence(self, generation: int) -> None:
+        """Chờ tới khi người dùng im đủ `silence_timeout_ms` liên tục (theo VAD, tính từ lúc bot
+        dứt lời). Đang nói dở hoặc đang chờ ASR chốt câu thì chưa tính là im lặng."""
+        timeout_s = self._silence_timeout_ms / 1000
+        while True:
+            elapsed = self._turn_controller.silence_elapsed_s()
+            if elapsed is not None and elapsed >= timeout_s:
+                break
+            await asyncio.sleep(_SILENCE_POLL_S if elapsed is None else timeout_s - elapsed)
+        if generation == self._silence_generation:
+            await self._turn_queue.put(
+                _SilenceTimeout(generation=generation, silence_ms=round(elapsed * 1000))
+            )
 
     async def _consume_turns(self) -> None:
         try:
@@ -272,7 +338,21 @@ class CallBridge:
 
         if self._closing or track.kind != rtc.TrackKind.KIND_AUDIO:
             return
-        self._tasks.append(asyncio.ensure_future(self._pump_track(track)))
+        identity = getattr(participant, "identity", None)
+        source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
+        if source not in (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_UNKNOWN):
+            logger.info("call_bridge: bỏ qua track audio nguồn %s của %s", source, identity)
+            return
+        if self._caller_identity is None:
+            self._caller_identity = identity
+        elif identity != self._caller_identity:
+            logger.info("call_bridge: bỏ qua track audio của participant khác %s", identity)
+            return
+        # Người gọi publish lại mic (đổi thiết bị): luồng mới thay luồng cũ, không chạy song song.
+        if self._pump_task is not None and not self._pump_task.done():
+            self._pump_task.cancel()
+        self._pump_task = asyncio.ensure_future(self._pump_track(track))
+        self._tasks.append(self._pump_task)
 
     def _on_disconnected(self, *_args: object) -> None:
         self._signal_input_done()
@@ -437,6 +517,7 @@ class CallBridge:
         if self._closing:
             return
         self._closing = True
+        self._stop_silence_timer()
         self._signal_input_done()
         if self._pipeline_task is not None and self._pipeline_task is not asyncio.current_task():
             self._pipeline_task.cancel()

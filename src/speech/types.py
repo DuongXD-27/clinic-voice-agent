@@ -39,7 +39,7 @@ class AsrSegmentEnd(Enum):
     """Tín hiệu `STTPipeline` chèn vào luồng frame của `stream()` khi NGỪNG đưa audio vào ASR.
 
     ASR streaming tự chốt câu bằng khoảng lặng trong CHÍNH các frame nó nhận. Khi pipeline
-    ngừng đưa frame (Speech Admission hết đoạn nói, bot bắt đầu nói), ASR không bao giờ
+    ngừng đưa frame (bot bắt đầu nói giữa câu), ASR không bao giờ
     thấy đủ khoảng lặng: câu dở nằm lại trong buffer rồi thành final giả ở đầu câu sau,
     hoặc bị ghép vào câu sau. Bug thật (cuộc gọi LiveKit 2026-09-26): lượt 2 lặp lại
     nguyên văn lượt 1, lượt 3 thành "ANH SINH ANH SINH NGÀY ...".

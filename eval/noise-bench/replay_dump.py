@@ -1,9 +1,9 @@
 """Phát lại một bản ghi LiveKit (LIVEKIT_DEBUG_DUMP_AUDIO) qua đúng STTPipeline, theo thời
-gian thực, in mọi sự kiện: VAD, Admission, tín hiệu AsrSegmentEnd, partial/final ASR,
+gian thực, in mọi sự kiện: VAD, tín hiệu AsrSegmentEnd, partial/final ASR,
 quyết định TurnValidator, turn gửi lên core. Dùng để tái hiện lỗi của một cuộc gọi thật.
 
-Cấu hình lấy từ `.env` (biến môi trường đã đặt sẵn được ưu tiên), vd. so sánh tắt Admission:
-    SPEECH_ADMISSION_ENABLED=false .venv/bin/python eval/noise-bench/replay_dump.py <wav>
+Cấu hình lấy từ `.env` (biến môi trường đã đặt sẵn được ưu tiên), vd. thử bộ phân loại dùng chung:
+    SPEECH_SHARED_DETECTOR=true .venv/bin/python eval/noise-bench/replay_dump.py <wav>
 
 Bản ghi không có trạng thái bot nói; `--bot 19.35:on,28.75:off` giả lập bot bắt đầu/dừng
 nói tại các mốc (giây trong file). `--offline` chỉ decode batch từng đoạn Silero, không qua
@@ -133,6 +133,7 @@ async def replay(
     controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
+        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
         post_bot_guard_ms=settings.turn_post_bot_guard_ms,
         validator=bundle.validator,
     )
@@ -181,7 +182,7 @@ def main() -> None:
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
     settings = SpeechSettings(sample_rate=RATE, vad_provider="silero")
     print(
-        f"duration={len(pcm) / RATE:.2f}s admission={settings.speech_admission_enabled} "
+        f"duration={len(pcm) / RATE:.2f}s shared_detector={settings.speech_shared_detector} "
         f"validator={settings.turn_validator_enabled}"
     )
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))

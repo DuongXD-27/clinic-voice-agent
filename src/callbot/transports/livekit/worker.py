@@ -80,6 +80,7 @@ async def entrypoint(ctx: JobContext) -> None:
     turn_controller = TurnController(
         min_speech_ms=speech_settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=speech_settings.turn_max_wait_after_vad_end_ms,
+        max_wait_for_asr_ms=speech_settings.turn_max_wait_for_asr_ms,
         post_bot_guard_ms=speech_settings.turn_post_bot_guard_ms,
         validator=bundle.validator,
     )
@@ -102,6 +103,8 @@ async def entrypoint(ctx: JobContext) -> None:
         frame_ms=livekit_settings.frame_ms,
         input_queue_ms=livekit_settings.input_queue_ms,
         output_queue_ms=livekit_settings.output_queue_ms,
+        caller_identity=participant.identity,
+        silence_timeout_ms=livekit_settings.silence_timeout_ms,
     )
     try:
         await bridge.run()
@@ -125,6 +128,8 @@ def main() -> None:
             api_key=livekit_settings.livekit_api_key,
             api_secret=livekit_settings.livekit_api_secret,
             num_idle_processes=livekit_settings.worker_num_idle_processes,
+            # Rỗng giữ automatic dispatch; có tên thì chỉ nhận job token browser gọi đúng tên.
+            agent_name=livekit_settings.agent_name,
         )
     )
 

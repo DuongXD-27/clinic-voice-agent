@@ -215,5 +215,42 @@ def test_token_outbound_attaches_appointment_id_attribute(
     assert decoded["attributes"] == {"direction": "outbound", "appointment_id": "apt_00417"}
 
 
+def _decoded_token(clinic, redis_store_factory, redis_server, tmp_path, agent_name: str) -> dict:
+    pytest.importorskip("livekit.api", reason="cần extra [livekit] cài livekit-api")
+    jwt = pytest.importorskip("jwt", reason="cần PyJWT để decode token trong test")
+    secret = "test-secret-at-least-32-bytes-long"
+    settings = LiveKitSettings(
+        _env_file=None,
+        livekit_url="wss://example.livekit.cloud",
+        livekit_api_key="test-key",
+        livekit_api_secret=secret,
+        agent_name=agent_name,
+    )
+    app = _app(clinic, redis_store_factory, redis_server, tmp_path, settings)
+    with TestClient(app) as client:
+        response = client.post("/livekit/token", json={})
+    assert response.status_code == 200
+    return jwt.decode(response.json()["token"], secret, algorithms=["HS256"])
+
+
+def test_token_dispatches_named_agent_when_configured(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    """Hồi quy (28/09): nhiều worker không tên dùng chung project thì LiveKit chia job ngẫu
+    nhiên — cuộc gọi local rơi vào worker của người khác. Có agent_name thì room tạo bằng
+    token này chỉ gọi đúng worker mang tên đó."""
+    decoded = _decoded_token(clinic, redis_store_factory, redis_server, tmp_path, "viet-local")
+
+    assert decoded["roomConfig"] == {"agents": [{"agentName": "viet-local"}]}
+
+
+def test_token_keeps_automatic_dispatch_without_agent_name(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    decoded = _decoded_token(clinic, redis_store_factory, redis_server, tmp_path, "")
+
+    assert "roomConfig" not in decoded
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

@@ -5,7 +5,6 @@ import pytest
 
 pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 
-from speech.asr.admission import SpeechAdmission  # noqa: E402
 from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
 from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
@@ -137,38 +136,6 @@ async def test_noise_tracker_requires_classifier() -> None:
         await asyncio.wait_for(
             _collect(pipeline.stream(_frames(1), noise_tracker=NoiseTracker())), timeout=2.0
         )
-
-
-async def test_admission_and_validator_use_independent_trackers() -> None:
-    """Speech Admission và TurnValidator's NoiseTracker là 2 instance ĐỘC LẬP (xem
-    docstring stream()) — cấu hình cả 2 cùng lúc không được crash hay xung đột state."""
-    vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
-    asr = _FakeASR([TranscriptEvent(text="tôi muốn đổi lịch", is_final=True)])
-    admission = SpeechAdmission(min_snr_db=-100.0, min_speech_ms=0)  # luôn admit
-    validator = TurnValidator()
-    turn_controller = TurnController(min_speech_ms=0, validator=validator)
-    pipeline = STTPipeline(
-        asr=asr,
-        vad=StreamingVAD(_NullEnergyClassifier()),
-        async_vad=vad,
-        admission=admission,
-        admission_classifier=_AlwaysSpeechClassifier(),
-    )
-
-    turns = await asyncio.wait_for(
-        _collect(
-            pipeline.stream(
-                _frames(4),
-                turn_controller=turn_controller,
-                noise_tracker=NoiseTracker(),
-                noise_classifier=_AlwaysSpeechClassifier(),
-                evidence_tracker=TranscriptEvidenceTracker(),
-            )
-        ),
-        timeout=2.0,
-    )
-
-    assert len(turns) == 1
 
 
 class _ByFrameClassifier:

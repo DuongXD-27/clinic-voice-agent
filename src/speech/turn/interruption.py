@@ -20,8 +20,8 @@ lập, cả bốn đều cho phép confirm mà không đủ điều kiện:
    không đồng đều thành speech_start GIỮA LÚC bot đang nói (khác case #2 — ở đây ASR có
    generate ra chữ, chỉ là chữ đó bị hallucinate từ noise, không phải audio rỗng): log
    thật đã gặp qua LiveKit demo, "ĐÂY" được confirm liên tục dù user hoàn toàn im lặng.
-   `Speech Admission` (pipeline.py::_fanout()) KHÔNG áp dụng cho nhánh candidate này (audio
-   phải tới ASR thật để có thể tự confirm, chặn ở Admission sẽ deadlock) — `TurnValidator`
+   Nhánh candidate này không thể lọc trước ASR (audio phải tới ASR thật để có thể tự
+   confirm, chặn ở đó sẽ deadlock) — `TurnValidator`
    (`min_snr_db`/`TranscriptEvidenceTracker`, xem docs/reference/livekit-architecture.md
    §5.4) là lớp phòng thủ cuối, tuỳ chọn qua tham số `validator`.
 4. `_passes_gate()` từng coi `ValidationDecision.WAIT` tương đương `ACCEPT` (chỉ DROP mới

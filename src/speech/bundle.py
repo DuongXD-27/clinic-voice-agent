@@ -17,6 +17,7 @@ from speech.asr.recognizer import Recognizer, SpeechRecognizer
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
+from speech.asr.vad.shared import SharedSpeechDetector
 from speech.asr.vad.streaming import StreamingVAD
 from speech.audio.loader import load_from_url
 from speech.audio.noise_tracker import NoiseTracker
@@ -136,14 +137,14 @@ def _build_vad_classifier(settings: SpeechSettings) -> FrameClassifier:
     if settings.vad_provider == "silero":
         # Cùng classifier dùng cho NoiseTracker (_build_noise_classifier) — nhưng đây là
         # instance RIÊNG, không share: SileroVadClassifier stateful, mỗi consumer (main
-        # VAD, ASR endpoint, Admission, Validator) cần instance độc lập (xem docstring
+        # VAD, ASR endpoint, Validator) cần instance độc lập (xem docstring
         # speech/asr/vad/silero.py).
         return _build_noise_classifier(settings)
     return EnergyFrameClassifier(settings.vad_rms_threshold)
 
 
 def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
-    """Dùng cho NoiseTracker (Speech Admission + TurnValidator) — LUÔN Silero VAD, không
+    """Dùng cho NoiseTracker (evidence của TurnValidator) — LUÔN Silero VAD, không
     đọc `vad_provider` trực tiếp (bug thật đã gặp khi `vad_provider=webrtc`: WebRTC báo
     speech=True gần như liên tục trên noise phòng thuần, khiến noise_floor không cập
     nhật đúng và SNR dao động hỗn loạn, xem docstring `SpeechSettings.silero_vad_model_path`).
@@ -151,7 +152,11 @@ def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
     mỗi lần, xem đó) — NoiseTracker vẫn luôn dùng Silero dù main VAD là gì."""
     from speech.asr.vad.silero import SileroVadClassifier
 
-    return SileroVadClassifier(settings.silero_vad_model_path, sample_rate=settings.sample_rate)
+    return SileroVadClassifier(
+        settings.silero_vad_model_path,
+        sample_rate=settings.sample_rate,
+        min_silence_ms=settings.silero_min_silence_ms,
+    )
 
 
 def build_streaming_bundle(
@@ -173,27 +178,19 @@ def build_streaming_bundle(
     # phụ thuộc giả định đó và tránh state cũ (buffer Silero chưa flush) rò từ lần gọi
     # trước sang lần sau.
     sync_classifier = _build_vad_classifier(settings)
-    async_classifier = _build_vad_classifier(settings)
+    detector = (
+        SharedSpeechDetector(_build_noise_classifier(settings))
+        if settings.speech_shared_detector
+        else None
+    )
+    async_classifier = detector.view() if detector else _build_vad_classifier(settings)
     # ASR endpointing cần classifier riêng thứ 3: WebRTC/Silero đều có state nội bộ,
-    # không được cho hai consumer đồng thời dùng chung một instance.
-    asr_endpoint_classifier = _build_vad_classifier(settings)
+    # không được cho hai consumer đồng thời dùng chung một instance (trừ khi dùng chung
+    # detector — view() không có state, chỉ đọc kết quả _fanout đã tính).
+    asr_endpoint_classifier = detector.view() if detector else _build_vad_classifier(settings)
     vad = StreamingVAD(sync_classifier, end_silence_ms=settings.vad_end_silence_ms)
     async_vad = AsyncStreamingVAD(async_classifier, end_silence_ms=settings.vad_end_silence_ms)
     asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
-    admission = None
-    admission_classifier = None
-    if settings.speech_admission_enabled:
-        from speech.asr.admission import SpeechAdmission
-
-        admission = SpeechAdmission(
-            min_snr_db=settings.speech_admission_min_snr_db,
-            min_speech_ms=settings.speech_admission_min_speech_ms,
-            end_silence_ms=settings.vad_end_silence_ms,
-        )
-        # Classifier riêng thứ 3 — cùng lý do asr_endpoint_classifier ở trên, không share
-        # instance stateful giữa 3 consumer (VAD chính, ASR endpoint, Admission). Silero
-        # (không phải _build_vad_classifier/WebRTC) — xem _build_noise_classifier.
-        admission_classifier = _build_noise_classifier(settings)
     stt_pipeline = STTPipeline(
         asr,
         vad,
@@ -206,9 +203,7 @@ def build_streaming_bundle(
             "silence_classifier": asr_endpoint_classifier,
             "end_silence_ms": settings.vad_end_silence_ms,
         },
-        admission=admission,
-        admission_classifier=admission_classifier,
-        admission_preroll_frames=max(1, settings.speech_admission_preroll_ms // frame_ms),
+        speech_detector=detector,
     )
     tts = SpeechSynthesizer(
         create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
@@ -222,10 +217,9 @@ def build_streaming_bundle(
         validator = TurnValidator(min_snr_db=settings.turn_validator_min_snr_db)
         evidence_tracker = TranscriptEvidenceTracker()
         noise_tracker = NoiseTracker()
-        # Classifier riêng thứ 4 (độc lập Admission's admission_classifier) — TurnValidator
-        # và Speech Admission là 2 tính năng tách biệt, không share tracker/state. Silero
-        # (không phải _build_vad_classifier/WebRTC) — xem _build_noise_classifier.
-        noise_classifier = _build_noise_classifier(settings)
+        # Classifier riêng (không dùng chung detector): Silero, không phải
+        # _build_vad_classifier/WebRTC — xem _build_noise_classifier.
+        noise_classifier = detector.view() if detector else _build_noise_classifier(settings)
 
     return StreamingSpeechBundle(
         stt_pipeline=stt_pipeline,

@@ -1,15 +1,14 @@
 """STTPipeline báo cho ASR mỗi khi ngừng đưa audio (AsrSegmentEnd).
 
 Bug thật (cuộc gọi LiveKit 2026-09-26): ASR chỉ tự chốt câu khi thấy đủ khoảng lặng trong
-các frame nó nhận. Speech Admission ngừng gửi im lặng đúng lúc ASR mới thấy 570/600 ms, bot
-bắt đầu nói giữa câu người dùng — câu dở nằm lại buffer, thành lượt 2 lặp nguyên văn lượt 1
-và lượt 3 "ANH SINH ANH SINH NGÀY ...".
+các frame nó nhận. Bot bắt đầu nói giữa câu người dùng — câu dở nằm lại buffer, thành lượt
+"ANH SINH ANH SINH NGÀY ...". (Nhánh Speech Admission — ngừng gửi im lặng lúc ASR mới thấy
+570/600 ms — đã gỡ cùng Admission 28/09.)
 """
 
 import asyncio
 from typing import AsyncIterator
 
-from speech.asr.admission import SpeechAdmission
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import VadEvent
 from speech.asr.vad.streaming import StreamingVAD
@@ -21,14 +20,6 @@ from speech.types import AsrSegmentEnd, Transcript, TranscriptEvent
 class _NullClassifier:
     def is_speech(self, frame: bytes) -> bool:
         return False
-
-
-class _ByFrameClassifier:
-    def __init__(self, speech_frames: set[bytes]) -> None:
-        self._speech_frames = speech_frames
-
-    def is_speech(self, frame: bytes) -> bool:
-        return frame in self._speech_frames
 
 
 class _FakeAsyncVAD:
@@ -89,29 +80,6 @@ async def _realtime(frames: list[bytes], before_frame=None) -> AsyncIterator[byt
 
 async def _collect(gen) -> list:
     return [item async for item in gen]
-
-
-async def test_admission_end_of_speech_finalizes_asr_segment() -> None:
-    """Admission ngừng gửi im lặng sau end_silence_ms -> ASR phải được bảo chốt ngay, trước
-    khi audio của câu sau (kể cả preroll) tới."""
-    speech_1, speech_2, silence = _make_frame(1), _make_frame(2), bytes(480)
-    asr = _RecordingASR()
-    pipeline = STTPipeline(
-        asr=asr,
-        vad=StreamingVAD(_NullClassifier()),
-        async_vad=_FakeAsyncVAD([]),
-        admission=SpeechAdmission(min_snr_db=6.0, min_speech_ms=30, end_silence_ms=90),
-        admission_classifier=_ByFrameClassifier({speech_1, speech_2}),
-        admission_preroll_frames=4,
-    )
-
-    frames = [speech_1] * 5 + [silence] * 10 + [speech_2] * 5
-    await asyncio.wait_for(_collect(pipeline.stream(_realtime(frames))), timeout=2.0)
-
-    assert asr.items.count(AsrSegmentEnd.FINALIZE) == 1
-    end = asr.items.index(AsrSegmentEnd.FINALIZE)
-    assert asr.items[:end] == [speech_1] * 5 + [silence] * 2
-    assert asr.items[end + 1 :] == [silence] * 4 + [speech_2] * 5
 
 
 async def test_bot_starting_to_speak_discards_pending_asr_segment() -> None:

@@ -18,13 +18,19 @@ elevenlabs_realtime:
   # Tối đa 50 keyterm, ngăn cách dấu phẩy. Có thể tăng chi phí STT.
   keyterms: "" # ELEVENLABS_STT_KEYTERMS
 
-# Asset tải tay theo docs/reference/zipformer-model-setup.md (bị .gitignore). Đường dẫn tính từ
-# gốc repo; Docker Compose override sang /app/models/zipformer.
+# Asset tải tay (bị .gitignore) hoặc Dockerfile tự tải lúc build image (huggingface_hub, vào
+# /app/models/zipformer — thư mục TÊN zipformer, nội dung là model gipformer1.5, không đổi tên
+# thư mục production). gipformer1.5 (g-group-ai-lab/gipformer1.5-68M-rnnt) thay
+# csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20 từ 23/09/2026 (commit ccd1163): model cũ
+# hallucinate nặng trên audio LiveKit thật, gipformer1.5 decode đúng trên chính những audio đó
+# (đã kiểm chứng thực nghiệm). Đồng bộ default ở đây (28/09) để chạy không qua Docker cũng dùng
+# đúng model và đúng tên thư mục assets/zipformer/ như Docker — trước đó lệch cả model lẫn tên
+# thư mục, gây rủi ro chạy nhầm model cũ trên máy khác/CI.
 zipformer:
-  model: csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20 # ZIPFORMER_MODEL
-  encoder_path: src/inference/asr/providers/assets/zipformer/encoder-epoch-12-avg-8.int8.onnx # ZIPFORMER_ENCODER_PATH
-  decoder_path: src/inference/asr/providers/assets/zipformer/decoder-epoch-12-avg-8.onnx # ZIPFORMER_DECODER_PATH
-  joiner_path: src/inference/asr/providers/assets/zipformer/joiner-epoch-12-avg-8.int8.onnx # ZIPFORMER_JOINER_PATH
+  model: g-group-ai-lab/gipformer1.5-68M-rnnt # ZIPFORMER_MODEL
+  encoder_path: src/inference/asr/providers/assets/zipformer/encoder.int8.onnx # ZIPFORMER_ENCODER_PATH
+  decoder_path: src/inference/asr/providers/assets/zipformer/decoder.onnx # ZIPFORMER_DECODER_PATH
+  joiner_path: src/inference/asr/providers/assets/zipformer/joiner.int8.onnx # ZIPFORMER_JOINER_PATH
   tokens_path: src/inference/asr/providers/assets/zipformer/tokens.txt # ZIPFORMER_TOKENS_PATH
   num_threads: 2 # ZIPFORMER_NUM_THREADS
   # Không decode buffer speech ngắn hơn ngưỡng này — chống hallucinate từ "à"/"ờm".
@@ -32,3 +38,6 @@ zipformer:
   # Flush cưỡng bức khi speech liên tục vượt ngưỡng — chống memory leak khi VAD không báo
   # speech_end (docs/reference/livekit-architecture.md §5.5).
   max_turn_speech_ms: 15000 # ZIPFORMER_MAX_TURN_SPEECH_MS
+  # Giãn nhịp decode partial cho câu dài: max(300 ms, tỉ lệ x độ dài buffer). 0 = tắt.
+  # Chỉ bật sau khi đo CPU trên máy production.
+  partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO

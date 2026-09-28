@@ -18,3 +18,12 @@ barge_in_preroll_ms: 500
 output_queue_ms: 200
 # Mỗi process nạp một bản ZipFormer; 1 process idle hợp máy demo 2 vCPU/2 GB
 worker_num_idle_processes: 1
+# Rỗng = LiveKit tự chia job cho MỌI worker không đặt tên trong cùng project — nhiều người
+# (hoặc production) dùng chung project thì cuộc gọi có thể rơi vào worker của người khác.
+# Đặt tên riêng (vd. LIVEKIT_AGENT_NAME=viet-local) cho CẢ FastAPI lẫn worker: worker chỉ
+# nhận job gọi đúng tên, token cấp cho browser gọi đúng agent đó.
+agent_name: ""
+# Người dùng im lặng liên tục bao lâu (ms, tính từ lúc bot dứt lời, theo VAD) thì gửi core một
+# lượt im lặng (silence_ms > 0) — core tự hỏi lại, 3 lượt liên tiếp thì kết thúc/chuyển máy
+# (config/engine.yaml max_silent_turns). 0 = tắt.
+silence_timeout_ms: 8000

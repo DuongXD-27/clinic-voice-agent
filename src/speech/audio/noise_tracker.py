@@ -1,5 +1,5 @@
-"""Theo dõi noise floor liên tục — cung cấp bằng chứng SNR cho Speech Admission/Turn
-Validator, độc lập với quyết định speech/non-speech của VAD (VAD có thể sai trên noise
+"""Theo dõi noise floor liên tục — cung cấp bằng chứng SNR cho Turn Validator/barge-in,
+độc lập với quyết định speech/non-speech của VAD (VAD có thể sai trên noise
 phòng không đồng đều, xem docs/reference/livekit-architecture.md §5.4).
 """
 
@@ -40,9 +40,9 @@ class NoiseTracker:
 
     def peek(self, frame: bytes) -> NoiseEvidence:
         """Đo SNR dựa trên `noise_floor` HIỆN TẠI, KHÔNG cập nhật floor — dùng khi caller
-        cần biết SNR trước khi tự quyết định is_speech "thật" hay không (Speech Admission:
-        low_snr/too_short vẫn có thể là speech thật, không nên kéo floor lên vì đoán sai;
-        chỉ no_speech mới chắc chắn là nền nhiễu, gọi `commit_floor()` riêng sau đó)."""
+        cần biết SNR trước khi tự quyết định is_speech "thật" hay không (frame SNR thấp vẫn
+        có thể là speech thật, không nên kéo floor lên vì đoán sai; chỉ khi chắc chắn là nền
+        nhiễu mới gọi `commit_floor()` riêng sau đó)."""
         samples = np.frombuffer(frame, dtype=np.int16).astype(np.float32)
         rms = float(np.sqrt(np.mean(samples**2))) if samples.size else 0.0
         snr_db = 20.0 * np.log10(max(rms, _EPS) / max(self._noise_floor, _EPS))
@@ -51,7 +51,7 @@ class NoiseTracker:
     def commit_floor(self, evidence: NoiseEvidence) -> None:
         """Cập nhật floor bằng `rms` của 1 `NoiseEvidence` đã đo qua `peek()` — gọi CHỈ khi
         caller đã tự xác nhận chắc chắn đây là nền nhiễu (không phải speech), sau khi có
-        đủ bằng chứng để quyết định (vd. AdmissionDecision.reason == "no_speech")."""
+        đủ bằng chứng để quyết định."""
         self._update_floor(evidence.rms)
 
     def _update_floor(self, rms: float) -> None:
