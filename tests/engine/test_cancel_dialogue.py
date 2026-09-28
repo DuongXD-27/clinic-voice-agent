@@ -24,6 +24,7 @@ from callbot.engine.extraction.semantic import (
     SemanticOutcome,
 )
 from callbot.engine.session import CallContext
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
 
@@ -497,7 +498,7 @@ def test_invalid_state_transition_on_cancel_is_transferred() -> None:
 
 def test_timeout_before_the_write_blocks_the_turn_for_reconciliation() -> None:
     bot, clinic = _requesting("c_t05_timeout")
-    clinic.fail_next("cancel_appointment", outcome_unknown=True)
+    clinic.fail_unknown("cancel_appointment", WRITE_MAX_SENDS)
     with pytest.raises(ReconciliationRequired):
         _run(bot, "c_t05_timeout", ["Hủy giúp tôi"], start=4)
     assert clinic.writes == []
@@ -506,7 +507,7 @@ def test_timeout_before_the_write_blocks_the_turn_for_reconciliation() -> None:
 def test_timeout_after_the_write_is_applied_still_does_not_report_success() -> None:
     """Mock đã hủy nhưng bot không nhận được phản hồi: không nói đã hủy, không ghi thêm lệnh nào."""
     bot, clinic = _requesting("c_t05_timeout_applied")
-    clinic.fail_next("cancel_appointment", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("cancel_appointment", WRITE_MAX_SENDS, apply_first=True)
     with pytest.raises(ReconciliationRequired):
         _run(bot, "c_t05_timeout_applied", ["Hủy giúp tôi"], start=4)
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
