@@ -12,10 +12,13 @@ tts_provider: openai
 # null = không fallback. Cần đủ key của cả hai provider, thiếu thì app không khởi động.
 tts_fallback_provider: null
 
-# energy | webrtc | silero. energy dễ hiểu nhầm noise thành turn (baseline). webrtc (extra
-# [vad-webrtc]) tốt hơn nhưng vẫn bị noise phòng lừa. silero (cần silero_vad_model_path) không
-# bỏ sót giọng thật và từ chối noise trên các file đã kiểm — docs/reference/livekit-architecture.md §5.4.
-vad_provider: energy
+# energy | webrtc | silero. energy dễ hiểu nhầm noise thành turn (baseline). webrtc tốt hơn
+# nhưng vẫn bị noise phòng lừa. silero (cần silero_vad_model_path) không bỏ sót giọng thật.
+# Đổi sang silero 28/09/2026 theo quyết định owner — đã đo (docs/evidence/livekit-audio-plan-
+# execution-2026-09-28.md §5.2): tốt hơn rõ cho câu dài/latency dưới nhiễu (false_turns 11→0,
+# latency 3,96s→0,7s), NHƯNG tệ hơn rõ cho câu ngắn dưới nhiễu văn phòng (no_turn 13→26/38,
+# đúng loại câu xác nhận có/không, huỷ/giữ lịch) — rủi ro đã biết, chấp nhận có chủ đích.
+vad_provider: silero
 vad_rms_threshold: 500.0
 vad_webrtc_aggressiveness: 2
 vad_end_silence_ms: 600
@@ -23,27 +26,34 @@ vad_end_silence_ms: 600
 # Turn Controller (đường LiveKit): turn ngắn hơn ngưỡng này bị coi là tiếng động/backchannel.
 turn_min_speech_ms: 250
 turn_max_wait_after_vad_end_ms: 300
+# ASR còn tồn audio của câu (decode chậm) thì chờ thêm tối đa chừng này trước khi chốt bằng partial.
+turn_max_wait_for_asr_ms: 3000
 # Bỏ candidate bắt đầu quá gần lúc bot vừa dứt lời — chống dư âm/tiếng vọng phòng.
 turn_post_bot_guard_ms: 500
 
-# Speech Admission: chặn frame vào ASR khi SNR quá thấp. TẮT — cần benchmark thêm.
-speech_admission_enabled: false
-speech_admission_min_snr_db: 6.0
-speech_admission_min_speech_ms: 150
-# Giữ audio chưa ADMIT để flush bù khi ADMIT — REJECT trước ADMIT đo được 240-510ms.
-speech_admission_preroll_ms: 600
-
-# Turn Validator: lớp quyết định cuối trước khi chốt turn. TẮT — cần benchmark thêm.
-turn_validator_enabled: false
+# Turn Validator: lớp quyết định cuối trước khi chốt turn. Bật 28/09/2026 cùng lúc đổi sang
+# Silero VAD (quyết định owner) — đo gộp trong cấu hình target (§5.2 evidence), chưa có số đo
+# tách riêng chỉ mình Validator.
+turn_validator_enabled: true
 turn_validator_min_snr_db: 3.0
-# Ngưỡng SNR riêng cho barge-in (InterruptionController). null = tắt kiểm tra; đặt 0.0 nếu
-# bot tự ngắt lời vì nghe lại chính nó qua loa/mic.
-interruption_min_snr_db: null
+# Ngưỡng SNR riêng cho barge-in (InterruptionController). null = tắt kiểm tra; 0.0 nếu bot tự
+# ngắt lời vì nghe lại chính nó qua loa/mic. Bật 28/09/2026 cùng đợt trên — chưa có số đo riêng.
+interruption_min_snr_db: 0.0
 
 # Dùng cho NoiseTracker (luôn Silero) và cho vad_provider=silero. Tải:
 #   curl -L -o src/speech/asr/vad/assets/silero_vad.onnx \
 #     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
 silero_vad_model_path: src/speech/asr/vad/assets/silero_vad.onnx
+# Silero giữ trạng thái "đang nói" thêm chừng này sau khi hết tiếng; cộng với vad_end_silence_ms
+# thành thời gian chờ hết câu.
+silero_min_silence_ms: 500
+# Đường LiveKit: một bản Silero dùng chung cho VAD chính, bộ chốt câu ASR và evidence Validator
+# (mỗi frame phân loại một lần). Bật thì VAD chính là Silero, bỏ qua vad_provider.
+# Đã đối chiếu 28/09 (eval/noise-bench/bench.py --profile target, +speech_shared_detector=true):
+# 0/869 trial khác kết quả so với 3 bản Silero độc lập trên bộ web+golden — an toàn về kết quả,
+# chỉ giảm số lần suy luận/frame. Vẫn để tắt mặc định: mục tiêu (Silero làm VAD chính) bản thân
+# nó chưa được bật cho production, cờ này chỉ có ý nghĩa khi đó.
+speech_shared_detector: false
 
 # URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
 public_base_url: http://localhost:8000
