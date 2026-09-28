@@ -117,6 +117,15 @@ def test_error_without_envelope_falls_back_to_status_code() -> None:
     assert exc.value.code == "NOT_FOUND" and exc.value.status == 404
 
 
+def test_2xx_without_a_json_body_is_an_unknown_outcome() -> None:
+    """Lệnh ghi đã tới mock (2xx) nhưng không đọc được body: chưa rõ đã áp dụng gì (T-12)."""
+    client = _client(lambda _r: httpx.Response(200, text="<html>ok</html>"))
+    with pytest.raises(ClinicAPIError) as exc:
+        client.confirm_appointment("apt_00417", 3, "key")
+    assert (exc.value.status, exc.value.code) == (200, "BAD_RESPONSE")
+    assert exc.value.outcome_known is False
+
+
 def test_connect_error_is_known_rejection_but_timeout_is_unknown() -> None:
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)
@@ -185,3 +194,10 @@ def test_client_never_calls_harness_endpoints() -> None:
         call()
     assert len(paths) == 9 and all(p.startswith("/v1/") for p in paths)
     assert not any("/_harness" in p for p in paths)
+
+
+def test_2xx_without_a_json_body_is_traced_as_unknown() -> None:
+    client = _client(lambda _r: httpx.Response(200, text="<html>ok</html>"))
+    with collect_api_calls() as calls, pytest.raises(ClinicAPIError):
+        client.confirm_appointment("apt_00417", 3, "key")
+    assert [(c.status, c.code, c.outcome) for c in calls] == [(200, "BAD_RESPONSE", "unknown")]

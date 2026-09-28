@@ -758,10 +758,13 @@ def test_a_2xx_with_the_wrong_status_is_not_success(operation: str, write) -> No
     fake = FakeClinicAPI()
     fake.after_next(operation, lambda body: body.update(status="SCHEDULED"))
     gateway, _ = _gateway(fake)
-    with bind_journal(RecordingJournal()), pytest.raises(WriteOutcomeUnknown) as exc:
+    journal = RecordingJournal()
+    with bind_journal(journal), pytest.raises(WriteOutcomeUnknown) as exc:
         write(gateway)
     assert "trả status SCHEDULED" in str(exc.value)
     assert len(fake.requests) == 1  # không gửi lại khi mock đã trả lời
+    # Kiểm tra TRƯỚC khi ghi nhật ký: không có lệnh SUCCEEDED nào thiếu bằng chứng
+    assert journal.statuses == ["begin", "unknown"]
 
 
 def test_each_send_is_a_traced_clinic_attempt() -> None:
@@ -772,3 +775,139 @@ def test_each_send_is_a_traced_clinic_attempt() -> None:
         gateway.transfer(_outbound("c_t12_trace"), "OUT_OF_SCOPE")
     sends = [c for c in calls if c.operation == "transfer_appointment"]
     assert [c.outcome for c in sends] == ["unknown", "ok"]
+
+
+# --- T-12 sau review: đã có lần gửi chưa rõ thì không bao giờ là "từ chối" -----------------------
+
+
+@pytest.mark.parametrize(
+    "later",
+    [
+        [clinic_error(429, "RATE_LIMITED")] * (WRITE_MAX_SENDS - 1),
+        [ClinicAPIError(None, "CONNECT_ERROR", "refused", outcome_known=True)]
+        * (WRITE_MAX_SENDS - 1),
+        [clinic_error(409, "VERSION_CONFLICT")],
+        [clinic_error(409, "INVALID_STATE_TRANSITION")],
+        [clinic_error(404, "NOT_FOUND")],
+    ],
+    ids=["429", "connect_error", "version_conflict", "invalid_state", "not_found"],
+)
+def test_a_definite_error_after_an_uncertain_send_is_still_unknown(later) -> None:
+    """Lần gửi đầu timeout (mock ĐÃ ghi), lần gửi lại gặp lỗi xác định: vẫn chưa rõ kết quả.
+
+    Báo "từ chối" ở đây sẽ làm Dialogue chuyển máy và ghi /transfer đè lên lịch đã CONFIRMED.
+    """
+    fake = FakeClinicAPI()
+    fake.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    for error in later:
+        fake.fail_next("confirm_appointment", error)
+    gateway, _ = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_mixed")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal), pytest.raises(WriteOutcomeUnknown):
+        gateway.confirm(ctx)
+
+    assert journal.statuses == ["begin", "unknown"]  # không có FAILED cho lệnh có thể đã áp dụng
+    assert [status for _, status, _ in fake.writes] == ["CONFIRMED"]
+    assert _version_reads(fake) == 1  # không đọc lại version, kể cả sau VERSION_CONFLICT
+
+
+def test_uncertain_then_rate_limited_then_replayed_is_success() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    fake.fail_next("confirm_appointment", clinic_error(429, "RATE_LIMITED"))
+    gateway, _ = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_replay")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal):
+        assert gateway.confirm(ctx)["status"] == "CONFIRMED"
+
+    assert journal.statuses == ["begin", "succeeded"]
+    assert [status for _, status, _ in fake.writes] == ["CONFIRMED"]
+    assert len(fake.requests) == WRITE_MAX_SENDS
+
+
+def test_version_conflict_is_always_reread_even_after_transient_retries() -> None:
+    """AC-5 / §4.2.5: lần gửi lại do VERSION_CONFLICT không bị giới hạn lỗi tạm thời chặn."""
+    fake = FakeClinicAPI()
+    fake.fail_times("confirm_appointment", WRITE_MAX_SENDS - 1, clinic_error(429, "RATE_LIMITED"))
+    fake.fail_next("confirm_appointment", clinic_error(409, "VERSION_CONFLICT"))
+    gateway, _ = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_vc_last")
+    _agree_confirm(ctx)
+
+    with bind_journal(RecordingJournal()):
+        assert gateway.confirm(ctx)["status"] == "CONFIRMED"
+
+    assert _version_reads(fake) == 2
+    assert [key for key, _ in fake.requests] == ["c_t12_vc_last:3:confirm"] * (WRITE_MAX_SENDS + 1)
+
+
+def test_a_non_json_2xx_on_write_is_unknown_not_rejected() -> None:
+    """Mock đã nhận lệnh (2xx) nhưng body hỏng: không được chuyển máy như lệnh bị từ chối."""
+    fake = FakeClinicAPI()
+    bad_body = ClinicAPIError(200, "BAD_RESPONSE", "Body không phải JSON", outcome_known=False)
+    # Lần đầu mock ghi rồi mới hỏng body; các lần gửi lại vẫn nhận body hỏng
+    fake.fail_next("confirm_appointment", bad_body, apply_first=True)
+    fake.fail_times("confirm_appointment", WRITE_MAX_SENDS - 1, bad_body)
+    gateway, _ = _gateway(fake)
+    ctx = _ready_to_confirm("c_t12_nonjson")
+    _agree_confirm(ctx)
+    journal = RecordingJournal()
+
+    with bind_journal(journal), pytest.raises(WriteOutcomeUnknown):
+        gateway.confirm(ctx)
+
+    assert journal.statuses == ["begin", "unknown"]
+    assert [status for _, status, _ in fake.writes] == ["CONFIRMED"]
+
+
+# --- T-12 rà soát lần 2: ngân sách chung cho cả lượt ------------------------------------------
+
+
+def test_the_write_budget_is_shared_by_every_write_in_the_turn() -> None:
+    """Clinic không kết nối được: confirm dùng hết ngân sách thì /transfer cùng lượt chỉ thử một lần."""
+    fake = FakeClinicAPI()
+    gateway, clock = _gateway(fake)
+    fake.delay("*", 1.0)  # connect timeout
+    fake.fail_always("*", ClinicAPIError(None, "CONNECT_ERROR", "down", outcome_known=True))
+    ctx = _ready_to_confirm("c_t12_turn")
+    _agree_confirm(ctx)
+
+    with bind_journal(RecordingJournal()):
+        with pytest.raises(ClinicWriteRejected):
+            gateway.confirm(ctx)
+        calls_after_confirm = len(fake.calls)
+        with pytest.raises(ClinicWriteRejected):
+            gateway.transfer(ctx, "SYSTEM_ERROR")
+
+    assert len(fake.calls) - calls_after_confirm == 1  # một lần đọc version, không thử lại
+    assert clock.now <= WRITE_BUDGET_S + 2.0
+
+
+def test_a_new_turn_gets_a_fresh_write_budget() -> None:
+    fake = FakeClinicAPI()
+    gateway, clock = _gateway(fake)
+    fake.fail_next("transfer_appointment", clinic_error(404, "NOT_FOUND"))  # lịch giữ nguyên
+    with bind_journal(RecordingJournal()), pytest.raises(ClinicWriteRejected):
+        gateway.transfer(_outbound("c_t12_turn1"), "OUT_OF_SCOPE")
+    clock.now += WRITE_BUDGET_S * 10  # lượt sau, rất lâu sau đó
+    fake.fail_next("transfer_appointment", clinic_error(429, "RATE_LIMITED"))
+    with bind_journal(RecordingJournal()):
+        assert gateway.transfer(_outbound("c_t12_turn2"), "OUT_OF_SCOPE")["status"] == "TRANSFERRED"
+    assert clock.sleeps == [WRITE_BACKOFF_S[0]]
+
+
+def test_a_dropped_connection_on_the_version_read_is_read_again() -> None:
+    fake = FakeClinicAPI()
+    fake.fail_next(
+        "get_appointment", ClinicAPIError(None, "TRANSPORT_ERROR", "reset", outcome_known=False)
+    )
+    gateway, _ = _gateway(fake)
+    with bind_journal(RecordingJournal()):
+        assert gateway.transfer(_outbound("c_t12_reset"), "OUT_OF_SCOPE")["status"] == "TRANSFERRED"
+    assert _version_reads(fake) == 2

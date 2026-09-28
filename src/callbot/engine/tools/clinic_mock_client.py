@@ -232,8 +232,14 @@ class ClinicMockClient:
 
         request_id = response.headers.get("x-request-id")
         if response.is_success:
+            try:
+                body = _json_body(response)
+            except ClinicAPIError as exc:
+                # Trace phải khớp cách Gateway hiểu: 2xx không đọc được là chưa rõ, không phải "ok"
+                emit(response.status_code, exc.code, request_id, "unknown")
+                raise
             emit(response.status_code, None, request_id, "ok")
-            return _json_body(response)
+            return body
 
         code, message, request_id = _parse_error(response, request_id)
         outcome_known = response.status_code < 500
@@ -264,8 +270,9 @@ def _json_body(response: httpx.Response) -> Any:
     try:
         return response.json()
     except ValueError as exc:
+        # 2xx nghĩa là mock (hoặc proxy trước nó) đã nhận request: với lệnh ghi thì chưa rõ kết quả
         raise ClinicAPIError(
-            response.status_code, "BAD_RESPONSE", "Body không phải JSON", outcome_known=True
+            response.status_code, "BAD_RESPONSE", "Body không phải JSON", outcome_known=False
         ) from exc
 
 
