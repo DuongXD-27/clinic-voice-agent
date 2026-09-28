@@ -86,6 +86,15 @@ class FaultInjector:
         for _ in range(times):
             self.fail_next(operation, error, outcome_unknown=outcome_unknown)
 
+    def fail_unknown(self, operation: str, times: int, *, apply_first: bool = False) -> None:
+        """`times` lần gọi kế tiếp đều timeout (chưa rõ kết quả), sau đó bình thường.
+
+        `apply_first=True`: lần đầu lệnh ghi đã được áp dụng, các lần gửi lại cùng key vẫn timeout —
+        bot gửi lại tới giới hạn mà vẫn không biết kết quả.
+        """
+        self.fail_next(operation, outcome_unknown=True, apply_first=apply_first)
+        self.fail_times(operation, times - 1, outcome_unknown=True)
+
     def fail_always(self, operation: str = WILDCARD, error: Optional[BaseException] = None) -> None:
         """Lỗi mọi lần gọi cho tới `clear_faults()` — backend sập, key sai..."""
         self._always[_check(operation)] = error if error is not None else _default_error(False)

@@ -50,6 +50,12 @@ services:
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+      # Trace JSONL (khi TRACE_ENABLED=true) ghi vào volume để trang /ui/observability đọc lại;
+      # giữ qua các lần build lại. Dữ liệu đã ẩn danh (tracing/privacy.py).
+      TRACE_JSONL_DIR: /app/traces
+      OBSERVABILITY_API_ENABLED: ${OBSERVABILITY_API_ENABLED:-true}
+    volumes:
+      - traces:/app/traces
     # host.docker.internal chỉ tự có trên Docker Desktop (Mac/Windows) — trên
     # Docker Linux cần khai báo tay để container gọi ngược ra service chạy
     # trên host (vd. clinic-mock local ở CLINIC_MOCK_BASE_URL trong .env).
@@ -82,3 +88,6 @@ services:
       interval: 10s
       timeout: 3s
       retries: 6
+
+volumes:
+  traces:

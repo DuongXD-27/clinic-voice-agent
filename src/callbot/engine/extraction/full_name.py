@@ -347,6 +347,9 @@ def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Read
         or any(c.isdigit() for c in name)
         or not MIN_WORDS <= len(words) <= MAX_WORDS
         or any(w in _REJECTED_WORDS for w in words)
+        # "T T B", "A B C": ASR nghe người gọi đánh vần / nói tắt. Không tên nào toàn chữ cái
+        # đơn, và đưa nó vào Verifier là chuyển máy ngay thay vì hỏi lại tên.
+        or all(len(w) == 1 for w in words)
     ):
         return Reading(Field.nothing(), Reason.NO_SIGNAL, segment)
     return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)

@@ -89,9 +89,18 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
 
     # Import trễ, sau khi đã xác nhận có cấu hình — package `livekit` (extra [livekit])
     # không phải dependency bắt buộc của mọi môi trường (vd. CI mặc định chỉ cài
-    # [dev,speech]), route này phải trả đúng 503 khi CHƯA CẤU HÌNH thay vì raise
-    # ModuleNotFoundError mơ hồ khi package chưa cài.
-    from livekit import api
+    # [dev,speech]). Có cấu hình mà chưa cài package cũng phải trả 503 có mã lỗi rõ ràng,
+    # không để ModuleNotFoundError thành 500 "Internal Server Error" dạng text.
+    try:
+        from livekit import api
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "LIVEKIT_UNAVAILABLE",
+                "message": 'Server chưa cài thư viện LiveKit (pip install -e ".[livekit]")',
+            },
+        ) from exc
 
     room_name = payload.room_name or f"{settings.room_name_prefix}{uuid.uuid4()}"
     identity = f"web-{uuid.uuid4()}"

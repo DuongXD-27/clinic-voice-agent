@@ -1,3 +1,4 @@
+import sys
 from uuid import uuid4
 
 import fakeredis
@@ -33,6 +34,29 @@ def test_token_returns_503_when_not_configured(
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "LIVEKIT_NOT_CONFIGURED"
+
+
+def test_token_returns_503_when_livekit_package_missing(
+    clinic: FakeClinicAPI,
+    redis_store_factory,
+    redis_server,
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # None trong sys.modules làm `from livekit import api` ném ImportError như khi chưa cài.
+    monkeypatch.setitem(sys.modules, "livekit", None)
+    settings = LiveKitSettings(
+        _env_file=None,
+        livekit_url="wss://example.livekit.cloud",
+        livekit_api_key="test-key",
+        livekit_api_secret="test-secret-at-least-32-bytes-long",
+    )
+    app = _app(clinic, redis_store_factory, redis_server, tmp_path, settings)
+    with TestClient(app) as client:
+        response = client.post("/livekit/token", json={})
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "LIVEKIT_UNAVAILABLE"
 
 
 def test_token_issues_jwt_with_room_join_grant(

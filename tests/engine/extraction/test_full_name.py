@@ -63,6 +63,13 @@ def test_extracts_normalized_name(text: str, expected: str) -> None:
         "Em tôi là Nguyễn Văn A, còn chị tôi là Nguyễn Thị B",
         "Tôi là Nguyễn Văn A hay Nguyễn Văn B",
         "Nguyễn Văn A, còn em tôi là Nguyễn Văn B",
+        # Toàn chữ cái đơn: ASR nghe đánh vần / nói tắt, không phải họ tên
+        "T T B",
+        "T. T. B.",
+        "t.t.b",
+        "tôi là T T B",
+        "A B C",
+        "X Y",
     ],
 )
 def test_rejects_non_names(text: str) -> None:

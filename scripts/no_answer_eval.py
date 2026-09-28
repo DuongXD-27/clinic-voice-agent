@@ -81,6 +81,7 @@ from callbot.engine import (  # noqa: E402
     create_orchestrator,
 )
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS  # noqa: E402
 from clinic_mock_sim import FakeClinicAPI, clinic_error  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
@@ -125,7 +126,9 @@ FAULTS: dict[str, list[dict[str, Any]]] = {
         {"error": clinic_error(409, "VERSION_CONFLICT")},
     ],
     "invalid_state": [{"error": clinic_error(409, "INVALID_STATE_TRANSITION")}],
-    "outcome_unknown": [{"outcome_unknown": True, "apply_first": True}],
+    # Mock đã ghi nhưng mọi lần gửi lại (T-12) đều timeout: vẫn chưa rõ kết quả
+    "outcome_unknown": [{"outcome_unknown": True, "apply_first": True}]
+    + [{"outcome_unknown": True}] * (WRITE_MAX_SENDS - 1),
 }
 
 _SERVER = fakeredis.FakeServer()

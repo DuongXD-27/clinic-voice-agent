@@ -1,0 +1,54 @@
+.wrap {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.legend i {
+  width: 12px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+}
+
+.grid {
+  stroke: var(--border);
+  stroke-dasharray: 4 4;
+}
+
+.axis {
+  fill: var(--text-subtle);
+  font-size: 12px;
+}
+
+.line {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.values summary {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.values[open] summary {
+  margin-bottom: var(--space-2);
+}

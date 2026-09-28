@@ -24,7 +24,7 @@ transports/http/                     python -m callbot.transports.livekit.worker
                        ▲
                        │ WebRTC (mic publish / TTS subscribe)
                        │
-                  Browser (livekit-demo.html)
+                  Browser (/ui/livekit)
 ```
 
 Hai process độc lập hoàn toàn, không share state. `uvicorn` chỉ phát token, không

@@ -30,6 +30,9 @@ class Settings(YamlSettings):
     # dấu phẩy. Để trống = tắt auth.
     bot_api_keys: str = ""
 
+    # Bản build UI phục vụ tại /ui (ui.py); rỗng = không mount
+    ui_dist_dir: str
+
     def api_keys(self) -> list[str]:
         return [key.strip() for key in self.bot_api_keys.split(",") if key.strip()]
 

@@ -40,6 +40,15 @@ TODAY = date(2026, 9, 15)
         ("ngày tháng năm sinh 14/3/1978", date(1978, 3, 14)),
         ("ngay thang nam sinh 14/3/1978", date(1978, 3, 14)),
         ("14 thang 3 sinh nam 1978", date(1978, 3, 14)),
+        # ASR trộn chữ số với từ số; "linh" thay "không" khi đọc rời từng chữ số
+        ("mười bốn tháng ba năm 2 không linh tư", date(2004, 3, 14)),
+        ("mười bốn tháng ba năm hai không linh tư", date(2004, 3, 14)),
+        ("mười bốn tháng ba năm 2 không không 4", date(2004, 3, 14)),
+        ("mười bốn tháng ba năm 2 nghìn linh 4", date(2004, 3, 14)),
+        ("mười bốn tháng ba năm một chín 9 0", date(1990, 3, 14)),
+        ("mười bốn tháng 3 năm 2 không 1 5", date(2015, 3, 14)),
+        ("mười 4 tháng ba năm 2004", date(2004, 3, 14)),
+        ("ngày mùng 5 tháng 6 năm 2 không linh 5", date(2005, 6, 5)),
     ],
 )
 def test_valid_dates(text: str, expected: date) -> None:
@@ -57,6 +66,10 @@ def test_valid_dates(text: str, expected: date) -> None:
         "tôi 48 tuổi",  # nói tuổi thay năm sinh
         "ngày 14 tháng 3 âm lịch năm 1978",  # âm lịch
         "ngày 1 tháng 1 năm 20",  # 1920 và 2020 đều hợp lệ
+        "mười bốn tháng ba năm linh tư",  # "linh" đứng đầu: không đọc rời được
+        "mười bốn tháng ba năm một chín chín linh",  # "linh" đứng cuối
+        "mười bốn tháng ba năm hai không mười",
+        "mười bốn tháng ba năm hai 14",  # chữ số nhiều chữ lẫn với từ số
         "ngày 1 tháng 1 năm 2030",  # tương lai
         "ngày 1 tháng 1 năm 1900",  # quá 110 tuổi
         "14 tháng 3 năm 1978 à không 1979",  # tự sửa không đủ thông tin

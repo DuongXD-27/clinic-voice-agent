@@ -19,6 +19,7 @@ from callbot.engine.extraction import QuestionId
 from callbot.engine.extraction.schema import ClinicalLevel
 from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
 from callbot.engine.session import CallContext
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
@@ -290,7 +291,7 @@ def test_invalid_state_transition_on_confirm_is_transferred() -> None:
 def test_unknown_write_outcome_blocks_the_turn_instead_of_reporting() -> None:
     clinic = FakeClinicAPI()
     bot, _, _ = _at_readback("c_t04_unknown", clinic)
-    clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("confirm_appointment", WRITE_MAX_SENDS, apply_first=True)
     with pytest.raises(ReconciliationRequired):
         _run(bot, "c_t04_unknown", ["vâng"], start=3)
     # Mock đã ghi nhưng bot không biết: không có phản hồi CONFIRMED, không chuyển máy thay thế

@@ -1,23 +1,15 @@
-"""Contract test cạnh "API nghiệp vụ": cùng một bộ case chạy trên FakeClinicAPI và trên clinic mock thật.
+"""Contract test cạnh "API nghiệp vụ" trên FakeClinicAPI.mentor_mock() (giống store.py của mock sau reset).
 
-- `fake`: luôn chạy, dữ liệu `FakeClinicAPI.mentor_mock()` (giống store.py của mock sau reset).
-- `live`: chỉ khi `CLINIC_MOCK_LIVE=1`; dùng CLINIC_MOCK_BASE_URL / CLINIC_MOCK_API_KEY (Settings đọc .env).
-  Mỗi test gọi POST /_harness/reset TỪ FIXTURE (không phải từ client — bot không được gọi /_harness).
-  Reset xóa dữ liệu của cả team trên instance chung: báo kênh team trước khi bật (clinic-mock.md §6).
-
+Không chạy trên clinic mock thật: instance dùng chung, reset/ghi sẽ xóa và đổi dữ liệu của cả team.
 Case viết theo dữ liệu đọc được (version, slot_id...), không ghi cứng giờ khám hay id có hậu tố tenant.
 """
 
-import os
-from collections.abc import Iterator
 from typing import Any
 from uuid import uuid4
 
-import httpx
 import pytest
 
 from callbot.engine.errors import ClinicAPIError
-from callbot.engine.tools.clinic_mock_client import ClinicMockClient
 from callbot.engine.tools.ports import ClinicAPI
 from clinic_mock_sim import FakeClinicAPI
 
@@ -41,23 +33,9 @@ def _error(call, status: int, code: str) -> ClinicAPIError:
     return exc.value
 
 
-@pytest.fixture(params=["fake", "live"])
-def api(request: pytest.FixtureRequest) -> Iterator[ClinicAPI]:
-    if request.param == "fake":
-        yield FakeClinicAPI.mentor_mock()
-        return
-    if os.environ.get("CLINIC_MOCK_LIVE") != "1":
-        pytest.skip("Đặt CLINIC_MOCK_LIVE=1 để chạy contract test trên mock thật (báo team trước)")
-    from callbot.transports.http.config import Settings
-
-    settings = Settings()
-    base = settings.clinic_mock_base_url.rstrip("/")
-    origin = base.removesuffix("/v1")
-    headers = {"Authorization": f"Bearer {settings.clinic_mock_api_key}"}
-    reset = httpx.post(f"{origin}/_harness/reset", headers=headers, timeout=10)
-    assert reset.status_code == 200, reset.text
-    with ClinicMockClient(base, settings.clinic_mock_api_key) as client:
-        yield client
+@pytest.fixture
+def api() -> ClinicAPI:
+    return FakeClinicAPI.mentor_mock()
 
 
 # --- Đọc -----------------------------------------------------------------------------

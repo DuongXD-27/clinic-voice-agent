@@ -167,6 +167,8 @@ clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True) 
 clinic.fail_next("get_appointment", RuntimeError("boom"))  # nhận mọi exception
 
 clinic.fail_times("get_slots", 2, clinic_error(429, "RATE_LIMITED"))  # 2 lần rồi bình thường
+# Lần đầu ĐÃ ghi, mọi lần gửi lại (Gateway T-12) vẫn timeout: bot hết lượt mà chưa rõ kết quả
+clinic.fail_unknown("confirm_appointment", WRITE_MAX_SENDS, apply_first=True)
 clinic.fail_always("*", clinic_error(401, "BAD_KEY"))  # mọi thao tác, tới khi clear_faults()
 clinic.delay("get_appointment", 7.5)  # chờ thật; times=1 để chỉ chậm một lần
 clinic.after_next("get_slots", lambda page: clinic.take_slot("slot_aa01"))  # chạy sau lần gọi kế
@@ -180,6 +182,8 @@ clinic.clear_faults()
   lý như mock → `after_next`.
 - `apply_first=True` là case quan trọng nhất để test chống ghi trùng: clinic đã đổi state nhưng bot
   nhận `ClinicAPIError(outcome_known=False)`. Gửi lại cùng key sẽ được replay, không ghi hai lần.
+- Gateway tự gửi lại lỗi tạm thời tới `WRITE_MAX_SENDS` lần (T-12, `callbot.engine.tools.clinic_gateway`):
+  một lỗi đơn lẻ sẽ được phục hồi. Muốn test nhánh "vẫn lỗi" thì cho lỗi lặp đủ số lần đó.
 - `delay` chờ thật bằng `clinic.sleep`. Không muốn chờ: `clinic.sleep = lambda seconds: None` —
   `calls[i].latency_ms` vẫn ghi độ trễ giả.
 
@@ -286,12 +290,11 @@ Mock chạy ở `localhost` không bị chặn.
 ## Kiểm tra sim vẫn khớp mock thật
 
 ```bash
-python -m pytest tests/clinic_mock_sim -q                                # chỉ sim, offline
-CLINIC_MOCK_LIVE=1 python -m pytest tests/clinic_mock_sim/test_contract.py -q  # + mock thật
+python -m pytest tests/clinic_mock_sim -q   # chỉ sim, offline
 ```
 
-Lệnh thứ hai gọi `/_harness/reset` — **xóa dữ liệu của cả team** trên instance chung. Báo kênh team
-trước khi chạy.
+Không có test tự động chạy trên mock thật: instance dùng chung, reset/ghi sẽ xóa và đổi dữ liệu của
+cả team. Muốn đối chiếu với mock thật thì đọc `routes.py` / `store.py` của repo clinic-mock.
 
 ---
 
@@ -301,7 +304,8 @@ trước khi chạy.
   `callbot/transports/http/clinic_backend.py` được import package này, và chỉ trong hàm khi
   `CLINIC_BACKEND=sim` (`test_plugin.py` kiểm tra). Package có trong image để demo local; deploy
   vẫn luôn là mock nhờ compose prod.
-- **Sửa hành vi sim** (mã lỗi, lifecycle, shape) → `test_contract.py` phải pass cả trên mock thật.
+- **Sửa hành vi sim** (mã lỗi, lifecycle, shape) → đối chiếu `routes.py` của mock, cập nhật
+  `test_contract.py`.
 - **Thêm edge case** → hàm `(sim, **params)` trong `scenarios.py` có docstring, đăng ký vào
   `SCENARIOS` kèm cờ "mock thật có không", test trong `tests/clinic_mock_sim/test_scenarios.py`,
   thêm dòng vào bảng scenario ở trên. Mock thật có tình huống đó thì thêm case vào contract test.

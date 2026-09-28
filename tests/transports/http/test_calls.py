@@ -25,6 +25,7 @@ from callbot.engine import (
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
 from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.calls import _extraction_debug, get_orchestrator
 from callbot.transports.http.main import create_app
@@ -84,12 +85,10 @@ def test_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_demo_page_is_served(client: TestClient) -> None:
-    response = client.get("/demo/")
-    assert response.status_code == 200
-    assert "Vinmec Callbot Console" in response.text
-    assert "/v1/calls" in response.text
-    assert "Extraction:" in response.text
+def test_legacy_demo_page_redirects_to_new_ui(client: TestClient) -> None:
+    response = client.get("/demo/", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/ui/call"
 
 
 def test_extraction_debug_does_not_credit_ner_for_a_semantic_reading() -> None:
@@ -710,7 +709,7 @@ def test_unknown_confirm_outcome_over_http_needs_reconciliation(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _at_confirm_readback(client, "c_http_unknown")
-    clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("confirm_appointment", WRITE_MAX_SENDS, apply_first=True)
     response = _turn(client, "c_http_unknown", 3, "Vâng")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
@@ -777,7 +776,7 @@ def test_unknown_cancel_outcome_over_http_needs_reconciliation(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
     _at_cancel_reconfirm(client, "c_http_cancel_unknown")
-    clinic.fail_next("cancel_appointment", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("cancel_appointment", WRITE_MAX_SENDS, apply_first=True)
     response = _turn(client, "c_http_cancel_unknown", 4, "Hủy giúp tôi")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "CALL_RECONCILIATION_REQUIRED"
@@ -938,7 +937,7 @@ def test_voicemail_over_http_marks_unreachable_without_disclosing(
 def test_unknown_unreachable_outcome_over_http_needs_reconciliation(
     client: TestClient, clinic: FakeClinicAPI
 ) -> None:
-    clinic.fail_next("mark_unreachable", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("mark_unreachable", WRITE_MAX_SENDS, apply_first=True)
     _conversation(client, "c_http_vm_unknown", [None, None])
     response = _turn(client, "c_http_vm_unknown", 3, None, silence_ms=2000)
     assert response.status_code == 409

@@ -16,7 +16,7 @@ import logging
 import re
 import struct
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -40,7 +40,44 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"code": code, "message": message})
 
 
-@router.put("/audio/{call_id}/{turn}.wav")
+# Response model chỉ để OpenAPI mô tả đúng dữ liệu (UI sinh type từ đó); JSON không đổi.
+class DemoAudioUpload(BaseModel):
+    audio_url: str
+    content_type: str
+    sample_rate: int
+    duration_ms: int
+    size_bytes: int
+
+
+class AppointmentSnapshot(BaseModel):
+    appointment_id: Optional[str]
+    status: Optional[str]
+    version: Optional[int]
+
+
+class ClinicResetResponse(BaseModel):
+    reset: bool
+    appointment: Optional[AppointmentSnapshot]
+
+
+class AppointmentOption(BaseModel):
+    appointment_id: str
+    status: Optional[str]
+    display_name: Optional[str]
+
+
+class PhoneOption(BaseModel):
+    phone: str
+    display_name: Optional[str]
+
+
+class ClinicFixtures(BaseModel):
+    source: Literal["mock", "sim"]
+    appointments: list[AppointmentOption]
+    phones: list[PhoneOption]
+
+
+@router.put("/audio/{call_id}/{turn}.wav", response_model=DemoAudioUpload)
 async def upload_demo_audio(call_id: str, turn: int, request: Request) -> dict[str, object]:
     """Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.
 
@@ -116,7 +153,7 @@ def _mock_client() -> httpx.AsyncClient:
     )
 
 
-@router.post("/clinic-reset")
+@router.post("/clinic-reset", response_model=ClinicResetResponse)
 async def reset_clinic_mock(body: Optional[ClinicResetRequest] = None) -> dict[str, Any]:
     """Reset clinic mock dùng chung (xóa dữ liệu của MỌI người test) rồi đọc lại một lịch hẹn."""
     _require_clinic_admin()
@@ -153,7 +190,7 @@ async def reset_clinic_mock(body: Optional[ClinicResetRequest] = None) -> dict[s
     return {"reset": True, "appointment": appointment}
 
 
-@router.get("/clinic-fixtures")
+@router.get("/clinic-fixtures", response_model=ClinicFixtures)
 async def list_clinic_fixtures(request: Request) -> dict[str, Any]:
     """Appointment ID và số điện thoại đang có trong clinic, cho dropdown cấu hình của trang demo.
 

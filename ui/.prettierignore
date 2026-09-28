@@ -1,0 +1,7 @@
+dist/
+coverage/
+node_modules/
+package-lock.json
+# Sinh tự động — xem scripts/export_openapi.py và `npm run api:types`
+openapi.json
+src/lib/api/schema.d.ts

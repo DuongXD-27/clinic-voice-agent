@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 
 import pytest
 
@@ -8,6 +9,7 @@ pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents
 from callbot.engine.errors import OutboundStartFailed  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
+    TRANSCRIPT_TOPIC,
     CallBridge,
     call_start_from_room,
     caller_input_from_turn,
@@ -153,12 +155,14 @@ class _FakeLocalParticipant:
     def __init__(self) -> None:
         self.published: list[tuple[object, object]] = []
         self.data_packets: list[tuple[str, bool, str]] = []
+        self.data: list[tuple[dict, str, bool]] = []
 
     async def publish_track(self, track, options) -> None:
         self.published.append((track, options))
 
-    async def publish_data(self, payload, *, reliable=True, topic="") -> None:
+    async def publish_data(self, payload, *, reliable: bool = True, topic: str = "") -> None:
         self.data_packets.append((payload, reliable, topic))
+        self.data.append((json.loads(payload), topic, reliable))
 
 
 class _FakeRoom:
@@ -237,6 +241,80 @@ async def test_outbound_start_failure_notifies_browser_without_crashing_job() ->
     assert "APPOINTMENT_NOT_ACTIONABLE" not in payload
     assert reliable is True
     assert topic == "callbot.status"
+
+
+async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
+    """Trang /ui/livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
+    kèm độ tin cậy ASR, câu bot kèm state/outcome — theo đúng thứ tự, trước khi phát audio."""
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
+    stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
+    room = _FakeRoom("web-transcript-room")
+    bridge = CallBridge(room, orchestrator, stt_pipeline, _FakeTTS())
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert [topic for _, topic, _ in room.local_participant.data] == [TRANSCRIPT_TOPIC] * 3
+    assert all(reliable for _, _, reliable in room.local_participant.data)
+    assert [payload for payload, _, _ in room.local_participant.data] == [
+        {
+            "type": "transcript",
+            "role": "bot",
+            "turn": 0,
+            "text": "Xin chào",
+            "state": "AWAITING_IDENTITY",
+            "ended": False,
+            "outcome": None,
+        },
+        {
+            "type": "transcript",
+            "role": "caller",
+            "turn": 1,
+            "text": "tôi là An",
+            "confidence": 0.91,
+        },
+        {
+            "type": "transcript",
+            "role": "bot",
+            "turn": 1,
+            "text": "Tạm biệt",
+            "state": "ENDED",
+            "ended": True,
+            "outcome": "TRANSFERRED",
+        },
+    ]
+
+
+async def test_transcript_publish_failure_does_not_break_call(monkeypatch, caplog) -> None:
+    class _BrokenDataParticipant(_FakeLocalParticipant):
+        async def publish_data(self, payload, *, reliable: bool = True, topic: str = "") -> None:
+            raise ConnectionError("tôi là An")  # nội dung lỗi có thể chứa PII: không được log
+
+    opening = BotAction(utterance="Xin chào", state="AWAITING_INTENT", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
+    tts = _FakeTTS()
+    room = _FakeRoom("web-broken-data-room")
+    room.local_participant = _BrokenDataParticipant()
+    bridge = CallBridge(room, orchestrator, _FakeSTTPipeline([UserTurnCompleted(text="x")]), tts)
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    with caplog.at_level(logging.WARNING, logger="callbot.transports.livekit.call_bridge"):
+        await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert tts.spoken == ["Xin chào", "Tạm biệt"]
+    assert "ConnectionError" in caplog.text
+    assert "tôi là An" not in caplog.text
 
 
 async def test_speak_buffers_odd_byte_chunks_into_valid_pcm16_frames(monkeypatch) -> None:

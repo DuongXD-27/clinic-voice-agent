@@ -1,3 +1,12 @@
+# Stage build UI (ui/, Vite + React). Chỉ lấy thư mục dist/ sang image cuối: Node và
+# node_modules không có trong image chạy, server không thêm process hay RAM nào cho UI.
+FROM node:22-alpine AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY ui ./
+RUN npm run build
+
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -55,6 +64,11 @@ RUN pip install --no-cache-dir --no-deps --force-reinstall .
 # phải chỉ đường tới config/ — src/appconfig chỉ tự tìm được khi cài editable.
 COPY config ./config
 ENV CALLBOT_CONFIG_DIR=/app/config
+
+# UI tĩnh phục vụ tại /ui (transports/http/ui.py). Đặt sau các layer model/dependency để sửa UI
+# chỉ build lại layer vài trăm KB này.
+COPY --from=ui /ui/dist ./ui
+ENV UI_DIST_DIR=/app/ui
 
 EXPOSE 8000
 

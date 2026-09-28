@@ -27,6 +27,10 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     # T-05 §8: tests that need the layer inject a fake extractor; nothing here calls OpenAI.
     monkeypatch.setenv("SEMANTIC_FALLBACK_ENABLED", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    # .env dev bật trace + Langfuse thì mỗi app test gửi trace thật và chờ flush khi tắt (~0.8s/test).
+    # Test cần trace tự bật TRACE_ENABLED với JSONL dir riêng; Langfuse luôn tắt.
+    monkeypatch.setenv("TRACE_ENABLED", "false")
+    monkeypatch.setenv("LANGFUSE_EXPORT_ENABLED", "false")
     monkeypatch.setattr(engine_module, "_default_session_store", redis_store_factory)
     # BOT_API_KEYS trong .env bật auth cho mọi request test; test_auth.py tự bật lại khi cần.
     monkeypatch.setattr(http_settings, "bot_api_keys", "")

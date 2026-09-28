@@ -272,8 +272,8 @@ interface `stream(frames) -> AsyncIterator[TranscriptEvent]`.
 
 `SpeechSynthesizer` (`speech/tts/synthesizer.py`) mở rộng thêm `synthesize_stream()` +
 `cancel()` cho đường LiveKit — ủy quyền qua `gateway.provider` (duck-typing
-`hasattr`/`getattr`). Provider hiện dùng: OpenAI (`TTS_PROVIDER=openai`), PCM mono
-24kHz — `CallBridge._publish_tts_track()` tạo `rtc.AudioSource` cố định theo
+`hasattr`/`getattr`). Provider hiện dùng: Vbee (`TTS_PROVIDER=vbee`), PCM mono
+8kHz — `CallBridge._publish_tts_track()` tạo `rtc.AudioSource` cố định theo
 `stream_sample_rate` của provider lúc publish track (không đổi giữa các câu).
 
 ## 4. Cấu hình (`.env`)
@@ -283,7 +283,7 @@ interface `stream(frames) -> AsyncIterator[TranscriptEvent]`.
 | `ASR_PROVIDER` | `zipformer` | `zipformer` (gipformer1.5 local) hoặc `elevenlabs_realtime` (cloud) |
 | `SAMPLE_RATE` | `8000` | Áp dụng cho `SpeechSettings` — đường HTTP batch. LiveKit dùng riêng `LiveKitSettings.input_sample_rate` |
 | `VAD_PROVIDER` | `webrtc` | `energy` hoặc `webrtc` |
-| `TTS_PROVIDER` | `openai` | Provider TTS |
+| `TTS_PROVIDER` | `vbee` | Provider TTS (`openai` / `elevenlabs` / `vbee`) |
 | `ZIPFORMER_*_PATH` | trỏ `assets/zipformer/` (nội dung model gipformer1.5) | Asset model đang dùng — xem §5 lịch sử đổi model |
 | `ELEVENLABS_API_KEY` | có sẵn | Dùng chung cho cả STT batch/realtime và TTS |
 | `ELEVENLABS_REALTIME_STT_MODEL` | `scribe_v2_realtime` | Model ID cho `ElevenLabsRealtimeConfig` |
