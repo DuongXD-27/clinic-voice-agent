@@ -119,6 +119,7 @@ class CallBridge:
         output_queue_ms: int = 200,
         caller_identity: Optional[str] = None,
         silence_timeout_ms: int = 0,
+        krisp_noise_suppression_enabled: bool = False,
     ) -> None:
         self._room = room
         self._orchestrator = orchestrator
@@ -156,6 +157,10 @@ class CallBridge:
         self._silence_timeout_ms = silence_timeout_ms
         self._silence_task: Optional[asyncio.Task] = None
         self._silence_generation = 0
+        # THỬ NGHIỆM (docs/evidence §8): mặc định false — đo offline cho thấy Krisp VIVA làm
+        # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
+        # thật; không phải khuyến nghị bật cho production.
+        self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
         # 1 TurnController + 1 InterruptionController riêng cho call này — không tạo
         # qua default của STTPipeline.stream() để CallBridge điều khiển được
         # bot-speaking state của TurnController khi barge-in xảy ra. worker.py truyền
@@ -360,6 +365,24 @@ class CallBridge:
         if task is not None and not task.done():
             task.cancel()
 
+    def _krisp_processor(self) -> object | None:
+        """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
+        mới mỗi lần pump (không tái dùng qua re-publish): auto_close mặc định của AudioStream
+        đóng nó khi stream đóng, tái dùng instance đã đóng sẽ lỗi."""
+        if not self._krisp_noise_suppression_enabled:
+            return None
+        try:
+            from livekit.plugins import krisp
+        except ImportError:
+            logger.warning(
+                "call_bridge: krisp_noise_suppression_enabled=true nhưng "
+                "livekit-plugins-krisp chưa cài — bỏ qua, chạy không lọc"
+            )
+            return None
+        return krisp.KrispVivaFilterFrameProcessor(
+            mode=krisp.viva_filter.VivaMode.VOICE_ISOLATION, noise_suppression_level=90.0
+        )
+
     async def _pump_track(self, track: "rtc.Track") -> None:
         from livekit import rtc
 
@@ -369,6 +392,7 @@ class CallBridge:
             num_channels=1,
             frame_size_ms=self._frame_ms,
             capacity=self._input_queue_frames,
+            noise_cancellation=self._krisp_processor(),
         )
         # LIVEKIT_DEBUG_DUMP_AUDIO=1: ghi PCM thật (đã qua livekit_frame_to_segment, đúng
         # đường dữ liệu đưa vào ASR) ra 1 file wav/call trong temp/audio/ — cách duy nhất

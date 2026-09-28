@@ -27,3 +27,7 @@ agent_name: ""
 # lượt im lặng (silence_ms > 0) — core tự hỏi lại, 3 lượt liên tiếp thì kết thúc/chuyển máy
 # (config/engine.yaml max_silent_turns). 0 = tắt.
 silence_timeout_ms: 8000
+# THỬ NGHIỆM (docs/evidence/livekit-audio-plan-execution-2026-09-28.md §8): đo offline cho
+# thấy Krisp VIVA làm WER tệ hơn kể cả trên audio sạch — TẮT theo mặc định. Bật tạm để nghe
+# thử qua LiveKit streaming thật, cần cài `livekit-plugins-krisp` thủ công.
+krisp_noise_suppression_enabled: false
