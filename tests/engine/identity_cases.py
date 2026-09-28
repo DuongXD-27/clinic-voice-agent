@@ -84,7 +84,6 @@ IDENTITY_CASES = (
     IdentityCase(id="TC_ID_02", turns=_identity_failure(WRONG_NAME, CORRECT_DOB)),
     IdentityCase(id="TC_ID_03", turns=_identity_failure(CORRECT_NAME, WRONG_DOB)),
     IdentityCase(id="TC_ID_04", turns=_identity_failure(WRONG_NAME, WRONG_DOB)),
-
     # --- Đơn lẻ: dừng giữa chừng sau tên đúng, một lần không hiểu (re-prompt, không transfer) ---
     IdentityCase(id="TC_ID_05", turns=(ASK_DOB_AFTER_CORRECT_NAME,)),
     IdentityCase(
@@ -102,10 +101,8 @@ IDENTITY_CASES = (
             IdentityTurn("không nhớ", "AWAITING_IDENTITY", "dob"),
         ),
     ),
-
     # --- Sanity case: chỉ kiểm lượt mở đầu (câu hỏi tên hợp lệ), không đi tiếp ---
     IdentityCase(id="TC_ID_09"),
-
     # --- TC_ID_10/11 trước đây trùng lặp TC_ID_05/TC_ID_09 nguyên văn.
     #     Thay bằng end-to-end cho DOB dạng nói và DOB tự sửa giữa câu,
     #     để xác nhận orchestrator (không chỉ extractor) xử lý đúng tới AWAITING_INTENT. ---
@@ -123,7 +120,6 @@ IDENTITY_CASES = (
             IdentityTurn(CORRECT_DOB_SELF_CORRECTED, "AWAITING_INTENT"),
         ),
     ),
-
     # --- Inbound: có record theo SĐT, vẫn phải hỏi mở tên+dob (§1.1.9) ---
     IdentityCase(
         id="TC_ID_12",
@@ -135,7 +131,6 @@ IDENTITY_CASES = (
             IdentityTurn(CORRECT_DOB, "AWAITING_INTENT"),
         ),
     ),
-
     # --- Inbound: không tìm thấy record nào theo SĐT -> PATIENT_NOT_FOUND ---
     IdentityCase(
         id="TC_ID_13",
@@ -152,13 +147,10 @@ IDENTITY_CASES = (
             ),
         ),
     ),
-
     # --- MỚI — §1.1.5: hai lần hiểu sai liên tiếp trong pha định danh ---
     IdentityCase(
         id="TC_ID_14",
-        turns=_not_understood_twice(
-            "name", (), "Tôi không rõ", "tôi cũng không biết"
-        ),
+        turns=_not_understood_twice("name", (), "Tôi không rõ", "tôi cũng không biết"),
     ),
     IdentityCase(
         id="TC_ID_15",
@@ -166,7 +158,6 @@ IDENTITY_CASES = (
             "dob", (ASK_DOB_AFTER_CORRECT_NAME,), "không nhớ", "thôi kệ đi"
         ),
     ),
-
     # --- MỚI — Inbound: SĐT khớp đúng 1 record, nhưng tên/dob caller nói sai
     #     (đối xứng với TC_ID_02/03/04, nhưng ở nhánh inbound của §1.1.9) ---
     IdentityCase(
@@ -174,23 +165,28 @@ IDENTITY_CASES = (
         direction="inbound",
         caller_number="0912345600",
         expected_lookup_phone="0912345600",
-        turns=_identity_failure(WRONG_NAME, CORRECT_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"),
+        turns=_identity_failure(
+            WRONG_NAME, CORRECT_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"
+        ),
     ),
     IdentityCase(
         id="TC_ID_17",
         direction="inbound",
         caller_number="0912345600",
         expected_lookup_phone="0912345600",
-        turns=_identity_failure(CORRECT_NAME, WRONG_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"),
+        turns=_identity_failure(
+            CORRECT_NAME, WRONG_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"
+        ),
     ),
     IdentityCase(
         id="TC_ID_18",
         direction="inbound",
         caller_number="0912345600",
         expected_lookup_phone="0912345600",
-        turns=_identity_failure(WRONG_NAME, WRONG_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"),
+        turns=_identity_failure(
+            WRONG_NAME, WRONG_DOB, expected_transfer_reason="PATIENT_NOT_FOUND"
+        ),
     ),
-
     # --- MỚI — Inbound: SĐT khớp NHIỀU HƠN 1 record (ambiguous) -> vẫn PATIENT_NOT_FOUND.
     #     GIẢ ĐỊNH: FakeClinicAPI có fixture ánh xạ "0912345700" tới >=2 patient.
     #     Nếu fixture chưa có, cần bổ sung trong clinic_mock_sim trước khi case này chạy đúng nghĩa —
@@ -210,7 +206,6 @@ IDENTITY_CASES = (
             ),
         ),
     ),
-
     # --- MỚI — Tên và DOB gộp trong một lượt, hai thứ tự khác nhau ---
     IdentityCase(
         id="TC_ID_20",
