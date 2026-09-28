@@ -7,3 +7,5 @@ Dockerfile text eol=lf
 Caddyfile text eol=lf
 .env.example text eol=lf
 Makefile text eol=lf
+# Prettier kiểm LF; không để autocrlf trên Windows làm `npm run format:check` đỏ
+ui/** text=auto eol=lf

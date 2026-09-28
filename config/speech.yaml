@@ -7,7 +7,7 @@ sample_rate: 8000
 # zipformer | gemini | phowhisper | elevenlabs_realtime — cấu hình từng provider ở asr.yaml
 asr_provider: zipformer
 # openai | elevenlabs | vbee — cấu hình từng provider ở tts.yaml
-tts_provider: openai
+tts_provider: vbee
 # Provider dự phòng khi provider chính lỗi/chậm, vd. tts_provider=vbee + elevenlabs.
 # null = không fallback. Cần đủ key của cả hai provider, thiếu thì app không khởi động.
 tts_fallback_provider: null

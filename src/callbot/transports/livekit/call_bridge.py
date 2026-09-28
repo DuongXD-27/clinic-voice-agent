@@ -6,6 +6,7 @@ SessionManager, CallBridge chỉ là caller của nó, giống transports/http/c
 """
 
 import asyncio
+import json
 import logging
 import os
 from typing import TYPE_CHECKING, AsyncIterator, Optional
@@ -36,6 +37,8 @@ _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
 _PLAYOUT_TIMEOUT_S = 20.0
+# Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
+TRANSCRIPT_TOPIC = "callbot.transcript"
 
 
 def call_start_from_room(
@@ -174,6 +177,7 @@ class CallBridge:
             self._pipeline_task = asyncio.create_task(self._consume_turns())
             await asyncio.sleep(0)
 
+            await self._publish_transcript("bot", opening.utterance, action=opening)
             await self._speak(opening.utterance)
             if opening.ended:
                 return
@@ -196,6 +200,7 @@ class CallBridge:
                 # nhưng vẫn bật được khi cần chẩn đoán ASR nghe sai gì (bật qua
                 # `logging.getLogger("callbot.transports.livekit.call_bridge").setLevel(logging.DEBUG)`).
                 logger.debug("call_bridge: turn %d text=%r", self._turn_number, turn.text)
+                await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
                 caller = caller_input_from_turn(self._turn_number, turn)
                 action = await asyncio.to_thread(
                     self._orchestrator.handle_turn, self._room.name, caller
@@ -207,11 +212,44 @@ class CallBridge:
                     action.ended,
                     action.outcome,
                 )
+                await self._publish_transcript("bot", action.utterance, action=action)
                 await self._speak(action.utterance)
                 if action.ended:
                     return
         finally:
             await self.aclose()
+
+    async def _publish_transcript(
+        self,
+        role: str,
+        text: str,
+        *,
+        action: Optional[BotAction] = None,
+        confidence: Optional[float] = None,
+    ) -> None:
+        """Gửi một dòng hội thoại qua data channel tới người trong phòng — chính người đang
+        gọi, nên họ chỉ thấy lại lời của mình và của bot. Không log text (PII). Gửi lỗi chỉ
+        mất dòng hiển thị, không được làm hỏng cuộc gọi."""
+        payload: dict[str, object] = {
+            "type": "transcript",
+            "role": role,
+            "turn": self._turn_number,
+            "text": text,
+        }
+        if confidence is not None:
+            payload["confidence"] = confidence
+        if action is not None:
+            payload.update(state=action.state, ended=action.ended, outcome=action.outcome)
+        try:
+            await self._room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
+            )
+        except Exception as exc:
+            logger.warning(
+                "call_bridge: không gửi được transcript room=%s: %s",
+                self._room.name,
+                type(exc).__name__,
+            )
 
     async def _consume_turns(self) -> None:
         try:

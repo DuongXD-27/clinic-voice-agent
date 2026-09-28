@@ -109,14 +109,40 @@ curl -X POST http://localhost:8000/v1/calls \
 
 Chi tiết request/response và mã lỗi: [docs/reference/http-api.md](docs/reference/http-api.md).
 
-### Giao diện demo
+### Giao diện web (`ui/`)
 
-Mở `http://localhost:8000/demo/` để thử cuộc gọi trên trình duyệt:
+Mở `http://localhost:8000/ui/` (hoặc `/`, tự chuyển hướng):
 
-- `text`: nhập lời người gọi và gửi từng lượt.
-- `audio`: thu âm bằng microphone, trang tự upload WAV và gửi `audio_url` cho bot.
+| Trang | Dùng để |
+|---|---|
+| `/ui/call` | Gọi thử qua HTTP contract: gõ lời người gọi, hoặc ghi âm từ microphone (trang tự upload WAV và gửi `audio_url`). Có bảng trích xuất, request/response, kịch bản mẫu |
+| `/ui/livekit` | Nói chuyện trực tiếp với bot qua WebRTC/LiveKit, hiện lời thoại từng lượt để trace |
+| `/ui/observability` | Latency, lỗi, chất lượng STT/TTS, chi tiết cuộc gọi và từng lượt (đọc từ trace ẩn danh) |
 
+Link cũ `/demo/`, `/demo/livekit-demo.html`, `/observability/` chuyển hướng sang trang mới.
 Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
+
+UI viết bằng Vite + React + TypeScript, build ra file tĩnh và được chính FastAPI phục vụ: server không
+chạy thêm process nào cho UI. Thiết kế và các pha chuyển đổi: [docs/plans/ui-vite-react.md](docs/plans/ui-vite-react.md).
+
+Cần Node 22. Phát triển UI (backend chạy ở `localhost:8000`, Vite tự chuyển tiếp request API):
+
+```bash
+cd ui
+npm install
+npm run dev      # http://localhost:5173/ui/
+npm run check    # lint + format check + typecheck + test
+npm run e2e      # Playwright, cần backend thật đang chạy (xem ui/playwright.config.ts)
+```
+
+Xem bản build qua chính FastAPI: `npm run build` rồi chạy uvicorn với `UI_DIST_DIR=ui/dist`.
+
+Type request/response của UI sinh từ OpenAPI của backend. Đổi schema hoặc route thì chạy
+`make openapi` (ghi `ui/openapi.json`) rồi `npm run api:types` trong `ui/`, và commit cả hai file.
+CI báo đỏ nếu hai file này lệch với backend.
+
+Thêm thư viện npm thì kiểm tra lockfile với npm 10 (bản đi kèm Node 22 trong Docker/CI) bằng
+`docker build --target ui .`: npm 11 có thể ghi lockfile mà `npm ci` của npm 10 từ chối.
 
 ## Chạy bằng Docker
 
@@ -147,7 +173,7 @@ Image tự tải model ZipFormer khi build.
 # Tuỳ chọn: bật test tích hợp với Redis thật
 export TEST_REDIS_URL=redis://localhost:6379/15
 
-make check     # lint + format check + pytest
+make check     # lint + format check + pytest + ui/openapi.json khớp backend
 make format    # tự sửa lint + format
 make test      # chỉ pytest
 ```
@@ -161,7 +187,10 @@ Không có `make` (Windows):
 python -m ruff check src tests
 python -m ruff format --check src tests
 python -m pytest -q
+python scripts/export_openapi.py --check
 ```
+
+Test UI: `npm run check` trong `ui/` (Vitest + Testing Library, API giả bằng MSW).
 
 ## Cấu trúc project
 
@@ -189,6 +218,7 @@ src/
 │   ├── asr/                    # Gemini / PhoWhisper / ZipFormer
 │   └── tts/                    # OpenAI / ElevenLabs / Vbee + fallback (thư mục TTS duy nhất)
 └── clinic_mock_sim/            # clinic mock trong bộ nhớ: test + demo Docker local (deploy luôn dùng mock)
+ui/                             # UI Vite + React + TypeScript, build ra file tĩnh phục vụ tại /ui
 tests/                          # cùng cấu trúc với src/
 docs/reference/                 # tài liệu thiết kế
 ```

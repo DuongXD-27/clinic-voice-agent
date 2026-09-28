@@ -91,9 +91,11 @@ def test_demo_api_requires_key(client: TestClient) -> None:
 
 
 @pytest.mark.usefixtures("auth_on")
-@pytest.mark.parametrize("path", ["/health", "/ready", "/demo/"])
-def test_probes_and_demo_page_stay_open(client: TestClient, path: str) -> None:
-    assert client.get(path).status_code == 200
+@pytest.mark.parametrize(("path", "status"), [("/health", 200), ("/ready", 200), ("/demo/", 307)])
+def test_probes_and_legacy_page_redirect_stay_open(
+    client: TestClient, path: str, status: int
+) -> None:
+    assert client.get(path, follow_redirects=False).status_code == status
 
 
 def test_swagger_declares_bearer_auth(client: TestClient) -> None:

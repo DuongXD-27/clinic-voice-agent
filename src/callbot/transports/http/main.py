@@ -31,6 +31,7 @@ from callbot.transports.http.config import ObservabilityApiSettings, settings
 from callbot.transports.http.demo import router as demo_router
 from callbot.transports.http.livekit_token import router as livekit_router
 from callbot.transports.http.observability import router as observability_router
+from callbot.transports.http.ui import add_legacy_redirects, mount_ui
 from callbot.transports.livekit.settings import LiveKitSettings
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
@@ -100,6 +101,7 @@ def create_app(
     livekit_settings_factory: Callable[[], LiveKitSettings] = _default_livekit_settings,
     tracer_factory: Callable[[], Tracer] = create_tracer,
     observability_settings: ObservabilityApiSettings | None = None,
+    ui_dist_dir: Optional[str] = None,
     cleanup_interval_s: float = 30.0,
     audio_retention_s: Optional[float] = None,
     trace_shutdown_timeout_s: float = _TRACE_SHUTDOWN_TIMEOUT_SECONDS,
@@ -223,14 +225,8 @@ def create_app(
     app.include_router(demo_router, dependencies=[Depends(require_api_key)])
     app.include_router(livekit_router)
     _configure_observability(app, observability_settings)
-    demo_dir = Path(__file__).parent / "static"
-    app.mount("/demo", StaticFiles(directory=str(demo_dir), html=True), name="demo")
-    observability_ui_dir = Path(__file__).parent / "observability_static"
-    app.mount(
-        "/observability",
-        StaticFiles(directory=str(observability_ui_dir), html=True),
-        name="observability-dashboard",
-    )
+    add_legacy_redirects(app)
+    mount_ui(app, settings.ui_dist_dir if ui_dist_dir is None else ui_dist_dir)
 
     @app.get("/health")
     def health() -> dict[str, str]:

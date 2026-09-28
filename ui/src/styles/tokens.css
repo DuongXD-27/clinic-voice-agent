@@ -1,0 +1,133 @@
+/*
+ * Design tokens — nguồn duy nhất cho màu, khoảng cách, bo góc, đổ bóng và chữ.
+ * Component chỉ dùng biến ở đây, không viết mã màu trực tiếp. Chế độ tối đổi giá trị
+ * biến, không đổi tên biến, nên component không cần biết đang ở chế độ nào.
+ */
+:root {
+  color-scheme: light;
+
+  /* Brand: xanh Vinmec */
+  --brand-50: #ecf8f3;
+  --brand-100: #d2efe3;
+  --brand-200: #a6dec8;
+  --brand-500: #0c8a6a;
+  --brand-600: #007a5e;
+  --brand-700: #006b54;
+  --brand-800: #00513f;
+
+  /* Nền và bề mặt */
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --surface-muted: #f0f3f2;
+  --surface-sunken: #e9eeec;
+  --border: #e1e7e4;
+  --border-strong: #cad4d0;
+
+  /* Chữ */
+  --text: #111c19;
+  --text-muted: #56655f;
+  --text-subtle: #83928c;
+  --text-on-brand: #ffffff;
+
+  /* Trạng thái */
+  --success: #16865a;
+  --success-soft: #e3f5ec;
+  --warning: #a8620c;
+  --warning-soft: #fdf1df;
+  --danger: #bf3a32;
+  --danger-soft: #fbe8e6;
+  --info: #2563a8;
+  --info-soft: #e6effa;
+  --neutral-soft: #eef1f0;
+
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--brand-500) 28%, transparent);
+
+  /* Biểu đồ: mỗi thành phần một màu cố định trên mọi trang */
+  --chart-turn: #006b54;
+  --chart-stt: #2f6f9f;
+  --chart-core: #7a55a0;
+  --chart-tts: #b06a10;
+
+  /* Khoảng cách (bội số 4px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Bo góc */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+
+  /* Đổ bóng */
+  --shadow-sm: 0 1px 2px rgb(16 32 27 / 0.06);
+  --shadow-md: 0 1px 3px rgb(16 32 27 / 0.06), 0 6px 16px rgb(16 32 27 / 0.06);
+  --shadow-lg: 0 12px 32px rgb(16 32 27 / 0.12);
+
+  /* Chữ */
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.625rem;
+
+  /* Bố cục */
+  --sidebar-width: 248px;
+  --topbar-height: 60px;
+  --content-max: 1200px;
+
+  --transition-fast: 120ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --brand-50: #0f2a22;
+    --brand-100: #123a2f;
+    --brand-200: #1b5a48;
+    --brand-500: #2fb38d;
+    --brand-600: #22a07d;
+    --brand-700: #3cc49c;
+    --brand-800: #7fdcbf;
+
+    --bg: #0b1311;
+    --surface: #111b18;
+    --surface-muted: #15211e;
+    --surface-sunken: #0e1715;
+    --border: #22302c;
+    --border-strong: #31433d;
+
+    --text: #e5eeeb;
+    --text-muted: #9fb1ab;
+    --text-subtle: #718580;
+    --text-on-brand: #04130e;
+
+    --success: #3ccf8e;
+    --success-soft: #11291f;
+    --warning: #f0b25a;
+    --warning-soft: #2d2212;
+    --danger: #f07b72;
+    --danger-soft: #2f1614;
+    --info: #7fb2ee;
+    --info-soft: #132338;
+    --neutral-soft: #1a2623;
+
+    --chart-turn: #3cc49c;
+    --chart-stt: #6fb0e6;
+    --chart-core: #b89ae0;
+    --chart-tts: #f0b25a;
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
+  }
+}

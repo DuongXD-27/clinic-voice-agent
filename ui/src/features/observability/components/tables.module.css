@@ -1,0 +1,21 @@
+.code {
+  display: inline-block;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--brand-600);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.link {
+  color: var(--brand-600);
+  font-weight: 600;
+}
+
+.code:hover,
+.link:hover {
+  color: var(--brand-800);
+  text-decoration: underline;
+}
