@@ -399,3 +399,73 @@ async def test_call_bridge_stops_immediately_if_opening_already_ends_call(monkey
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+# --- R-01: cùng Output Guard với HTTP ------------------------------------------------------
+
+
+def _real_bridge(monkeypatch, room_name: str, lines: list[str]):
+    from callbot.engine import create_orchestrator
+    from clinic_mock_sim import FakeClinicAPI
+
+    clinic = FakeClinicAPI()
+    orchestrator = create_orchestrator(clinic)
+    tts = _FakeTTS()
+    bridge = CallBridge(
+        _FakeRoom(room_name),
+        orchestrator,
+        _FakeSTTPipeline([UserTurnCompleted(text=line) for line in lines]),
+        tts,
+        direction="outbound",
+        appointment_id="apt_00417",
+    )
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+    return bridge, orchestrator, clinic, tts
+
+
+async def test_blocked_opening_is_never_spoken(monkeypatch) -> None:
+    from callbot.engine.dialogue import outbound
+    from callbot.engine.errors import CallStartBlocked
+
+    monkeypatch.setattr(
+        outbound,
+        "opening",
+        lambda ctx, verifier: BotAction(
+            "Lịch khám của anh chị lúc 9 giờ sáng", "AWAITING_IDENTITY"
+        ),
+    )
+    bridge, orchestrator, clinic, tts = _real_bridge(monkeypatch, "web-r01-open", [])
+    spoken: list[str] = []
+
+    async def _speak(text: str) -> None:
+        spoken.append(text)
+
+    monkeypatch.setattr(bridge, "_speak", _speak)
+
+    with pytest.raises(CallStartBlocked):
+        await asyncio.wait_for(bridge.run(), timeout=2.0)
+    assert spoken == [] and tts.spoken == []
+    assert orchestrator.sessions.store.get_session("web-r01-open") is None
+    assert clinic.writes == []
+
+
+async def test_in_turn_violation_speaks_the_guarded_utterance(monkeypatch) -> None:
+    """Parity với HTTP (test_calls): TTS nhận đúng câu an toàn mà HTTP trả về."""
+    from callbot.engine.dialogue import templates as t
+
+    monkeypatch.setattr(
+        t, "confirmed", lambda ctx, appointment: "Dạ, em đã xác nhận lịch khoa Tim mạch ạ."
+    )
+    bridge, _, clinic, tts = _real_bridge(
+        monkeypatch, "web-r01-parity", ["Nguyễn Văn A", "14/03/1978", "vâng"]
+    )
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert tts.spoken[0] == t.GREETING_OUTBOUND
+    assert tts.spoken[-1] == t.DONE_SAFE["CONFIRMED"]
+    assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

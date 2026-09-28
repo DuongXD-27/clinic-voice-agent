@@ -112,7 +112,7 @@ def test_second_turn_with_an_explicit_cancel_verb_writes_with_both_evidences(mon
     action = _run(bot, "c_t05_two_turns", ["Hủy giúp tôi"], start=4)
 
     assert (action.ended, action.outcome, action.state) == (True, "CANCELLED", "ENDED")
-    assert action.utterance == t.done("CANCELLED")
+    assert action.utterance == t.cancelled_done()
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
     assert captured == [("UNSPECIFIED", None, [("REQUEST", 3), ("CONFIRMATION", 4)])]
     assert bot.sessions.store.get_session("c_t05_two_turns").context == {}
@@ -481,7 +481,7 @@ def test_rejected_cancel_is_a_system_error_not_a_cancellation() -> None:
     action = _run(bot, "c_t05_rejected", ["Hủy giúp tôi"], start=4)
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "SYSTEM_ERROR")
-    assert action.utterance != t.done("CANCELLED")
+    assert action.utterance != t.cancelled_done()
     assert _cancel_writes(clinic) == []
     # Chỉ báo TRANSFERRED vì /transfer thật sự thành công
     assert [status for _, status, _ in clinic.writes] == ["TRANSFERRED"]

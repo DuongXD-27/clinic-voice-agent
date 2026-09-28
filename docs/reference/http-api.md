@@ -16,6 +16,7 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 |---|---|
 | `call_id` mới | `200`, mở phiên, trả câu chào |
 | Outbound không đọc được lịch hợp lệ từ Clinic (lỗi API, không tìm thấy, dữ liệu hỏng hoặc lịch không còn thao tác được) | `503 OUTBOUND_START_FAILED`; không tạo phiên, không trả lời bot/TTS, không ghi chuyển máy. Sau khi khắc phục có thể gửi lại cùng `call_id` |
+| Output Guard chặn lời mở đầu (câu chưa đăng ký, lộ lịch, có outcome — R-01) | `503 CALL_START_BLOCKED`; không tạo phiên, không trả lời bot/TTS, không ghi Clinic. Sau khi sửa lỗi có thể gửi lại cùng `call_id` |
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
@@ -54,7 +55,12 @@ và lượt hỏi; `SessionManager` chỉ ghi phiên và áp dụng trạng thá
 | Clinic timeout / lỗi ngoài lượt xử lý | `504 UPSTREAM_TIMEOUT` / `502 UPSTREAM_ERROR` |
 | Lỗi ngoài dự kiến | `500 INTERNAL_ERROR` |
 
-Lỗi nghiệp vụ trong lượt (Clinic từ chối lệnh ghi, guardrail chặn) vẫn trả `200` với `outcome=TRANSFERRED`, `transfer_reason=SYSTEM_ERROR` như trước. Ngoại lệ: khi kết quả lệnh ghi không xác định, bot **không** gửi lệnh chuyển máy thay thế mà trả `409 CALL_RECONCILIATION_REQUIRED`.
+Lỗi nghiệp vụ trong lượt (Clinic từ chối lệnh ghi, guardrail hoặc Output Guard chặn) vẫn trả `200` với `outcome=TRANSFERRED`, `transfer_reason=SYSTEM_ERROR` như trước. Ngoại lệ:
+
+- Khi kết quả lệnh ghi không xác định, bot **không** gửi lệnh chuyển máy thay thế mà trả `409 CALL_RECONCILIATION_REQUIRED`.
+- Khi lượt đã ghi Clinic thành công (R-01, receipt gate) mà câu báo bị Output Guard chặn hoặc xử lý lỗi sau đó, bot vẫn trả `200` với đúng `outcome` đã ghi (ví dụ `CONFIRMED`) và câu báo không chi tiết; không gửi `/transfer`.
+
+Mọi câu bot nói, qua HTTP hay LiveKit, đều qua cùng Output Guard trong `CallOrchestrator` trước khi commit ([evidence R-01](../evidence/r01-output-guard.md)). Lượt replay trả lại đúng câu đã qua guard.
 
 ## Xác thực
 
