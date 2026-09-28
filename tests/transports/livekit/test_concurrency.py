@@ -6,8 +6,9 @@ lại — cùng contract, tránh 2 bản lệch nhau.
 import asyncio
 
 import pytest
+from tests.transports.livekit_support import require_livekit
 
-pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
+require_livekit()
 
 from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
     _FakeAudioSource,

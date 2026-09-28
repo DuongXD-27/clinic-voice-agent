@@ -3,8 +3,9 @@ import json
 import logging
 
 import pytest
+from tests.transports.livekit_support import require_livekit
 
-pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
+require_livekit()
 
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
@@ -285,7 +286,7 @@ async def test_speak_buffers_odd_byte_chunks_into_valid_pcm16_frames(monkeypatch
     (2 byte). rtc.AudioFrame thật (không phải fake) raise ValueError nếu len(data) lẻ —
     bug từng làm job LiveKit crash thật khi test qua trình duyệt. _speak() phải giữ byte
     lẻ lại cho chunk kế tiếp, không publish frame không hợp lệ."""
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/rtc")
+    require_livekit()
     from livekit import rtc
 
     class _OddByteTTS(_FakeTTS):
