@@ -1,0 +1,131 @@
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+  gap: var(--space-6);
+}
+
+.tools {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+/* Thẻ công cụ */
+.tool {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.tool:hover {
+  border-color: var(--brand-200);
+  box-shadow: var(--shadow-md);
+}
+
+.toolIcon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: var(--radius-md);
+  background: var(--brand-50);
+  color: var(--brand-600);
+}
+
+.toolIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.toolText {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toolTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.toolDescription {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.toolArrow {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--text-subtle);
+  transition:
+    color var(--transition-fast),
+    transform var(--transition-fast);
+}
+
+.tool:hover .toolArrow {
+  color: var(--brand-600);
+  transform: translate(2px, -2px);
+}
+
+/* Thẻ trạng thái */
+.probes {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.probe {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.probeIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
+.probeIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.probeName {
+  display: grid;
+  flex: 1;
+  font-weight: 500;
+}
+
+.probeName code {
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 1080px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

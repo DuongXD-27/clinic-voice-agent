@@ -114,6 +114,48 @@ def parse_number(tokens: Sequence[str]) -> Optional[int]:
     return _parse_structured(tokens)
 
 
+_DIGIT_AS_WORD = dict(
+    zip(
+        "0123456789",
+        ("không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"),
+        strict=True,
+    )
+)
+
+
+def parse_spoken_number(tokens: Sequence[str]) -> Optional[int]:
+    """`parse_number` thêm hai dạng ASR hay ra khi người gọi đọc ngày sinh.
+
+    - Chữ số lẫn với từ số: "2 không linh tư", "2 nghìn linh 4", "mười 4" — chữ số đơn được đọc
+      lại thành từ rồi phân tích như câu nói.
+    - "linh" / "lẻ" thay "không" khi đọc rời từng chữ số: "hai không linh tư" = 2004. Chỉ nhận
+      khi đứng giữa hai chữ số: "linh tư" đứng một mình vẫn không đọc ra được.
+
+    Chỉ dùng cho ngày sinh: ở giờ slot, "thứ 2 ba giờ" không được thành 23.
+    """
+    tokens = list(tokens)
+    if any(not t.isdigit() for t in tokens):
+        if any(t.isdigit() and t not in _DIGIT_AS_WORD for t in tokens):
+            return None  # "mười 14": chữ số nhiều chữ lẫn với từ -> không đoán
+        tokens = [_DIGIT_AS_WORD.get(t, t) for t in tokens]
+    value = parse_number(tokens)
+    if value is not None:
+        return value
+    inner = tokens[1:-1]
+    if (
+        len(tokens) >= 3
+        and tokens[0] in DIGIT_WORDS
+        and tokens[0] not in _TRAILING_ONLY
+        and tokens[-1] in DIGIT_WORDS
+        and tokens[-1] not in _ZERO_TENS
+        and any(t in _ZERO_TENS for t in inner)
+        and all(t in DIGIT_WORDS or t in _ZERO_TENS for t in inner)
+    ):
+        digits = spoken_digits(["không" if t in _ZERO_TENS else t for t in tokens])
+        return int(digits) if digits is not None else None
+    return None
+
+
 def _parse_structured(tokens: list[str]) -> Optional[int]:
     thousand_at = next((i for i, t in enumerate(tokens) if t in _THOUSAND), None)
     if thousand_at is not None:

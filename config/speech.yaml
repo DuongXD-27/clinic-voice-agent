@@ -1,0 +1,50 @@
+# Voice pipeline — speech.settings.SpeechSettings.
+# Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. VAD_PROVIDER=webrtc).
+
+# 8000 = băng hẹp như đường dây điện thoại; 16000 chỉ để so sánh WER.
+sample_rate: 8000
+
+# zipformer | gemini | phowhisper | elevenlabs_realtime — cấu hình từng provider ở asr.yaml
+asr_provider: zipformer
+# openai | elevenlabs | vbee — cấu hình từng provider ở tts.yaml
+tts_provider: vbee
+# Provider dự phòng khi provider chính lỗi/chậm, vd. tts_provider=vbee + elevenlabs.
+# null = không fallback. Cần đủ key của cả hai provider, thiếu thì app không khởi động.
+tts_fallback_provider: null
+
+# energy | webrtc | silero. energy dễ hiểu nhầm noise thành turn (baseline). webrtc (extra
+# [vad-webrtc]) tốt hơn nhưng vẫn bị noise phòng lừa. silero (cần silero_vad_model_path) không
+# bỏ sót giọng thật và từ chối noise trên các file đã kiểm — docs/reference/livekit-architecture.md §5.4.
+vad_provider: energy
+vad_rms_threshold: 500.0
+vad_webrtc_aggressiveness: 2
+vad_end_silence_ms: 600
+
+# Turn Controller (đường LiveKit): turn ngắn hơn ngưỡng này bị coi là tiếng động/backchannel.
+turn_min_speech_ms: 250
+turn_max_wait_after_vad_end_ms: 300
+# Bỏ candidate bắt đầu quá gần lúc bot vừa dứt lời — chống dư âm/tiếng vọng phòng.
+turn_post_bot_guard_ms: 500
+
+# Speech Admission: chặn frame vào ASR khi SNR quá thấp. TẮT — cần benchmark thêm.
+speech_admission_enabled: false
+speech_admission_min_snr_db: 6.0
+speech_admission_min_speech_ms: 150
+# Giữ audio chưa ADMIT để flush bù khi ADMIT — REJECT trước ADMIT đo được 240-510ms.
+speech_admission_preroll_ms: 600
+
+# Turn Validator: lớp quyết định cuối trước khi chốt turn. TẮT — cần benchmark thêm.
+turn_validator_enabled: false
+turn_validator_min_snr_db: 3.0
+# Ngưỡng SNR riêng cho barge-in (InterruptionController). null = tắt kiểm tra; đặt 0.0 nếu
+# bot tự ngắt lời vì nghe lại chính nó qua loa/mic.
+interruption_min_snr_db: null
+
+# Dùng cho NoiseTracker (luôn Silero) và cho vad_provider=silero. Tải:
+#   curl -L -o src/speech/asr/vad/assets/silero_vad.onnx \
+#     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+silero_vad_model_path: src/speech/asr/vad/assets/silero_vad.onnx
+
+# URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
+public_base_url: http://localhost:8000
+audio_dir: temp/audio

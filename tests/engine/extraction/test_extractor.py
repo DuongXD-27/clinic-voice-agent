@@ -30,6 +30,7 @@ class FakeFallback:
     def __init__(self, intent=None, agreement=None, full_name=None) -> None:
         self._intent, self._agreement, self._full_name = intent, agreement, full_name
         self.calls: list[str] = []
+        self.name_contexts: list[tuple[QuestionId, Optional[str]]] = []
 
     def intent(self, transcript: str, allowed: frozenset[Intent]) -> Optional[Field[Intent]]:
         self.calls.append("intent")
@@ -39,8 +40,15 @@ class FakeFallback:
         self.calls.append("agreement")
         return self._agreement
 
-    def full_name(self, transcript: str) -> Optional[Field[str]]:
+    def full_name(
+        self,
+        transcript: str,
+        *,
+        question_id: QuestionId = QuestionId.ASK_NAME,
+        bot_question: Optional[str] = None,
+    ) -> Optional[Field[str]]:
         self.calls.append("full_name")
+        self.name_contexts.append((question_id, bot_question))
         return self._full_name
 
 
@@ -382,3 +390,54 @@ def test_stated_attendance_does_not_unlock_other_writes() -> None:
     for question in (QuestionId.SLOT_READBACK, QuestionId.CANCEL_RECONFIRM):
         result = InformationExtractor().extract(ctx(question), "tôi sẽ đến")
         assert result.agreement.value is not Agreement.AGREE
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hôm đó tôi sẽ đi công tác",
+        "tôi vẫn đi làm hôm đó",
+        "tối đó tôi đến bệnh viện khác rồi",
+        "tôi sẽ đến lúc 10 giờ",
+        "toi se di cong tac",
+    ],
+)
+def test_attendance_wording_inside_another_plan_is_not_agreement(text: str) -> None:
+    """T-04 §8: cụm "sẽ đi / sẽ đến" chỉ là đồng ý khi câu không nói thêm việc khác."""
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.intent.value is Intent.CONFIRM
+    assert result.agreement.value is Agreement.UNCLEAR and result.agreement.found
+
+
+@pytest.mark.parametrize(
+    "question",
+    [QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT, QuestionId.SLOT_READBACK],
+)
+@pytest.mark.parametrize(
+    "text",
+    ["vợ tôi sẽ đến thay", "gửi xe ở đâu em", "tôi đến muộn chút được không", "gọi lại sau nhé"],
+)
+def test_out_of_scope_request_at_business_steps(question: QuestionId, text: str) -> None:
+    """Bot hiểu câu nhưng không có luồng xử lý: Policy chuyển máy OUT_OF_SCOPE, không đọc lại lịch."""
+    result = InformationExtractor().extract(ctx(question), text)
+    assert result.intent.value is Intent.OUT_OF_SCOPE
+    assert result.agreement.value is not Agreement.AGREE
+
+
+def test_explicit_callback_request_at_the_name_step_is_out_of_scope() -> None:
+    """§1.1.5 áp dụng cả trước xác minh khi người thật xin gọi lại."""
+    busy = "tôi đang lái xe không nghe máy được, lát gọi lại sau giúp tôi"
+    assert (
+        InformationExtractor().extract(ctx(QuestionId.ASK_NAME), busy).intent.value
+        is Intent.OUT_OF_SCOPE
+    )
+    address = InformationExtractor().extract(ctx(QuestionId.ASK_NAME), "địa chỉ phòng khám ở đâu")
+    assert address.intent.value is Intent.OUT_OF_SCOPE
+
+
+@pytest.mark.parametrize(
+    "text", ["tôi sẽ đến đúng giờ", "không đổi gì cả, tôi đến", "vâng, tôi vẫn đi khám"]
+)
+def test_attendance_with_its_own_complements_still_agrees(text: str) -> None:
+    result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
+    assert result.agreement.value is Agreement.AGREE

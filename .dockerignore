@@ -15,3 +15,9 @@ traces.jsonl
 tests
 docs
 clinic-mock
+# UI: stage Node tự `npm ci` trên Linux; node_modules Windows không chạy được trong image
+ui/node_modules
+ui/dist
+ui/coverage
+ui/playwright-report
+ui/test-results

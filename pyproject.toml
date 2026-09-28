@@ -10,14 +10,20 @@ dependencies = [
     # TTS ElevenLabs qua WebSocket stream-input (inference/tts/providers/elevenlabs.py); uvicorn[standard] cũng kéo gói này
     "websockets>=13",
     "pydantic>=2.8",
-    "pydantic-settings>=2.4",
+    # Cấu hình mặc định ở config/*.yaml (src/appconfig) — cần yaml_config_section của pydantic-settings
+    "pydantic-settings>=2.15",
+    "pyyaml>=6.0",
     "redis>=5.2,<7",
 ]
 
 [project.optional-dependencies]
 speech = [
     "numpy>=1.26",
+    "soxr>=0.4",
     "google-genai>=1.0",
+    # Transcript Evidence (docs/reference/livekit-architecture.md §5.4): so sánh similarity
+    # giữa các partial transcript liên tiếp để phát hiện dao động/hallucination.
+    "rapidfuzz>=3.0",
 ]
 speech-local = [
     "numpy>=1.26",
@@ -30,13 +36,27 @@ speech-zipformer = [
     "soundfile>=0.12",
     "openai>=1.0",
 ]
+vad-webrtc = [
+    # Fork "webrtcvad" gốc trên PyPI phụ thuộc pkg_resources (setuptools) đã bị gỡ khỏi
+    # bản setuptools mới — dùng webrtcvad-wheels (cùng C extension, không phụ thuộc đó).
+    "webrtcvad-wheels>=2.0.11",
+]
+vad-silero = [
+    # Cùng package sherpa-onnx đã có trong speech-zipformer (sherpa_onnx.VoiceActivityDetector
+    # + SileroVadModelConfig) — asset .onnx tải riêng, xem SILERO_VAD_MODEL_PATH trong .env.example.
+    "sherpa-onnx>=1.13",
+]
 llm = [
     "google-genai>=1.0",
+]
+livekit = [
+    "livekit-agents>=1.8",
+    "livekit-api>=1.2",
 ]
 dev = [
     "fakeredis>=2.26,<3",
     "pytest>=8.0",
-    "pyyaml>=6.0",
+    "pytest-asyncio>=0.24",
     "ruff>=0.6",
 ]
 
@@ -45,7 +65,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/callbot", "src/inference", "src/speech"]
+packages = ["src/appconfig", "src/callbot", "src/clinic_mock_sim", "src/inference", "src/speech"]
 
 [tool.hatch.build]
 # Cài -e: đưa src/ (không phải gốc repo) vào sys.path, để `import callbot` chạy được ngoài pytest
@@ -54,6 +74,7 @@ dev-mode-dirs = ["src"]
 [tool.pytest.ini_options]
 # Không thêm src/ vào sys.path: test chạy trên package đã cài (`pip install -e ".[dev]"`), giống Docker
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py311"
@@ -71,4 +92,4 @@ select = ["E", "W", "F", "I", "B"]
 ignore = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["callbot", "inference", "speech"]
+known-first-party = ["appconfig", "callbot", "clinic_mock_sim", "inference", "speech"]

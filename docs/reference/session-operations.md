@@ -6,8 +6,8 @@ Session chỉ phục vụ một luồng cuộc gọi đang chạy. Hồ sơ bệ
 
 | Biến | Mặc định | Ý nghĩa |
 | --- | --- | --- |
-| `REDIS_URL` | `redis://:callbot@localhost:6379/0` | Redis dùng chung giữa các worker |
-| `REDIS_KEY_PREFIX` | `callbot` | Namespace của key |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis local không mật khẩu; Compose tự dựng URL có mật khẩu |
+| `REDIS_KEY_PREFIX` | Giá trị tương thích trong code | Namespace của key; nên đặt rõ trong `.env` và giữ ổn định qua các lần deploy |
 | `SESSION_IDLE_TTL_S` | `1800` | Xóa nội dung sau thời gian không hoạt động |
 | `SESSION_MAX_AGE_S` | `7200` | Tuổi tối đa tuyệt đối của session |
 | `SESSION_TOMBSTONE_TTL_S` | `86400` | Thời gian giữ metadata kỹ thuật đã làm sạch |
@@ -15,7 +15,7 @@ Session chỉ phục vụ một luồng cuộc gọi đang chạy. Hồ sơ bệ
 | `SESSION_LOCK_LEASE_S` | `60` | Lease khóa phân tán theo `call_id` |
 | `REDIS_MAXMEMORY` | `256mb` | Giới hạn RAM của Redis trong Compose |
 
-Mật khẩu nằm trong `REDIS_PASSWORD` của Compose. Nếu chạy app trực tiếp, đặt mật khẩu đã URL-encode trong `REDIS_URL`.
+Compose yêu cầu `REDIS_PASSWORD` trong `.env`. Nếu chạy app trực tiếp với Redis có mật khẩu, đặt mật khẩu đã URL-encode trong `REDIS_URL`.
 
 ## Yêu cầu bắt buộc với Redis
 
@@ -53,6 +53,7 @@ Bot không sao chép hồ sơ bệnh nhân sang nơi lưu bền. Trong lúc hộ
 ## Khởi động và kiểm tra
 
 ```bash
+# Đặt REDIS_PASSWORD trong .env trước khi chạy.
 docker compose up --build
 curl http://localhost:8000/ready
 ```

@@ -10,12 +10,19 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:  # pragma: no cover - chỉ để type hint, tránh import vòng runtime
     from callbot.engine.extraction.semantic import SemanticContext
 
-PROMPT_VERSION = "semantic_v1"
+PROMPT_VERSION = "semantic_v5"
 
 # Mô tả MỤC ĐÍCH câu bot vừa hỏi, không gửi nguyên văn câu hỏi (câu đọc lịch có dữ liệu Clinic).
 QUESTION_PURPOSE: dict[str, str] = {
+    "ASK_NAME": "Bot vừa hỏi họ tên người gọi để xác minh danh tính.",
+    "ASK_DOB": "Bot vừa hỏi ngày tháng năm sinh để xác minh danh tính.",
+    "OFFER_SLOTS": "Bot vừa đưa ra các khung giờ khám để người gọi chọn.",
+    "SLOT_READBACK": "Bot vừa đọc lại khung giờ được chọn để xác nhận.",
     "CANCEL_RECONFIRM": "Bot vừa hỏi người gọi xác nhận hủy lịch khám lần thứ hai.",
-    "ASK_INTENT": "Bot vừa hỏi người gọi cần hỗ trợ việc gì.",
+    "ASK_INTENT": (
+        "Bot vừa hỏi người gọi cần hỗ trợ việc gì (gọi ra: sau khi người gọi nói không đến theo lịch,"
+        " bot hỏi muốn đổi lịch hay hủy lịch)."
+    ),
     "CONFIRM_READBACK": "Bot vừa đọc lại lịch khám và hỏi người gọi có đến khám được không.",
 }
 
@@ -28,7 +35,8 @@ Chọn đúng một reply_kind:
 - DECLINE_ACTION: từ chối rõ ràng chính việc bot đang hỏi.
 - INFORM_REASON: chỉ nêu lý do hoặc hoàn cảnh, CHƯA quyết định. Câu có chữ "không" nằm trong lý do
   ("không đủ tiền", "không cần khám nữa") là nêu lý do, KHÔNG phải từ chối.
-- CHANGE_INTENT: chuyển sang nhu cầu khác (đổi lịch, đặt lịch, xác nhận đến khám).
+- CHANGE_INTENT: chuyển sang nhu cầu khác (đổi lịch, đặt lịch, xác nhận đến khám), hoặc sang việc
+  ngoài phạm vi bot xử lý (intent OUT_OF_SCOPE).
 - QUESTION: người gọi hỏi lại hoặc hỏi thêm.
 - AMBIGUOUS: mâu thuẫn, ngập ngừng, hoặc không đủ căn cứ.
 
@@ -45,7 +53,23 @@ Quy tắc bắt buộc:
 - Câu vừa có từ chối vừa có động từ hành động ở hai mệnh đề ("không, hủy đi") là AMBIGUOUS.
 - Đáp lễ trần ("vâng", "dạ", "ừ") tại câu xác nhận hủy là AMBIGUOUS, không phải đồng ý.
 - Không suy ra lý do từ ngữ cảnh ngoài câu nói. Không đoán điều người gọi chưa nói.
-Chỉ trả JSON đúng sáu khóa của schema. Không giải thích, không confidence.
+- clinical = EMERGENCY nếu người gọi nói dấu hiệu cấp cứu; ADVICE_REQUEST nếu hỏi tư vấn y khoa,
+  thuốc, liều dùng, có cần ngưng/dùng thuốc hay chuẩn bị lâm sàng trước khám; MENTION nếu chỉ nhắc
+  bệnh, triệu chứng hoặc thuốc mà không hỏi tư vấn; null nếu không có nội dung lâm sàng.
+  Câu hỏi đổi/đặt/hủy lịch có nhắc bệnh hoặc thuốc nhưng không hỏi tư vấn là MENTION.
+- Khi clinical khác null, clinical_span phải là đoạn liên tục trong lời người gọi làm căn cứ cho nhãn.
+  Khi clinical là null, clinical_span là null. Không dùng intent OUT_OF_SCOPE thay cho câu hỏi lâm sàng.
+- Người gọi chỉ kể hoàn cảnh ("tôi sẽ đi khám chỗ khác", "hôm đó tôi đi công tác") là INFORM_REASON,
+  không phải CHANGE_INTENT: chỉ chọn CHANGE_INTENT khi người gọi nói rõ muốn hủy / đổi / đặt.
+- Ở câu hỏi đến khám (CONFIRM_READBACK), chỉ dùng INFORM_REASON khi câu nói rõ người gọi KHÔNG đến
+  được theo lịch. Câu nói mình rảnh, đang bận lúc nghe máy, hay không muốn hủy / đổi lịch là
+  AMBIGUOUS.
+- intent OUT_OF_SCOPE (kèm intent_span) chỉ khi người gọi NÊU CỤ THỂ một yêu cầu hoặc câu hỏi mà bot
+  không xử lý: người khác đi khám thay, hỏi địa chỉ / đường đi, xin đến muộn, xin gọi lại, không nhận
+  mình đã đặt lịch, xin gửi tin nhắn. KHÔNG chọn OUT_OF_SCOPE khi người gọi chỉ
+  kể hoàn cảnh ("tôi đang lái xe"), câu chưa nói hết ("cho chị hỏi chút"), hay hỏi lại chính lịch vừa
+  đọc ("mấy giờ nhỉ" là QUESTION).
+Chỉ trả JSON đúng tám khóa của schema. Không giải thích, không confidence.
 """
 
 _EMPTY = {
@@ -55,6 +79,8 @@ _EMPTY = {
     "reply_span": None,
     "cancel_reason": None,
     "reason_span": None,
+    "clinical": None,
+    "clinical_span": None,
 }
 
 
@@ -64,6 +90,35 @@ def _reading(**changes: Any) -> str:
 
 # Ví dụ đối lập theo từng cặp: cùng chữ "không" nhưng khác vai trò.
 FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "CONFIRM_READBACK",
+        "thuốc huyết áp có phải ngưng trước khi khám không",
+        _reading(
+            reply_kind="QUESTION",
+            clinical="ADVICE_REQUEST",
+            clinical_span="thuốc huyết áp có phải ngưng trước khi khám không",
+        ),
+    ),
+    (
+        "ASK_NAME",
+        "trước khi khám có cần nhịn ăn không",
+        _reading(
+            reply_kind="QUESTION",
+            clinical="ADVICE_REQUEST",
+            clinical_span="có cần nhịn ăn không",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi uống thuốc huyết áp và muốn đổi lịch khám",
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="RESCHEDULE",
+            intent_span="muốn đổi lịch khám",
+            clinical="MENTION",
+            clinical_span="uống thuốc huyết áp",
+        ),
+    ),
     (
         "CANCEL_RECONFIRM",
         "tôi không đủ tiền",
@@ -146,6 +201,77 @@ FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
             reason_span="bận mất rồi",
         ),
     ),
+    # T-04 §8: "dạ" mở câu chỉ là lễ phép; người khác đến thay là việc ngoài phạm vi, không phải
+    # người bệnh xác nhận
+    (
+        "CONFIRM_READBACK",
+        "dạ hôm đó tôi bận rồi",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="hôm đó tôi bận rồi",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "vợ tôi sẽ đến thay",
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="OUT_OF_SCOPE",
+            intent_span="vợ tôi sẽ đến thay",
+            reply_span="vợ tôi sẽ đến thay",
+        ),
+    ),
+    # Ngoài phạm vi mà không có từ khóa, đối lập với câu chỉ kể hoàn cảnh
+    (
+        "CONFIRM_READBACK",
+        "lịch này tôi có đặt đâu em",
+        _reading(
+            reply_kind="CHANGE_INTENT",
+            intent="OUT_OF_SCOPE",
+            intent_span="lịch này tôi có đặt đâu",
+            reply_span="lịch này tôi có đặt đâu em",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi đang ở ngoài chợ",
+        _reading(reply_kind="AMBIGUOUS", reply_span="tôi đang ở ngoài chợ"),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "tôi sẽ có mặt",
+        _reading(reply_kind="CONFIRM_ACTION", reply_span="tôi sẽ có mặt"),
+    ),
+    # T-04 §8: câu mà từ khóa "sẽ đi / sẽ đến" khớp nhầm; "không hủy", "được nghỉ" không phải từ chối
+    (
+        "CONFIRM_READBACK",
+        "tuần đó tôi sẽ đi nước ngoài",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="tuần đó tôi sẽ đi nước ngoài",
+        ),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "không hủy đâu em",
+        _reading(reply_kind="AMBIGUOUS", reply_span="không hủy đâu em"),
+    ),
+    (
+        "CONFIRM_READBACK",
+        "hôm ấy tôi được nghỉ",
+        _reading(reply_kind="AMBIGUOUS", reply_span="hôm ấy tôi được nghỉ"),
+    ),
+    (
+        "ASK_INTENT",
+        "tôi sẽ đi khám bệnh viện khác",
+        _reading(
+            reply_kind="INFORM_REASON",
+            cancel_reason="WENT_ELSEWHERE",
+            reason_span="đi khám bệnh viện khác",
+        ),
+    ),
 )
 
 
@@ -169,7 +295,9 @@ def _user_block(question_id: str, transcript: str, extra: str = "") -> str:
 
 def _user_block_from(context: "SemanticContext") -> str:
     labels = ", ".join(intent.value for intent in context.allowed_intents)
-    extra = f"\nNhu cầu được phép chọn: {labels}."
+    extra = (
+        f"\nNhu cầu được phép chọn: {labels}." if labels else "\nKhông phân loại nhu cầu nghiệp vụ."
+    )
     if context.pending_action:
         extra += f"\nHành động đang chờ xác nhận: {context.pending_action}."
     if not context.answers_last_question:

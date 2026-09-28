@@ -1,0 +1,17 @@
+# Privacy-safe turn tracing and optional Langfuse export.
+# Override each key with the env variable named beside it. Secrets stay in .env.
+
+trace:
+  enabled: false               # TRACE_ENABLED
+  jsonl_dir: null              # TRACE_JSONL_DIR; local directory, create before startup
+  key_version: v1              # TRACE_KEY_VERSION; change when rotating the HMAC key
+  environment: development     # TRACE_ENVIRONMENT
+
+langfuse:
+  enabled: false               # LANGFUSE_EXPORT_ENABLED; also requires TRACE_ENABLED=true
+  endpoint: ""                 # LANGFUSE_OTLP_ENDPOINT; deployment-specific OTLP base URL
+  timeout_seconds: 2.0         # LANGFUSE_TIMEOUT_SECONDS
+  queue_size: 1024             # LANGFUSE_QUEUE_SIZE
+  batch_size: 32               # LANGFUSE_BATCH_SIZE
+  flush_interval_seconds: 1.0  # LANGFUSE_FLUSH_INTERVAL_SECONDS
+  environment: development     # LANGFUSE_ENVIRONMENT

@@ -1,10 +1,10 @@
 """Nối ASR gateway vào miền audio của `speech`: resample về tần số model, trả `Transcript`."""
 
-from typing import Protocol
+from typing import AsyncIterator, Protocol
 
 from inference.asr import ASRGateway
 from speech.audio.codec import to_sample_rate
-from speech.types import AudioSegment, Transcript
+from speech.types import AudioSegment, Transcript, TranscriptEvent
 
 
 class Recognizer(Protocol):
@@ -35,3 +35,16 @@ class SpeechRecognizer:
         result = self._gateway.transcribe(segment.pcm, segment.sample_rate)
         text = result.text.strip()
         return Transcript(text=text, confidence=result.confidence, is_silence=not text)
+
+    def stream(self, frames: AsyncIterator[bytes], **kwargs) -> AsyncIterator[TranscriptEvent]:
+        """Ủy quyền xuống `stream()` của provider gốc — method mở rộng ngoài Protocol
+        `ASRProvider`/`Recognizer`, chỉ ZipFormer (chunked-offline) hỗ trợ hiện tại.
+        Raise rõ ràng nếu provider đang cấu hình không có `stream()`, thay vì lỗi
+        `AttributeError` mơ hồ ở nơi gọi."""
+        provider = self._gateway.provider
+        stream = getattr(provider, "stream", None)
+        if stream is None:
+            raise RuntimeError(
+                f"ASR provider {self._gateway.provider_name!r} không hỗ trợ streaming"
+            )
+        return stream(frames, **kwargs)

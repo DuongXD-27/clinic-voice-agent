@@ -19,12 +19,8 @@ GREETING_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Anh chị vui lòng cho em biết họ tên đầy đủ ạ?"
 )
-# Lượt 0 khi tra cứu hồ sơ không cho dữ liệu để xác minh (T-02): vẫn công bố AI, không hỏi tên,
+# Inbound lượt 0 khi tra cứu không có dữ liệu để xác minh: vẫn công bố AI, không hỏi tên,
 # không nói lý do ("số này chưa có hồ sơ" cũng là thông tin về hồ sơ). Lượt 1 chuyển máy.
-GREETING_HANDOFF_OUTBOUND = (
-    f"Dạ em xin chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
-    "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
-)
 GREETING_HANDOFF_INBOUND = (
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ."
@@ -55,6 +51,9 @@ ASK_NAME_DECLINED = (
     "Anh chị vui lòng cho em xin họ và tên đầy đủ ạ."
 )
 ASK_DOB = "Dạ, anh chị cho em xin ngày tháng năm sinh ạ."
+INTRODUCE_AGAIN_ASK_DOB = (
+    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em xin ngày tháng năm sinh ạ."
+)
 ASK_DOB_AGAIN = "Dạ, em chưa nghe rõ. Anh chị nhắc lại giúp em ngày, tháng, năm sinh ạ."
 # dob INVALID (31/02, thiếu năm, năm 2 chữ số mơ hồ, tuổi, âm lịch): không nhắc lại điều người gọi vừa nói
 ASK_DOB_INVALID = "Dạ, anh chị vui lòng cho em xin đủ ngày, tháng, năm sinh theo dương lịch ạ."
@@ -68,6 +67,7 @@ ASK_CHANGE_OR_CANCEL = "Dạ, anh chị muốn đổi lịch hay hủy lịch kh
 ASK_ATTENDANCE = "Anh chị có đến khám được theo lịch này không ạ?"
 NOT_UNDERSTOOD = "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
 SILENCE = "Alo, anh chị còn nghe máy không ạ?"
+HOLD = "Dạ, em chờ anh chị ạ."
 CANCEL_RECONFIRM = "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
 # Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ.
 # Nói luôn cụm cần nói, vì ngưỡng AGREE ở đây đòi động từ hủy tường minh (SF-05).
@@ -89,7 +89,8 @@ TRANSFER = "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ an
 GOODBYE_UNREACHABLE = "Dạ, em xin phép gọi lại sau ạ. Chào anh chị."
 
 _PERIOD_WORDS = ((12, "sáng"), (18, "chiều"), (24, "tối"))
-# §1.1.3: đọc lại "date, time and clinic". Mock chỉ trả `clinic_id` (Listing 3, không có /clinics):
+# §1.1.3 Rev 1.1: đọc ngày, giờ và chuyên khoa. Cơ sở là thông tin bổ sung.
+# Mock chỉ trả `clinic_id` (Listing 3, không có /clinics):
 # tên lấy theo seed Mock (clinic-mock `store.CLINICS`). Id lạ -> "Vinmec", không đoán tên cơ sở.
 CLINIC_NAMES = {
     "cl_vinmec": "Vinmec Times City",
@@ -109,11 +110,6 @@ def greeting(direction: str) -> str:
 def greeting_back(direction: str) -> str:
     """Trả lời "alo" ngay sau câu chào mở đầu."""
     return GREETING_BACK_OUTBOUND if direction == "outbound" else GREETING_BACK_INBOUND
-
-
-def greeting_handoff(direction: str) -> str:
-    """Câu chào khi không thể xác minh (không có hồ sơ / không đọc được hồ sơ): [R-26], không hỏi tên."""
-    return GREETING_HANDOFF_OUTBOUND if direction == "outbound" else GREETING_HANDOFF_INBOUND
 
 
 def speak_datetime(iso: str) -> str:
@@ -139,7 +135,7 @@ def appointment_summary(ctx: CallContext, appointment: dict[str, Any]) -> str:
 
 
 def attendance_readback(ctx: CallContext, appointment: dict[str, Any]) -> str:
-    """§1.1.3: đọc lại ngày, giờ, cơ sở trước khi CONFIRMED."""
+    """§1.1.3: đọc lại ngày, giờ, chuyên khoa trước khi CONFIRMED."""
     guardrails.assert_can_disclose(ctx)
     return (
         f"Dạ, em xin xác nhận lại: lịch khám {_department(appointment)}"
@@ -169,7 +165,8 @@ def confirmed(ctx: CallContext, appointment: dict[str, Any]) -> str:
 def keep_appointment(ctx: CallContext, appointment: dict[str, Any]) -> str:
     guardrails.assert_can_disclose(ctx)
     return (
-        f"Dạ, em giữ nguyên lịch khám {attendance_facts(appointment)} cho anh chị. {ASK_ATTENDANCE}"
+        f"Dạ, em giữ nguyên lịch khám {_department(appointment)}"
+        f"{attendance_facts(appointment)} cho anh chị. {ASK_ATTENDANCE}"
     )
 
 

@@ -15,10 +15,26 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Trường hợp | Kết quả |
 |---|---|
 | `call_id` mới | `200`, mở phiên, trả câu chào |
+| Outbound không đọc được lịch hợp lệ từ Clinic (lỗi API, không tìm thấy, dữ liệu hỏng hoặc lịch không còn thao tác được) | `503 OUTBOUND_START_FAILED`; không tạo phiên, không trả lời bot/TTS, không ghi chuyển máy. Sau khi khắc phục có thể gửi lại cùng `call_id` |
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
 | `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `src/speech/bundle.py` |
+
+Console mô phỏng outbound bằng `appointment_id`, chưa thực hiện quay số điện thoại.
+Tra cứu Clinic là điều kiện trước khi mở phiên outbound; lỗi này hiển thị cho người vận hành.
+Inbound đã có người gọi đến nên lỗi tra cứu vẫn theo luồng chuyển nhân viên.
+
+Luồng xử lý trong code: [`calls.py`](../../src/callbot/transports/http/calls.py)
+→ `CallOrchestrator.start_call` → `SessionManager.open` →
+[`DialogueManager.opening`](../../src/callbot/engine/dialogue/manager.py).
+Manager chọn [`inbound.opening`](../../src/callbot/engine/dialogue/inbound.py) hoặc
+[`outbound.opening`](../../src/callbot/engine/dialogue/outbound.py) theo `direction`.
+Mỗi luồng gọi `IdentityVerifier.prepare` để tra cứu rồi quyết định hỏi danh tính,
+chuyển nhân viên (inbound) hoặc từ chối mở phiên (outbound).
+[`questions.ask`](../../src/callbot/engine/dialogue/questions.py) dùng chung để lưu câu hỏi
+và lượt hỏi; `SessionManager` chỉ ghi phiên và áp dụng trạng thái sau khi mở đầu thành công.
+`calls.py` chuyển `OutboundStartFailed` thành lỗi HTTP ở bảng trên.
 
 ## `POST /v1/calls/{call_id}/turn`
 
@@ -39,6 +55,20 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Lỗi ngoài dự kiến | `500 INTERNAL_ERROR` |
 
 Lỗi nghiệp vụ trong lượt (Clinic từ chối lệnh ghi, guardrail chặn) vẫn trả `200` với `outcome=TRANSFERRED`, `transfer_reason=SYSTEM_ERROR` như trước. Ngoại lệ: khi kết quả lệnh ghi không xác định, bot **không** gửi lệnh chuyển máy thay thế mà trả `409 CALL_RECONCILIATION_REQUIRED`.
+
+## Xác thực
+
+`BOT_API_KEYS` trong `.env` là danh sách Bearer key dạng `sk_...`, nhiều key cách nhau dấu phẩy. Để trống thì tắt auth (mặc định, dùng cho dev local và test).
+
+| Route | Cần key khi `BOT_API_KEYS` có giá trị |
+|---|---|
+| `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
+| `/demo-api/*` | Có |
+| `/health`, `/ready`, `/audio/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/ui/*` là file tĩnh của giao diện web |
+
+Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/ui/call` (link cũ `/demo/` chuyển hướng tới đây) có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
+
+Server production giữ nguyên `/opt/callbot/.env` qua các lần deploy (xem `cd.yml`), nên muốn thêm hay thu hồi key thì sửa `BOT_API_KEYS` trong file đó rồi `docker compose up -d` lại. Secret `BOT_API_KEYS` của GitHub được CD dùng khi tạo `.env` lần đầu và cho smoke test (key đầu tiên), nên phải chứa một key server đang chấp nhận. Smoke test gửi `POST /v1/calls` với body rỗng và mong đợi `422`: chứng minh key hợp lệ và route hoạt động mà không mở cuộc gọi hay gọi Clinic.
 
 ## Probe
 

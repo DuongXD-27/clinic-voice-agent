@@ -75,6 +75,7 @@ jobs:
       BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
       CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
       CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
+      BOT_API_KEYS: ${{ secrets.BOT_API_KEYS }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -122,6 +123,7 @@ jobs:
           if ssh -o BatchMode=yes "$SSH_TARGET" "test -f '$REMOTE_DIR/.env'"; then
             echo "Keeping existing $REMOTE_DIR/.env"
           else
+            : "${CLINIC_MOCK_BASE_URL:?Missing variable CLINIC_MOCK_BASE_URL}"
             : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
             : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
             case "$NAME_FALLBACK_PROVIDER" in
@@ -136,8 +138,10 @@ jobs:
             {
               printf '%s\n' "BOT_DOMAIN=$BOT_DOMAIN"
               printf '%s\n' "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
-              printf '%s\n' "CLINIC_MOCK_BASE_URL=${CLINIC_MOCK_BASE_URL:-https://clinic-mock.vmec-callbot.tech/v1}"
+              printf '%s\n' "CLINIC_MOCK_BASE_URL=$CLINIC_MOCK_BASE_URL"
               printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+              printf '%s\n' "BOT_API_KEYS=$BOT_API_KEYS"
+              printf '%s\n' "DEMO_CLINIC_ADMIN_ENABLED=false"
               printf '%s\n' "REDIS_PASSWORD=$REDIS_PASSWORD"
               printf '%s\n' "REDIS_MAXMEMORY=256mb"
               printf '%s\n' "WEB_CONCURRENCY=2"
@@ -178,13 +182,17 @@ jobs:
             docker compose --env-file .env --env-file image.env pull; \
             docker compose --env-file .env --env-file image.env up -d --remove-orphans"
 
+      # Chỉ kiểm tra phần callbot tự quản lý: /ready (process, Redis, dọn phiên) và /v1/calls gọi
+      # được với API key. Không mở cuộc gọi: Clinic là hệ thống riêng, dữ liệu dùng chung có thể bị
+      # đổi bất kỳ lúc nào và deploy callbot không được hỏng hay ghi rác vào đó vì smoke test.
       - name: Smoke test
         shell: bash
         run: |
           set -euo pipefail
           ready=0
           for _ in $(seq 1 30); do
-            if curl -fsS --connect-timeout 5 "https://$BOT_DOMAIN/ready"; then
+            # `-w '\n'`: body /ready không có newline, runner giữ dòng đó tới cuối step làm log lệch thứ tự.
+            if curl -fsS --connect-timeout 5 -w '\n' "https://$BOT_DOMAIN/ready"; then
               ready=1
               break
             fi
@@ -192,10 +200,22 @@ jobs:
           done
           test "$ready" -eq 1
 
-          CALL_ID="cd_smoke_${DEPLOY_SHA:0:12}_${GITHUB_RUN_ATTEMPT}"
-          curl -fsS --connect-timeout 5 -X POST "https://$BOT_DOMAIN/v1/calls" \
-            -H "Content-Type: application/json" \
-            -d '{"call_id":"'"$CALL_ID"'","direction":"outbound","appointment_id":"apt_00417","caller_number":null,"locale":"vi-VN","mode":"text","max_turns":20}'
+          # Body rỗng: auth chạy trước validate nên key đúng -> 422, sai key -> 401. Request dừng ở
+          # validate, không tạo phiên, không gọi Clinic (khoá bởi tests/transports/http/test_auth.py).
+          # Server bật auth (BOT_API_KEYS trong /opt/callbot/.env) thì secret phải chứa một key
+          # server chấp nhận; dùng key đầu tiên. Secret trống = gọi không kèm header.
+          SMOKE_KEY="$(printf '%s' "${BOT_API_KEYS:-}" | cut -d, -f1 | tr -d '[:space:]')"
+          AUTH=()
+          if [ -n "$SMOKE_KEY" ]; then AUTH=(-H "Authorization: Bearer $SMOKE_KEY"); fi
+          status="$(curl -sS --connect-timeout 5 -o /tmp/smoke_body -w '%{http_code}' \
+            -X POST "https://$BOT_DOMAIN/v1/calls" "${AUTH[@]}" \
+            -H "Content-Type: application/json" -d '{}')"
+          if [ "$status" != "422" ]; then
+            echo "POST /v1/calls: mong đợi 422, nhận $status" >&2
+            cat /tmp/smoke_body >&2; echo >&2
+            exit 1
+          fi
+          echo "POST /v1/calls OK (422 validate, key hợp lệ)"
 
       # Chỉ dọn khi bản mới đã qua smoke test. `prune -f` cũ chỉ xoá image dangling nên image
       # tag SHA của mọi lần deploy trước nằm lại mãi. `-a` xoá image không container nào dùng;

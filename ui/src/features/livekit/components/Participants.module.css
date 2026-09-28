@@ -1,0 +1,89 @@
+.participants {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-muted);
+}
+
+.tile {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+  transition:
+    border-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.dim {
+  opacity: 0.55;
+}
+
+.avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--brand-50);
+  color: var(--brand-600);
+}
+
+.avatar > svg {
+  width: 32px;
+  height: 32px;
+}
+
+.speaking {
+  border-color: var(--brand-500);
+}
+
+.speaking .avatar {
+  animation: ring 1.2s ease-out infinite;
+}
+
+.muted {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+}
+
+.muted svg {
+  width: 13px;
+  height: 13px;
+}
+
+.status {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@keyframes ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-500) 45%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 18px transparent;
+  }
+}
+
+@media (max-width: 480px) {
+  .participants {
+    grid-template-columns: 1fr;
+  }
+}

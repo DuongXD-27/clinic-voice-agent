@@ -17,9 +17,9 @@ from callbot.engine.journal import ClinicCommand, bind_journal
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.session.context import ActionEvidence, CallContext, Question
 from callbot.engine.tools.clinic_gateway import ClinicGateway
-from callbot.engine.tools.fake_clinic import FakeClinicAPI, clinic_error
 from callbot.engine.tools.telemetry import collect_api_calls
 from callbot.engine.types import CallStart
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 OCT = datetime.fromisoformat("2026-10-14T00:00:00+07:00")
 
@@ -169,9 +169,9 @@ def test_list_open_slots_walks_every_page_and_normalizes() -> None:
 def test_list_open_slots_sends_rfc3339_window_of_14_days() -> None:
     fake = FakeClinicAPI(seed=False, strict_slot_window=True)
     gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
-    # Không seed slot: chỉ kiểm tra fake không từ chối tham số cửa sổ (regex, ≤ 14 ngày)
+    # Không seed slot: mọi cửa sổ policy đều phải hợp lệ (regex, ≤ 14 ngày).
     assert gateway.list_open_slots(_outbound(), datetime(2026, 10, 14, 9, 30, 15, 999)) == []
-    assert fake.slot_reads == 1
+    assert fake.slot_reads == 5
 
 
 def test_find_patients_by_phone_returns_canonical_candidates_from_all_pages() -> None:

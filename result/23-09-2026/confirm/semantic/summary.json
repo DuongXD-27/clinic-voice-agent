@@ -1,0 +1,1117 @@
+{
+  "label": "semantic",
+  "mode": "semantic",
+  "evaluation_scope": "confirm_attendance_and_branch_routing",
+  "exit_policy": "all_cases",
+  "model": "gpt-6-luna",
+  "prompt_version": "semantic_v4",
+  "repeats": 3,
+  "ran_at": "2026-09-23T14:57:03+00:00",
+  "runs": [
+    {
+      "cases": 179,
+      "passed_cases": 157,
+      "failed_cases": 22,
+      "contract_failures": 1,
+      "holdout_cases": 168,
+      "attendance_confirmation_cases": 50,
+      "attendance_confirmation_passed": 42,
+      "attendance_confirmation_rate": 0.84,
+      "branch_routing_cases": 12,
+      "branch_routing_passed": 10,
+      "branch_routing_accuracy": 0.8333,
+      "holdout_fully_passed": 147,
+      "holdout_passed": 147,
+      "holdout_behaviour_accuracy": 0.875,
+      "rule_cases": 101,
+      "rule_passed": 99,
+      "inference_cases": 67,
+      "inference_passed": 48,
+      "unsafe_writes": 0,
+      "unsafe": [],
+      "agree_cases": 51,
+      "agree_not_confirmed": 8,
+      "agree_reread_rate": 0.1569,
+      "agree_routed": 8,
+      "by_group": {
+        "agree": {
+          "total": 28,
+          "ok": 28,
+          "routed": 0
+        },
+        "agree_attend": {
+          "total": 11,
+          "ok": 10,
+          "routed": 1
+        },
+        "agree_implicit": {
+          "total": 6,
+          "ok": 0,
+          "routed": 6
+        },
+        "agree_keep": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "busy_now": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "cancel": {
+          "total": 5,
+          "ok": 5,
+          "routed": 1
+        },
+        "cannot_attend": {
+          "total": 26,
+          "ok": 22,
+          "routed": 25
+        },
+        "exception": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "filler": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "hedge": {
+          "total": 14,
+          "ok": 13,
+          "routed": 14
+        },
+        "keep": {
+          "total": 6,
+          "ok": 5,
+          "routed": 2
+        },
+        "not_cancel": {
+          "total": 4,
+          "ok": 3,
+          "routed": 4
+        },
+        "out_of_scope": {
+          "total": 20,
+          "ok": 20,
+          "routed": 0
+        },
+        "out_of_scope_trap": {
+          "total": 6,
+          "ok": 5,
+          "routed": 2
+        },
+        "question": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "reason": {
+          "total": 7,
+          "ok": 5,
+          "routed": 7
+        },
+        "refuse": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "reschedule": {
+          "total": 5,
+          "ok": 3,
+          "routed": 3
+        },
+        "time": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "unclear": {
+          "total": 8,
+          "ok": 6,
+          "routed": 8
+        }
+      },
+      "failures": [
+        {
+          "group": "agree_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi nghỉ phép rồi, đi được",
+          "needs_inference": false,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi qua sớm",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi sắp xếp được rồi em",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "để hôm đó con tôi chở tôi qua",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "lịch đó ổn em ạ",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "NOT_UNDERSTOOD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "ừ thế cũng được",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "NOT_UNDERSTOOD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi vẫn đi làm hôm đó",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi vẫn đi làm bình thường hôm đó",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "unclear",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi đang chuẩn bị đi xa",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó đúng ngày giỗ nhà tôi",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hom do toi co viec ban",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "unclear",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi ở xa quá, đi được mất cả ngày",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "hedge",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "con tôi đưa đi thì tôi mới đi được",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "TRANSFER",
+          "semantic_kind": "CHANGE_INTENT",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "OUT_OF_SCOPE",
+          "contract_errors": "unexpected_transfer"
+        },
+        {
+          "group": "not_cancel",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "không cần đổi đâu",
+          "needs_inference": false,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "CANCEL",
+          "semantic_kind": "CHANGE_INTENT",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó không được, hôm sau thì được",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "out_of_scope_trap",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "vợ tôi sẽ đưa tôi đi",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "keep",
+          "question_id": "ASK_INTENT",
+          "transcript": "thôi cứ để như cũ đi em",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "NOT_UNDERSTOOD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reason",
+          "question_id": "ASK_INTENT",
+          "transcript": "hôm đó tôi sẽ đi công tác",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reason",
+          "question_id": "ASK_INTENT",
+          "transcript": "tôi vẫn đi làm hôm đó",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "ASK_INTENT",
+          "transcript": "tuần sau tôi mới rảnh",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        }
+      ],
+      "model_calls": 91,
+      "model_statuses": {
+        "accepted": 82,
+        "rejected": 1,
+        "timeout": 8
+      },
+      "turn_latency_ms": {
+        "n": 179,
+        "p50": 1750.0,
+        "p95": 3293.6,
+        "max": 3577.7
+      },
+      "semantic_latency_ms": {
+        "n": 91,
+        "p50": 2127.3,
+        "p95": 3432.4,
+        "max": 3571.8
+      }
+    },
+    {
+      "cases": 179,
+      "passed_cases": 163,
+      "failed_cases": 16,
+      "contract_failures": 1,
+      "holdout_cases": 168,
+      "attendance_confirmation_cases": 50,
+      "attendance_confirmation_passed": 42,
+      "attendance_confirmation_rate": 0.84,
+      "branch_routing_cases": 12,
+      "branch_routing_passed": 10,
+      "branch_routing_accuracy": 0.8333,
+      "holdout_fully_passed": 152,
+      "holdout_passed": 152,
+      "holdout_behaviour_accuracy": 0.9048,
+      "rule_cases": 101,
+      "rule_passed": 100,
+      "inference_cases": 67,
+      "inference_passed": 52,
+      "unsafe_writes": 0,
+      "unsafe": [],
+      "agree_cases": 51,
+      "agree_not_confirmed": 8,
+      "agree_reread_rate": 0.1569,
+      "agree_routed": 8,
+      "by_group": {
+        "agree": {
+          "total": 28,
+          "ok": 28,
+          "routed": 0
+        },
+        "agree_attend": {
+          "total": 11,
+          "ok": 10,
+          "routed": 1
+        },
+        "agree_implicit": {
+          "total": 6,
+          "ok": 0,
+          "routed": 6
+        },
+        "agree_keep": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "busy_now": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "cancel": {
+          "total": 5,
+          "ok": 5,
+          "routed": 1
+        },
+        "cannot_attend": {
+          "total": 26,
+          "ok": 23,
+          "routed": 25
+        },
+        "exception": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "filler": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "hedge": {
+          "total": 14,
+          "ok": 14,
+          "routed": 14
+        },
+        "keep": {
+          "total": 6,
+          "ok": 6,
+          "routed": 2
+        },
+        "not_cancel": {
+          "total": 4,
+          "ok": 4,
+          "routed": 4
+        },
+        "out_of_scope": {
+          "total": 20,
+          "ok": 20,
+          "routed": 0
+        },
+        "out_of_scope_trap": {
+          "total": 6,
+          "ok": 5,
+          "routed": 2
+        },
+        "question": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "reason": {
+          "total": 7,
+          "ok": 5,
+          "routed": 7
+        },
+        "refuse": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "reschedule": {
+          "total": 5,
+          "ok": 3,
+          "routed": 3
+        },
+        "time": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "unclear": {
+          "total": 8,
+          "ok": 7,
+          "routed": 8
+        }
+      },
+      "failures": [
+        {
+          "group": "agree_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi nghỉ phép rồi, đi được",
+          "needs_inference": false,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi qua sớm",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi sắp xếp được rồi em",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "để hôm đó con tôi chở tôi qua",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "lịch đó ổn em ạ",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "ừ thế cũng được",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi vẫn đi làm bình thường hôm đó",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "chi phí cao quá, đợt này tôi chưa khám được",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "dạ được, mà hôm đó tôi phải trông cháu",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "unclear",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi ở xa quá, đi được mất cả ngày",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó không được, hôm sau thì được",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "out_of_scope_trap",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "vợ tôi sẽ đưa tôi đi",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "TRANSFER",
+          "semantic_kind": "CHANGE_INTENT",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "OUT_OF_SCOPE",
+          "contract_errors": "unexpected_transfer"
+        },
+        {
+          "group": "reason",
+          "question_id": "ASK_INTENT",
+          "transcript": "tối đó tôi đến viện khác rồi",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reason",
+          "question_id": "ASK_INTENT",
+          "transcript": "nhà tôi có việc hiếu",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "NOT_UNDERSTOOD",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "UNSPECIFIED",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "ASK_INTENT",
+          "transcript": "tuần sau tôi mới rảnh",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        }
+      ],
+      "model_calls": 91,
+      "model_statuses": {
+        "accepted": 87,
+        "timeout": 4
+      },
+      "turn_latency_ms": {
+        "n": 179,
+        "p50": 1733.5,
+        "p95": 2466.4,
+        "max": 3417.6
+      },
+      "semantic_latency_ms": {
+        "n": 91,
+        "p50": 2093.9,
+        "p95": 3057.6,
+        "max": 3413.1
+      }
+    },
+    {
+      "cases": 179,
+      "passed_cases": 165,
+      "failed_cases": 14,
+      "contract_failures": 0,
+      "holdout_cases": 168,
+      "attendance_confirmation_cases": 50,
+      "attendance_confirmation_passed": 42,
+      "attendance_confirmation_rate": 0.84,
+      "branch_routing_cases": 12,
+      "branch_routing_passed": 10,
+      "branch_routing_accuracy": 0.8333,
+      "holdout_fully_passed": 154,
+      "holdout_passed": 154,
+      "holdout_behaviour_accuracy": 0.9167,
+      "rule_cases": 101,
+      "rule_passed": 100,
+      "inference_cases": 67,
+      "inference_passed": 54,
+      "unsafe_writes": 0,
+      "unsafe": [],
+      "agree_cases": 51,
+      "agree_not_confirmed": 8,
+      "agree_reread_rate": 0.1569,
+      "agree_routed": 8,
+      "by_group": {
+        "agree": {
+          "total": 28,
+          "ok": 28,
+          "routed": 0
+        },
+        "agree_attend": {
+          "total": 11,
+          "ok": 10,
+          "routed": 1
+        },
+        "agree_implicit": {
+          "total": 6,
+          "ok": 0,
+          "routed": 6
+        },
+        "agree_keep": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "busy_now": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "cancel": {
+          "total": 5,
+          "ok": 5,
+          "routed": 1
+        },
+        "cannot_attend": {
+          "total": 26,
+          "ok": 24,
+          "routed": 25
+        },
+        "exception": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "filler": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "hedge": {
+          "total": 14,
+          "ok": 14,
+          "routed": 14
+        },
+        "keep": {
+          "total": 6,
+          "ok": 5,
+          "routed": 2
+        },
+        "not_cancel": {
+          "total": 4,
+          "ok": 4,
+          "routed": 4
+        },
+        "out_of_scope": {
+          "total": 20,
+          "ok": 20,
+          "routed": 0
+        },
+        "out_of_scope_trap": {
+          "total": 6,
+          "ok": 5,
+          "routed": 2
+        },
+        "question": {
+          "total": 3,
+          "ok": 3,
+          "routed": 3
+        },
+        "reason": {
+          "total": 7,
+          "ok": 7,
+          "routed": 7
+        },
+        "refuse": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "reschedule": {
+          "total": 5,
+          "ok": 3,
+          "routed": 3
+        },
+        "time": {
+          "total": 2,
+          "ok": 2,
+          "routed": 2
+        },
+        "unclear": {
+          "total": 8,
+          "ok": 7,
+          "routed": 8
+        }
+      },
+      "failures": [
+        {
+          "group": "agree_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi nghỉ phép rồi, đi được",
+          "needs_inference": false,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi qua sớm",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi sắp xếp được rồi em",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "để hôm đó con tôi chở tôi qua",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "lịch đó ổn em ạ",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "ừ thế cũng được",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "agree_implicit",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "CONFIRM_ACTION",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi vẫn đi làm bình thường hôm đó",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "cannot_attend",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "dạ được, mà hôm đó tôi phải trông cháu",
+          "needs_inference": true,
+          "expect_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "unclear",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "tôi ở xa quá, đi được mất cả ngày",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "hôm đó không được, hôm sau thì được",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "out_of_scope_trap",
+          "question_id": "CONFIRM_READBACK",
+          "transcript": "vợ tôi sẽ đưa tôi đi",
+          "needs_inference": true,
+          "expect_behaviour": "CONFIRM",
+          "observed_behaviour": "REREAD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "keep",
+          "question_id": "ASK_INTENT",
+          "transcript": "thôi cứ để như cũ đi em",
+          "needs_inference": true,
+          "expect_behaviour": "REREAD",
+          "observed_behaviour": "NOT_UNDERSTOOD",
+          "semantic_kind": "AMBIGUOUS",
+          "semantic_reason": "",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        },
+        {
+          "group": "reschedule",
+          "question_id": "ASK_INTENT",
+          "transcript": "tuần sau tôi mới rảnh",
+          "needs_inference": true,
+          "expect_behaviour": "RESCHEDULE",
+          "observed_behaviour": "ASK_CHANGE_OR_CANCEL",
+          "semantic_kind": "INFORM_REASON",
+          "semantic_reason": "PATIENT_UNAVAILABLE",
+          "expect_transfer_reason": "",
+          "transfer_reason": "",
+          "contract_errors": ""
+        }
+      ],
+      "model_calls": 91,
+      "model_statuses": {
+        "accepted": 90,
+        "timeout": 1
+      },
+      "turn_latency_ms": {
+        "n": 179,
+        "p50": 1567.1,
+        "p95": 2349.5,
+        "max": 3399.3
+      },
+      "semantic_latency_ms": {
+        "n": 91,
+        "p50": 1997.3,
+        "p95": 2641.9,
+        "max": 3395.2
+      }
+    }
+  ]
+}

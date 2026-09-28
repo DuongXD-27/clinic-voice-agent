@@ -1,5 +1,6 @@
 """ElevenLabsTTS qua fake WebSocket: giao thức stream-input, gom chunk, timing, phân loại lỗi (AC-2, AC-3)."""
 
+import json
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -99,6 +100,52 @@ def test_server_closing_without_isfinal_still_returns_audio() -> None:
 def test_stream_yields_chunks_as_received() -> None:
     connect = _happy_connect()
     assert list(_tts(connect).stream(TEXT)) == CHUNKS
+
+
+class _AsyncFakeWebSocket:
+    def __init__(self, script) -> None:
+        self.script = list(script)
+        self.sent = []
+        self.closed = False
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        self.closed = True
+
+    async def send(self, message: str) -> None:
+        self.sent.append(json.loads(message))
+
+    async def recv(self) -> str:
+        if not self.script:
+            raise closed_ok()
+        return json.dumps(self.script.pop(0))
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class _AsyncFakeConnect:
+    def __init__(self, script) -> None:
+        self.socket = _AsyncFakeWebSocket(script)
+        self.calls = []
+
+    def __call__(self, uri: str, **kwargs):
+        self.calls.append({"uri": uri, **kwargs})
+        return self.socket
+
+
+async def test_async_stream_yields_chunks_for_livekit() -> None:
+    connect = _AsyncFakeConnect([audio_message(c) for c in CHUNKS] + [final_message()])
+    provider = ElevenLabsTTS(_config(), connect=FakeConnect([]), async_connect=connect)
+
+    chunks = [chunk async for chunk in provider.synthesize_stream(TEXT)]
+
+    assert chunks == CHUNKS
+    assert provider.stream_sample_rate == 8000
+    assert connect.calls[0]["additional_headers"] == {"xi-api-key": KEY}
+    assert connect.socket.sent[1] == {"text": TEXT + " ", "flush": True}
 
 
 # --- timing (TTS-1.6) --------------------------------------------------------------------------

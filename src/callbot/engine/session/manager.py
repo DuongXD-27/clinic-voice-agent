@@ -40,6 +40,7 @@ from callbot.engine.types import (
     TransferReason,
     UnreachableReason,
 )
+from callbot.tracing import trace_event
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,22 @@ class SessionManager:
 
             received_at = self._admit(session, caller)
             if isinstance(received_at, TurnRun):
+                trace_event(
+                    "session.replayed",
+                    replayed=True,
+                    terminal=received_at.action.ended,
+                    storage_status="COMPLETED",
+                    turn_ordering="REPLAY",
+                )
                 return received_at
+
+            trace_event(
+                "session.admitted",
+                replayed=False,
+                terminal=False,
+                storage_status="PROCESSING",
+                turn_ordering="ACCEPTED",
+            )
 
             ctx = CallContext.from_dict(session.context)
             journal = StoreCommandJournal(self._store, call_id, caller.turn)
@@ -150,6 +166,13 @@ class SessionManager:
                 outcome.action.to_dict(),
                 outcome.extraction,
                 ended=ctx.ended,
+            )
+            trace_event(
+                "session.committed",
+                replayed=False,
+                terminal=ctx.ended,
+                storage_status="COMPLETED",
+                turn_ordering="COMMITTED",
             )
             return TurnRun(
                 outcome.action,
@@ -226,9 +249,22 @@ class SessionManager:
 
     @staticmethod
     def transition(ctx: CallContext, target: CallState) -> None:
-        ensure_transition(ctx.state, target)
-        check_invariants(ctx, target)
+        before = ctx.state
+        try:
+            ensure_transition(ctx.state, target)
+            check_invariants(ctx, target)
+        except Exception:
+            trace_event(
+                "fsm.transition",
+                state_before=before,
+                state_after=target,
+                status="ERROR",
+                error_type="INTERNAL",
+                error_code="FSM_ILLEGAL_TRANSITION",
+            )
+            raise
         ctx.state = target
+        trace_event("fsm.transition", state_before=before, state_after=target, status="OK")
 
     @staticmethod
     def close(
@@ -237,12 +273,40 @@ class SessionManager:
         transfer_reason: Optional[TransferReason] = None,
         unreachable_reason: Optional[UnreachableReason] = None,
     ) -> None:
-        ensure_transition(ctx.state, "ENDED")
+        before = ctx.state
+        try:
+            ensure_transition(ctx.state, "ENDED")
+        except Exception:
+            trace_event(
+                "fsm.transition",
+                state_before=before,
+                state_after="ENDED",
+                outcome=outcome,
+                status="ERROR",
+                error_type="INTERNAL",
+                error_code="FSM_ILLEGAL_TRANSITION",
+            )
+            raise
         ctx.outcome = outcome
         ctx.transfer_reason = transfer_reason
         ctx.unreachable_reason = unreachable_reason
-        check_invariants(ctx, "ENDED")
+        try:
+            check_invariants(ctx, "ENDED")
+        except Exception:
+            trace_event(
+                "fsm.transition",
+                state_before=before,
+                state_after="ENDED",
+                outcome=outcome,
+                status="ERROR",
+                error_type="INTERNAL",
+                error_code="FSM_ILLEGAL_TRANSITION",
+            )
+            raise
         ctx.state = "ENDED"
+        trace_event(
+            "fsm.transition", state_before=before, state_after="ENDED", outcome=outcome, status="OK"
+        )
 
 
 class StoreCommandJournal:

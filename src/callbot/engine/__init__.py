@@ -17,7 +17,7 @@ from callbot.engine.errors import (
     TurnOutOfOrder,
 )
 from callbot.engine.extraction import InformationExtractor
-from callbot.engine.extraction.ner import NameNER
+from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticExtractor
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
@@ -28,6 +28,8 @@ from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
 from callbot.engine.types import BotAction, CallerInput, CallStart
 from callbot.engine.verification import IdentityVerifier
+from callbot.tracing import Tracer as SpanTracer
+from callbot.tracing import null_tracer
 from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
 
@@ -63,8 +65,8 @@ def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]
             max_completion_tokens=settings.semantic_fallback_max_tokens,
         )
     except ValidationError:
-        # Bật mặc định nhưng máy này không có OPENAI_API_KEY: chạy chỉ-luật (vẫn an toàn — hai chốt
-        # chặn ca review nằm ở tầng luật), không để cả server không khởi động được.
+        # Thiếu OPENAI_API_KEY: chạy chỉ-luật; các câu lâm sàng ngoài luật sẽ không được model phân loại.
+        # Không để cả server không khởi động được.
         logger.warning("Tầng ngữ nghĩa đang bật nhưng thiếu OPENAI_API_KEY; chạy chỉ bằng luật")
         return None
     return LLMSemanticExtractor(
@@ -82,10 +84,11 @@ def create_orchestrator(
 ) -> CallOrchestrator:
     """Use the shared Redis session store unless an explicit test/application store is supplied."""
     settings = settings or EngineSettings()
-    gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id)
+    span_tracer = tracer if isinstance(tracer, SpanTracer) else null_tracer()
+    gateway = ClinicGateway(clinic_api, clinic_id=settings.clinic_id, tracer=span_tracer)
     name_fallback = None
     if settings.name_fallback_provider != "none":
-        name_fallback = NameNER(create_gateway(settings.name_fallback_provider))
+        name_fallback = NameSlotFiller(create_gateway(settings.name_fallback_provider))
     return CallOrchestrator(
         sessions=SessionManager(store if store is not None else _default_session_store()),
         extractor=InformationExtractor(

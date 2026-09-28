@@ -24,7 +24,7 @@ VN_TZ = timezone(timedelta(hours=7))
 class Provenance(str, Enum):
     EXACT = "EXACT"  # luật khớp nguyên văn
     NORMALIZED = "NORMALIZED"  # khớp sau chuẩn hoá (Unicode, tiền tố lễ phép, số đọc)
-    FALLBACK = "FALLBACK"  # NER / LLM tuyến sau — bắt buộc có span
+    FALLBACK = "FALLBACK"  # Slot filling tên / LLM tuyến sau — bắt buộc có span
     NONE = "NONE"  # không trích được
 
 
@@ -169,6 +169,9 @@ class TurnContext:
     # TurnContext cũ vẫn chạy. Đều là dữ liệu hội thoại, KHÔNG phải hồ sơ hay trạng thái lịch hẹn.
     pending_action: Optional[PendingAction] = None
     question_turn: Optional[int] = None  # lượt bot hỏi câu đang chờ; None nếu chưa hỏi câu nào
+    # Nội dung câu hỏi đang chờ, chỉ có ở ASK_NAME: ngữ cảnh cho slot filling họ tên, không phải
+    # nguồn chữ để lấy tên. None khi không ở ASK_NAME hoặc phiên không lưu nội dung câu hỏi.
+    question_text: Optional[str] = None
 
     @property
     def today(self) -> date:

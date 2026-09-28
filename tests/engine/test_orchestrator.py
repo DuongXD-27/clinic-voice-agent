@@ -13,7 +13,9 @@ from callbot.engine.extraction import InformationExtractor, QuestionId, TurnCont
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
 from callbot.engine.verification.names import normalize_name
-from tests.engine.fake_clinic import FakeClinicAPI, clinic_error
+from callbot.tracing import Tracer
+from callbot.tracing.pseudonym import CallKeyFactory
+from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
 
@@ -186,7 +188,7 @@ def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
 
 def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
     clinic = FakeClinicAPI()
-    clinic.slots.append({"slot_id": "slot_cc03", "starts_at": "2026-10-14T16:00:00+07:00"})
+    clinic.seed_slot({"slot_id": "slot_cc03", "start_time": "2026-10-14T16:00:00+07:00"})
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_ambiguous"))
     _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
@@ -396,7 +398,8 @@ def test_extractor_never_sees_patient_identity() -> None:
 
     # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
     # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
-    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn.
+    # không phải hồ sơ bệnh nhân hay chi tiết lịch hẹn. `question_text` là câu mẫu bot đã nói ở
+    # ASK_NAME (ngữ cảnh slot filling tên) — không chứa hồ sơ; vòng lặp dưới vẫn kiểm tra điều đó.
     assert {f.name for f in fields(TurnContext)} == {
         "turn",
         "question_id",
@@ -406,26 +409,51 @@ def test_extractor_never_sees_patient_identity() -> None:
         "presented_slot_ids",
         "pending_action",
         "question_turn",
+        "question_text",
     }
     verify = clinic.appointments["apt_00417"]["patient"]["verify"]
     for seen in spy.contexts:
         dumped = repr(seen)
         assert verify["full_name"] not in dumped and verify["dob"] not in dumped
         assert "pt_3391" not in dumped
+    # Câu mở đầu outbound tới IE; bước ngày sinh không mang nội dung câu hỏi
+    assert [(c.question_id, c.question_text) for c in spy.contexts] == [
+        (QuestionId.ASK_NAME, t.GREETING_OUTBOUND),
+        (QuestionId.ASK_DOB, None),
+    ]
     session = bot.sessions.store.get_session("c_private")
     assert session.context == {} and session.ended
 
 
 def test_trace_failure_does_not_rerun_committed_turn() -> None:
-    class BrokenTracer:
-        def log(self, call_id, turn, event):
+    class BrokenSink:
+        calls = 0
+
+        def emit(self, span) -> None:
+            del span
+            self.calls += 1
             raise OSError("disk full")
 
+    sink = BrokenSink()
+    tracer = Tracer(
+        sink,
+        CallKeyFactory("trace-test-secret-key-material-00000", version="v1", environment="test"),
+    )
     clinic = FakeClinicAPI()
-    bot = create_orchestrator(clinic, tracer=BrokenTracer())
-    bot.start_call(_outbound("c_trace_fail"))
-    first = _run(bot, "c_trace_fail", ["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"])
+    bot = create_orchestrator(clinic, tracer=tracer)
+    with tracer.start_trace(
+        call_id="c_trace_fail", turn=0, component="TURN", operation="http.start_call"
+    ):
+        bot.start_call(_outbound("c_trace_fail"))
+    first = None
+    for turn, text in enumerate(["Nguyễn Văn A", "14/03/1978", "Có, tôi đến được"], start=1):
+        with tracer.start_trace(
+            call_id="c_trace_fail", turn=turn, component="TURN", operation="http.call_turn"
+        ):
+            first = bot.handle_turn("c_trace_fail", CallerInput(turn=turn, text=text))
+    assert first is not None
     assert first.outcome == "CONFIRMED"
+    assert sink.calls > 0
     with pytest.raises(CallEnded):
         bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]

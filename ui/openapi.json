@@ -1,0 +1,2444 @@
+{
+  "components": {
+    "schemas": {
+      "AppointmentOption": {
+        "properties": {
+          "appointment_id": {
+            "title": "Appointment Id",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "appointment_id",
+          "status",
+          "display_name"
+        ],
+        "title": "AppointmentOption",
+        "type": "object"
+      },
+      "AppointmentSnapshot": {
+        "properties": {
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "appointment_id",
+          "status",
+          "version"
+        ],
+        "title": "AppointmentSnapshot",
+        "type": "object"
+      },
+      "CallDetailResponse": {
+        "properties": {
+          "call_key": {
+            "title": "Call Key",
+            "type": "string"
+          },
+          "executions": {
+            "items": {
+              "$ref": "#/components/schemas/TurnExecutionResponse"
+            },
+            "title": "Executions",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total_executions": {
+            "title": "Total Executions",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "call_key",
+          "executions",
+          "total_executions",
+          "limit",
+          "offset"
+        ],
+        "title": "CallDetailResponse",
+        "type": "object"
+      },
+      "ClinicFixtures": {
+        "properties": {
+          "appointments": {
+            "items": {
+              "$ref": "#/components/schemas/AppointmentOption"
+            },
+            "title": "Appointments",
+            "type": "array"
+          },
+          "phones": {
+            "items": {
+              "$ref": "#/components/schemas/PhoneOption"
+            },
+            "title": "Phones",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "mock",
+              "sim"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "appointments",
+          "phones"
+        ],
+        "title": "ClinicFixtures",
+        "type": "object"
+      },
+      "ClinicResetRequest": {
+        "properties": {
+          "appointment_id": {
+            "default": "apt_00417",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "title": "Appointment Id",
+            "type": "string"
+          }
+        },
+        "title": "ClinicResetRequest",
+        "type": "object"
+      },
+      "ClinicResetResponse": {
+        "properties": {
+          "appointment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppointmentSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reset": {
+            "title": "Reset",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reset",
+          "appointment"
+        ],
+        "title": "ClinicResetResponse",
+        "type": "object"
+      },
+      "ComponentErrorResponse": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "error_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Rate"
+          }
+        },
+        "required": [
+          "component",
+          "count",
+          "error_count",
+          "error_rate"
+        ],
+        "title": "ComponentErrorResponse",
+        "type": "object"
+      },
+      "DemoAudioUpload": {
+        "properties": {
+          "audio_url": {
+            "title": "Audio Url",
+            "type": "string"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "sample_rate": {
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "audio_url",
+          "content_type",
+          "sample_rate",
+          "duration_ms",
+          "size_bytes"
+        ],
+        "title": "DemoAudioUpload",
+        "type": "object"
+      },
+      "DiagnosticsResponse": {
+        "properties": {
+          "files_read": {
+            "title": "Files Read",
+            "type": "integer"
+          },
+          "files_skipped": {
+            "title": "Files Skipped",
+            "type": "integer"
+          },
+          "records_processed": {
+            "title": "Records Processed",
+            "type": "integer"
+          },
+          "records_skipped": {
+            "title": "Records Skipped",
+            "type": "integer"
+          },
+          "unsupported_records": {
+            "title": "Unsupported Records",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records_processed",
+          "records_skipped",
+          "unsupported_records",
+          "files_read",
+          "files_skipped"
+        ],
+        "title": "DiagnosticsResponse",
+        "type": "object"
+      },
+      "ErrorBreakdownResponse": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "provider",
+          "model",
+          "error_code",
+          "count"
+        ],
+        "title": "ErrorBreakdownResponse",
+        "type": "object"
+      },
+      "ErrorListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorBreakdownResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit"
+        ],
+        "title": "ErrorListResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HourlyBucketResponse": {
+        "properties": {
+          "core_count": {
+            "title": "Core Count",
+            "type": "integer"
+          },
+          "core_p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core P95 Ms"
+          },
+          "slow_turn_count": {
+            "title": "Slow Turn Count",
+            "type": "integer"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "stt_count": {
+            "title": "Stt Count",
+            "type": "integer"
+          },
+          "stt_empty": {
+            "$ref": "#/components/schemas/SttEmptyResponse"
+          },
+          "stt_p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt P95 Ms"
+          },
+          "tts_count": {
+            "title": "Tts Count",
+            "type": "integer"
+          },
+          "tts_p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts P95 Ms"
+          },
+          "turn_count": {
+            "title": "Turn Count",
+            "type": "integer"
+          },
+          "turn_error_count": {
+            "title": "Turn Error Count",
+            "type": "integer"
+          },
+          "turn_p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn P95 Ms"
+          }
+        },
+        "required": [
+          "start_time",
+          "turn_count",
+          "turn_error_count",
+          "slow_turn_count",
+          "turn_p95_ms",
+          "stt_count",
+          "stt_p95_ms",
+          "core_count",
+          "core_p95_ms",
+          "tts_count",
+          "tts_p95_ms",
+          "stt_empty"
+        ],
+        "title": "HourlyBucketResponse",
+        "type": "object"
+      },
+      "LatencyStatsResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "max_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Ms"
+          },
+          "mean_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Ms"
+          },
+          "min_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Ms"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Ms"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "p99_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P99 Ms"
+          }
+        },
+        "required": [
+          "count",
+          "p50_ms",
+          "p95_ms",
+          "p99_ms",
+          "min_ms",
+          "max_ms",
+          "mean_ms"
+        ],
+        "title": "LatencyStatsResponse",
+        "type": "object"
+      },
+      "LiveKitTokenRequest": {
+        "properties": {
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "caller_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caller Number"
+          },
+          "direction": {
+            "default": "inbound",
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "room_name": {
+            "default": "",
+            "title": "Room Name",
+            "type": "string"
+          }
+        },
+        "title": "LiveKitTokenRequest",
+        "type": "object"
+      },
+      "LiveKitTokenResponse": {
+        "properties": {
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "room_name": {
+            "title": "Room Name",
+            "type": "string"
+          },
+          "token": {
+            "title": "Token",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "room_name",
+          "token",
+          "identity"
+        ],
+        "title": "LiveKitTokenResponse",
+        "type": "object"
+      },
+      "OverviewResponse": {
+        "properties": {
+          "clinic_latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          },
+          "component_errors": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentErrorResponse"
+            },
+            "title": "Component Errors",
+            "type": "array"
+          },
+          "core_latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          },
+          "diagnostics": {
+            "$ref": "#/components/schemas/DiagnosticsResponse"
+          },
+          "hourly": {
+            "items": {
+              "$ref": "#/components/schemas/HourlyBucketResponse"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "provider_model_breakdown": {
+            "items": {
+              "$ref": "#/components/schemas/ProviderModelResponse"
+            },
+            "title": "Provider Model Breakdown",
+            "type": "array"
+          },
+          "slow_turn": {
+            "$ref": "#/components/schemas/RateResponse"
+          },
+          "stt_empty": {
+            "$ref": "#/components/schemas/SttEmptyResponse"
+          },
+          "stt_latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          },
+          "time_range": {
+            "$ref": "#/components/schemas/TimeRangeResponse"
+          },
+          "tts_latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          },
+          "turn_count": {
+            "title": "Turn Count",
+            "type": "integer"
+          },
+          "turn_error": {
+            "$ref": "#/components/schemas/RateResponse"
+          },
+          "turn_latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          }
+        },
+        "required": [
+          "time_range",
+          "turn_count",
+          "turn_latency",
+          "stt_latency",
+          "core_latency",
+          "tts_latency",
+          "clinic_latency",
+          "turn_error",
+          "slow_turn",
+          "stt_empty",
+          "component_errors",
+          "provider_model_breakdown",
+          "hourly",
+          "diagnostics"
+        ],
+        "title": "OverviewResponse",
+        "type": "object"
+      },
+      "PhoneOption": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "phone": {
+            "title": "Phone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phone",
+          "display_name"
+        ],
+        "title": "PhoneOption",
+        "type": "object"
+      },
+      "ProviderModelResponse": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "error_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Rate"
+          },
+          "latency": {
+            "$ref": "#/components/schemas/LatencyStatsResponse"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "provider",
+          "model",
+          "count",
+          "error_count",
+          "error_rate",
+          "latency"
+        ],
+        "title": "ProviderModelResponse",
+        "type": "object"
+      },
+      "QualityCandidateResponse": {
+        "properties": {
+          "call_key": {
+            "title": "Call Key",
+            "type": "string"
+          },
+          "issue_code": {
+            "title": "Issue Code",
+            "type": "string"
+          },
+          "issue_label": {
+            "title": "Issue Label",
+            "type": "string"
+          },
+          "safe_value": {
+            "title": "Safe Value",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "call_key",
+          "turn",
+          "trace_id",
+          "issue_code",
+          "issue_label",
+          "safe_value",
+          "status"
+        ],
+        "title": "QualityCandidateResponse",
+        "type": "object"
+      },
+      "QualityCoverageResponse": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "instrumentation_status": {
+            "title": "Instrumentation Status",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "instrumentation_status",
+          "detail"
+        ],
+        "title": "QualityCoverageResponse",
+        "type": "object"
+      },
+      "QualityIssueResponse": {
+        "properties": {
+          "affected_count": {
+            "title": "Affected Count",
+            "type": "integer"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "label",
+          "severity",
+          "affected_count",
+          "eligible_count",
+          "rate"
+        ],
+        "title": "QualityIssueResponse",
+        "type": "object"
+      },
+      "QualityResponse": {
+        "properties": {
+          "affected_count": {
+            "title": "Affected Count",
+            "type": "integer"
+          },
+          "affected_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Affected Rate"
+          },
+          "aggregation": {
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/QualityCandidateResponse"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "clean_count": {
+            "title": "Clean Count",
+            "type": "integer"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "coverage": {
+            "items": {
+              "$ref": "#/components/schemas/QualityCoverageResponse"
+            },
+            "title": "Coverage",
+            "type": "array"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/QualityIssueResponse"
+            },
+            "title": "Issues",
+            "type": "array"
+          }
+        },
+        "required": [
+          "component",
+          "aggregation",
+          "eligible_count",
+          "affected_count",
+          "clean_count",
+          "affected_rate",
+          "issues",
+          "coverage",
+          "candidates"
+        ],
+        "title": "QualityResponse",
+        "type": "object"
+      },
+      "RateResponse": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "integer"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "required": [
+          "count",
+          "denominator",
+          "rate"
+        ],
+        "title": "RateResponse",
+        "type": "object"
+      },
+      "SlowTurnListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SlowTurnResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "limit",
+          "offset"
+        ],
+        "title": "SlowTurnListResponse",
+        "type": "object"
+      },
+      "SlowTurnResponse": {
+        "properties": {
+          "call_key": {
+            "title": "Call Key",
+            "type": "string"
+          },
+          "core_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Core Ms"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "number"
+          },
+          "error_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Codes",
+            "type": "array"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stt_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Ms"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "tts_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tts Ms"
+          },
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "call_key",
+          "turn",
+          "trace_id",
+          "start_time",
+          "duration_ms",
+          "stt_ms",
+          "core_ms",
+          "tts_ms",
+          "status",
+          "error_codes"
+        ],
+        "title": "SlowTurnResponse",
+        "type": "object"
+      },
+      "StageBreakdownResponse": {
+        "properties": {
+          "core": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StageResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "stt",
+          "core",
+          "tts"
+        ],
+        "title": "StageBreakdownResponse",
+        "type": "object"
+      },
+      "StageResponse": {
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "number"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "operation",
+          "duration_ms",
+          "provider",
+          "model",
+          "status",
+          "error_code"
+        ],
+        "title": "StageResponse",
+        "type": "object"
+      },
+      "StartCallRequest": {
+        "properties": {
+          "appointment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appointment Id"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "caller_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caller Number"
+          },
+          "direction": {
+            "enum": [
+              "inbound",
+              "outbound"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "locale": {
+            "title": "Locale",
+            "type": "string"
+          },
+          "max_turns": {
+            "exclusiveMinimum": 0.0,
+            "title": "Max Turns",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "text",
+              "audio"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "direction",
+          "appointment_id",
+          "caller_number",
+          "locale",
+          "mode",
+          "max_turns"
+        ],
+        "title": "StartCallRequest",
+        "type": "object"
+      },
+      "StartCallResponse": {
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "AWAITING_IDENTITY",
+              "AWAITING_INTENT",
+              "AWAITING_CONFIRMATION",
+              "OFFERING_SLOTS",
+              "CLOSING",
+              "ENDED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          },
+          "utterance": {
+            "title": "Utterance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "utterance",
+          "audio_url",
+          "state",
+          "turn"
+        ],
+        "title": "StartCallResponse",
+        "type": "object"
+      },
+      "SttEmptyResponse": {
+        "properties": {
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "empty_count": {
+            "title": "Empty Count",
+            "type": "integer"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          }
+        },
+        "required": [
+          "empty_count",
+          "eligible_count",
+          "rate"
+        ],
+        "title": "SttEmptyResponse",
+        "type": "object"
+      },
+      "TimeRangeResponse": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "TimeRangeResponse",
+        "type": "object"
+      },
+      "TurnExecutionResponse": {
+        "properties": {
+          "call_key": {
+            "title": "Call Key",
+            "type": "string"
+          },
+          "clinic": {
+            "items": {
+              "$ref": "#/components/schemas/StageResponse"
+            },
+            "title": "Clinic",
+            "type": "array"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "number"
+          },
+          "error_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Error Codes",
+            "type": "array"
+          },
+          "replayed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replayed"
+          },
+          "stages": {
+            "$ref": "#/components/schemas/StageBreakdownResponse"
+          },
+          "start_time": {
+            "title": "Start Time",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "call_key",
+          "turn",
+          "trace_id",
+          "start_time",
+          "duration_ms",
+          "status",
+          "replayed",
+          "stages",
+          "clinic",
+          "error_codes"
+        ],
+        "title": "TurnExecutionResponse",
+        "type": "object"
+      },
+      "TurnRequest": {
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "silence_ms": {
+            "minimum": 0.0,
+            "title": "Silence Ms",
+            "type": "integer"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "turn": {
+            "minimum": 1.0,
+            "title": "Turn",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "turn",
+          "audio_url",
+          "text",
+          "silence_ms"
+        ],
+        "title": "TurnRequest",
+        "type": "object"
+      },
+      "TurnResponse": {
+        "properties": {
+          "audio_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Url"
+          },
+          "ended": {
+            "title": "Ended",
+            "type": "boolean"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CONFIRMED",
+                  "CANCELLED",
+                  "RESCHEDULED",
+                  "TRANSFERRED",
+                  "UNREACHABLE",
+                  "BOOKED",
+                  "SCHEDULED"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          },
+          "state": {
+            "enum": [
+              "AWAITING_IDENTITY",
+              "AWAITING_INTENT",
+              "AWAITING_CONFIRMATION",
+              "OFFERING_SLOTS",
+              "CLOSING",
+              "ENDED"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "utterance": {
+            "title": "Utterance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "utterance",
+          "audio_url",
+          "state",
+          "ended",
+          "outcome"
+        ],
+        "title": "TurnResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Vinmec Callbot",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/demo-api/audio/{call_id}/{turn}.wav": {
+      "put": {
+        "description": "Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.\n\nFile được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.\nGiới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.",
+        "operationId": "upload_demo_audio_demo_api_audio__call_id___turn__wav_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "title": "Call Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn",
+            "required": true,
+            "schema": {
+              "title": "Turn",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoAudioUpload"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Upload Demo Audio",
+        "tags": [
+          "demo"
+        ]
+      }
+    },
+    "/demo-api/clinic-fixtures": {
+      "get": {
+        "description": "Appointment ID và số điện thoại đang có trong clinic, cho dropdown cấu hình của trang demo.\n\nsim: đọc thẳng dữ liệu đã seed trong bộ nhớ (kể cả dữ liệu tự thêm ở local).\nmock: đọc ``/_harness/appointments`` và ``/_harness/patients`` bằng key server-side.",
+        "operationId": "list_clinic_fixtures_demo_api_clinic_fixtures_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicFixtures"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Clinic Fixtures",
+        "tags": [
+          "demo"
+        ]
+      }
+    },
+    "/demo-api/clinic-reset": {
+      "post": {
+        "description": "Reset clinic mock dùng chung (xóa dữ liệu của MỌI người test) rồi đọc lại một lịch hẹn.",
+        "operationId": "reset_clinic_mock_demo_api_clinic_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClinicResetRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClinicResetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Reset Clinic Mock",
+        "tags": [
+          "demo"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/internal/observability/calls/{call_key}": {
+      "get": {
+        "operationId": "call_detail_internal_observability_calls__call_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_key",
+            "required": true,
+            "schema": {
+              "title": "Call Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CallDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Call Detail",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/internal/observability/errors": {
+      "get": {
+        "operationId": "errors_internal_observability_errors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Errors",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/internal/observability/overview": {
+      "get": {
+        "operationId": "overview_internal_observability_overview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "slow_threshold_ms",
+            "required": false,
+            "schema": {
+              "default": 2000.0,
+              "minimum": 0,
+              "title": "Slow Threshold Ms",
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Overview",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/internal/observability/quality": {
+      "get": {
+        "operationId": "quality_internal_observability_quality_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "component",
+            "required": false,
+            "schema": {
+              "default": "STT",
+              "enum": [
+                "STT",
+                "TTS"
+              ],
+              "title": "Component",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "aggregation",
+            "required": false,
+            "schema": {
+              "default": "call",
+              "enum": [
+                "call",
+                "turn"
+              ],
+              "title": "Aggregation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "candidate_limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Candidate Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/internal/observability/slow-turns": {
+      "get": {
+        "operationId": "slow_turns_internal_observability_slow_turns_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "threshold_ms",
+            "required": false,
+            "schema": {
+              "default": 2000.0,
+              "minimum": 0,
+              "title": "Threshold Ms",
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlowTurnListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Slow Turns",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/internal/observability/turns/{trace_id}": {
+      "get": {
+        "operationId": "turn_detail_internal_observability_turns__trace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnExecutionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Turn Detail",
+        "tags": [
+          "internal-observability"
+        ]
+      }
+    },
+    "/livekit/token": {
+      "post": {
+        "operationId": "create_token_livekit_token_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiveKitTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveKitTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Token",
+        "tags": [
+          "livekit"
+        ]
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "ready_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
+    "/v1/calls": {
+      "post": {
+        "operationId": "start_call_v1_calls_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartCallResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Start Call",
+        "tags": [
+          "calls"
+        ]
+      }
+    },
+    "/v1/calls/{call_id}/turn": {
+      "post": {
+        "operationId": "call_turn_v1_calls__call_id__turn_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "call_id",
+            "required": true,
+            "schema": {
+              "title": "Call Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Call Turn",
+        "tags": [
+          "calls"
+        ]
+      }
+    }
+  }
+}

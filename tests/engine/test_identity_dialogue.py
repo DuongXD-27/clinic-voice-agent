@@ -10,10 +10,11 @@ import pytest
 
 from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
+from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
-from tests.engine.fake_clinic import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -69,7 +70,7 @@ def _ended(action: BotAction, outcome: str, reason: Optional[str] = None) -> Non
 def test_unregistered_inbound_is_transferred_at_turn_one_without_asking_name(first_turn) -> None:
     actions, clinic = _call(_inbound("c_unreg", "0999999999"), [first_turn])
     opening, action = actions
-    assert opening.utterance == t.greeting_handoff("inbound") and "?" not in opening.utterance
+    assert opening.utterance == t.GREETING_HANDOFF_INBOUND and "?" not in opening.utterance
     _ended(action, "TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.writes == [] and clinic.requests == []  # §2.1: không có lệnh ghi
 
@@ -84,17 +85,19 @@ def test_inbound_lookup_failure_is_system_error_without_write() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("find_patient_by_phone")
     actions, _ = _call(_inbound("c_in_down"), ["Nguyễn Văn A"], clinic)
-    assert actions[0].utterance == t.greeting_handoff("inbound")
+    assert actions[0].utterance == t.GREETING_HANDOFF_INBOUND
     _ended(actions[-1], "TRANSFERRED", "SYSTEM_ERROR")
     assert clinic.writes == []
 
 
-def test_outbound_unreadable_appointment_transfers_system_error_at_turn_one() -> None:
+def test_outbound_unreadable_appointment_does_not_open_a_call() -> None:
     clinic = FakeClinicAPI()
     clinic.fail_next("get_appointment")
-    actions, _ = _call(_outbound("c_out_down"), [SILENCE], clinic)
-    assert actions[0].utterance == t.greeting_handoff("outbound")
-    _ended(actions[-1], "TRANSFERRED", "SYSTEM_ERROR")
+    bot = create_orchestrator(clinic)
+    with pytest.raises(OutboundStartFailed):
+        bot.start_call(_outbound("c_out_down"))
+    assert bot.sessions.store.get_session("c_out_down") is None
+    assert clinic.writes == []
 
 
 def test_policy_lookup_table_matches_verifier() -> None:
@@ -207,7 +210,20 @@ def test_a_greeting_between_failures_does_not_count() -> None:
 
 
 @pytest.mark.parametrize("direction", ["outbound", "inbound"])
-@pytest.mark.parametrize("greeting", ["alo", "hello em", "hi em", "Hello, chị ạ!"])
+@pytest.mark.parametrize(
+    "greeting",
+    [
+        "alo",
+        "hello em",
+        "hi em",
+        "Hello, chị ạ!",
+        "AI đấy?",
+        "ai goi vay",
+        "hú hú",
+        "em ơi",
+        "tôi nghe đây",
+    ],
+)
 def test_alo_after_opening_is_greeted_back(direction, greeting) -> None:
     start = _outbound("c_alo") if direction == "outbound" else _inbound("c_alo")
     actions, _ = _call(start, [greeting, NAME, DOB])
@@ -224,6 +240,47 @@ def test_alo_is_greeted_back_only_once() -> None:
     assert actions[2].utterance == t.ASK_NAME_AGAIN
 
 
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+@pytest.mark.parametrize("first", ["alo", "tôi không rõ"])
+def test_identity_question_after_reprompt_reintroduces_the_bot(direction, first) -> None:
+    start = _outbound("c_who_again") if direction == "outbound" else _inbound("c_who_again")
+    actions, clinic = _call(start, [first, "Ai đấy?", "NGuyễn văn A nhé em", DOB])
+    assert actions[2].utterance == t.greeting_back(direction)
+    assert actions[3].utterance == t.ASK_DOB
+    assert actions[4].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+def test_identity_question_at_dob_step_reintroduces_without_asking_name_again(direction) -> None:
+    start = _outbound("c_who_dob") if direction == "outbound" else _inbound("c_who_dob")
+    actions, clinic = _call(start, [NAME, "Ai gọi vậy?", DOB])
+    assert t.AI_DISCLOSURE in actions[2].utterance and "Vinmec" in actions[2].utterance
+    assert "ngày tháng năm sinh" in actions[2].utterance
+    assert "họ tên" not in actions[2].utterance and "họ và tên" not in actions[2].utterance
+    assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "NGuyễn văn A nhé em",
+        "nguyen van a nhe em",
+        "Nguyễn Văn A nhé em, sinh ngày " + DOB,
+        "Nguyễn Văn A ạ em",
+        "Nguyễn Văn A cảm ơn em",
+        "Họ tên của tôi là Nguyễn Văn A",
+        "Tên đầy đủ của tôi trên giấy tờ là Nguyễn Văn A",
+    ],
+)
+def test_name_with_polite_address_verifies_without_spurious_mismatch(name) -> None:
+    lines = [name] if DOB in name else [name, DOB]
+    actions, clinic = _call(_outbound("c_name_suffix"), lines)
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
 def test_greetings_up_to_the_limit_do_not_transfer() -> None:
     """Demo 22-09: "alo", "hi em", "hi" từng chuyển NOT_UNDERSTOOD ở lượt 3 và ghi TRANSFERRED."""
     actions, clinic = _call(_outbound("c_hi_hi"), ["alo", "hi em", "hi", NAME, DOB])
@@ -233,8 +290,9 @@ def test_greetings_up_to_the_limit_do_not_transfer() -> None:
     assert actions[5].state == "AWAITING_INTENT" and clinic.writes == []
 
 
-def test_greetings_past_the_limit_count_as_not_understood() -> None:
-    actions, _ = _call(_outbound("c_alo_many"), ["alo", "alo", "alo", "alo"])
+@pytest.mark.parametrize("greeting", ["alo", "Ai đấy?"])
+def test_greetings_past_the_limit_count_as_not_understood(greeting) -> None:
+    actions, _ = _call(_outbound("c_alo_many"), [greeting] * 4)
     assert not actions[3].ended
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
@@ -244,6 +302,13 @@ def test_a_greeting_while_asking_dob_rereads_the_dob_question() -> None:
     assert actions[2].utterance == t.ASK_DOB_AGAIN
     assert actions[3].state == "AWAITING_IDENTITY"  # chưa hiểu lần 1, chưa chuyển máy
     assert actions[4].state == "AWAITING_INTENT"
+
+
+@pytest.mark.parametrize("greeting", ["hú hú", "hú hú em ơi", "ừ tôi nghe"])
+def test_contact_signal_during_dob_does_not_restart_identity(greeting) -> None:
+    actions, clinic = _call(_outbound("c_contact_dob"), [NAME, greeting, DOB])
+    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
 
 
 def test_english_greeting_after_reprompt_does_not_advance_to_dob() -> None:
@@ -291,6 +356,30 @@ def test_silence_between_failures_neither_resets_nor_counts() -> None:
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
+@pytest.mark.parametrize("start", [_outbound, _inbound])
+def test_hold_two_silences_and_return_resume_identity(start) -> None:
+    actions, clinic = _call(
+        start("c_hold_return"), ["chờ chút nhé", SILENCE, SILENCE, "rồi, tôi đây", NAME, DOB]
+    )
+    assert actions[1].utterance == t.HOLD
+    assert actions[2].utterance == actions[3].utterance == f"{t.SILENCE} {actions[0].utterance}"
+    assert actions[4].utterance == actions[0].utterance
+    assert all(not action.ended for action in actions)
+    assert actions[5].utterance == t.ASK_DOB
+    assert actions[6].state == "AWAITING_INTENT"
+    assert clinic.writes == []
+
+
+def test_hold_and_return_do_not_count_as_failed_understanding() -> None:
+    actions, _ = _call(
+        _outbound("c_hold_after_failure"),
+        ["ờ để xem", "chờ chút nhé", SILENCE, SILENCE, "rồi, tôi đây", NAME, DOB],
+    )
+    assert actions[5].state == "AWAITING_IDENTITY"
+    assert actions[6].utterance == t.ASK_DOB
+    assert actions[7].state == "AWAITING_INTENT"
+
+
 # --- Không nhớ / không muốn cung cấp (§1.1.1) ---------------------------------------------------
 
 
@@ -300,6 +389,15 @@ def test_cannot_provide_twice_is_identity_failed() -> None:
     )
     assert actions[2].utterance == t.ASK_DOB_DECLINED
     _ended(actions[3], "TRANSFERRED", "IDENTITY_FAILED")
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
+
+
+def test_outbound_refuses_name_twice_and_transfers_immediately() -> None:
+    actions, clinic = _call(
+        _outbound("c_declined_name"), ["tôi không khai tên đâu", "tôi không nói tên"]
+    )
+    assert actions[1].utterance == t.ASK_NAME_DECLINED
+    _ended(actions[2], "TRANSFERRED", "IDENTITY_FAILED")
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
 
 

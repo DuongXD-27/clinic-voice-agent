@@ -3,21 +3,28 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+import yaml
 from pydantic import ValidationError
 
+from appconfig import CONFIG_DIR
 from callbot.engine import EngineSettings, create_orchestrator
-from callbot.engine.extraction.ner import NameExtraction, NameNER
+from callbot.engine.extraction.name_slot_filling import NameExtraction, NameSlotFiller
 from callbot.engine.types import CallerInput, CallStart
+from clinic_mock_sim import FakeClinicAPI
 from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
 from inference.llm.gateway import create_gateway
-from inference.llm.prompt.ner import build_messages
-from tests.engine.fake_clinic import FakeClinicAPI
+from inference.llm.prompt.name_slot_filling import build_messages
 
+# Default model / token budget per provider come from config/llm.yaml, not from the code.
+_LLM_YAML = yaml.safe_load((CONFIG_DIR / "llm.yaml").read_text(encoding="utf-8"))
 CONFIGS = {
-    "openai": (OpenAIConfig, "gpt-4o-mini", 200),
-    "gemini": (GeminiConfig, "gemini-2.5-flash", 200),
-    "groq": (GroqConfig, "openai/gpt-oss-20b", 1024),
-    "openrouter": (OpenRouterConfig, "openai/gpt-4o-mini", 200),
+    provider: (cls, _LLM_YAML[provider]["model"], _LLM_YAML[provider]["max_completion_tokens"])
+    for provider, cls in {
+        "openai": OpenAIConfig,
+        "gemini": GeminiConfig,
+        "groq": GroqConfig,
+        "openrouter": OpenRouterConfig,
+    }.items()
 }
 NAME = "Nguyễn Văn A"
 TEXT = "À ừ thì là Nguyễn Văn A nhé em"
@@ -37,11 +44,20 @@ def response_body(provider, content=OUTPUT):
     }
 
 
+@pytest.fixture(autouse=True)
+def provider_defaults_from_yaml(monkeypatch):
+    """Blank env means config/llm.yaml per-provider values (conftest pins an OpenAI model)."""
+    monkeypatch.setenv("NAME_FALLBACK_MODEL", "")
+    monkeypatch.setenv("NAME_FALLBACK_MAX_TOKENS", "")
+
+
+def endpoint(provider):
+    return CONFIGS[provider][0](api_key=SECRET, _env_file=None).endpoint
+
+
 def mocked_gateway(provider, handler, **overrides):
     config_class, _, _ = CONFIGS[provider]
-    # Explicit blanks mean provider-specific defaults, independent of local .env.
-    values = {"api_key": SECRET, "model": "", "max_completion_tokens": "", **overrides}
-    config = config_class(_env_file=None, **values)
+    config = config_class(_env_file=None, api_key=SECRET, **overrides)
     clients = []
 
     def factory():
@@ -56,9 +72,31 @@ def generate(gateway, **kwargs):
     return gateway.generate_structured(
         build_messages(TEXT),
         schema=NameExtraction.model_json_schema(),
-        schema_name="name_ner_v1",
+        schema_name="name_slot_filling_v1",
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    "model,effort", [("gpt-6-luna", "none"), ("gpt-6-sol", "none"), ("gpt-6-astra", None)]
+)
+def test_gpt_6_omits_unsupported_temperature(model, effort):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json=response_body("openai"))
+
+    gateway, _ = mocked_gateway("openai", handle, model=model)
+    assert generate(gateway).status == "completed"
+    payload = json.loads(requests[0].content)
+    assert payload["model"] == model
+    assert "temperature" not in payload
+    if effort is None:
+        assert "reasoning_effort" not in payload
+    else:
+        assert payload["reasoning_effort"] == effort
+    assert payload["store"] is False
 
 
 @pytest.mark.parametrize("provider", CONFIGS)
@@ -81,7 +119,7 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
     assert request.extensions["timeout"] == {"connect": 1.0, "read": 2.5, "write": 2.5, "pool": 2.5}
     assert SECRET not in str(request.url)
     if provider == "gemini":
-        assert str(request.url) == f"{GeminiConfig.endpoint}/gemini-2.5-flash:generateContent"
+        assert str(request.url) == f"{endpoint('gemini')}/{CONFIGS['gemini'][1]}:generateContent"
         assert request.headers["x-goog-api-key"] == SECRET
         assert "authorization" not in request.headers
         messages = build_messages(TEXT)
@@ -95,17 +133,17 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         ]
         assert payload["generationConfig"] == {
             "temperature": 0,
-            "maxOutputTokens": 200,
+            "maxOutputTokens": CONFIGS["gemini"][2],
             "responseMimeType": "application/json",
             "responseJsonSchema": NameExtraction.model_json_schema(),
             "thinkingConfig": {"thinkingBudget": 0},
         }
     else:
-        assert str(request.url) == CONFIGS[provider][0].endpoint
+        assert str(request.url) == endpoint(provider)
         assert request.headers["authorization"] == f"Bearer {SECRET}"
         assert payload["messages"] == build_messages(TEXT)
         assert payload["response_format"]["json_schema"] == {
-            "name": "name_ner_v1",
+            "name": "name_slot_filling_v1",
             "strict": True,
             "schema": NameExtraction.model_json_schema(),
         }
@@ -114,10 +152,11 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         else:
             assert "store" not in payload
         if provider == "groq":
-            assert payload["max_completion_tokens"] == 1024
+            assert payload["max_completion_tokens"] == CONFIGS["groq"][2]
             assert payload["reasoning_effort"] == "low"
         elif provider == "openrouter":
-            assert payload["max_tokens"] == 200 and "max_completion_tokens" not in payload
+            assert payload["max_tokens"] == CONFIGS["openrouter"][2]
+            assert "max_completion_tokens" not in payload
             assert payload["provider"] == {"require_parameters": True, "allow_fallbacks": False}
 
 
@@ -252,11 +291,11 @@ def test_invalid_input_makes_no_request():
 
 
 @pytest.mark.parametrize("provider", CONFIGS)
-def test_ner_and_orchestrator_route_through_gateway(provider):
+def test_name_slot_filling_and_orchestrator_route_through_gateway(provider):
     gateway, clients = mocked_gateway(
         provider, lambda _: httpx.Response(200, json=response_body(provider))
     )
-    adapter = NameNER(gateway)
+    adapter = NameSlotFiller(gateway)
     assert adapter.full_name(TEXT).value == "nguyễn văn a"
     with patch("callbot.engine.create_gateway", return_value=gateway) as factory:
         bot = create_orchestrator(
@@ -265,11 +304,11 @@ def test_ner_and_orchestrator_route_through_gateway(provider):
         )
     factory.assert_called_once_with(provider)
     bot.start_call(
-        CallStart(call_id="gateway-ner", direction="inbound", caller_number="0912345600")
+        CallStart(call_id="gateway-slot-filling", direction="inbound", caller_number="0912345600")
     )
-    action = bot.handle_turn("gateway-ner", CallerInput(turn=1, text=TEXT))
+    action = bot.handle_turn("gateway-slot-filling", CallerInput(turn=1, text=TEXT))
     assert action.state == "AWAITING_IDENTITY"
-    session = bot.sessions.store.get_session("gateway-ner")
+    session = bot.sessions.store.get_session("gateway-slot-filling")
     assert session.context["claimed_name"] == "nguyễn văn a"
     assert session.context["identity_step"] == "ASK_DOB"
     assert len(clients) == 2 and all(client.is_closed for client in clients)

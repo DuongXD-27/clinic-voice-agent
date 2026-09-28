@@ -63,16 +63,16 @@ Kết luận: bản mentor đủ để phát triển và test end-to-end, chưa 
 
 ### 5.1. Kết nối tới instance chung
 
-Team triển khai một instance dùng chung tại `https://clinic-mock.vmec-callbot.tech` (EC2, region `ap-southeast-1`; hạ tầng deploy nằm trong `deploy/` của repo clinic-mock). Mỗi thành viên chỉ cần khai báo hai biến trong file cấu hình của bot:
+Team triển khai một instance dùng chung; lấy địa chỉ và key từ kênh nội bộ của team. Mỗi thành viên khai báo hai biến trong `.env` của bot:
 
 ```env
-CLINIC_MOCK_BASE_URL=https://clinic-mock.vmec-callbot.tech/v1
+CLINIC_MOCK_BASE_URL=https://<clinic-mock-host>/v1
 CLINIC_MOCK_API_KEY=sk_dev_<tên>_...    # key riêng, xin trong kênh team — không dùng chung key người khác
 ```
 
-Có thể kiểm tra kết nối bằng cách mở [https://clinic-mock.vmec-callbot.tech/health](https://clinic-mock.vmec-callbot.tech/health) trên trình duyệt, kết quả mong đợi là `{"status":"ok"}`. Giao diện Swagger để xem và thử từng endpoint nằm ở [/docs](https://clinic-mock.vmec-callbot.tech/docs).
+Có thể kiểm tra kết nối bằng cách mở `/health` trên cùng host, kết quả mong đợi là `{"status":"ok"}`. Giao diện Swagger nằm ở `/docs` trên host đó.
 
-Ai muốn kiểm thử độc lập, không phụ thuộc lịch phân lượt của team, có thể chạy thêm một bản local: clone [repo clinic-mock](https://github.com/nguyenhungict/clinic-mock) về máy riêng (không nằm trong repo bot), rồi `uv sync && uv run dev` (cần Python 3.13 + `uv`), hoặc `docker build -t clinic-mock . && docker run -p 8000:8000 --env-file .env clinic-mock` — xem README của repo đó để biết chi tiết. Sau đó đổi địa chỉ mock trong file cấu hình sang `http://localhost:8000/v1`. Khóa truy cập của bản local khai báo qua biến môi trường `MOCK_API_KEYS` của mock, dạng `sk_xxx`, nhiều khóa cách nhau bằng dấu phẩy. Repo mock có sẵn bộ test tự động (`pytest` trong thư mục repo) để tự kiểm tra bản local hoạt động đúng. Đây là lựa chọn tuỳ chọn, không bắt buộc.
+Ai muốn kiểm thử độc lập, không phụ thuộc lịch phân lượt của team, có thể chạy thêm một bản local: clone [repo clinic-mock](https://github.com/nguyenhungict/clinic-mock) về máy riêng (không nằm trong repo bot), rồi `uv sync && uv run dev` (cần Python 3.13 + `uv`), hoặc `docker build -t clinic-mock . && docker run -p 8000:8000 --env-file .env clinic-mock` — xem README của repo đó để biết chi tiết. Sau đó đặt `CLINIC_MOCK_BASE_URL=http://localhost:8000/v1` trong `.env` của bot. Khóa truy cập của bản local khai báo qua biến môi trường `MOCK_API_KEYS` của mock, dạng `sk_xxx`, nhiều khóa cách nhau bằng dấu phẩy. Repo mock có sẵn bộ test tự động (`pytest` trong thư mục repo) để tự kiểm tra bản local hoạt động đúng. Đây là lựa chọn tuỳ chọn, không bắt buộc.
 
 ### 5.2. Quy ước khi gọi API
 
@@ -95,7 +95,7 @@ Phía bot (F-05, `src/callbot/engine/tools/`) đã cài các quy ước trên nh
 | Shape canonical | `tools/normalize.py`: slot thêm `starts_at`/`ends_at` (giữ `start_time` gốc); ứng viên inbound chỉ còn `{patient_id, full_name, dob, verifiable}`; appointment ép `version`/`attempt_count` về int, `patient.verify` là dict hoặc `None` |
 | Lỗi | Client raise `ClinicAPIError(status, code, message, request_id, outcome_known)` cho mọi lỗi (envelope hoặc transport); Gateway dịch lỗi ghi về ba lớp: thành công / `ClinicWriteRejected(retryable)` / `WriteOutcomeUnknown`. `httpx` không xuất hiện ngoài `clinic_mock_client.py` |
 | Số điện thoại | Gateway **không** chuẩn hóa; `Verifier.prepare()` chuẩn hóa về `0xxxxxxxxx` bằng `verification/phone.py::normalize_phone` trước khi gọi, không chuẩn hóa được thì không gọi mock — **xong T-01** (`docs/evidence/t01-identity-verifier.md`) |
-| Fake | `FakeClinicAPI` hành xử như `routes.py` (phân trang, If-Match, idempotency, lifecycle, mã lỗi). `FakeClinicAPI.with_mock_fixtures()` seed đúng dữ liệu §5.3. Contract test `tests/engine/tools/test_clinic_api_contract.py` chạy cùng case trên fake và trên mock thật (`CLINIC_MOCK_LIVE=1`) |
+| Fake | Package `src/clinic_mock_sim/` cho test và demo Docker local (`CLINIC_BACKEND=sim`; deploy luôn là mock) (hướng dẫn: [README](../../src/clinic_mock_sim/README.md)). `FakeClinicAPI` hành xử như `routes.py` của mock (phân trang, If-Match, idempotency, lifecycle, enum reason, mã lỗi); mỗi file của sim trỏ về một file của mock. `FakeClinicAPI.mentor_mock()` seed đúng dữ liệu §5.3. Edge case mock không có nằm trong `clinic_mock_sim.scenarios`. Contract test `tests/clinic_mock_sim/test_contract.py` chạy trên sim; không test nào ghi vào mock thật dùng chung |
 
 ### 5.3. Dữ liệu có sẵn
 

@@ -1,0 +1,22 @@
+# Engine — callbot.engine.settings.EngineSettings.
+# Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. SEMANTIC_FALLBACK_ENABLED=false).
+
+# Name slot filling fallback: none | openai | gemini | groq | openrouter (cấu hình ở llm.yaml)
+name_fallback_provider: openai
+
+# Tầng ngữ nghĩa (T-05 §8), luôn OpenAI. Bật theo quyết định owner 22-09-2026; thiếu
+# OPENAI_API_KEY thì tự chạy chỉ-luật, không chặn khởi động.
+semantic_fallback_enabled: true
+semantic_fallback_model: gpt-6-luna
+# Timeout httpx theo pha (không phải trần tổng); một request, không retry
+semantic_fallback_timeout_s: 3.0
+semantic_fallback_max_tokens: 400
+# Câu dài hơn thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định)
+semantic_fallback_max_input_chars: 1500
+
+clinic_id: cl_vinmec
+
+# §1.1.5: chuyển máy sau 2 lần liên tiếp không hiểu
+max_failed_understandings: 2
+# §1.1.7: kết thúc UNREACHABLE sau 3 lượt im lặng liên tiếp
+max_silent_turns: 3

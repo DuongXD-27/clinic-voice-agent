@@ -25,8 +25,8 @@ phòng khám (Clinic API) để đọc/ghi lịch hẹn.
 - **Hủy lịch an toàn**: yêu cầu và xác nhận ở hai lượt riêng, ghi nhận lý do hủy.
 - **Trích xuất thông tin** bằng luật, có tầng LLM tuỳ chọn để hiểu câu nói vòng và nhận
   diện tên.
-- **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI hoặc
-  ElevenLabs, âm thanh băng hẹp 8 kHz như đường dây điện thoại.
+- **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI, ElevenLabs hoặc
+  Vbee (có thể cấu hình provider dự phòng), âm thanh băng hẹp 8 kHz như đường dây điện thoại.
 - **Session trên Redis**: chạy được nhiều worker, dữ liệu khách hàng chỉ lưu tạm và tự xoá
   khi cuộc gọi kết thúc hoặc hết hạn; chặn ghi trùng khi kết quả ghi không xác định.
 
@@ -50,31 +50,40 @@ pip install -e ".[speech]"           # tuỳ chọn: Gemini ASR
 pip install -e ".[speech-local]"     # tuỳ chọn: PhoWhisper self-hosted
 
 cp .env.example .env
+# Nếu dùng Docker Compose, đặt REDIS_PASSWORD riêng trong .env trước khi chạy.
 ```
 
 ## Cấu hình
 
-Toàn bộ cấu hình nằm trong `.env`, xem mẫu và chú thích ở [.env.example](.env.example).
+Cấu hình mặc định nằm trong [config/](config/), mỗi module một file YAML. Code không chứa giá trị
+mặc định; secret chỉ đặt trong `.env` (mẫu: [.env.example](.env.example)).
 
-| Nhóm | Biến chính |
+| File | Nội dung |
 |---|---|
-| API key model | `OPENAI_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` |
-| Clinic API | `CLINIC_MOCK_BASE_URL`, `CLINIC_MOCK_API_KEY`, `CLINIC_ID` |
-| Voice pipeline | `ASR_PROVIDER` (`zipformer` \| `gemini` \| `phowhisper`), `TTS_PROVIDER` (`openai` \| `elevenlabs`), `PUBLIC_BASE_URL` |
-| Extraction qua LLM | `SEMANTIC_FALLBACK_*`, `NAME_FALLBACK_*` |
-| Session | `REDIS_URL`, `REDIS_PASSWORD`, `SESSION_*` |
+| `speech.yaml` | Chọn provider ASR/TTS (`asr_provider`, `tts_provider`, `tts_fallback_provider`), VAD, turn-taking, `public_base_url` |
+| `asr.yaml` / `tts.yaml` | Model, voice, timeout, đường dẫn asset của từng provider |
+| `llm.yaml` | Endpoint, model, timeout, max tokens của từng provider LLM |
+| `engine.yaml` | `name_fallback_provider`, `semantic_fallback_*`, `clinic_id`, giới hạn hội thoại |
+| `session.yaml` | Redis URL local không mật khẩu, TTL và giới hạn session |
+| `http.yaml` | Clinic backend (`mock` \| `sim`), dataset/scenario của sim; quản trị demo mặc định tắt |
+| `livekit.yaml` | Frame, queue, sample rate của đường LiveKit |
+
+Thứ tự ưu tiên: biến môi trường > `.env` > YAML. Ghi đè một khóa bằng biến cùng tên viết hoa
+(vd. `VAD_PROVIDER=webrtc`); khóa nào có tên biến riêng thì được ghi ngay cạnh khóa đó trong file
+YAML. Để trống (`KEY=`) nghĩa là dùng giá trị YAML. `.env` chỉ cần API key, `CLINIC_MOCK_API_KEY`,
+`BOT_API_KEYS`, LiveKit và Redis password.
 
 Chỉ cần API key của provider đang bật. Với cấu hình mặc định (ZipFormer + OpenAI TTS) cần
-`OPENAI_API_KEY` và `CLINIC_MOCK_API_KEY`.
+`OPENAI_API_KEY`. Khi `CLINIC_BACKEND=mock`, cần thêm `CLINIC_MOCK_BASE_URL` và
+`CLINIC_MOCK_API_KEY`; chế độ `sim` không cần hai biến này.
 
 ## Sử dụng
 
 Khởi động Redis và server:
 
 ```bash
-docker run --rm -p 6379:6379 redis:7.4-alpine redis-server \
-  --save "" --appendonly no --maxmemory 256mb --maxmemory-policy noeviction \
-  --requirepass callbot
+docker run --rm -p 127.0.0.1:6379:6379 redis:7.4-alpine redis-server \
+  --save "" --appendonly no --maxmemory 256mb --maxmemory-policy noeviction
 
 uvicorn callbot.transports.http.main:app --reload
 ```
@@ -100,22 +109,54 @@ curl -X POST http://localhost:8000/v1/calls \
 
 Chi tiết request/response và mã lỗi: [docs/reference/http-api.md](docs/reference/http-api.md).
 
-### Giao diện demo
+### Giao diện web (`ui/`)
 
-Mở `http://localhost:8000/demo/` để thử cuộc gọi trên trình duyệt:
+Mở `http://localhost:8000/ui/` (hoặc `/`, tự chuyển hướng):
 
-- `text`: nhập lời người gọi và gửi từng lượt.
-- `audio`: thu âm bằng microphone, trang tự upload WAV và gửi `audio_url` cho bot.
+| Trang | Dùng để |
+|---|---|
+| `/ui/call` | Gọi thử qua HTTP contract: gõ lời người gọi, hoặc ghi âm từ microphone (trang tự upload WAV và gửi `audio_url`). Có bảng trích xuất, request/response, kịch bản mẫu |
+| `/ui/livekit` | Nói chuyện trực tiếp với bot qua WebRTC/LiveKit, hiện lời thoại từng lượt để trace |
+| `/ui/observability` | Latency, lỗi, chất lượng STT/TTS, chi tiết cuộc gọi và từng lượt (đọc từ trace ẩn danh) |
 
+Link cũ `/demo/`, `/demo/livekit-demo.html`, `/observability/` chuyển hướng sang trang mới.
 Microphone chỉ hoạt động trên HTTPS hoặc `localhost`.
+
+UI viết bằng Vite + React + TypeScript, build ra file tĩnh và được chính FastAPI phục vụ: server không
+chạy thêm process nào cho UI. Thiết kế và các pha chuyển đổi: [docs/plans/ui-vite-react.md](docs/plans/ui-vite-react.md).
+
+Cần Node 22. Phát triển UI (backend chạy ở `localhost:8000`, Vite tự chuyển tiếp request API):
+
+```bash
+cd ui
+npm install
+npm run dev      # http://localhost:5173/ui/
+npm run check    # lint + format check + typecheck + test
+npm run e2e      # Playwright, cần backend thật đang chạy (xem ui/playwright.config.ts)
+```
+
+Xem bản build qua chính FastAPI: `npm run build` rồi chạy uvicorn với `UI_DIST_DIR=ui/dist`.
+
+Type request/response của UI sinh từ OpenAPI của backend. Đổi schema hoặc route thì chạy
+`make openapi` (ghi `ui/openapi.json`) rồi `npm run api:types` trong `ui/`, và commit cả hai file.
+CI báo đỏ nếu hai file này lệch với backend.
+
+Thêm thư viện npm thì kiểm tra lockfile với npm 10 (bản đi kèm Node 22 trong Docker/CI) bằng
+`docker build --target ui .`: npm 11 có thể ghi lockfile mà `npm ci` của npm 10 từ chối.
 
 ## Chạy bằng Docker
 
 Chạy cả Redis và bot:
 
 ```bash
-docker compose up --build
+# Đặt REDIS_PASSWORD trong .env trước khi chạy.
+docker compose up -d --build
 ```
+
+Docker local mặc định dùng **clinic giả trong bộ nhớ** (`CLINIC_BACKEND=sim`, 1 worker): không cần
+mạng hay `CLINIC_MOCK_API_KEY`, dữ liệu về ban đầu sau `docker compose restart bot`. Muốn gọi clinic
+mock đã deploy thì đặt `CLINIC_BACKEND=mock` trong `.env`. Bản deploy luôn dùng mock. Chi tiết và
+cách demo edge case: [src/clinic_mock_sim/README.md](src/clinic_mock_sim/README.md#demo-bằng-docker-local).
 
 Hoặc chỉ build image bot:
 
@@ -132,10 +173,13 @@ Image tự tải model ZipFormer khi build.
 # Tuỳ chọn: bật test tích hợp với Redis thật
 export TEST_REDIS_URL=redis://localhost:6379/15
 
-make check     # lint + format check + pytest
+make check     # lint + format check + pytest + ui/openapi.json khớp backend
 make format    # tự sửa lint + format
 make test      # chỉ pytest
 ```
+
+Test không gọi clinic mock thật: fixture `clinic` (và `client`) chạy trên `clinic_mock_sim`, kèm
+edge case dựng sẵn qua `clinic_scenario(...)`. Hướng dẫn: [src/clinic_mock_sim/README.md](src/clinic_mock_sim/README.md).
 
 Không có `make` (Windows):
 
@@ -143,7 +187,10 @@ Không có `make` (Windows):
 python -m ruff check src tests
 python -m ruff format --check src tests
 python -m pytest -q
+python scripts/export_openapi.py --check
 ```
+
+Test UI: `npm run check` trong `ui/` (Vitest + Testing Library, API giả bằng MSW).
 
 ## Cấu trúc project
 
@@ -156,20 +203,22 @@ src/
 │   ├── engine/                 # engine hội thoại, không phụ thuộc transport
 │   │   ├── orchestrator.py     # điều phối một lượt
 │   │   ├── session/            # session trên Redis: TTL, khoá, thứ tự lượt
-│   │   ├── extraction/         # trích xuất thông tin: luật, NER, tầng ngữ nghĩa
+│   │   ├── extraction/         # trích xuất thông tin: luật, slot filling tên, tầng ngữ nghĩa
 │   │   ├── dialogue/           # quản lý hội thoại và câu trả lời mẫu
 │   │   ├── policy/             # chính sách chuyển máy và guardrails
 │   │   ├── verification/       # xác minh danh tính
 │   │   └── tools/              # Clinic Gateway và client Clinic API
 │   └── tracing/                # log mỗi lượt ra JSONL
 ├── speech/                     # voice pipeline
-│   ├── audio/                  # codec WAV/G.711, chuẩn hoá PCM 8 kHz
+│   ├── audio/                  # codec WAV/G.711, chuẩn hoá PCM 8 kHz, lưu WAV cho audio_url
 │   ├── asr/                    # VAD → ASR → transcript
-│   └── tts/                    # tổng hợp giọng nói, phục vụ audio_url
-└── inference/                  # provider model dùng chung
-    ├── llm/                    # LLM gateway, prompt, provider
-    ├── asr/                    # Gemini / PhoWhisper / ZipFormer
-    └── tts/                    # OpenAI / ElevenLabs
+│   └── bundle.py               # nối ASR/TTS gateway + nơi lưu audio cho mode=audio
+├── inference/                  # provider model dùng chung
+│   ├── llm/                    # LLM gateway, prompt, provider
+│   ├── asr/                    # Gemini / PhoWhisper / ZipFormer
+│   └── tts/                    # OpenAI / ElevenLabs / Vbee + fallback (thư mục TTS duy nhất)
+└── clinic_mock_sim/            # clinic mock trong bộ nhớ: test + demo Docker local (deploy luôn dùng mock)
+ui/                             # UI Vite + React + TypeScript, build ra file tĩnh phục vụ tại /ui
 tests/                          # cùng cấu trúc với src/
 docs/reference/                 # tài liệu thiết kế
 ```
@@ -182,9 +231,10 @@ docs/reference/                 # tài liệu thiết kế
 | HTTP API | [http-api.md](docs/reference/http-api.md) |
 | Information Extraction | [information-extraction-design.md](docs/reference/information-extraction-design.md) |
 | LLM gateway | [llm-gateway.md](docs/reference/llm-gateway.md) |
-| NER tên | [name-ner.md](docs/reference/name-ner.md) |
+| Slot filling họ tên | [name-slot-filling.md](docs/reference/name-slot-filling.md) |
 | Vận hành session | [session-operations.md](docs/reference/session-operations.md) |
 | Luồng STT | [stt-flow.md](docs/reference/stt-flow.md) |
 | Cài model ZipFormer | [zipformer-model-setup.md](docs/reference/zipformer-model-setup.md) |
 | Clinic API | [clinic-mock.md](docs/reference/clinic-mock.md) |
+| Clinic giả cho test | [clinic_mock_sim/README.md](src/clinic_mock_sim/README.md) |
 | Phone leg | [phone-leg-architecture.md](docs/reference/phone-leg-architecture.md) |

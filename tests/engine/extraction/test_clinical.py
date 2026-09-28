@@ -34,6 +34,9 @@ def test_emergency(text: str) -> None:
         "tôi bị sốt ba ngày rồi thì sao",
         "đau đầu hoài là bị bệnh gì vậy em",
         "huyết áp 150 có nguy hiểm không",
+        "thuốc huyết áp có phải ngưng trước khi khám không",
+        "tôi đang uống thuốc huyết áp, có cần ngừng trước khi khám không",
+        "thuoc huyet ap co phai ngung truoc khi kham khong",
     ],
 )
 def test_advice_request_needs_asking(text: str) -> None:
@@ -50,6 +53,8 @@ def test_advice_request_needs_asking(text: str) -> None:
         "tôi đang bị sốt nên không đi được",
         "tôi muốn đặt lịch khám bệnh",
         "bệnh viện ở đâu vậy",
+        "tôi uống thuốc huyết áp và muốn đổi lịch khám",
+        "tôi đang uống thuốc huyết áp, mai đi khám",
     ],
 )
 def test_mention_is_not_transferred(text: str) -> None:
