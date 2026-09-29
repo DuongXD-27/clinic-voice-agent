@@ -1,4 +1,4 @@
-import { Mic, MicOff, PhoneCall, PhoneOff, Volume2 } from "lucide-react";
+import { DatabaseZap, Mic, MicOff, PhoneCall, PhoneOff, Volume2 } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { CallStatus } from "../../components/chat/CallStatus";
@@ -8,6 +8,9 @@ import { Button } from "../../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../../components/ui/Card";
 import { Notice } from "../../components/ui/Notice";
 import { StatusIndicator } from "../../components/ui/StatusIndicator";
+import { API_KEY_STORAGE, readSession, writeSession } from "../../lib/storage";
+import { resetClinic } from "../call/api";
+import { useClinicFixtures } from "../call/useClinicFixtures";
 import { EventLog } from "./components/EventLog";
 import { LiveKitConfigPanel } from "./components/LiveKitConfigPanel";
 import { Participants } from "./components/Participants";
@@ -19,19 +22,61 @@ import { useLiveKitCall } from "./useLiveKitCall";
 
 export function LiveKitPage() {
   const [config, setConfig] = useState<LiveKitConfig>(DEFAULT_LIVEKIT_CONFIG);
+  const [apiKey, setApiKey] = useState(() => readSession(API_KEY_STORAGE) ?? "");
+  // Key dùng để tải dữ liệu clinic: chỉ đổi khi rời ô nhập, không tải lại theo từng phím.
+  const [committedKey, setCommittedKey] = useState(apiKey);
+  const { fixtures, reload: reloadFixtures } = useClinicFixtures(committedKey);
   const audio = useRef<HTMLAudioElement>(null);
-  const { session, connect, toggleMic, disconnect, resumeAudio } = useLiveKitCall(audio);
+  const [resetting, setResetting] = useState(false);
+  const { session, connect, toggleMic, disconnect, resumeAudio, notify } = useLiveKitCall(audio);
 
   const active = isActive(session);
   const connecting = session.phase === "connecting";
   const messages = session.transcript.map(toChatMessage);
 
+  const handleClinicReset = async () => {
+    const confirmed = window.confirm(
+      "Reset clinic mock sẽ xoá dữ liệu test của CẢ TEAM và nạp lại dữ liệu mẫu.\n" +
+        "Chỉ bấm khi không có ai khác đang gọi. Tiếp tục?",
+    );
+    if (!confirmed) return;
+    setResetting(true);
+    try {
+      const { data } = await resetClinic(config.appointmentId, apiKey);
+      reloadFixtures();
+      const appointment = data.appointment;
+      notify({
+        tone: "success",
+        text: appointment
+          ? `Đã reset clinic · ${appointment.appointment_id ?? "?"}: ${appointment.status ?? "?"} v${String(appointment.version)}.`
+          : "Đã reset clinic (không đọc lại được lịch hẹn).",
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "không rõ lý do";
+      notify({ tone: "error", text: `Reset clinic lỗi: ${reason}` });
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <>
       <PageHeader
         eyebrow="Gọi thử · LiveKit"
-        title="Cuộc gọi giọng nói"
+        title="Cuộc gọi trực tiếp"
         description="Nói chuyện trực tiếp với bot qua microphone: audio stream thật qua WebRTC/LiveKit, không ghi âm rồi upload."
+        actions={
+          <Button
+            variant="danger"
+            icon={<DatabaseZap />}
+            loading={resetting}
+            // Reset giữa cuộc gọi làm worker đọc lịch hẹn đã bị thay.
+            disabled={resetting || session.phase !== "idle"}
+            onClick={() => void handleClinicReset()}
+          >
+            Reset clinic
+          </Button>
+        }
       />
 
       <div className={styles.layout}>
@@ -45,6 +90,15 @@ export function LiveKitPage() {
                   setConfig((current) => ({ ...current, ...patch }));
                 }}
                 locked={session.phase !== "idle"}
+                apiKey={apiKey}
+                onApiKeyChange={setApiKey}
+                onApiKeyCommit={() => {
+                  const key = apiKey.trim();
+                  writeSession(API_KEY_STORAGE, key);
+                  setCommittedKey(key);
+                }}
+                fixtures={fixtures}
+                onReloadFixtures={reloadFixtures}
               />
               <Notice>
                 Trình duyệt sẽ xin quyền microphone khi bắt đầu. Bot trả lời do LiveKit worker xử

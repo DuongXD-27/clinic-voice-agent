@@ -11,7 +11,9 @@ const API_KEY = process.env.E2E_API_KEY ?? "";
 
 async function openCallPage(page: Page) {
   await page.goto("/ui/call");
-  await expect(page.getByRole("heading", { level: 1, name: "Cuộc gọi thử" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Cuộc gọi từng lượt (Text/Audio)" }),
+  ).toBeVisible();
   if (API_KEY) {
     await page.getByLabel("API key").fill(API_KEY);
     await page.getByLabel("API key").blur();

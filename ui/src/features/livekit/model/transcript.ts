@@ -2,6 +2,8 @@ import type { ChatMessage } from "../../../components/chat/Conversation";
 
 /** Topic data channel worker gửi lời thoại (TRANSCRIPT_TOPIC trong call_bridge.py). */
 export const TRANSCRIPT_TOPIC = "callbot.transcript";
+/** Topic worker báo lỗi không mở được cuộc gọi (vd. lịch outbound không dùng được). */
+export const STATUS_TOPIC = "callbot.status";
 
 export interface TranscriptLine {
   role: "bot" | "caller";
@@ -20,13 +22,8 @@ const decoder = new TextDecoder();
 
 /** JSON UTF-8 từ `publish_data`; sai dạng thì bỏ qua (không làm hỏng trang). */
 export function parseTranscript(payload: Uint8Array): TranscriptLine | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(decoder.decode(payload));
-  } catch {
-    return null;
-  }
-  if (!isRecord(data) || data.type !== "transcript") return null;
+  const data = decode(payload);
+  if (data?.type !== "transcript") return null;
   const { role, turn, text } = data;
   if (
     (role !== "bot" && role !== "caller") ||
@@ -46,6 +43,13 @@ export function parseTranscript(payload: Uint8Array): TranscriptLine | null {
   };
 }
 
+/** Thông báo lỗi trên STATUS_TOPIC (`{code, message}`); sai dạng thì bỏ qua. */
+export function parseStatus(payload: Uint8Array): string | null {
+  const data = decode(payload);
+  if (!data || typeof data.message !== "string") return null;
+  return data.message;
+}
+
 export function toChatMessage(line: TranscriptLine, index: number): ChatMessage {
   const meta =
     line.role === "caller"
@@ -60,6 +64,15 @@ export function toChatMessage(line: TranscriptLine, index: number): ChatMessage 
     text: line.text || "(không nghe rõ)",
     meta: meta.filter(Boolean).join(" · "),
   };
+}
+
+function decode(payload: Uint8Array): Record<string, unknown> | null {
+  try {
+    const data: unknown = JSON.parse(decoder.decode(payload));
+    return isRecord(data) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
