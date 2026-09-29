@@ -98,7 +98,7 @@
           },
           "telephone_band": {
             "default": false,
-            "description": "Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
             "title": "Telephone Band",
             "type": "boolean"
           }
@@ -113,7 +113,7 @@
         "properties": {
           "compare": {
             "default": false,
-            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (hạ 8 kHz, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
+            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
             "title": "Compare",
             "type": "boolean"
           },
@@ -125,7 +125,7 @@
           },
           "telephone_band": {
             "default": false,
-            "description": "Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
             "title": "Telephone Band",
             "type": "boolean"
           }
@@ -1680,7 +1680,7 @@
           },
           "telephone_band": {
             "default": false,
-            "description": "Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
             "title": "Telephone Band",
             "type": "boolean"
           }
@@ -1955,13 +1955,13 @@
           },
           "compare": {
             "default": false,
-            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (hạ 8 kHz, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
+            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
             "title": "Compare",
             "type": "boolean"
           },
           "telephone_band": {
             "default": false,
-            "description": "Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
             "title": "Telephone Band",
             "type": "boolean"
           }
@@ -2311,7 +2311,7 @@
   "paths": {
     "/demo-api/audio/{call_id}/{turn}.wav": {
       "put": {
-        "description": "Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.\n\nFile được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.\nGiới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.",
+        "description": "Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.\n\nFile được chuẩn hóa về PCM16 mono 16 kHz (tần số model ASR) bằng soxr, một lần: không hạ\nqua 8 kHz rồi nâng lại, và lọc chống aliasing đúng cách thay cho trình duyệt.\nGiới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.",
         "operationId": "upload_demo_audio_demo_api_audio__call_id___turn__wav_put",
         "parameters": [
           {

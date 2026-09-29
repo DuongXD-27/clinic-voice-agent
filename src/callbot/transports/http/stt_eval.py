@@ -55,12 +55,12 @@ _AUDIO_URL_HELP = (
     "dùng route `/upload`."
 )
 _TELEPHONE_HELP = (
-    "Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng "
-    "lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc."
+    "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng "
+    "lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc."
 )
 _PRODUCTION_HELP = (
-    "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (hạ 8 kHz, không tiền xử lý) "
-    "— để thấy bot đang nghe ra gì với clip này."
+    "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền "
+    "xử lý) — để thấy bot đang nghe ra gì với clip này."
 )
 _COMPARE_HELP = (
     "Chạy thêm bản `raw`: nguyên file, không tiền xử lý, không cắt theo VAD (file dài hơn 30 s "

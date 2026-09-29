@@ -20,7 +20,7 @@ Mô tả API cho PM: [stt-eval-api.md](../reference/stt-eval-api.md).
 | Acceptance criterion | Bằng chứng |
 | --- | --- |
 | API một lượt nói nhận link hoặc upload, trả `text`, `confidence`, latency từng bước | `turn_url`, `turn_upload` trong `src/callbot/transports/http/stt_eval.py` gọi `transcribe_turn` (`src/speech/asr/offline.py`), nhận dạng nguyên clip một lần. Test: `test_turn_upload_returns_transcript_and_production`, `test_turn_url_is_downloaded` (`tests/transports/http/test_stt_eval.py`), `test_turn_decodes_whole_clip_once_at_model_rate` (`tests/speech/test_offline_stt.py`) |
-| `compare=true` trả bản `production` xử lý y hệt `/v1/calls` turn | `transcribe_turn` hạ clip gốc về 8 kHz (như `load_from_url` → `decode_wav`) rồi đưa vào cùng `SpeechRecognizer`. Test: `test_turn_production_follows_calls_turn_path_through_8k` |
+| `compare=true` trả bản `production` xử lý y hệt `/v1/calls` turn | `transcribe_turn` đưa clip gốc, giữ tần số gốc (như `load_from_url` → `read_wav`), vào cùng `SpeechRecognizer`. Test: `test_turn_production_follows_calls_turn_path_at_source_rate` |
 | API file dài: VAD cắt câu, trả `segments` có mốc thời gian | `transcribe_url`, `transcribe_upload` gọi `transcribe_offline`, dùng `detect_speech_frames` và `speech_regions` (`src/speech/audio/preprocess.py`). Test: `test_speech_is_segmented_and_decoded_at_model_rate`, `test_confidence_is_weighted_by_word_count`, `test_speech_regions_merge_close_speech_and_pad` |
 | Confidence thật từ ZipFormer | `ZipFormerASR.transcribe()` trả `ASRResult(text, confidence)` từ `_decode_scored` (`src/inference/asr/providers/zipformer.py`). Test: `test_zipformer_transcribe_returns_token_confidence` (`tests/speech/test_asr_tts_gateway.py`) |
 | Đọc được WAV 8/16/24/32-bit, float, A-law, μ-law, EXTENSIBLE, giữ tần số gốc | `read_wav` + `WavInfo` trong `src/speech/audio/codec.py`; `decode_wav` đi qua `read_wav`. Test: `tests/speech/audio/test_read_wav.py` (7 test) |
@@ -52,7 +52,7 @@ POST /v1/stt/turn[/upload]  (file ≤ 25 MiB)
   -> read_wav: PCM16 mono ở tần số gốc + WavInfo              (clip > 30 s -> 422 AUDIO_TOO_LONG)
   -> [telephone_band] hạ 8 kHz -> bỏ DC -> resample 16 kHz -> khuếch đại nếu < −35 dBFS
   -> ZipFormer decode nguyên clip: text, confidence
-  -> [compare] clip gốc -> 8 kHz -> ZipFormer (y hệt /v1/calls turn): production
+  -> [compare] clip gốc ở tần số gốc -> ZipFormer (y hệt /v1/calls turn): production
   -> SttTurnResponse: text, confidence, production, model, audio, preprocessing, latency_ms, warnings
 
 POST /v1/stt/transcribe[/upload]  (file ≤ 5 phút)
@@ -112,7 +112,7 @@ Cách đo:
 - Kết quả đầy đủ nằm trong `temp/stt_eval_livekit/`, không commit vì chứa giọng nói thật.
 
 **Ví dụ thật qua server** (`/v1/stt/turn/upload`, `compare=true`), câu "Tôi tên Nguyễn Hoàng Minh" ở dạng 44,1 kHz stereo 24-bit, nhỏ hơn 25 dB:
-- `production`: "TÔI SẼ NỮA VÀO BÊN" (confidence 0,61).
+- `production`: "TÔI SẼ NGHĨA VÀO BÊN" (confidence 0,63; trước khi `/v1/calls` bỏ bước hạ 8 kHz là "TÔI SẼ NỮA VÀO BÊN", 0,61).
 - `text`: "TÔI TÊN NGUYỄN HOÀNG MINH" (confidence 0,88, khuếch đại +20 dB).
 
 ## Quy trình xác minh

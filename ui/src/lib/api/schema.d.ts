@@ -16,7 +16,8 @@ export interface paths {
          * Upload Demo Audio
          * @description Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.
          *
-         *     File được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.
+         *     File được chuẩn hóa về PCM16 mono 16 kHz (tần số model ASR) bằng soxr, một lần: không hạ
+         *     qua 8 kHz rồi nâng lại, và lọc chống aliasing đúng cách thay cho trình duyệt.
          *     Giới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.
          */
         put: operations["upload_demo_audio_demo_api_audio__call_id___turn__wav_put"];
@@ -422,7 +423,7 @@ export interface components {
             file: string;
             /**
              * Telephone Band
-             * @description Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
              * @default false
              */
             telephone_band?: boolean;
@@ -431,7 +432,7 @@ export interface components {
         Body_turn_upload_v1_stt_turn_upload_post: {
             /**
              * Compare
-             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (hạ 8 kHz, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
+             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
              * @default false
              */
             compare?: boolean;
@@ -442,7 +443,7 @@ export interface components {
             file: string;
             /**
              * Telephone Band
-             * @description Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
              * @default false
              */
             telephone_band?: boolean;
@@ -980,7 +981,7 @@ export interface components {
             compare?: boolean;
             /**
              * Telephone Band
-             * @description Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
              * @default false
              */
             telephone_band?: boolean;
@@ -1104,13 +1105,13 @@ export interface components {
             audio_url: string;
             /**
              * Compare
-             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (hạ 8 kHz, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
+             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
              * @default false
              */
             compare?: boolean;
             /**
              * Telephone Band
-             * @description Hạ file về 8 kHz trước (giống đường điện thoại production). Bật khi muốn biết chất lượng lúc gọi thật; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
              * @default false
              */
             telephone_band?: boolean;

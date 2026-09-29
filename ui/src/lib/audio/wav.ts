@@ -1,6 +1,6 @@
 /**
- * Xử lý PCM thuần (không đụng Web Audio API) để test được bằng unit test: ghép khối thu âm,
- * đổi tần số lấy mẫu và đóng gói WAV PCM16 mono mà backend `/demo-api/audio` nhận.
+ * Xử lý PCM thuần (không đụng Web Audio API) để test được bằng unit test: ghép khối thu âm
+ * và đóng gói WAV PCM16 mono mà backend `/demo-api/audio` nhận.
  */
 
 export function mergeFloat32(chunks: readonly Float32Array[]): Float32Array {
@@ -12,26 +12,6 @@ export function mergeFloat32(chunks: readonly Float32Array[]): Float32Array {
     offset += chunk.length;
   }
   return result;
-}
-
-/** Nội suy tuyến tính; đủ cho giọng nói vì backend còn hạ tiếp xuống 8 kHz. */
-export function resampleLinear(
-  input: Float32Array,
-  fromRate: number,
-  toRate: number,
-): Float32Array {
-  if (fromRate === toRate || input.length === 0) return input;
-  const output = new Float32Array(Math.max(1, Math.round((input.length * toRate) / fromRate)));
-  const ratio = fromRate / toRate;
-  const last = input.length - 1;
-  for (let i = 0; i < output.length; i += 1) {
-    const position = i * ratio;
-    const left = Math.min(Math.floor(position), last);
-    const right = Math.min(left + 1, last);
-    const fraction = position - left;
-    output[i] = (input[left] ?? 0) * (1 - fraction) + (input[right] ?? 0) * fraction;
-  }
-  return output;
 }
 
 const HEADER_BYTES = 44;

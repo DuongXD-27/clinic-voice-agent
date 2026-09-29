@@ -2,7 +2,7 @@
 
 - `transcribe_turn`: file là MỘT lượt nói (như mỗi audio_url của /v1/calls/{id}/turn). Decode
   nguyên clip một lần sau tiền xử lý nhẹ; `compare` chạy thêm đúng đường production của
-  /v1/calls turn (hạ 8 kHz, không tiền xử lý) để PM thấy bot đang nghe ra gì.
+  /v1/calls turn (giữ tần số gốc, không tiền xử lý) để PM thấy bot đang nghe ra gì.
 - `transcribe_offline`: file dài nhiều câu. VAD tìm các đoạn có giọng, mỗi đoạn decode một lần,
   text ghép theo thời gian; `compare` decode nguyên file không tiền xử lý.
 
@@ -249,8 +249,8 @@ def transcribe_turn(
 ) -> TurnTranscription:
     """Một lượt nói: tiền xử lý nhẹ rồi decode nguyên clip một lần, không cắt đoạn.
 
-    `production` (khi `compare`) dùng đúng chuỗi hàm của /v1/calls turn: `load_from_url` hạ về
-    8 kHz (`decode_wav`), rồi `SpeechRecognizer.transcribe` nâng lên tần số model.
+    `production` (khi `compare`) dùng đúng chuỗi hàm của /v1/calls turn: `load_from_url` giữ tần
+    số gốc (`read_wav`), rồi `SpeechRecognizer.transcribe` resample một lần về tần số model.
     """
     started = perf_counter_ns()
     prepared = _prepare(
@@ -269,7 +269,7 @@ def transcribe_turn(
     production = None
     if compare:
         step = perf_counter_ns()
-        heard = recognizer.transcribe(to_sample_rate(prepared.original, NARROWBAND_RATE))
+        heard = recognizer.transcribe(prepared.original)
         production = ComparisonResult(heard.text, heard.confidence, _ms_since(step))
 
     duration_ms = prepared.source.duration_ms

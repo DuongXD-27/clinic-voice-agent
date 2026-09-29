@@ -26,7 +26,8 @@ phòng khám (Clinic API) để đọc/ghi lịch hẹn.
 - **Trích xuất thông tin** bằng luật, có tầng LLM tuỳ chọn để hiểu câu nói vòng và nhận
   diện tên.
 - **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI, ElevenLabs hoặc
-  Vbee (có thể cấu hình provider dự phòng), âm thanh băng hẹp 8 kHz như đường dây điện thoại.
+  Vbee (có thể cấu hình provider dự phòng); giọng bot băng hẹp 8 kHz như đường dây điện thoại,
+  clip người gọi giữ tần số gốc rồi resample một lần về 16 kHz của model.
 - **Session trên Redis**: chạy được nhiều worker, dữ liệu khách hàng chỉ lưu tạm và tự xoá
   khi cuộc gọi kết thúc hoặc hết hạn; chặn ghi trùng khi kết quả ghi không xác định.
 

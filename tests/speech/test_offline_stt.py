@@ -159,15 +159,15 @@ def test_turn_decodes_whole_clip_once_at_model_rate() -> None:
     assert result.warnings == []
 
 
-def test_turn_production_follows_calls_turn_path_through_8k() -> None:
+def test_turn_production_follows_calls_turn_path_at_source_rate() -> None:
     asr = FakeASR("có", confidence=0.7)
 
     result = transcribe_turn(_wav([(1, 8000)], rate=44_100), recognizer=asr, compare=True)
 
     main, production = asr.received
     assert main.sample_rate == 16_000
-    # SpeechRecognizer thật sẽ nâng 8 kHz lên 16 kHz — đúng như /v1/calls turn
-    assert production.sample_rate == 8_000
+    # Như /v1/calls turn: clip giữ tần số gốc, SpeechRecognizer thật resample một lần về 16 kHz
+    assert production.sample_rate == 44_100
     assert result.production is not None
     assert (result.production.text, result.production.confidence) == ("có", 0.7)
     assert "RESAMPLE" in result.steps

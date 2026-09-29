@@ -42,7 +42,7 @@ curl -X POST http://localhost:8000/v1/stt/turn \
 ```
 
 Hai tuỳ chọn:
-- **`compare`**: chạy thêm bản `production`, xử lý **y hệt `POST /v1/calls/{call_id}/turn`**: hạ về 8 kHz, không tiền xử lý. Nhờ đó PM thấy bot hiện tại nghe ra gì với clip này, và tiền xử lý có giúp gì không.
+- **`compare`**: chạy thêm bản `production`, xử lý **y hệt `POST /v1/calls/{call_id}/turn`**: giữ tần số gốc của file, không tiền xử lý. Nhờ đó PM thấy bot hiện tại nghe ra gì với clip này, và tiền xử lý có giúp gì không.
 - **`telephone_band`**: hạ file về 8 kHz trước, giống đường điện thoại. File thu bằng máy tính hay điện thoại thường là 16–48 kHz, nên cho kết quả **tốt hơn** lúc gọi thật.
 
 ### Xử lý
@@ -80,7 +80,7 @@ Câu `STT_ID_04` ("Tôi tên Nguyễn Hoàng Minh.") ở dạng file 44,1 kHz st
 | | Kết quả |
 |---|---|
 | `text` (tự khuếch đại +20 dB) | "TÔI TÊN NGUYỄN HOÀNG MINH", confidence 0,88 |
-| `production.text` (như `/v1/calls` turn) | "TÔI SẼ NỮA VÀO BÊN", confidence 0,61 |
+| `production.text` (như `/v1/calls` turn) | "TÔI SẼ NGHĨA VÀO BÊN", confidence 0,63 |
 
 **Không gửi file nhiều câu vào route này.** Model nhận dạng cả clip một lần nên dễ mất chữ ở chỗ chuyển câu; file nhiều câu thì dùng `/v1/stt/transcribe`.
 
@@ -165,7 +165,7 @@ Không bước nào mô phỏng streaming: không có kết quả tạm thời (
 | 1 | **Đọc nhiều định dạng WAV** | ✓ | ✓ | File xuất từ Audacity hay ffmpeg thường là 24-bit hoặc float, trước đây bị từ chối |
 | 2 | **Trộn về mono** (trung bình các kênh) | ✓ | ✓ | Model chỉ nhận một kênh. File stereo có 2 người ở 2 kênh sẽ bị trộn lẫn; xem `audio.channels` |
 | 3 | **Bỏ DC offset** | ✓ | ✓ | Mic rẻ hay làm lệch tín hiệu khỏi mức 0. Bộ trích đặc trưng của model đã tự bỏ phần này, nhưng phải bỏ trước thì mới đo đúng độ lớn và đỉnh ở bước 5 |
-| 4 | **Resample một lần, thẳng về 16 kHz** (soxr chất lượng cao) | ✓ | ✓ | Model được huấn luyện ở 16 kHz. Đường `/v1/calls` luôn hạ về 8 kHz rồi mới nâng lại 16 kHz, làm mất dải 4–8 kHz, nơi có các phụ âm s/x/ch/th rất quan trọng với tiếng Việt. Với file 8 kHz thì không lấy lại được (cảnh báo `NARROWBAND_SOURCE`) |
+| 4 | **Resample một lần, thẳng về 16 kHz** (soxr chất lượng cao) | ✓ | ✓ | Model được huấn luyện ở 16 kHz. Resample thẳng giữ được dải 4–8 kHz, nơi có các phụ âm s/x/ch/th rất quan trọng với tiếng Việt (từ 29/09 `/v1/calls` cũng làm vậy, trước đó hạ về 8 kHz rồi mới nâng lại). Với file 8 kHz thì không lấy lại được (cảnh báo `NARROWBAND_SOURCE`) |
 | 5 | **Khuếch đại clip quá nhỏ** (chỉ khi giọng dưới −35 dBFS; đưa về khoảng −26 dBFS; tối đa +20 dB; đỉnh không vượt −1 dBFS) | ✓ | ✓ | Clip thu nhỏ tiếng làm model đoán bừa. Đo được: clip nhỏ hơn 15–25 dB thì WER giảm từ 0,42–0,47 xuống 0,38. Clip đủ to thì **không** đụng tới, vì khuếch đại clip bình thường làm WER hơi tệ đi (0,39 → 0,40). Chỉ nhân một hằng số cho cả clip, không dùng nén/AGC vì chúng làm méo âm sắc theo thời gian |
 | 6 | **Cắt đoạn bằng Silero VAD** (gộp các đoạn cách nhau dưới 0,7 s; đệm 1 s phía trước, 0,3 s phía sau) | — | ✓ | Bỏ khoảng lặng và nhiễu giữa các câu, vốn là nơi model hay "bịa chữ", và cho mốc thời gian từng câu. Đệm trước dài vì Silero phát hiện giọng chậm, và bỏ qua từ rất ngắn đứng ngay trước chỗ ngắt. Với một lượt nói thì bước này gần như không giúp gì (golden: 0,390 so với 0,392), nên chế độ turn không dùng |
 | 7 | **Mỗi lần decode tối đa 30 s** | Giới hạn clip ≤ 30 s | Chia đoạn dài tại frame yên nhất | Bộ nhớ của model tăng theo bình phương độ dài: 30 s cần 0,6 GB, 90 s cần 3 GB, 180 s cần khoảng 12 GB. Không giới hạn thì một file 3 phút làm OOM cả server (đã xảy ra khi chạy thử 133 file LiveKit) |
