@@ -65,5 +65,22 @@ def test_window_limits_history():
     assert verdict != StabilityVerdict.OSCILLATING
 
 
+def test_changing_once_then_holding_is_not_oscillating():
+    """Hồi quy (bộ câu ngắn 28/09): "ĐƯỢC"→"VÂNG"→"VÂNG" là ASR chốt dần về câu trả lời
+    thật (SNR 58 dB), không phải dao động — luật cũ DROP câu này."""
+    tracker = TranscriptEvidenceTracker(oscillation_repeat_threshold=2)
+    tracker.observe(_event("được"))
+    tracker.observe(_event("vâng"))
+    verdict = tracker.observe(_event("vâng"))
+    assert verdict != StabilityVerdict.OSCILLATING
+
+
+def test_returning_to_earlier_text_is_oscillating():
+    tracker = TranscriptEvidenceTracker(oscillation_repeat_threshold=2)
+    for text in ("đó", "vâng", "đây", "ok", "à"):
+        tracker.observe(_event(text))
+    assert tracker.observe(_event("đây")) == StabilityVerdict.OSCILLATING
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

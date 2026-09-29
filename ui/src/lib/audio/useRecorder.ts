@@ -2,10 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // no-inline: file nhỏ sẽ bị Vite nhúng thành data: URL, mà Safari không nạp worklet từ data: URL.
 import workletUrl from "./recorder.worklet.js?url&no-inline";
-import { encodeWav, mergeFloat32, resampleLinear } from "./wav";
+import { encodeWav, mergeFloat32 } from "./wav";
 
-/** Backend chuẩn hoá tiếp về 8 kHz; gửi 16 kHz để giữ chất lượng trước bước đó. */
-const RECORDING_RATE = 16_000;
 /** Chờ processor xác nhận dừng tối đa bấy nhiêu; quá thì dùng các khối đã nhận. */
 const STOP_TIMEOUT_MS = 500;
 
@@ -97,12 +95,12 @@ export function useRecorder() {
     await Promise.race([drain(finished), delay(STOP_TIMEOUT_MS)]);
     release(finished);
 
-    const samples = resampleLinear(
-      mergeFloat32(finished.chunks),
-      finished.context.sampleRate,
-      RECORDING_RATE,
-    );
-    const blob = new Blob([encodeWav(samples, RECORDING_RATE)], { type: "audio/wav" });
+    // Gửi nguyên tần số của mic (thường 48 kHz): backend resample về 16 kHz bằng soxr có lọc
+    // chống aliasing. Hạ tần số ở đây mà không lọc thì tiếng trên 8 kHz dội ngược thành tiếng giả.
+    const samples = mergeFloat32(finished.chunks);
+    const blob = new Blob([encodeWav(samples, finished.context.sampleRate)], {
+      type: "audio/wav",
+    });
     const url = URL.createObjectURL(blob);
     previewUrl.current = url;
     setState({ status: "ready", blob, url, durationS });

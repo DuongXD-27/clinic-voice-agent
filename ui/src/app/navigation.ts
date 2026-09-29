@@ -18,14 +18,14 @@ export interface Tool {
 
 export const TOOLS: readonly Tool[] = [
   {
-    label: "Gọi thử HTTP",
-    description: "Mô phỏng cuộc gọi bằng text hoặc ghi âm, đúng contract chấm điểm.",
+    label: "Gọi từng lượt",
+    description: "Gõ hoặc ghi âm từng lượt qua HTTP, đúng contract chấm điểm.",
     icon: PhoneCall,
     to: "/call",
   },
   {
-    label: "Gọi thử LiveKit",
-    description: "Nói chuyện trực tiếp với bot qua WebRTC như một cuộc gọi thật.",
+    label: "Gọi trực tiếp",
+    description: "Nói chuyện liên tục với bot qua WebRTC/LiveKit như một cuộc gọi thật.",
     icon: AudioLines,
     to: "/livekit",
   },

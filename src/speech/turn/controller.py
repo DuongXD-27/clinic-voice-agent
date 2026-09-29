@@ -23,7 +23,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import AsyncIterator, Callable, Optional
+from typing import AsyncIterator, Awaitable, Callable, Optional
 
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
@@ -44,6 +44,7 @@ _FILLER_WORDS = frozenset(
     {"à", "ừ", "ờ", "ạ", "ơ", "ừm", "ờm", "à ừ", "dạ", "ừa", "ơ kìa", "hửm", "hử"}
 )
 _PUNCTUATION_ONLY_RE = re.compile(r"^[\W_]+$", re.UNICODE)
+_ASR_POLL_S = 0.05
 
 
 def is_meaningful_text(text: str) -> bool:
@@ -95,7 +96,9 @@ class TurnController:
         min_speech_ms: int = 250,
         post_bot_guard_ms: int = 500,
         clock: Optional[Callable[[], float]] = None,
+        sleep: Optional[Callable[[float], Awaitable[None]]] = None,
         validator: Optional[TurnValidator] = None,
+        max_wait_for_asr_ms: int = 3_000,
     ) -> None:
         """`min_speech_ms`: turn ngắn hơn ngưỡng này (tính từ speech_start) bị coi là
         tiếng động/backchannel, không được chốt thành UserTurnCompleted — kể cả khi VAD
@@ -110,16 +113,30 @@ class TurnController:
         được quyền WAIT khi còn khả năng có event mới tới cho candidate hiện tại — tại
         "cơ hội cuối" (final ASR đã tới, hoặc timeout hết hạn, xem `_try_emit`), WAIT tự
         động coi như không có validator (fallback về hành vi cũ) để tránh treo turn vô
-        thời hạn khi không còn event nào tới nữa."""
+        thời hạn khi không còn event nào tới nữa.
+
+        `clock`/`sleep` đi thành cặp: bộ đo (eval/noise-bench) đẩy audio nhanh hơn thời gian
+        thực nên phải chạy CẢ đồng hồ lẫn hẹn giờ theo thời gian ảo — chỉ thay `clock` thì
+        ngưỡng thời lượng đúng nhưng timeout sau speech_end vẫn tính bằng giây thật, kết quả
+        đổi theo tốc độ máy.
+
+        `max_wait_for_asr_ms`: VAD không còn bị ASR chặn (pipeline.py), nên khi decode chậm VAD
+        có thể báo hết câu trong lúc ASR còn tồn audio của chính câu đó. Hết
+        `max_wait_after_vad_end_ms` mà ASR còn tồn (xem `set_asr_pending_probe`) thì chờ tiếp
+        tới tối đa chừng này rồi mới chốt bằng partial — partial lúc đó thiếu chữ cuối câu."""
         self._max_wait_after_vad_end_s = max_wait_after_vad_end_ms / 1000
         self._min_speech_s = min_speech_ms / 1000
         self._post_bot_guard_s = post_bot_guard_ms / 1000
         self._clock = clock or time.monotonic
+        self._sleep = sleep or asyncio.sleep
         self._validator = validator
+        self._max_wait_for_asr_s = max_wait_for_asr_ms / 1000
+        self._asr_pending: Optional[Callable[[], bool]] = None
         self._queue: "asyncio.Queue[UserTurnCompleted]" = asyncio.Queue()
         self._candidate = _Candidate()
         self._bot_speaking = False
         self._bot_stopped_at: Optional[float] = None
+        self._last_vad_activity_at: Optional[float] = None
         self._timeout_task: Optional[asyncio.Task] = None
 
     def on_bot_speaking_changed(self, speaking: bool, *, preserve_candidate: bool = False) -> None:
@@ -141,8 +158,8 @@ class TurnController:
                 # Candidate có audio thật (VAD đã speech_start) bị huỷ vì tích luỹ TRONG
                 # LÚC bot nói và KHÔNG được InterruptionController xác nhận — nếu đây là
                 # audio user nói thật (không phải echo), nó biến mất không có turn nào,
-                # không log gì ở nơi khác (không đi qua nhánh Admission — is_bot_speaking
-                # vẫn True lúc đó). Log DEBUG only: text có thể chứa PII.
+                # không log gì ở nơi khác (is_bot_speaking vẫn True lúc đó). Log DEBUG
+                # only: text có thể chứa PII.
                 logger.debug(
                     "turn_controller: discard candidate on bot_speaking->False text=%r "
                     "(not confirmed as barge-in)",
@@ -165,15 +182,35 @@ class TurnController:
 
     @property
     def has_active_vad_candidate(self) -> bool:
-        """True giữa lúc VAD chính đã báo speech_start và turn chưa chốt/reset — đọc bởi
-        STTPipeline.stream() CHỈ để log chẩn đoán (không ảnh hưởng quyết định chốt turn):
-        VAD chính và Speech Admission dùng 2 classifier độc lập (xem
-        docs/reference/livekit-architecture.md §5.4), nên có thể lệch nhau — VAD chính
-        coi là speech trong khi Admission vẫn REJECT (chưa đủ SNR/duration theo classifier
-        RIÊNG của nó). Không dùng property này để đổi quyết định Admission."""
-        return self._candidate.started_at is not None and not self._candidate.finalized
+        """True chỉ khi VAD đã speech_start và CHƯA speech_end.
+
+        Candidate có thể còn chờ ASR final sau speech_end, nhưng lúc đó không còn là
+        đoạn speech active."""
+        return (
+            self._candidate.started_at is not None
+            and not self._candidate.vad_ended
+            and not self._candidate.finalized
+        )
+
+    def set_asr_pending_probe(self, probe: Optional[Callable[[], bool]]) -> None:
+        """STTPipeline.stream() gắn hàm cho biết ASR còn audio chưa xử lý (None = không biết)."""
+        self._asr_pending = probe
+
+    def silence_elapsed_s(self) -> Optional[float]:
+        """Số giây người dùng im lặng, tính từ lúc bot dứt lời hoặc lần cuối VAD còn thấy tiếng
+        nói (mốc muộn hơn). None khi bot đang nói, khi đang có câu dở (đã speech_start, chưa
+        chốt/huỷ) hoặc chưa có mốc nào — CallBridge dùng để gửi lượt im lặng cho core."""
+        if self._bot_speaking:
+            return None
+        if self._candidate.started_at is not None and not self._candidate.finalized:
+            return None
+        marks = [m for m in (self._bot_stopped_at, self._last_vad_activity_at) if m is not None]
+        if not marks:
+            return None
+        return self._clock() - max(marks)
 
     async def on_vad_event(self, event: VadEvent) -> None:
+        self._last_vad_activity_at = self._clock()
         if event.kind == "speech_start":
             self._reset_candidate()
             now = self._clock()
@@ -304,7 +341,10 @@ class TurnController:
         self._timeout_task = asyncio.ensure_future(self._timeout_flush(candidate, remaining))
 
     async def _timeout_flush(self, candidate: _Candidate, delay_s: float) -> None:
-        await asyncio.sleep(delay_s)
+        await self._sleep(delay_s)
+        if candidate is not self._candidate or candidate.finalized:
+            return
+        await self._wait_for_asr_backlog(candidate)
         if candidate is not self._candidate or candidate.finalized:
             return
         if not self._has_min_duration(candidate):
@@ -329,6 +369,28 @@ class TurnController:
         # Timeout hết hạn -> không còn cơ hội nào khác chờ thêm event mới cho candidate
         # này -> cơ hội cuối, Validator không được WAIT nữa (xem docstring __init__).
         self._try_emit(allow_partial=True, is_last_chance=True)
+        if (
+            candidate is self._candidate
+            and candidate.vad_ended
+            and not candidate.text.strip()
+            and not self._bot_speaking
+        ):
+            logger.debug("turn_controller: discard empty candidate after VAD timeout")
+            self._reset_candidate()
+
+    async def _wait_for_asr_backlog(self, candidate: _Candidate) -> None:
+        """VAD đã hết câu nhưng ASR còn tồn audio (decode chậm): final của câu chưa thể tới.
+        Chờ ASR xử lý hết (có trần) thay vì chốt ngay bằng partial cũ thiếu chữ."""
+        if self._asr_pending is None or not candidate.vad_ended or candidate.has_final_transcript:
+            return
+        waited = 0.0
+        while waited < self._max_wait_for_asr_s and self._asr_pending():
+            await self._sleep(_ASR_POLL_S)
+            waited += _ASR_POLL_S
+            if candidate is not self._candidate or candidate.finalized:
+                return
+        if waited:
+            logger.debug("turn_controller: chờ ASR tồn %.2f s trước khi chốt câu", waited)
 
     def _cancel_timeout(self) -> None:
         if self._timeout_task is not None and not self._timeout_task.done():

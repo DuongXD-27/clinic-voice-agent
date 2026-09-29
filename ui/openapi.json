@@ -82,6 +82,60 @@
         "title": "AppointmentSnapshot",
         "type": "object"
       },
+      "Body_transcribe_upload_v1_stt_transcribe_upload_post": {
+        "properties": {
+          "compare": {
+            "default": false,
+            "description": "Chạy thêm bản `raw`: nguyên file, không tiền xử lý, không cắt theo VAD (file dài hơn 30 s được chia khúc tại chỗ yên nhất) — để so với kết quả chính.",
+            "title": "Compare",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "File WAV",
+            "title": "File",
+            "type": "string"
+          },
+          "telephone_band": {
+            "default": false,
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_transcribe_upload_v1_stt_transcribe_upload_post",
+        "type": "object"
+      },
+      "Body_turn_upload_v1_stt_turn_upload_post": {
+        "properties": {
+          "compare": {
+            "default": false,
+            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
+            "title": "Compare",
+            "type": "boolean"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "File WAV của một lượt nói",
+            "title": "File",
+            "type": "string"
+          },
+          "telephone_band": {
+            "default": false,
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_turn_upload_v1_stt_turn_upload_post",
+        "type": "object"
+      },
       "CallDetailResponse": {
         "properties": {
           "call_key": {
@@ -1300,6 +1354,132 @@
         "title": "StartCallResponse",
         "type": "object"
       },
+      "SttAudioInfo": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "clipping_ratio": {
+            "description": "Tỷ lệ mẫu bị kịch trần (méo, không sửa được)",
+            "title": "Clipping Ratio",
+            "type": "number"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "format": {
+            "description": "Định dạng gốc, vd PCM_16, PCM_24, FLOAT_32, ALAW, MULAW",
+            "title": "Format",
+            "type": "string"
+          },
+          "peak_dbfs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Đỉnh tín hiệu, 0 = kịch trần",
+            "title": "Peak Dbfs"
+          },
+          "sample_rate": {
+            "description": "Tần số gốc của file (Hz)",
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "snr_db": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Giọng so với nhiễu nền (theo VAD); dưới 10 dB là nhiễu nhiều. null khi không đo được (không có lặng, hoặc nền im tuyệt đối)",
+            "title": "Snr Db"
+          },
+          "source": {
+            "enum": [
+              "url",
+              "upload"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "speech_ms": {
+            "description": "Tổng thời gian VAD coi là có giọng",
+            "title": "Speech Ms",
+            "type": "integer"
+          },
+          "speech_rms_dbfs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Độ lớn trung bình vùng có giọng; dưới −35 dBFS là file thu quá nhỏ",
+            "title": "Speech Rms Dbfs"
+          }
+        },
+        "required": [
+          "source",
+          "size_bytes",
+          "format",
+          "sample_rate",
+          "channels",
+          "duration_ms",
+          "peak_dbfs",
+          "speech_rms_dbfs",
+          "clipping_ratio",
+          "snr_db",
+          "speech_ms"
+        ],
+        "title": "SttAudioInfo",
+        "type": "object"
+      },
+      "SttComparison": {
+        "properties": {
+          "asr_ms": {
+            "description": "Thời gian model decode",
+            "title": "Asr Ms",
+            "type": "number"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "confidence",
+          "asr_ms"
+        ],
+        "title": "SttComparison",
+        "type": "object"
+      },
       "SttEmptyResponse": {
         "properties": {
           "eligible_count": {
@@ -1328,6 +1508,555 @@
           "rate"
         ],
         "title": "SttEmptyResponse",
+        "type": "object"
+      },
+      "SttLatency": {
+        "properties": {
+          "asr": {
+            "description": "Tổng thời gian model decode các đoạn (không gồm bản raw)",
+            "title": "Asr",
+            "type": "number"
+          },
+          "decode": {
+            "title": "Decode",
+            "type": "number"
+          },
+          "download": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tải audio_url; null khi upload",
+            "title": "Download"
+          },
+          "preprocess": {
+            "title": "Preprocess",
+            "type": "number"
+          },
+          "total": {
+            "description": "Toàn bộ request phía server, gồm cả tải file và bản raw",
+            "title": "Total",
+            "type": "number"
+          },
+          "vad": {
+            "title": "Vad",
+            "type": "number"
+          }
+        },
+        "required": [
+          "download",
+          "decode",
+          "preprocess",
+          "vad",
+          "asr",
+          "total"
+        ],
+        "title": "SttLatency",
+        "type": "object"
+      },
+      "SttModelInfo": {
+        "properties": {
+          "input_sample_rate": {
+            "title": "Input Sample Rate",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "input_sample_rate"
+        ],
+        "title": "SttModelInfo",
+        "type": "object"
+      },
+      "SttPreprocessing": {
+        "properties": {
+          "gain_db": {
+            "description": "Gain đã cộng thêm (0 = giữ nguyên độ lớn)",
+            "title": "Gain Db",
+            "type": "number"
+          },
+          "steps": {
+            "description": "Các bước đã thực sự áp dụng, theo thứ tự",
+            "items": {
+              "enum": [
+                "DOWNMIX_MONO",
+                "TELEPHONE_BAND",
+                "DC_REMOVAL",
+                "RESAMPLE",
+                "GAIN_NORMALIZE",
+                "VAD_SEGMENT"
+              ],
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "telephone_band": {
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "steps",
+          "gain_db",
+          "telephone_band"
+        ],
+        "title": "SttPreprocessing",
+        "type": "object"
+      },
+      "SttSegment": {
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0–1, null nếu provider không cung cấp",
+            "title": "Confidence"
+          },
+          "end_ms": {
+            "title": "End Ms",
+            "type": "integer"
+          },
+          "start_ms": {
+            "description": "Vị trí bắt đầu đoạn trong file gốc (đã gồm phần đệm)",
+            "title": "Start Ms",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_ms",
+          "end_ms",
+          "text",
+          "confidence"
+        ],
+        "title": "SttSegment",
+        "type": "object"
+      },
+      "SttTranscribeRequest": {
+        "properties": {
+          "audio_url": {
+            "description": "URL http(s) public tới file WAV. Không nhận địa chỉ nội bộ/localhost — file trên máy thì dùng route `/upload`. Tối đa 25 MiB, 5 phút.",
+            "examples": [
+              "https://example.com/clips/cuoc-goi.wav"
+            ],
+            "maxLength": 2048,
+            "title": "Audio Url",
+            "type": "string"
+          },
+          "compare": {
+            "default": false,
+            "description": "Chạy thêm bản `raw`: nguyên file, không tiền xử lý, không cắt theo VAD (file dài hơn 30 s được chia khúc tại chỗ yên nhất) — để so với kết quả chính.",
+            "title": "Compare",
+            "type": "boolean"
+          },
+          "telephone_band": {
+            "default": false,
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "audio_url"
+        ],
+        "title": "SttTranscribeRequest",
+        "type": "object"
+      },
+      "SttTranscribeResponse": {
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/SttAudioInfo"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Trung bình confidence các đoạn, trọng số theo số từ; null nếu không có",
+            "title": "Confidence"
+          },
+          "is_silence": {
+            "title": "Is Silence",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "$ref": "#/components/schemas/SttLatency"
+          },
+          "model": {
+            "$ref": "#/components/schemas/SttModelInfo"
+          },
+          "preprocessing": {
+            "$ref": "#/components/schemas/SttPreprocessing"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SttComparison"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chỉ có khi compare=true: nguyên file, không tiền xử lý (chia khúc ≤ 30 s)"
+          },
+          "real_time_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "latency_ms.asr / thời lượng audio; 0.05 = decode nhanh gấp 20 lần thời gian thực",
+            "title": "Real Time Factor"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/SttSegment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "text": {
+            "description": "Transcript đầy đủ từ đầu đến cuối file",
+            "title": "Text",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "NARROWBAND_SOURCE: file gốc ≤ 8 kHz. CLIPPING: >0,1% mẫu kịch trần. LOW_LEVEL: file thu quá nhỏ. LOW_SNR: nhiễu nền lớn. NO_SPEECH_DETECTED: VAD không thấy giọng",
+            "items": {
+              "enum": [
+                "NARROWBAND_SOURCE",
+                "CLIPPING",
+                "LOW_LEVEL",
+                "LOW_SNR",
+                "NO_SPEECH_DETECTED"
+              ],
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "text",
+          "confidence",
+          "is_silence",
+          "segments",
+          "raw",
+          "model",
+          "audio",
+          "preprocessing",
+          "latency_ms",
+          "real_time_factor",
+          "warnings"
+        ],
+        "title": "SttTranscribeResponse",
+        "type": "object"
+      },
+      "SttTurnAudioInfo": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "clipping_ratio": {
+            "description": "Tỷ lệ mẫu bị kịch trần (méo, không sửa được)",
+            "title": "Clipping Ratio",
+            "type": "number"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "format": {
+            "description": "Định dạng gốc, vd PCM_16, PCM_24, FLOAT_32, ALAW, MULAW",
+            "title": "Format",
+            "type": "string"
+          },
+          "peak_dbfs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Đỉnh tín hiệu, 0 = kịch trần",
+            "title": "Peak Dbfs"
+          },
+          "sample_rate": {
+            "description": "Tần số gốc của file (Hz)",
+            "title": "Sample Rate",
+            "type": "integer"
+          },
+          "size_bytes": {
+            "title": "Size Bytes",
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "url",
+              "upload"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "speech_rms_dbfs": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Độ lớn trung bình vùng có giọng; dưới −35 dBFS là file thu quá nhỏ",
+            "title": "Speech Rms Dbfs"
+          }
+        },
+        "required": [
+          "source",
+          "size_bytes",
+          "format",
+          "sample_rate",
+          "channels",
+          "duration_ms",
+          "peak_dbfs",
+          "speech_rms_dbfs",
+          "clipping_ratio"
+        ],
+        "title": "SttTurnAudioInfo",
+        "type": "object"
+      },
+      "SttTurnLatency": {
+        "properties": {
+          "asr": {
+            "description": "Thời gian model decode clip (không gồm bản production)",
+            "title": "Asr",
+            "type": "number"
+          },
+          "decode": {
+            "title": "Decode",
+            "type": "number"
+          },
+          "download": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tải audio_url; null khi upload",
+            "title": "Download"
+          },
+          "preprocess": {
+            "title": "Preprocess",
+            "type": "number"
+          },
+          "total": {
+            "description": "Toàn bộ request phía server, gồm cả tải file và bản production",
+            "title": "Total",
+            "type": "number"
+          }
+        },
+        "required": [
+          "download",
+          "decode",
+          "preprocess",
+          "asr",
+          "total"
+        ],
+        "title": "SttTurnLatency",
+        "type": "object"
+      },
+      "SttTurnPreprocessing": {
+        "properties": {
+          "gain_db": {
+            "description": "Gain đã cộng thêm (0 = giữ nguyên độ lớn)",
+            "title": "Gain Db",
+            "type": "number"
+          },
+          "steps": {
+            "description": "Các bước đã thực sự áp dụng, theo thứ tự",
+            "items": {
+              "enum": [
+                "DOWNMIX_MONO",
+                "TELEPHONE_BAND",
+                "DC_REMOVAL",
+                "RESAMPLE",
+                "GAIN_NORMALIZE"
+              ],
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "telephone_band": {
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "steps",
+          "gain_db",
+          "telephone_band"
+        ],
+        "title": "SttTurnPreprocessing",
+        "type": "object"
+      },
+      "SttTurnRequest": {
+        "properties": {
+          "audio_url": {
+            "description": "URL http(s) public tới file WAV. Không nhận địa chỉ nội bộ/localhost — file trên máy thì dùng route `/upload`. Tối đa 25 MiB, 30 giây.",
+            "examples": [
+              "https://example.com/clips/huy-lich.wav"
+            ],
+            "maxLength": 2048,
+            "title": "Audio Url",
+            "type": "string"
+          },
+          "compare": {
+            "default": false,
+            "description": "Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.",
+            "title": "Compare",
+            "type": "boolean"
+          },
+          "telephone_band": {
+            "default": false,
+            "description": "Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.",
+            "title": "Telephone Band",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "audio_url"
+        ],
+        "title": "SttTurnRequest",
+        "type": "object"
+      },
+      "SttTurnResponse": {
+        "properties": {
+          "audio": {
+            "$ref": "#/components/schemas/SttTurnAudioInfo"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "0–1; null nếu rỗng hoặc provider không có",
+            "title": "Confidence"
+          },
+          "is_silence": {
+            "title": "Is Silence",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "$ref": "#/components/schemas/SttTurnLatency"
+          },
+          "model": {
+            "$ref": "#/components/schemas/SttModelInfo"
+          },
+          "preprocessing": {
+            "$ref": "#/components/schemas/SttTurnPreprocessing"
+          },
+          "production": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SttComparison"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chỉ có khi compare=true: kết quả y hệt POST /v1/calls/{call_id}/turn"
+          },
+          "real_time_factor": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "latency_ms.asr / thời lượng audio; 0.05 = decode nhanh gấp 20 lần thời gian thực",
+            "title": "Real Time Factor"
+          },
+          "text": {
+            "description": "Transcript của lượt nói",
+            "title": "Text",
+            "type": "string"
+          },
+          "warnings": {
+            "description": "NARROWBAND_SOURCE: file gốc ≤ 8 kHz. CLIPPING: >0,1% mẫu kịch trần. LOW_LEVEL: file thu quá nhỏ",
+            "items": {
+              "enum": [
+                "NARROWBAND_SOURCE",
+                "CLIPPING",
+                "LOW_LEVEL"
+              ],
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "text",
+          "confidence",
+          "is_silence",
+          "production",
+          "model",
+          "audio",
+          "preprocessing",
+          "latency_ms",
+          "real_time_factor",
+          "warnings"
+        ],
+        "title": "SttTurnResponse",
         "type": "object"
       },
       "TimeRangeResponse": {
@@ -1582,7 +2311,7 @@
   "paths": {
     "/demo-api/audio/{call_id}/{turn}.wav": {
       "put": {
-        "description": "Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.\n\nFile được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.\nGiới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.",
+        "description": "Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.\n\nFile được chuẩn hóa về PCM16 mono 16 kHz (tần số model ASR) bằng soxr, một lần: không hạ\nqua 8 kHz rồi nâng lại, và lọc chống aliasing đúng cách thay cho trình duyệt.\nGiới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.",
         "operationId": "upload_demo_audio_demo_api_audio__call_id___turn__wav_put",
         "parameters": [
           {
@@ -2437,6 +3166,194 @@
         "summary": "Call Turn",
         "tags": [
           "calls"
+        ]
+      }
+    },
+    "/v1/stt/transcribe": {
+      "post": {
+        "description": "Tải WAV từ `audio_url` rồi chạy STT với tiền xử lý và cắt đoạn.\n\nFile **dài nhiều câu** (tối đa 5 phút). Chi tiết: `docs/reference/stt-eval-api.md`.\n\n1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.\n2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.\n3. Khuếch đại tĩnh file quá nhỏ (tối đa +20 dB, không để peak vượt −1 dBFS).\n4. Silero VAD tìm các đoạn có giọng; mỗi đoạn decode riêng, text ghép theo thời gian.\n   Đoạn dài hơn 30 s được chia tại chỗ yên nhất (bộ nhớ model tăng theo bình phương độ dài).\n\n`confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là\nđúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.\n`null` khi provider không trả confidence.",
+        "operationId": "transcribe_url_v1_stt_transcribe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SttTranscribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SttTranscribeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "STT file dài nhiều câu (WAV qua URL)",
+        "tags": [
+          "stt-eval"
+        ]
+      }
+    },
+    "/v1/stt/transcribe/upload": {
+      "post": {
+        "description": "Upload WAV (multipart, field `file`, tối đa 25 MiB) rồi chạy STT với tiền xử lý và cắt đoạn.\n\nFile **dài nhiều câu** (tối đa 5 phút). Chi tiết: `docs/reference/stt-eval-api.md`.\n\n1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.\n2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.\n3. Khuếch đại tĩnh file quá nhỏ (tối đa +20 dB, không để peak vượt −1 dBFS).\n4. Silero VAD tìm các đoạn có giọng; mỗi đoạn decode riêng, text ghép theo thời gian.\n   Đoạn dài hơn 30 s được chia tại chỗ yên nhất (bộ nhớ model tăng theo bình phương độ dài).\n\n`confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là\nđúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.\n`null` khi provider không trả confidence.",
+        "operationId": "transcribe_upload_v1_stt_transcribe_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_transcribe_upload_v1_stt_transcribe_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SttTranscribeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "STT file dài nhiều câu (WAV upload từ máy)",
+        "tags": [
+          "stt-eval"
+        ]
+      }
+    },
+    "/v1/stt/turn": {
+      "post": {
+        "description": "Tải WAV từ `audio_url` rồi chạy STT cho một lượt nói.\n\nFile là **một lượt nói** (tối đa 30 s), decode nguyên clip một lần — không cắt đoạn. Chi tiết:\n`docs/reference/stt-eval-api.md`.\n\n1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.\n2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.\n3. Khuếch đại tĩnh nếu giọng dưới −35 dBFS (tối đa +20 dB, không để peak vượt −1 dBFS).\n4. Model decode nguyên clip.\n\n`confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là\nđúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.\n`null` khi provider không trả confidence.",
+        "operationId": "turn_url_v1_stt_turn_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SttTurnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SttTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "STT một lượt nói (WAV qua URL)",
+        "tags": [
+          "stt-eval"
+        ]
+      }
+    },
+    "/v1/stt/turn/upload": {
+      "post": {
+        "description": "Upload WAV (multipart, field `file`, tối đa 25 MiB) rồi chạy STT cho một lượt nói.\n\nFile là **một lượt nói** (tối đa 30 s), decode nguyên clip một lần — không cắt đoạn. Chi tiết:\n`docs/reference/stt-eval-api.md`.\n\n1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.\n2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.\n3. Khuếch đại tĩnh nếu giọng dưới −35 dBFS (tối đa +20 dB, không để peak vượt −1 dBFS).\n4. Model decode nguyên clip.\n\n`confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là\nđúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.\n`null` khi provider không trả confidence.",
+        "operationId": "turn_upload_v1_stt_turn_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_turn_upload_v1_stt_turn_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SttTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "STT một lượt nói (WAV upload từ máy)",
+        "tags": [
+          "stt-eval"
         ]
       }
     }

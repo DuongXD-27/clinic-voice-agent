@@ -1,7 +1,7 @@
 """Adapter cho model production hiện tại (đọc qua ZipFormerConfig/ZipFormerASR thật —
 dùng chung code path với LiveKit/demo, không tự decode riêng lẻ). Asset thật do
-ZIPFORMER_*_PATH trong .env quyết định (hiện trỏ tới gipformer1.5-68M-rnnt, xem
-src/inference/asr/providers/assets/gipformer/).
+ZIPFORMER_*_PATH trong config/asr.yaml quyết định (mặc định trỏ model gipformer1.5-68M-rnnt,
+xem src/inference/asr/providers/assets/zipformer/).
 """
 
 from __future__ import annotations

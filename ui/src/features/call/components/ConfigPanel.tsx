@@ -21,8 +21,8 @@ const DIRECTIONS = [
 ] as const satisfies readonly { value: Direction; label: string }[];
 
 const MODES = [
-  { value: "text", label: "Text" },
-  { value: "audio", label: "Ghi âm" },
+  { value: "text", label: "Văn bản" },
+  { value: "audio", label: "Ghi âm từng lượt" },
 ] as const satisfies readonly { value: Mode; label: string }[];
 
 interface Props {

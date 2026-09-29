@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from callbot.transports.http.config import settings
 from speech.audio.codec import decode_wav, encode_wav
-from speech.types import NARROWBAND_RATE
+from speech.types import WIDEBAND_RATE
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,8 @@ class ClinicFixtures(BaseModel):
 async def upload_demo_audio(call_id: str, turn: int, request: Request) -> dict[str, object]:
     """Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.
 
-    File được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.
+    File được chuẩn hóa về PCM16 mono 16 kHz (tần số model ASR) bằng soxr, một lần: không hạ
+    qua 8 kHz rồi nâng lại, và lọc chống aliasing đúng cách thay cho trình duyệt.
     Giới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.
     """
     if not _SAFE_CALL_ID.fullmatch(call_id):
@@ -106,7 +107,7 @@ async def upload_demo_audio(call_id: str, turn: int, request: Request) -> dict[s
         raise _error(400, "EMPTY_AUDIO", "Không nhận được dữ liệu WAV")
 
     try:
-        segment = decode_wav(bytes(body), target_rate=NARROWBAND_RATE)
+        segment = decode_wav(bytes(body), target_rate=WIDEBAND_RATE)
     except (ValueError, TypeError, EOFError, struct.error) as exc:
         raise _error(422, "INVALID_WAV", "Chỉ chấp nhận WAV PCM16, G.711 A-law hoặc μ-law") from exc
 

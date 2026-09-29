@@ -1,7 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "../../test/server";
 import { LiveKitPage } from "./LiveKitPage";
@@ -81,6 +81,15 @@ const TOKEN = {
   identity: "web-me",
 };
 
+const FIXTURES = {
+  source: "mock",
+  appointments: [
+    { appointment_id: "apt_00417", status: "TRANSFERRED", display_name: "N. V. A." },
+    { appointment_id: "apt_00418", status: "SCHEDULED", display_name: "T. T. B." },
+  ],
+  phones: [{ phone: "0912345600", display_name: "N. V. A." }],
+};
+
 function tokenEndpoint(): unknown[] {
   const bodies: unknown[] = [];
   server.use(
@@ -112,6 +121,10 @@ async function connect() {
   await userEvent.click(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" }));
   await connection().findByText("Đã kết nối · web-room-1");
 }
+
+beforeEach(() => {
+  server.use(http.get("/demo-api/clinic-fixtures", () => HttpResponse.json(FIXTURES)));
+});
 
 afterEach(() => {
   livekit.FakeRoom.instances = [];
@@ -283,15 +296,98 @@ describe("LiveKitPage", () => {
     expect(room().startAudio).toHaveBeenCalledTimes(2);
   });
 
-  it("outbound thiếu Appointment ID: chặn trước khi gọi API", async () => {
+  it("outbound chọn lịch hẹn từ clinic, kèm trạng thái như trang gọi HTTP", async () => {
+    const bodies = tokenEndpoint();
+    let authorization: string | null = null;
+    server.use(
+      http.get("/demo-api/clinic-fixtures", ({ request }) => {
+        authorization = request.headers.get("Authorization");
+        return HttpResponse.json(FIXTURES);
+      }),
+    );
     render(<LiveKitPage />);
 
+    await userEvent.type(screen.getByLabelText("API key"), "sk_test");
+    await userEvent.tab();
     await userEvent.click(screen.getByRole("radio", { name: "Outbound · bot gọi" }));
-    await userEvent.clear(screen.getByLabelText("Appointment ID"));
-    await userEvent.click(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" }));
+    const select = screen.getByLabelText("Appointment ID");
+    await screen.findByRole("option", { name: "apt_00418 · SCHEDULED · T. T. B." });
+    expect(authorization).toBe("Bearer sk_test");
+    expect(screen.getByText(/Nguồn: clinic mock · 2 lịch hẹn/)).toBeInTheDocument();
 
-    // Không có handler /livekit/token: nếu có request, MSW làm test lỗi.
-    expect(await screen.findByText("Cuộc gọi outbound cần Appointment ID.")).toBeInTheDocument();
+    await userEvent.selectOptions(select, "apt_00418");
+    await connect();
+
+    expect(bodies).toEqual([{ direction: "outbound", appointment_id: "apt_00418" }]);
+    expect(select).toBeDisabled();
+  });
+
+  it("reset clinic theo lịch đang chọn rồi tải lại danh sách; khoá khi đang gọi", async () => {
+    tokenEndpoint();
+    const resets: unknown[] = [];
+    let fixtureLoads = 0;
+    server.use(
+      http.get("/demo-api/clinic-fixtures", () => {
+        fixtureLoads += 1;
+        return HttpResponse.json(FIXTURES);
+      }),
+      http.post("/demo-api/clinic-reset", async ({ request }) => {
+        resets.push(await request.json());
+        return HttpResponse.json({
+          reset: true,
+          appointment: { appointment_id: "apt_00418", status: "SCHEDULED", version: 1 },
+        });
+      }),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<LiveKitPage />);
+    await userEvent.click(screen.getByRole("radio", { name: "Outbound · bot gọi" }));
+    await screen.findByRole("option", { name: "apt_00418 · SCHEDULED · T. T. B." });
+    await userEvent.selectOptions(screen.getByLabelText("Appointment ID"), "apt_00418");
+
+    await userEvent.click(screen.getByRole("button", { name: "Reset clinic" }));
+
+    expect(
+      await screen.findByText("Đã reset clinic · apt_00418: SCHEDULED v1."),
+    ).toBeInTheDocument();
+    expect(resets).toEqual([{ appointment_id: "apt_00418" }]);
+    expect(fixtureLoads).toBe(2);
+
+    await connect();
+    expect(screen.getByRole("button", { name: "Reset clinic" })).toBeDisabled();
+  });
+
+  it("huỷ hộp xác nhận thì không reset clinic", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<LiveKitPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Reset clinic" }));
+
+    // Không có handler cho /demo-api/clinic-reset: nếu có request, MSW làm test lỗi.
+    expect(screen.queryByText(/Đã reset clinic/)).not.toBeInTheDocument();
+  });
+
+  it("worker không mở được cuộc gọi outbound: rời room, hiện lỗi của worker", async () => {
+    const bodies = tokenEndpoint();
+    render(<LiveKitPage />);
+    await userEvent.click(screen.getByRole("radio", { name: "Outbound · bot gọi" }));
+    await connect();
+
+    emit(
+      "dataReceived",
+      new TextEncoder().encode(
+        JSON.stringify({ code: "OUTBOUND_START_FAILED", message: "Không lấy được lịch hẹn" }),
+      ),
+      undefined,
+      undefined,
+      "callbot.status",
+    );
+
+    expect(bodies).toEqual([{ direction: "outbound", appointment_id: "apt_00417" }]);
+    expect(room().disconnect).toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Không lấy được lịch hẹn");
+    expect(connection().getByText("Chưa kết nối")).toBeInTheDocument();
+    expect(screen.queryByText("Cuộc gọi đã kết thúc.")).not.toBeInTheDocument();
   });
 
   it("rời trang khi đang chờ token: không vào room, không bật mic", async () => {

@@ -125,6 +125,12 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
     if payload.appointment_id:
         attributes["appointment_id"] = payload.appointment_id
     builder = builder.with_attributes(attributes)
+    if settings.agent_name:
+        # Room tạo khi browser join bằng token này sẽ gọi đúng worker mang tên đó, thay cho
+        # automatic dispatch tới bất kỳ worker nào trong project (xem LiveKitSettings.agent_name).
+        builder = builder.with_room_config(
+            api.RoomConfiguration(agents=[api.RoomAgentDispatch(agent_name=settings.agent_name)])
+        )
     token = builder.to_jwt()
 
     return LiveKitTokenResponse(

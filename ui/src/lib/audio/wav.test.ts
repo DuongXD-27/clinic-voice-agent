@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeWav, mergeFloat32, resampleLinear } from "./wav";
+import { encodeWav, mergeFloat32 } from "./wav";
 
 function text(view: DataView, offset: number, length: number): string {
   return String.fromCharCode(...Array.from({ length }, (_, i) => view.getUint8(offset + i)));
@@ -15,30 +15,6 @@ describe("mergeFloat32", () => {
     ]);
 
     expect(Array.from(merged)).toEqual([1, 2, 3]);
-  });
-});
-
-describe("resampleLinear", () => {
-  it("giữ nguyên khi cùng tần số", () => {
-    const input = new Float32Array([0.1, 0.2]);
-
-    expect(resampleLinear(input, 16_000, 16_000)).toBe(input);
-  });
-
-  it("hạ 48 kHz xuống 16 kHz còn một phần ba số mẫu", () => {
-    const output = resampleLinear(new Float32Array(4800), 48_000, 16_000);
-
-    expect(output).toHaveLength(1600);
-  });
-
-  it("nội suy tuyến tính giữa hai mẫu khi tăng tần số", () => {
-    const output = resampleLinear(new Float32Array([0, 1]), 1, 2);
-
-    expect(Array.from(output)).toEqual([0, 0.5, 1, 1]);
-  });
-
-  it("không lỗi với đầu vào rỗng", () => {
-    expect(resampleLinear(new Float32Array(0), 48_000, 16_000)).toHaveLength(0);
   });
 });
 

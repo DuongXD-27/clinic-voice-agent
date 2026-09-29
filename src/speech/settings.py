@@ -40,7 +40,7 @@ class SpeechSettings(YamlSettings):
     # "webrtc": Google WebRTC's VAD (cần extra "vad-webrtc"), phân biệt tốt hơn nhiều —
     # khuyến nghị cho đường LiveKit streaming (energy dễ hiểu nhầm noise thành turn).
     # "silero": ONNX model (silero_vad_model_path, cần extra "vad-silero"/sherpa-onnx) —
-    # từng chỉ dùng riêng cho NoiseTracker (Speech Admission/Turn Validator), giờ có thể
+    # từng chỉ dùng riêng cho NoiseTracker (evidence của Turn Validator), giờ có thể
     # chọn làm VAD chính. Đối chiếu thực nghiệm qua ASR trên audio LiveKit thật
     # (docs/reference/livekit-architecture.md §5.4): trên MỌI file kiểm tra, Silero không
     # bỏ sót giọng nói thật (kể cả câu dài, nội dung nghiệp vụ), và từ chối đúng các đoạn
@@ -56,6 +56,9 @@ class SpeechSettings(YamlSettings):
     # lớp phòng thủ thứ 2 bên cạnh vad_provider, chống "dạ dạ" liên tục do nhiễu ngoài.
     turn_min_speech_ms: int
     turn_max_wait_after_vad_end_ms: int
+    # VAD không còn bị ASR chặn: khi decode chậm, VAD có thể báo hết câu lúc ASR còn tồn
+    # audio của câu. Chờ ASR xử lý hết tối đa chừng này rồi mới chốt bằng partial.
+    turn_max_wait_for_asr_ms: int
     # Candidate bắt đầu quá gần thời điểm bot vừa dứt lời (< ngưỡng này) bị discard —
     # chống dư âm/tiếng vọng phòng (loa ngoài, browser echo-cancellation không hoàn hảo)
     # đủ dài để WebRTC VAD coi là speech_start thật ngay sau khi is_bot_speaking chuyển
@@ -63,28 +66,10 @@ class SpeechSettings(YamlSettings):
     # user không hề nói gì (bug thật đã gặp qua LiveKit demo).
     turn_post_bot_guard_ms: int
 
-    # Speech Admission (docs/reference/livekit-architecture.md §5.4): lớp lọc TRƯỚC asr_queue
-    # dựa trên SNR liên tục (NoiseTracker), chặn sớm noise phòng không đồng đều mà VAD đôi
-    # khi hiểu nhầm thành speech_start — nguyên nhân gốc hallucination ("ĐÂY"/"TẠI" lặp lại)
-    # đã xác nhận qua LIVEKIT_DEBUG_DUMP_AUDIO. Mặc định TẮT: cần benchmark thêm trên audio
-    # thật đa dạng trước khi bật mặc định cho mọi call.
-    speech_admission_enabled: bool
-    speech_admission_min_snr_db: float
-    speech_admission_min_speech_ms: int
-    # Pre-roll buffer (speech/asr/admission.py::PreRollBuffer): bù lại audio bị giữ lại
-    # trong lúc chưa ADMIT (chưa đủ SNR/duration) — không có buffer, ASR luôn mất đúng
-    # khoảng thời gian REJECT trước khi ADMIT dù Admission quyết định đúng. 600ms (không
-    # phải min_speech_ms mặc định 150ms): thực nghiệm qua LiveKit thật (LIVEKIT_DEBUG_
-    # DUMP_AUDIO, xem docs/evidence/) cho thấy REJECT trước ADMIT dao động 240-510ms tuỳ
-    # SNR đầu câu (người nói nhỏ dần/to dần) — buffer 240ms từng bị tràn (rớt frame cũ
-    # nhất trước khi ADMIT tới), mất đúng chữ đầu câu ("Tôi là..." -> "là..."/"đây là...").
-    speech_admission_preroll_ms: int
-
     # Turn Validator (docs/reference/livekit-architecture.md §5.4, §6): lớp quyết định
     # cuối trước khi chốt turn, dựa trên acoustic evidence (NoiseTracker) + transcript
-    # stability (TranscriptEvidenceTracker) — ĐỘC LẬP với speech_admission_enabled (2
-    # tracker riêng, không dùng chung). Mặc định TẮT — cần benchmark thêm trước khi bật
-    # cho mọi call.
+    # stability (TranscriptEvidenceTracker). Mặc định TẮT — cần benchmark thêm trước khi
+    # bật cho mọi call.
     turn_validator_enabled: bool
     turn_validator_min_snr_db: float
     # Ngưỡng SNR RIÊNG cho InterruptionController (barge-in) — KHÔNG dùng chung
@@ -95,18 +80,25 @@ class SpeechSettings(YamlSettings):
     # snr_db=-25.56 (rất thấp, đặc trưng echo qua loa-mic khác giọng nói trực tiếp). Kiểm
     # tra này không phân biệt độ dài text. `None` tắt hẳn (giữ hành vi cũ) — mặc định để
     # tắt vì cần benchmark thêm trước khi áp dụng cho mọi call, cùng tinh thần các cờ
-    # turn_validator_enabled/speech_admission_enabled khác trong file này.
+    # turn_validator_enabled khác trong file này.
     interruption_min_snr_db: Optional[float]
     # Bug thật đã gặp: dùng WebRTC (`vad_provider`) làm classifier cho NoiseTracker khiến
     # noise_floor không được cập nhật đúng — WebRTC báo speech=True gần như LIÊN TỤC trên
     # noise phòng thuần (0 false-negative nhưng rất nhiều false-positive), nên
     # NoiseTracker._is_speech=False hiếm khi trigger cập nhật, SNR tính ra dao động hỗn
     # loạn (-150dB tới +34dB trên CHÍNH noise, không phải speech thật) — khiến
-    # TurnValidator/SpeechAdmission thỉnh thoảng thấy SNR "cao giả" và cho qua turn giả.
+    # TurnValidator thỉnh thoảng thấy SNR "cao giả" và cho qua turn giả.
     # Silero VAD (silero_vad_model_path) đã xác nhận qua benchmark thực nghiệm KHÔNG bị
     # lừa bởi cùng loại noise này (0/400 false-positive) — dùng riêng cho NoiseTracker,
     # tách biệt khỏi `vad_provider` (vẫn WebRTC cho turn-taking chính, chưa đổi mặc định).
     silero_vad_model_path: str
+    # Hangover của Silero (giữ "đang nói" sau khi hết tiếng) — cộng vào độ trễ chốt lượt cùng
+    # vad_end_silence_ms. Mặc định 500 ms của sherpa-onnx.
+    silero_min_silence_ms: int
+    # Đường LiveKit: MỘT bản Silero phân loại mỗi frame một lần, dùng chung cho VAD chính, bộ chốt
+    # câu của ASR và evidence của Validator (speech/asr/vad/shared.py) thay cho 3 bản độc lập. Bật thì VAD chính là Silero bất kể `vad_provider` (evidence bắt buộc Silero, xem
+    # trên); `vad_provider` khi đó chỉ còn áp dụng cho đường HTTP batch.
+    speech_shared_detector: bool
 
     # URL công khai để dựng audio_url trả về cho harness
     public_base_url: str

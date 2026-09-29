@@ -70,3 +70,7 @@ class ZipFormerConfig(ASRConfig):
     # nếu VAD không bao giờ báo đủ khoảng lặng liên tục (docs/reference/
     # livekit-architecture.md §5.5).
     max_turn_speech_ms: int = Field(validation_alias="ZIPFORMER_MAX_TURN_SPEECH_MS")
+    # Giãn nhịp decode partial theo độ dài buffer: khoảng cách giữa hai lần decode partial =
+    # max(300 ms, tỉ lệ này x độ dài buffer). 0 = tắt (luôn 300 ms). Câu 10 s decode lại ~33 lần
+    # (~2,5 s CPU); 0,1 giữ nguyên câu < 3 s, còn ~1/2 số lần decode cho câu dài. Final không đổi.
+    partial_interval_ratio: float = Field(ge=0, validation_alias="ZIPFORMER_PARTIAL_INTERVAL_RATIO")

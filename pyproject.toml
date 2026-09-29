@@ -14,6 +14,8 @@ dependencies = [
     "pydantic-settings>=2.15",
     "pyyaml>=6.0",
     "redis>=5.2,<7",
+    # Upload file multipart (File/Form) của /v1/stt/transcribe/upload — FastAPI không tự kéo gói này
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

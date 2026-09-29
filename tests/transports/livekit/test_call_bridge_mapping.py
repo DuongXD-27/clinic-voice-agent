@@ -7,6 +7,7 @@ from tests.transports.livekit_support import require_livekit
 
 require_livekit()
 
+from callbot.engine.errors import OutboundStartFailed  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     TRANSCRIPT_TOPIC,
@@ -154,12 +155,14 @@ class _FakeLocalParticipant:
 
     def __init__(self) -> None:
         self.published: list[tuple[object, object]] = []
+        self.data_packets: list[tuple[str, bool, str]] = []
         self.data: list[tuple[dict, str, bool]] = []
 
     async def publish_track(self, track, options) -> None:
         self.published.append((track, options))
 
     async def publish_data(self, payload, *, reliable: bool = True, topic: str = "") -> None:
+        self.data_packets.append((payload, reliable, topic))
         self.data.append((json.loads(payload), topic, reliable))
 
 
@@ -205,6 +208,40 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     assert len(fake_source.captured_frames) == 2
     assert fake_source.closed is True
     assert fake_source.wait_for_playout_calls == 2
+
+
+async def test_outbound_start_failure_notifies_browser_without_crashing_job() -> None:
+    class _RejectedOrchestrator(_FakeOrchestrator):
+        def start_call(self, call: CallStart) -> BotAction:
+            self.started_calls.append(call)
+            raise OutboundStartFailed("APPOINTMENT_NOT_ACTIONABLE")
+
+    orchestrator = _RejectedOrchestrator(
+        opening=BotAction(utterance="Không được phát", state="AWAITING_IDENTITY"),
+        turn_actions=[],
+    )
+    tts = _FakeTTS()
+    room = _FakeRoom("web-outbound-rejected")
+    bridge = CallBridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([]),
+        tts,
+        direction="outbound",
+        appointment_id="apt_00417",
+    )
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert orchestrator.started_calls[0].appointment_id == "apt_00417"
+    assert room.local_participant.published == []
+    assert tts.spoken == []
+    assert len(room.local_participant.data_packets) == 1
+    payload, reliable, topic = room.local_participant.data_packets[0]
+    assert json.loads(payload)["code"] == "OUTBOUND_START_FAILED"
+    assert "APPOINTMENT_NOT_ACTIONABLE" not in payload
+    assert reliable is True
+    assert topic == "callbot.status"
 
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
@@ -312,16 +349,18 @@ async def test_speak_buffers_odd_byte_chunks_into_valid_pcm16_frames(monkeypatch
 
 
 async def test_speak_stops_publishing_and_clears_queue_when_interrupted(monkeypatch) -> None:
-    """Barge-in giữa chừng _speak(): interruption chuyển INTERRUPTED sau chunk đầu tiên
-    -> CallBridge phải dừng publish chunk còn lại VÀ gọi clear_queue()."""
+    """Barge-in giữa chừng _speak(): interruption chuyển INTERRUPTED sau frame đầu tiên
+    -> CallBridge phải dừng publish frame còn lại VÀ gọi clear_queue()."""
     from speech.turn.interruption import InterruptionState
+
+    frame = _FakeTTS.stream_sample_rate * 20 // 1000  # đúng một frame 20 ms mỗi chunk
 
     class _MultiChunkTTS(_FakeTTS):
         async def synthesize_stream(self, text: str):
             self.spoken.append(text)
-            yield b"\x00\x10" * 10
-            yield b"\x00\x20" * 10
-            yield b"\x00\x30" * 10
+            yield b"\x00\x10" * frame
+            yield b"\x00\x20" * frame
+            yield b"\x00\x30" * frame
 
     opening = BotAction(utterance="Câu chào dài nhiều chunk", state="AWAITING_INTENT", ended=False)
     orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[])
@@ -346,6 +385,74 @@ async def test_speak_stops_publishing_and_clears_queue_when_interrupted(monkeypa
 
     assert len(fake_source.captured_frames) == 1  # chỉ chunk đầu, 2 chunk sau bị bỏ qua
     assert fake_source.clear_queue_calls == 1
+
+
+class _NativeLikeAudioSource(_FakeAudioSource):
+    """Như AudioSource native với queue_size_ms=200: frame dài hơn chỗ trống của hàng đợi
+    (hàng đợi + ngưỡng báo xong = 400 ms) bị từ chối."""
+
+    def __init__(self, sample_rate: int) -> None:
+        super().__init__()
+        self._max_samples = sample_rate * 400 // 1000
+
+    async def capture_frame(self, frame) -> None:
+        if frame.samples_per_channel > self._max_samples:
+            raise RuntimeError("InvalidState - failed to capture frame")
+        await super().capture_frame(frame)
+
+
+class _WholeSentenceTTS(_FakeTTS):
+    """Như Vbee (không stream): cả câu 3 s về trong MỘT chunk."""
+
+    async def synthesize_stream(self, text: str):
+        self.spoken.append(text)
+        yield b"\x00\x10" * self.stream_sample_rate * 3
+
+
+def _speaking_bridge(tts: _FakeTTS) -> tuple[CallBridge, _NativeLikeAudioSource]:
+    orchestrator = _FakeOrchestrator(
+        opening=BotAction(utterance="", state="AWAITING_INTENT"), turn_actions=[]
+    )
+    bridge = CallBridge(_FakeRoom("web-frames-room"), orchestrator, _FakeSTTPipeline([]), tts)
+    source = _NativeLikeAudioSource(tts.stream_sample_rate)
+    bridge._audio_source = source
+    return bridge, source
+
+
+async def test_speak_splits_whole_sentence_tts_into_20ms_frames() -> None:
+    tts = _WholeSentenceTTS()
+    bridge, source = _speaking_bridge(tts)
+
+    await bridge._speak("một câu dài ba giây")
+
+    assert len(source.captured_frames) == 150
+    assert {frame.samples_per_channel for frame in source.captured_frames} == {480}
+
+
+async def test_early_barge_in_stops_sentence_and_next_sentence_still_plays() -> None:
+    """Bug thật (review PR): người gọi nói chen khi bot vừa bắt đầu câu -> câu bot kế tiếp
+    ném "InvalidState - failed to capture frame", job crash, bot rời cuộc gọi. Barge-in phải
+    dừng ngay sau frame đang phát, và câu tiếp theo phát đủ."""
+    tts = _WholeSentenceTTS()
+    bridge, source = _speaking_bridge(tts)
+    play = source.capture_frame
+
+    async def play_then_barge_in(frame) -> None:
+        await play(frame)
+        if len(source.captured_frames) == 10:  # 200 ms vào câu
+            await bridge._interruption._confirm()
+
+    source.capture_frame = play_then_barge_in
+    await bridge._speak("câu bị ngắt")
+
+    assert len(source.captured_frames) == 10
+    assert source.clear_queue_calls >= 1
+    assert tts.cancel_calls == 1
+
+    source.capture_frame = play
+    await bridge._speak("câu tiếp theo")
+
+    assert len(source.captured_frames) == 10 + 150
 
 
 async def test_speak_times_out_instead_of_hanging_forever_on_wait_for_playout(monkeypatch) -> None:

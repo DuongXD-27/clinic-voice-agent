@@ -69,11 +69,14 @@ async def test_empty_partial_does_not_emit_turn() -> None:
     (partial rỗng) -> không được tạo UserTurnCompleted giả."""
     controller = TurnController(max_wait_after_vad_end_ms=20)
     await controller.on_vad_event(VadEvent("speech_start"))
+    assert controller.has_active_vad_candidate
     await controller.on_vad_event(VadEvent("speech_end"))
+    assert not controller.has_active_vad_candidate
 
     await asyncio.sleep(0.1)
 
     assert controller._queue.empty()
+    assert controller._candidate.started_at is None
 
 
 @pytest.mark.parametrize(
@@ -391,6 +394,28 @@ async def test_no_validator_keeps_old_behavior() -> None:
 
     turn = await _next_turn(controller)
     assert turn.text == "tôi muốn đổi lịch"
+
+
+async def test_silence_elapsed_counts_from_bot_stop_and_last_vad_activity() -> None:
+    """CallBridge gửi lượt im lặng dựa trên số này — phải tính từ mốc muộn nhất giữa lúc bot
+    dứt lời và lúc VAD còn thấy tiếng, và không tính khi đang có câu dở."""
+    clock = _FakeClock()
+    controller = TurnController(clock=clock, max_wait_after_vad_end_ms=20, min_speech_ms=250)
+    assert controller.silence_elapsed_s() is None  # chưa có mốc nào
+
+    controller.on_bot_speaking_changed(True)
+    assert controller.silence_elapsed_s() is None  # bot đang nói
+    controller.on_bot_speaking_changed(False)
+    clock.advance(2.0)
+    assert controller.silence_elapsed_s() == pytest.approx(2.0)
+
+    await controller.on_vad_event(VadEvent("speech_start"))
+    clock.advance(0.1)
+    assert controller.silence_elapsed_s() is None  # đang nói dở
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await asyncio.sleep(0.05)  # 100 ms < min_speech_ms: câu bị huỷ sau timeout
+    clock.advance(1.0)
+    assert controller.silence_elapsed_s() == pytest.approx(1.0)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,25 @@ class LiveKitSettings(YamlSettings):
     # LiveKit `start` mặc định giữ 4 process nóng; ZipFormer được load trong mỗi process.
     # Một process idle phù hợp máy demo 2 vCPU/2 GB, tránh nhân bộ nhớ model lên 4 lần.
     worker_num_idle_processes: int
+    # Rỗng = automatic dispatch: LiveKit chia job cho mọi worker không đặt tên trong project.
+    # Bug thật (28/09): một worker khác dùng chung project nhận 8/10 job, cuộc gọi local không
+    # có bot. Đặt tên thì worker chỉ nhận job gọi đúng tên và token browser gọi đúng agent đó
+    # (transports/http/livekit_token.py) — FastAPI và worker phải cùng giá trị.
+    agent_name: str
+    # Gửi lượt im lặng cho core sau chừng này ms không có tiếng nói (0 = tắt). Core đã có luật
+    # im lặng (max_silent_turns) nhưng đường LiveKit trước đây luôn gửi silence_ms=0.
+    silence_timeout_ms: int
+    # THỬ NGHIỆM (28/09/2026, xem docs/evidence §8): đo offline cho thấy Krisp VIVA làm WER
+    # tệ hơn ở gần mọi điều kiện kể cả audio sạch — mặc định TẮT. Bật tạm để nghe thử qua
+    # LiveKit thật (streaming, có network/jitter thật) trước khi quyết định cuối cùng; không
+    # phải khuyến nghị bật cho production. Cần cài `livekit-plugins-krisp` (không có sẵn trong
+    # pyproject.toml — xem cảnh báo về nâng cấp livekit-agents/openai ngoài ý muốn trong evidence).
+    krisp_noise_suppression_enabled: bool = False
+
+    @field_validator("agent_name", mode="before")
+    @classmethod
+    def _strip_agent_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("input_sample_rate", "frame_ms", mode="before")
     @classmethod
@@ -55,7 +74,7 @@ class LiveKitSettings(YamlSettings):
             raise ValueError("phải lớn hơn 0")
         return value
 
-    @field_validator("worker_num_idle_processes")
+    @field_validator("worker_num_idle_processes", "silence_timeout_ms")
     @classmethod
     def _non_negative(cls, value: int) -> int:
         if value < 0:

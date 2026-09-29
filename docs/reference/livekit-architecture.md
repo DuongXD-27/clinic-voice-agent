@@ -284,7 +284,7 @@ interface `stream(frames) -> AsyncIterator[TranscriptEvent]`.
 | `SAMPLE_RATE` | `8000` | Áp dụng cho `SpeechSettings` — đường HTTP batch. LiveKit dùng riêng `LiveKitSettings.input_sample_rate` |
 | `VAD_PROVIDER` | `webrtc` | `energy` hoặc `webrtc` |
 | `TTS_PROVIDER` | `vbee` | Provider TTS (`openai` / `elevenlabs` / `vbee`) |
-| `ZIPFORMER_*_PATH` | trỏ `assets/gipformer/` | Asset model đang dùng — xem §5 lịch sử đổi model |
+| `ZIPFORMER_*_PATH` | trỏ `assets/zipformer/` (nội dung model gipformer1.5) | Asset model đang dùng — xem §5 lịch sử đổi model |
 | `ELEVENLABS_API_KEY` | có sẵn | Dùng chung cho cả STT batch/realtime và TTS |
 | `ELEVENLABS_REALTIME_STT_MODEL` | `scribe_v2_realtime` | Model ID cho `ElevenLabsRealtimeConfig` |
 | `LIVEKIT_URL`/`LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` | có sẵn | Kết nối LiveKit Cloud |

@@ -20,7 +20,7 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 | Gửi lại cùng `call_id`, cùng cấu hình (`direction`, `appointment_id`, `caller_number`, `locale`, `max_turns`) khi phiên còn hoạt động | `200`, trả nguyên phản hồi mở phiên đã lưu; không reset ngữ cảnh |
 | `call_id` đã kết thúc hoặc đã làm sạch | `409 CALL_ENDED` hoặc `409 CALL_RECONCILIATION_REQUIRED` |
 | Cùng `call_id`, khác cấu hình | `409 CALL_CONFLICT` |
-| `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `src/speech/bundle.py` |
+| `mode=audio` | `200`, ASR (self-host ZipFormer) chạy trên `audio_url` mỗi lượt, phản hồi kèm `audio_url` TTS — xem `src/speech/bundle.py`. Clip giữ tần số gốc, chỉ resample một lần về 16 kHz của model (không ép qua 8 kHz) |
 
 Console mô phỏng outbound bằng `appointment_id`, chưa thực hiện quay số điện thoại.
 Tra cứu Clinic là điều kiện trước khi mở phiên outbound; lỗi này hiển thị cho người vận hành.
@@ -70,6 +70,7 @@ Mọi câu bot nói, qua HTTP hay LiveKit, đều qua cùng Output Guard trong `
 |---|---|
 | `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
 | `/demo-api/*` | Có |
+| `/v1/stt/*` (API thử STT, xem [stt-eval-api.md](stt-eval-api.md)) | Có. Chỉ mount khi `STT_EVAL_ENABLED=true`, và khi đó bắt buộc phải có `BOT_API_KEYS` |
 | `/health`, `/ready`, `/audio/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/ui/*` là file tĩnh của giao diện web |
 
 Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/ui/call` (link cũ `/demo/` chuyển hướng tới đây) có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
