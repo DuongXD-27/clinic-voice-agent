@@ -167,6 +167,8 @@ clinic.fail_next("confirm_appointment", outcome_unknown=True, apply_first=True) 
 clinic.fail_next("get_appointment", RuntimeError("boom"))  # nhận mọi exception
 
 clinic.fail_times("get_slots", 2, clinic_error(429, "RATE_LIMITED"))  # 2 lần rồi bình thường
+# Lần đầu ĐÃ ghi, mọi lần gửi lại (Gateway T-12) vẫn timeout: bot hết lượt mà chưa rõ kết quả
+clinic.fail_unknown("confirm_appointment", WRITE_MAX_SENDS, apply_first=True)
 clinic.fail_always("*", clinic_error(401, "BAD_KEY"))  # mọi thao tác, tới khi clear_faults()
 clinic.delay("get_appointment", 7.5)  # chờ thật; times=1 để chỉ chậm một lần
 clinic.after_next("get_slots", lambda page: clinic.take_slot("slot_aa01"))  # chạy sau lần gọi kế
@@ -180,6 +182,8 @@ clinic.clear_faults()
   lý như mock → `after_next`.
 - `apply_first=True` là case quan trọng nhất để test chống ghi trùng: clinic đã đổi state nhưng bot
   nhận `ClinicAPIError(outcome_known=False)`. Gửi lại cùng key sẽ được replay, không ghi hai lần.
+- Gateway tự gửi lại lỗi tạm thời tới `WRITE_MAX_SENDS` lần (T-12, `callbot.engine.tools.clinic_gateway`):
+  một lỗi đơn lẻ sẽ được phục hồi. Muốn test nhánh "vẫn lỗi" thì cho lỗi lặp đủ số lần đó.
 - `delay` chờ thật bằng `clinic.sleep`. Không muốn chờ: `clinic.sleep = lambda seconds: None` —
   `calls[i].latency_ms` vẫn ghi độ trễ giả.
 

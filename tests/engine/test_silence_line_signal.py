@@ -12,6 +12,7 @@ from callbot.engine import CallerInput, CallStart, ReconciliationRequired, creat
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
 from callbot.engine.session import CallContext
+from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
@@ -309,7 +310,7 @@ def test_version_conflict_once_retries_same_key_and_marks_once() -> None:
 
 def test_unknown_unreachable_outcome_blocks_for_reconciliation() -> None:
     clinic = FakeClinicAPI()
-    clinic.fail_next("mark_unreachable", outcome_unknown=True, apply_first=True)
+    clinic.fail_unknown("mark_unreachable", WRITE_MAX_SENDS, apply_first=True)
     bot, clinic, actions = _start("c_t08_unknown", "outbound", clinic)
     with pytest.raises(ReconciliationRequired):
         _run(bot, "c_t08_unknown", [SILENCE, SILENCE, SILENCE], actions, start=1)
