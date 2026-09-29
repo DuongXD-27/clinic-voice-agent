@@ -59,6 +59,9 @@ ERROR_CODES = frozenset(
         "SF-03",
         "SF-04",
         "SF-05",
+        # Output Guard (R-01)
+        "OUTPUT_UNREGISTERED",
+        "OUTPUT_UNPROVEN_SUCCESS",
         # Engine
         "APPOINTMENT_NOT_ACTIONABLE",
         "CLINIC_INVALID_RESPONSE",

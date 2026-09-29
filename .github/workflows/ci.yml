@@ -56,6 +56,9 @@ jobs:
     env:
       TEST_REDIS_URL: redis://localhost:6379/15
       REQUIRE_REDIS_TESTS: "1"
+      # Test LiveKit chạy với SDK thật (rtc.AudioFrame/AudioSource, không cần server): thiếu
+      # extra [livekit] là fail, không âm thầm skip. Docker production cũng cài extra này.
+      REQUIRE_LIVEKIT_TESTS: "1"
     steps:
       - name: Checkout tested commit
         uses: actions/checkout@v4
@@ -68,7 +71,7 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
-        run: python -m pip install -e ".[dev,speech]"
+        run: python -m pip install -e ".[dev,speech,livekit]"
 
       - name: Lint, format check and test
         run: make check PYTEST_ARGS="--junitxml=test-results/junit.xml"

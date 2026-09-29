@@ -24,7 +24,7 @@ from callbot.engine import (
     TurnOutOfOrder,
 )
 from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
-from callbot.engine.errors import OutboundStartFailed
+from callbot.engine.errors import CallStartBlocked, OutboundStartFailed
 from callbot.tracing import Tracer, null_tracer
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
@@ -192,6 +192,13 @@ def _translate_errors(call_id: str, operation: Callable[[], T]) -> T:
             "OUTBOUND_START_FAILED",
             "Chưa thể bắt đầu cuộc gọi đi: không lấy được lịch hẹn hợp lệ từ Clinic. "
             "Cuộc gọi chưa được tạo. Vui lòng kiểm tra Clinic và mã lịch hẹn.",
+        ) from exc
+    except CallStartBlocked as exc:
+        logger.error("Output Guard chặn lời mở đầu của %s", call_id)
+        raise _error(
+            503,
+            "CALL_START_BLOCKED",
+            "Lời mở đầu không qua kiểm soát đầu ra. Cuộc gọi chưa được tạo, chưa phát lời nào.",
         ) from exc
     except httpx.TimeoutException as exc:
         logger.warning("Clinic mock timeout khi xử lý %s", call_id)
