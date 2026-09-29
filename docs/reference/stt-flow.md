@@ -26,7 +26,7 @@ audio_url (URL clip .wav của harness)
    │
    ▼
 [1] Tải + giải mã  →  audio/loader.py, audio/codec.py
-   │  (PCM 16-bit mono, chuẩn hoá về 8 kHz)
+   │  (PCM 16-bit mono, giữ tần số gốc; ASR resample một lần về 16 kHz)
    ▼
 [2] VAD (Voice Activity Detection)  →  vad/streaming.py, vad/energy.py
    │  (có tiếng nói hay im lặng — bỏ qua ASR nếu im lặng)

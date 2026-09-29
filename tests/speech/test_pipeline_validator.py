@@ -5,8 +5,7 @@ import pytest
 
 pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 
-from speech.asr.admission import SpeechAdmission  # noqa: E402
-from speech.asr.evidence import TranscriptEvidenceTracker  # noqa: E402
+from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
 from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
 from speech.asr.vad.streaming import StreamingVAD  # noqa: E402
@@ -139,36 +138,102 @@ async def test_noise_tracker_requires_classifier() -> None:
         )
 
 
-async def test_admission_and_validator_use_independent_trackers() -> None:
-    """Speech Admission và TurnValidator's NoiseTracker là 2 instance ĐỘC LẬP (xem
-    docstring stream()) — cấu hình cả 2 cùng lúc không được crash hay xung đột state."""
-    vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
-    asr = _FakeASR([TranscriptEvent(text="tôi muốn đổi lịch", is_final=True)])
-    admission = SpeechAdmission(min_snr_db=-100.0, min_speech_ms=0)  # luôn admit
-    validator = TurnValidator()
-    turn_controller = TurnController(min_speech_ms=0, validator=validator)
-    pipeline = STTPipeline(
-        asr=asr,
-        vad=StreamingVAD(_NullEnergyClassifier()),
-        async_vad=vad,
-        admission=admission,
-        admission_classifier=_AlwaysSpeechClassifier(),
-    )
+class _ByFrameClassifier:
+    def __init__(self, speech_frame: bytes) -> None:
+        self._speech_frame = speech_frame
+
+    def is_speech(self, frame: bytes) -> bool:
+        return frame == self._speech_frame
+
+
+class _FinalAfterFramesASR:
+    """Phát final sau khi đã nhận đủ số frame — như ZipFormer chỉ chốt câu sau ~1 s im lặng."""
+
+    name = "fake"
+    input_sample_rate = 8000
+
+    def __init__(self, finals: list[tuple[int, str]]) -> None:
+        self._finals = finals
+
+    def transcribe(self, segment) -> Transcript:
+        raise NotImplementedError
+
+    async def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
+        received = 0
+        pending = list(self._finals)
+        async for _ in frames:
+            received += 1
+            while pending and received >= pending[0][0]:
+                yield TranscriptEvent(text=pending.pop(0)[1], is_final=True)
+
+
+async def _sequence(frames: list[bytes]) -> AsyncIterator[bytes]:
+    for frame in frames:
+        yield frame
+        await asyncio.sleep(0)
+
+
+async def test_short_answer_final_after_silence_is_not_dropped() -> None:
+    """Hồi quy: "DẠ KHÔNG" nói rõ trên audio sạch từng bị DROP.
+
+    Final tới sau đoạn im lặng; validator từng đọc SNR của frame im lặng mới nhất (đo được
+    snr=-13.6 dB) và áp luật "<= 2 từ + SNR thấp". Phải đọc SNR của chính câu nói."""
+    loud, silence = b"\x00\x40" * 240, b"\x01\x00" * 240
+    frames = [silence] * 10 + [loud] * 15 + [silence] * 35
+    asr = _FinalAfterFramesASR([(len(frames), "dạ không")])
+    vad = _FakeAsyncVAD([VadEvent("speech")] * 10 + [VadEvent("speech_start")])
+    controller = TurnController(min_speech_ms=0, validator=TurnValidator(min_snr_db=3.0))
+    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
 
     turns = await asyncio.wait_for(
         _collect(
             pipeline.stream(
-                _frames(4),
-                turn_controller=turn_controller,
-                noise_tracker=NoiseTracker(),
-                noise_classifier=_AlwaysSpeechClassifier(),
+                _sequence(frames),
+                turn_controller=controller,
                 evidence_tracker=TranscriptEvidenceTracker(),
+                noise_tracker=NoiseTracker(),
+                noise_classifier=_ByFrameClassifier(loud),
             )
         ),
         timeout=2.0,
     )
 
-    assert len(turns) == 1
+    assert [turn.text for turn in turns] == ["dạ không"]
+
+
+async def test_stability_is_judged_per_utterance() -> None:
+    """Hồi quy: tracker không reset giữa các câu nên chuỗi trả lời thật "vâng" -> "có" ->
+    "vâng" khớp mẫu dao động, câu thứ ba bị coi là ảo giác."""
+
+    class _SpyTracker(TranscriptEvidenceTracker):
+        def __init__(self) -> None:
+            super().__init__()
+            self.final_verdicts = []
+
+        def observe(self, event):
+            verdict = super().observe(event)
+            if event.is_final:
+                self.final_verdicts.append(verdict)
+            return verdict
+
+    tracker = _SpyTracker()
+    asr = _FinalAfterFramesASR([(5, "vâng"), (10, "có"), (15, "vâng")])
+    pipeline = STTPipeline(
+        asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=_FakeAsyncVAD([])
+    )
+
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _sequence([b"\x00\x40" * 240] * 20),
+                turn_controller=TurnController(min_speech_ms=0),
+                evidence_tracker=tracker,
+            )
+        ),
+        timeout=2.0,
+    )
+
+    assert StabilityVerdict.OSCILLATING not in tracker.final_verdicts
 
 
 if __name__ == "__main__":

@@ -9,9 +9,11 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
+from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
@@ -37,8 +39,21 @@ _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
 _PLAYOUT_TIMEOUT_S = 20.0
+# Độ dài mỗi frame TTS đưa vào AudioSource — xem docstring _speak().
+_PLAYOUT_FRAME_MS = 20
+# Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
+_SILENCE_POLL_S = 0.25
 # Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
 TRANSCRIPT_TOPIC = "callbot.transcript"
+
+
+@dataclass(frozen=True)
+class _SilenceTimeout:
+    """Hẹn giờ im lặng đã hết. `generation` khớp lượt đang chờ; lệch nghĩa là đã có lượt khác
+    được xử lý sau khi hẹn giờ bắt đầu — bỏ qua, không gửi lượt im lặng cũ cho core."""
+
+    generation: int
+    silence_ms: int
 
 
 def call_start_from_room(
@@ -70,6 +85,9 @@ def call_start_from_room(
 
 
 def caller_input_from_turn(turn_number: int, turn: UserTurnCompleted) -> CallerInput:
+    """Lượt im lặng (`silence_ms > 0`, hợp đồng core: Phụ lục A) không mang text."""
+    if turn.silence_ms > 0:
+        return CallerInput(turn=turn_number, text=None, silence_ms=turn.silence_ms)
     return CallerInput(
         turn=turn_number,
         text=turn.text,
@@ -103,6 +121,9 @@ class CallBridge:
         frame_ms: int = 30,
         input_queue_ms: int = 1_500,
         output_queue_ms: int = 200,
+        caller_identity: Optional[str] = None,
+        silence_timeout_ms: int = 0,
+        krisp_noise_suppression_enabled: bool = False,
     ) -> None:
         self._room = room
         self._orchestrator = orchestrator
@@ -130,6 +151,20 @@ class CallBridge:
         self._active_speak_task: Optional[asyncio.Task] = None
         self._closing = False
         self._input_done = False
+        # Chỉ nghe mic của người gọi (participant worker.py đã chờ). None: khoá vào participant
+        # đầu tiên có track mic. Trước đây mọi track audio của mọi participant (người thứ hai,
+        # track share màn hình) cùng đổ vào MỘT hàng đợi — hai luồng PCM xen kẽ nhau.
+        self._caller_identity = caller_identity
+        self._pump_task: Optional[asyncio.Task] = None
+        # Core đã có luật im lặng (silence_ms > 0, max_silent_turns) nhưng LiveKit chưa từng gửi
+        # lượt im lặng: người dùng im thì bot chờ mãi. 0 = tắt.
+        self._silence_timeout_ms = silence_timeout_ms
+        self._silence_task: Optional[asyncio.Task] = None
+        self._silence_generation = 0
+        # THỬ NGHIỆM (docs/evidence §8): mặc định false — đo offline cho thấy Krisp VIVA làm
+        # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
+        # thật; không phải khuyến nghị bật cho production.
+        self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
         # 1 TurnController + 1 InterruptionController riêng cho call này — không tạo
         # qua default của STTPipeline.stream() để CallBridge điều khiển được
         # bot-speaking state của TurnController khi barge-in xảy ra. worker.py truyền
@@ -140,8 +175,8 @@ class CallBridge:
         # `interruption_validator` dùng CHUNG TurnValidator với turn_controller (nếu
         # turn_validator_enabled) — xem docstring InterruptionController.__init__ #3 và
         # module speech/turn/interruption.py: barge-in false-positive từ noise trong lúc
-        # bot nói KHÔNG được Speech Admission chặn (audio phải tới ASR thật để tự confirm),
-        # nên cần lớp phòng thủ riêng ở đây.
+        # bot nói không thể lọc trước ASR (audio phải tới ASR thật để tự confirm), nên cần lớp
+        # phòng thủ riêng ở đây.
         self._interruption = InterruptionController(
             self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
         )
@@ -169,7 +204,38 @@ class CallBridge:
                 appointment_id=self._appointment_id,
             )
             logger.info("call_bridge: start_call room=%s", self._room.name)
-            opening: BotAction = await asyncio.to_thread(self._orchestrator.start_call, call_start)
+            try:
+                opening: BotAction = await asyncio.to_thread(
+                    self._orchestrator.start_call, call_start
+                )
+            except OutboundStartFailed as exc:
+                # Core cố ý không tạo phiên/không phát lời chào khi lịch outbound không
+                # dùng được. Báo lỗi qua data channel để web demo không im lặng sau khi
+                # đã kết nối room; không biến lỗi nghiệp vụ dự kiến thành job crash.
+                logger.warning(
+                    "call_bridge: outbound start failed room=%s code=%s",
+                    self._room.name,
+                    exc.code or "UNKNOWN",
+                )
+                try:
+                    await self._room.local_participant.publish_data(
+                        json.dumps(
+                            {
+                                "code": "OUTBOUND_START_FAILED",
+                                "message": "Không lấy được lịch hẹn hợp lệ từ Clinic. "
+                                "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
+                            },
+                            ensure_ascii=False,
+                        ),
+                        reliable=True,
+                        topic="callbot.status",
+                    )
+                except Exception as publish_error:
+                    logger.warning(
+                        "call_bridge: không gửi được lỗi outbound tới browser (%s)",
+                        type(publish_error).__name__,
+                    )
+                return
 
             await self._publish_tts_track()
             # Bắt đầu VAD/ASR trước câu chào: barge-in hoạt động ngay từ lượt 0 và mic
@@ -181,6 +247,7 @@ class CallBridge:
             await self._speak(opening.utterance)
             if opening.ended:
                 return
+            self._start_silence_timer()
 
             while True:
                 item = await self._turn_queue.get()
@@ -188,7 +255,16 @@ class CallBridge:
                     if self._pipeline_error is not None:
                         raise self._pipeline_error
                     return
-                turn = item
+                if isinstance(item, _SilenceTimeout):
+                    if item.generation != self._silence_generation:
+                        continue
+                    logger.info(
+                        "call_bridge: im lặng %d ms -> gửi lượt im lặng cho core", item.silence_ms
+                    )
+                    turn = UserTurnCompleted(text="", silence_ms=item.silence_ms)
+                else:
+                    turn = item
+                self._stop_silence_timer()
                 self._turn_number += 1
                 logger.info(
                     "call_bridge: turn %d completed confidence=%s",
@@ -200,7 +276,9 @@ class CallBridge:
                 # nhưng vẫn bật được khi cần chẩn đoán ASR nghe sai gì (bật qua
                 # `logging.getLogger("callbot.transports.livekit.call_bridge").setLevel(logging.DEBUG)`).
                 logger.debug("call_bridge: turn %d text=%r", self._turn_number, turn.text)
-                await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
+                if not turn.silence_ms:
+                    # Lượt im lặng không có lời để hiện; câu hỏi lại của bot đã đủ ngữ cảnh.
+                    await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
                 caller = caller_input_from_turn(self._turn_number, turn)
                 action = await asyncio.to_thread(
                     self._orchestrator.handle_turn, self._room.name, caller
@@ -216,8 +294,37 @@ class CallBridge:
                 await self._speak(action.utterance)
                 if action.ended:
                     return
+                self._start_silence_timer()
         finally:
             await self.aclose()
+
+    def _start_silence_timer(self) -> None:
+        self._stop_silence_timer()
+        if self._silence_timeout_ms > 0:
+            self._silence_task = asyncio.create_task(self._watch_silence(self._silence_generation))
+
+    def _stop_silence_timer(self) -> None:
+        """Mọi lượt (thật hoặc im lặng) được lấy ra xử lý đều làm hẹn giờ đang chạy hết hiệu
+        lực — kể cả `_SilenceTimeout` đã nằm sẵn trong hàng đợi (lệch generation)."""
+        self._silence_generation += 1
+        task = self._silence_task
+        self._silence_task = None
+        if task is not None and task is not asyncio.current_task() and not task.done():
+            task.cancel()
+
+    async def _watch_silence(self, generation: int) -> None:
+        """Chờ tới khi người dùng im đủ `silence_timeout_ms` liên tục (theo VAD, tính từ lúc bot
+        dứt lời). Đang nói dở hoặc đang chờ ASR chốt câu thì chưa tính là im lặng."""
+        timeout_s = self._silence_timeout_ms / 1000
+        while True:
+            elapsed = self._turn_controller.silence_elapsed_s()
+            if elapsed is not None and elapsed >= timeout_s:
+                break
+            await asyncio.sleep(_SILENCE_POLL_S if elapsed is None else timeout_s - elapsed)
+        if generation == self._silence_generation:
+            await self._turn_queue.put(
+                _SilenceTimeout(generation=generation, silence_ms=round(elapsed * 1000))
+            )
 
     async def _publish_transcript(
         self,
@@ -277,13 +384,45 @@ class CallBridge:
 
         if self._closing or track.kind != rtc.TrackKind.KIND_AUDIO:
             return
-        self._tasks.append(asyncio.ensure_future(self._pump_track(track)))
+        identity = getattr(participant, "identity", None)
+        source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
+        if source not in (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_UNKNOWN):
+            logger.info("call_bridge: bỏ qua track audio nguồn %s của %s", source, identity)
+            return
+        if self._caller_identity is None:
+            self._caller_identity = identity
+        elif identity != self._caller_identity:
+            logger.info("call_bridge: bỏ qua track audio của participant khác %s", identity)
+            return
+        # Người gọi publish lại mic (đổi thiết bị): luồng mới thay luồng cũ, không chạy song song.
+        if self._pump_task is not None and not self._pump_task.done():
+            self._pump_task.cancel()
+        self._pump_task = asyncio.ensure_future(self._pump_track(track))
+        self._tasks.append(self._pump_task)
 
     def _on_disconnected(self, *_args: object) -> None:
         self._signal_input_done()
         task = self._active_speak_task
         if task is not None and not task.done():
             task.cancel()
+
+    def _krisp_processor(self) -> object | None:
+        """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
+        mới mỗi lần pump (không tái dùng qua re-publish): auto_close mặc định của AudioStream
+        đóng nó khi stream đóng, tái dùng instance đã đóng sẽ lỗi."""
+        if not self._krisp_noise_suppression_enabled:
+            return None
+        try:
+            from livekit.plugins import krisp
+        except ImportError:
+            logger.warning(
+                "call_bridge: krisp_noise_suppression_enabled=true nhưng "
+                "livekit-plugins-krisp chưa cài — bỏ qua, chạy không lọc"
+            )
+            return None
+        return krisp.KrispVivaFilterFrameProcessor(
+            mode=krisp.viva_filter.VivaMode.VOICE_ISOLATION, noise_suppression_level=90.0
+        )
 
     async def _pump_track(self, track: "rtc.Track") -> None:
         from livekit import rtc
@@ -294,6 +433,7 @@ class CallBridge:
             num_channels=1,
             frame_size_ms=self._frame_ms,
             capacity=self._input_queue_frames,
+            noise_cancellation=self._krisp_processor(),
         )
         # LIVEKIT_DEBUG_DUMP_AUDIO=1: ghi PCM thật (đã qua livekit_frame_to_segment, đúng
         # đường dữ liệu đưa vào ASR) ra 1 file wav/call trong temp/audio/ — cách duy nhất
@@ -350,33 +490,41 @@ class CallBridge:
         await self._room.local_participant.publish_track(track, options)
 
     async def _speak(self, text: str) -> None:
-        """Publish TTS streaming từng chunk thay vì chờ đủ câu. Interruption có thể
-        cancel() giữa chừng — kiểm tra cờ trước MỖI chunk và dừng publish ngay (không
-        chỉ ngừng gọi API mà vẫn phát nốt chunk đã có)."""
+        """Publish TTS theo từng frame `_PLAYOUT_FRAME_MS`, kiểm tra barge-in trước MỖI frame
+        và dừng ngay (không chỉ ngừng gọi API mà vẫn phát nốt audio đã có).
+
+        Không bao giờ đưa cả chunk TTS vào một lần `capture_frame`: provider không stream
+        (Vbee) trả nguyên câu thành MỘT chunk. SDK tự chia frame lớn và đẩy dần trong task
+        native — huỷ lần await phía Python không dừng được task đó, nên sau barge-in bot vẫn
+        nói tiếp phần còn lại, và câu kế tiếp bị native từ chối
+        ("InvalidState - failed to capture frame"), sập job. Frame nhỏ thì phần còn treo sau
+        khi huỷ tối đa một frame, xong ngay khi `clear_queue()` xả hàng đợi."""
         if not text.strip() or self._audio_source is None:
             return
 
         self._turn_controller.on_bot_speaking_changed(True)
         self._interruption.on_bot_started_speaking(text)
         self._active_speak_task = asyncio.current_task()
-        # rtc.AudioFrame đòi len(data) chẵn (PCM16 = 2 byte/sample) — chunk từ
-        # synthesize_stream() cắt theo byte HTTP tuỳ ý, không đảm bảo ranh giới sample;
-        # giữ lại byte lẻ cuối chunk cho lần capture_frame kế tiếp thay vì cắt bỏ (mất
-        # audio) hay publish frame không hợp lệ (SDK raise ValueError, sập cả job).
+        sample_rate = self._tts.stream_sample_rate
+        frame_bytes = sample_rate * _PLAYOUT_FRAME_MS // 1000 * 2
+        # Chunk TTS cắt theo byte HTTP tuỳ ý; gom lại rồi cắt đúng ranh giới frame PCM16.
         pending = bytearray()
         interrupted = False
         try:
             async for chunk in self._tts.synthesize_stream(text):
-                if self._interruption.state == InterruptionState.INTERRUPTED:
+                if self._is_interrupted():
                     break
                 pending.extend(chunk)
-                usable_len = len(pending) - (len(pending) % 2)
-                if usable_len == 0:
-                    continue
-                pcm, pending = bytes(pending[:usable_len]), pending[usable_len:]
-                segment = AudioSegment(pcm=pcm, sample_rate=self._tts.stream_sample_rate)
-                await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
-            interrupted = self._interruption.state == InterruptionState.INTERRUPTED
+                while len(pending) >= frame_bytes and not self._is_interrupted():
+                    await self._capture(bytes(pending[:frame_bytes]), sample_rate)
+                    del pending[:frame_bytes]
+                if self._is_interrupted():
+                    break
+            # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
+            tail = len(pending) - len(pending) % 2
+            if tail and not self._is_interrupted():
+                await self._capture(bytes(pending[:tail]), sample_rate)
+            interrupted = self._is_interrupted()
             if interrupted:
                 # Chỉ dừng đẩy chunk MỚI là chưa đủ — chunk đã capture nhưng chưa phát
                 # ra loa vẫn còn trong hàng đợi playout của AudioSource, phải xoá luôn
@@ -401,14 +549,21 @@ class CallBridge:
                             _PLAYOUT_TIMEOUT_S,
                         )
         except asyncio.CancelledError:
-            interrupted = self._interruption.state == InterruptionState.INTERRUPTED
+            interrupted = self._is_interrupted()
             if not interrupted:
                 raise
         finally:
-            interrupted = interrupted or self._interruption.state == InterruptionState.INTERRUPTED
+            interrupted = interrupted or self._is_interrupted()
             self._turn_controller.on_bot_speaking_changed(False, preserve_candidate=interrupted)
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None
+
+    def _is_interrupted(self) -> bool:
+        return self._interruption.state == InterruptionState.INTERRUPTED
+
+    async def _capture(self, pcm: bytes, sample_rate: int) -> None:
+        segment = AudioSegment(pcm=pcm, sample_rate=sample_rate)
+        await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
 
     async def cancel(self) -> None:
         """Interruption target: dừng network TTS và audio đã queue ngay lập tức."""
@@ -442,6 +597,7 @@ class CallBridge:
         if self._closing:
             return
         self._closing = True
+        self._stop_silence_timer()
         self._signal_input_done()
         if self._pipeline_task is not None and self._pipeline_task is not asyncio.current_task():
             self._pipeline_task.cancel()

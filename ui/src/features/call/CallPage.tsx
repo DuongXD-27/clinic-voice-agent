@@ -8,7 +8,7 @@ import { Button } from "../../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../../components/ui/Card";
 import { Notice } from "../../components/ui/Notice";
 import { useRecorder } from "../../lib/audio/useRecorder";
-import { readSession, writeSession } from "../../lib/storage";
+import { API_KEY_STORAGE, readSession, writeSession } from "../../lib/storage";
 import { resetClinic } from "./api";
 import styles from "./CallPage.module.css";
 import { Composer } from "./components/Composer";
@@ -27,8 +27,6 @@ import {
 import { PRESETS, SCENARIOS, slotOutsideWindow } from "./model/scenarios";
 import { SILENCE_MS, useCallSession, type TurnInput } from "./useCallSession";
 import { useClinicFixtures } from "./useClinicFixtures";
-
-const API_KEY_STORAGE = "callbotApiKey";
 
 export function CallPage() {
   const [config, setConfig] = useState(() => defaultConfig());
@@ -162,7 +160,7 @@ export function CallPage() {
     <>
       <PageHeader
         eyebrow="Gọi thử · HTTP"
-        title="Cuộc gọi thử"
+        title="Cuộc gọi từng lượt (Text/Audio)"
         description="Mô phỏng cuộc gọi qua hai endpoint contract: gõ lời người gọi, hoặc ghi âm từ microphone."
         actions={
           <>

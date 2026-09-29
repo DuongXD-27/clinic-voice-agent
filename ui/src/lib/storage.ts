@@ -3,6 +3,9 @@
  * Chỉ dùng cho tiện ích của người đang xem (API key trong tab này), không cho dữ liệu cần giữ.
  */
 
+/** Bearer key của bot, dùng chung giữa trang gọi HTTP và LiveKit trong cùng tab. */
+export const API_KEY_STORAGE = "callbotApiKey";
+
 export function readSession(key: string): string | null {
   try {
     return window.sessionStorage.getItem(key);

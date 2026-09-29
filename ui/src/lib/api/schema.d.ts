@@ -16,7 +16,8 @@ export interface paths {
          * Upload Demo Audio
          * @description Nhận WAV từ browser và trả URL mà ``POST .../turn`` có thể tải lại.
          *
-         *     File được chuẩn hóa về PCM16 mono 8 kHz, giống audio đi qua đường điện thoại.
+         *     File được chuẩn hóa về PCM16 mono 16 kHz (tần số model ASR) bằng soxr, một lần: không hạ
+         *     qua 8 kHz rồi nâng lại, và lọc chống aliasing đúng cách thay cho trình duyệt.
          *     Giới hạn nhỏ và call_id allow-list tránh biến route demo thành nơi upload tùy ý.
          */
         put: operations["upload_demo_audio_demo_api_audio__call_id___turn__wav_put"];
@@ -257,6 +258,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/stt/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * STT file dài nhiều câu (WAV qua URL)
+         * @description Tải WAV từ `audio_url` rồi chạy STT với tiền xử lý và cắt đoạn.
+         *
+         *     File **dài nhiều câu** (tối đa 5 phút). Chi tiết: `docs/reference/stt-eval-api.md`.
+         *
+         *     1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.
+         *     2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.
+         *     3. Khuếch đại tĩnh file quá nhỏ (tối đa +20 dB, không để peak vượt −1 dBFS).
+         *     4. Silero VAD tìm các đoạn có giọng; mỗi đoạn decode riêng, text ghép theo thời gian.
+         *        Đoạn dài hơn 30 s được chia tại chỗ yên nhất (bộ nhớ model tăng theo bình phương độ dài).
+         *
+         *     `confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là
+         *     đúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.
+         *     `null` khi provider không trả confidence.
+         */
+        post: operations["transcribe_url_v1_stt_transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stt/transcribe/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * STT file dài nhiều câu (WAV upload từ máy)
+         * @description Upload WAV (multipart, field `file`, tối đa 25 MiB) rồi chạy STT với tiền xử lý và cắt đoạn.
+         *
+         *     File **dài nhiều câu** (tối đa 5 phút). Chi tiết: `docs/reference/stt-eval-api.md`.
+         *
+         *     1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.
+         *     2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.
+         *     3. Khuếch đại tĩnh file quá nhỏ (tối đa +20 dB, không để peak vượt −1 dBFS).
+         *     4. Silero VAD tìm các đoạn có giọng; mỗi đoạn decode riêng, text ghép theo thời gian.
+         *        Đoạn dài hơn 30 s được chia tại chỗ yên nhất (bộ nhớ model tăng theo bình phương độ dài).
+         *
+         *     `confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là
+         *     đúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.
+         *     `null` khi provider không trả confidence.
+         */
+        post: operations["transcribe_upload_v1_stt_transcribe_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stt/turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * STT một lượt nói (WAV qua URL)
+         * @description Tải WAV từ `audio_url` rồi chạy STT cho một lượt nói.
+         *
+         *     File là **một lượt nói** (tối đa 30 s), decode nguyên clip một lần — không cắt đoạn. Chi tiết:
+         *     `docs/reference/stt-eval-api.md`.
+         *
+         *     1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.
+         *     2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.
+         *     3. Khuếch đại tĩnh nếu giọng dưới −35 dBFS (tối đa +20 dB, không để peak vượt −1 dBFS).
+         *     4. Model decode nguyên clip.
+         *
+         *     `confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là
+         *     đúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.
+         *     `null` khi provider không trả confidence.
+         */
+        post: operations["turn_url_v1_stt_turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/stt/turn/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * STT một lượt nói (WAV upload từ máy)
+         * @description Upload WAV (multipart, field `file`, tối đa 25 MiB) rồi chạy STT cho một lượt nói.
+         *
+         *     File là **một lượt nói** (tối đa 30 s), decode nguyên clip một lần — không cắt đoạn. Chi tiết:
+         *     `docs/reference/stt-eval-api.md`.
+         *
+         *     1. Decode WAV (PCM 8/16/24/32-bit, float, A-law, μ-law), trộn về mono.
+         *     2. Bỏ DC offset, resample **một lần** thẳng về tần số model (16 kHz) bằng soxr.
+         *     3. Khuếch đại tĩnh nếu giọng dưới −35 dBFS (tối đa +20 dB, không để peak vượt −1 dBFS).
+         *     4. Model decode nguyên clip.
+         *
+         *     `confidence` là xác suất trung bình model gán cho các token nó chọn — **cao không có nghĩa là
+         *     đúng** (model có thể nghe nhầm rất tự tin), chủ yếu giúp nhận ra chữ bịa do nhiễu/lặng.
+         *     `null` khi provider không trả confidence.
+         */
+        post: operations["turn_upload_v1_stt_turn_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -278,6 +407,46 @@ export interface components {
             status: string | null;
             /** Version */
             version: number | null;
+        };
+        /** Body_transcribe_upload_v1_stt_transcribe_upload_post */
+        Body_transcribe_upload_v1_stt_transcribe_upload_post: {
+            /**
+             * Compare
+             * @description Chạy thêm bản `raw`: nguyên file, không tiền xử lý, không cắt theo VAD (file dài hơn 30 s được chia khúc tại chỗ yên nhất) — để so với kết quả chính.
+             * @default false
+             */
+            compare?: boolean;
+            /**
+             * File
+             * @description File WAV
+             */
+            file: string;
+            /**
+             * Telephone Band
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @default false
+             */
+            telephone_band?: boolean;
+        };
+        /** Body_turn_upload_v1_stt_turn_upload_post */
+        Body_turn_upload_v1_stt_turn_upload_post: {
+            /**
+             * Compare
+             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
+             * @default false
+             */
+            compare?: boolean;
+            /**
+             * File
+             * @description File WAV của một lượt nói
+             */
+            file: string;
+            /**
+             * Telephone Band
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @default false
+             */
+            telephone_band?: boolean;
         };
         /** CallDetailResponse */
         CallDetailResponse: {
@@ -661,6 +830,67 @@ export interface components {
             /** Utterance */
             utterance: string;
         };
+        /** SttAudioInfo */
+        SttAudioInfo: {
+            /** Channels */
+            channels: number;
+            /**
+             * Clipping Ratio
+             * @description Tỷ lệ mẫu bị kịch trần (méo, không sửa được)
+             */
+            clipping_ratio: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /**
+             * Format
+             * @description Định dạng gốc, vd PCM_16, PCM_24, FLOAT_32, ALAW, MULAW
+             */
+            format: string;
+            /**
+             * Peak Dbfs
+             * @description Đỉnh tín hiệu, 0 = kịch trần
+             */
+            peak_dbfs: number | null;
+            /**
+             * Sample Rate
+             * @description Tần số gốc của file (Hz)
+             */
+            sample_rate: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Snr Db
+             * @description Giọng so với nhiễu nền (theo VAD); dưới 10 dB là nhiễu nhiều. null khi không đo được (không có lặng, hoặc nền im tuyệt đối)
+             */
+            snr_db: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "url" | "upload";
+            /**
+             * Speech Ms
+             * @description Tổng thời gian VAD coi là có giọng
+             */
+            speech_ms: number;
+            /**
+             * Speech Rms Dbfs
+             * @description Độ lớn trung bình vùng có giọng; dưới −35 dBFS là file thu quá nhỏ
+             */
+            speech_rms_dbfs: number | null;
+        };
+        /** SttComparison */
+        SttComparison: {
+            /**
+             * Asr Ms
+             * @description Thời gian model decode
+             */
+            asr_ms: number;
+            /** Confidence */
+            confidence: number | null;
+            /** Text */
+            text: string;
+        };
         /** SttEmptyResponse */
         SttEmptyResponse: {
             /** Eligible Count */
@@ -669,6 +899,253 @@ export interface components {
             empty_count: number;
             /** Rate */
             rate: number | null;
+        };
+        /** SttLatency */
+        SttLatency: {
+            /**
+             * Asr
+             * @description Tổng thời gian model decode các đoạn (không gồm bản raw)
+             */
+            asr: number;
+            /** Decode */
+            decode: number;
+            /**
+             * Download
+             * @description Tải audio_url; null khi upload
+             */
+            download: number | null;
+            /** Preprocess */
+            preprocess: number;
+            /**
+             * Total
+             * @description Toàn bộ request phía server, gồm cả tải file và bản raw
+             */
+            total: number;
+            /** Vad */
+            vad: number;
+        };
+        /** SttModelInfo */
+        SttModelInfo: {
+            /** Input Sample Rate */
+            input_sample_rate: number;
+            /** Model */
+            model: string | null;
+            /** Provider */
+            provider: string;
+        };
+        /** SttPreprocessing */
+        SttPreprocessing: {
+            /**
+             * Gain Db
+             * @description Gain đã cộng thêm (0 = giữ nguyên độ lớn)
+             */
+            gain_db: number;
+            /**
+             * Steps
+             * @description Các bước đã thực sự áp dụng, theo thứ tự
+             */
+            steps: ("DOWNMIX_MONO" | "TELEPHONE_BAND" | "DC_REMOVAL" | "RESAMPLE" | "GAIN_NORMALIZE" | "VAD_SEGMENT")[];
+            /** Telephone Band */
+            telephone_band: boolean;
+        };
+        /** SttSegment */
+        SttSegment: {
+            /**
+             * Confidence
+             * @description 0–1, null nếu provider không cung cấp
+             */
+            confidence: number | null;
+            /** End Ms */
+            end_ms: number;
+            /**
+             * Start Ms
+             * @description Vị trí bắt đầu đoạn trong file gốc (đã gồm phần đệm)
+             */
+            start_ms: number;
+            /** Text */
+            text: string;
+        };
+        /** SttTranscribeRequest */
+        SttTranscribeRequest: {
+            /**
+             * Audio Url
+             * @description URL http(s) public tới file WAV. Không nhận địa chỉ nội bộ/localhost — file trên máy thì dùng route `/upload`. Tối đa 25 MiB, 5 phút.
+             * @example https://example.com/clips/cuoc-goi.wav
+             */
+            audio_url: string;
+            /**
+             * Compare
+             * @description Chạy thêm bản `raw`: nguyên file, không tiền xử lý, không cắt theo VAD (file dài hơn 30 s được chia khúc tại chỗ yên nhất) — để so với kết quả chính.
+             * @default false
+             */
+            compare?: boolean;
+            /**
+             * Telephone Band
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @default false
+             */
+            telephone_band?: boolean;
+        };
+        /** SttTranscribeResponse */
+        SttTranscribeResponse: {
+            audio: components["schemas"]["SttAudioInfo"];
+            /**
+             * Confidence
+             * @description Trung bình confidence các đoạn, trọng số theo số từ; null nếu không có
+             */
+            confidence: number | null;
+            /** Is Silence */
+            is_silence: boolean;
+            latency_ms: components["schemas"]["SttLatency"];
+            model: components["schemas"]["SttModelInfo"];
+            preprocessing: components["schemas"]["SttPreprocessing"];
+            /** @description Chỉ có khi compare=true: nguyên file, không tiền xử lý (chia khúc ≤ 30 s) */
+            raw: components["schemas"]["SttComparison"] | null;
+            /**
+             * Real Time Factor
+             * @description latency_ms.asr / thời lượng audio; 0.05 = decode nhanh gấp 20 lần thời gian thực
+             */
+            real_time_factor: number | null;
+            /** Segments */
+            segments: components["schemas"]["SttSegment"][];
+            /**
+             * Text
+             * @description Transcript đầy đủ từ đầu đến cuối file
+             */
+            text: string;
+            /**
+             * Warnings
+             * @description NARROWBAND_SOURCE: file gốc ≤ 8 kHz. CLIPPING: >0,1% mẫu kịch trần. LOW_LEVEL: file thu quá nhỏ. LOW_SNR: nhiễu nền lớn. NO_SPEECH_DETECTED: VAD không thấy giọng
+             */
+            warnings: ("NARROWBAND_SOURCE" | "CLIPPING" | "LOW_LEVEL" | "LOW_SNR" | "NO_SPEECH_DETECTED")[];
+        };
+        /** SttTurnAudioInfo */
+        SttTurnAudioInfo: {
+            /** Channels */
+            channels: number;
+            /**
+             * Clipping Ratio
+             * @description Tỷ lệ mẫu bị kịch trần (méo, không sửa được)
+             */
+            clipping_ratio: number;
+            /** Duration Ms */
+            duration_ms: number;
+            /**
+             * Format
+             * @description Định dạng gốc, vd PCM_16, PCM_24, FLOAT_32, ALAW, MULAW
+             */
+            format: string;
+            /**
+             * Peak Dbfs
+             * @description Đỉnh tín hiệu, 0 = kịch trần
+             */
+            peak_dbfs: number | null;
+            /**
+             * Sample Rate
+             * @description Tần số gốc của file (Hz)
+             */
+            sample_rate: number;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "url" | "upload";
+            /**
+             * Speech Rms Dbfs
+             * @description Độ lớn trung bình vùng có giọng; dưới −35 dBFS là file thu quá nhỏ
+             */
+            speech_rms_dbfs: number | null;
+        };
+        /** SttTurnLatency */
+        SttTurnLatency: {
+            /**
+             * Asr
+             * @description Thời gian model decode clip (không gồm bản production)
+             */
+            asr: number;
+            /** Decode */
+            decode: number;
+            /**
+             * Download
+             * @description Tải audio_url; null khi upload
+             */
+            download: number | null;
+            /** Preprocess */
+            preprocess: number;
+            /**
+             * Total
+             * @description Toàn bộ request phía server, gồm cả tải file và bản production
+             */
+            total: number;
+        };
+        /** SttTurnPreprocessing */
+        SttTurnPreprocessing: {
+            /**
+             * Gain Db
+             * @description Gain đã cộng thêm (0 = giữ nguyên độ lớn)
+             */
+            gain_db: number;
+            /**
+             * Steps
+             * @description Các bước đã thực sự áp dụng, theo thứ tự
+             */
+            steps: ("DOWNMIX_MONO" | "TELEPHONE_BAND" | "DC_REMOVAL" | "RESAMPLE" | "GAIN_NORMALIZE")[];
+            /** Telephone Band */
+            telephone_band: boolean;
+        };
+        /** SttTurnRequest */
+        SttTurnRequest: {
+            /**
+             * Audio Url
+             * @description URL http(s) public tới file WAV. Không nhận địa chỉ nội bộ/localhost — file trên máy thì dùng route `/upload`. Tối đa 25 MiB, 30 giây.
+             * @example https://example.com/clips/huy-lich.wav
+             */
+            audio_url: string;
+            /**
+             * Compare
+             * @description Chạy thêm bản `production`: y hệt POST /v1/calls/{call_id}/turn (giữ tần số gốc, không tiền xử lý) — để thấy bot đang nghe ra gì với clip này.
+             * @default false
+             */
+            compare?: boolean;
+            /**
+             * Telephone Band
+             * @description Hạ file về 8 kHz trước (giống đường điện thoại thật). Bật khi muốn biết chất lượng lúc gọi qua tổng đài; tắt để đo chất lượng tốt nhất model đạt được trên file gốc.
+             * @default false
+             */
+            telephone_band?: boolean;
+        };
+        /** SttTurnResponse */
+        SttTurnResponse: {
+            audio: components["schemas"]["SttTurnAudioInfo"];
+            /**
+             * Confidence
+             * @description 0–1; null nếu rỗng hoặc provider không có
+             */
+            confidence: number | null;
+            /** Is Silence */
+            is_silence: boolean;
+            latency_ms: components["schemas"]["SttTurnLatency"];
+            model: components["schemas"]["SttModelInfo"];
+            preprocessing: components["schemas"]["SttTurnPreprocessing"];
+            /** @description Chỉ có khi compare=true: kết quả y hệt POST /v1/calls/{call_id}/turn */
+            production: components["schemas"]["SttComparison"] | null;
+            /**
+             * Real Time Factor
+             * @description latency_ms.asr / thời lượng audio; 0.05 = decode nhanh gấp 20 lần thời gian thực
+             */
+            real_time_factor: number | null;
+            /**
+             * Text
+             * @description Transcript của lượt nói
+             */
+            text: string;
+            /**
+             * Warnings
+             * @description NARROWBAND_SOURCE: file gốc ≤ 8 kHz. CLIPPING: >0,1% mẫu kịch trần. LOW_LEVEL: file thu quá nhỏ
+             */
+            warnings: ("NARROWBAND_SOURCE" | "CLIPPING" | "LOW_LEVEL")[];
         };
         /** TimeRangeResponse */
         TimeRangeResponse: {
@@ -1169,6 +1646,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_url_v1_stt_transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SttTranscribeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SttTranscribeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_upload_v1_stt_transcribe_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_transcribe_upload_v1_stt_transcribe_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SttTranscribeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    turn_url_v1_stt_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SttTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SttTurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    turn_upload_v1_stt_turn_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_turn_upload_v1_stt_turn_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SttTurnResponse"];
                 };
             };
             /** @description Validation Error */

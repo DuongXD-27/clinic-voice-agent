@@ -4,8 +4,9 @@ from typing import AsyncIterator, Iterable
 import pytest
 
 from inference.asr.config import ZipFormerConfig
-from inference.asr.providers.zipformer import ZipFormerASR
+from inference.asr.providers.zipformer import ZipFormerASR, _Decoded
 from speech.asr.vad.streaming import FRAME_MS
+from speech.types import AsrSegmentEnd
 
 _FRAME_BYTES = int(8000 * FRAME_MS / 1000) * 2  # PCM16 mono @ 8kHz, frame chuẩn 30ms
 _LOUD = b"\x00\x10" * (_FRAME_BYTES // 2)
@@ -47,7 +48,7 @@ class _GrowingFakeRecognizer:
 
 
 class _RecordingASR(ZipFormerASR):
-    """Bọc ZipFormerASR để _decode_pcm dùng recognizer giả theo buffer hiện tại."""
+    """Bọc ZipFormerASR để _decode_scored dùng recognizer giả theo buffer hiện tại."""
 
     def __init__(self, growing: _GrowingFakeRecognizer) -> None:
         super().__init__(
@@ -56,10 +57,10 @@ class _RecordingASR(ZipFormerASR):
         )
         self._growing = growing
 
-    def _decode_pcm(self, pcm: bytes) -> str:  # type: ignore[override]
+    def _decode_scored(self, pcm: bytes) -> _Decoded:  # type: ignore[override]
         text = self._growing._text_for(len(pcm))
         self._growing.decode_calls += 1
-        return text
+        return _Decoded(text)
 
 
 async def _aiter(frames: Iterable[bytes]) -> AsyncIterator[bytes]:
@@ -226,8 +227,8 @@ async def test_stream_buffer_size_bounded_with_continuous_speech() -> None:
     được đưa vào decode trong lúc audio nói liên tục dài — phải bị chặn bởi
     max_turn_speech_ms, không tăng tuyến tính theo tổng số frame đã nhận.
 
-    `_LOUD` là frame 8kHz (30ms) — `_decode_stream_pcm` tự resample 8k->16k nội bộ
-    trước khi gọi `_decode_pcm` (khớp `ZipFormerASR.input_sample_rate=16_000`), nhân đôi
+    `_LOUD` là frame 8kHz (30ms) — `_decode_stream_scored` tự resample 8k->16k nội bộ
+    trước khi gọi `_decode_scored` (khớp `ZipFormerASR.input_sample_rate=16_000`), nhân đôi
     kích thước byte quan sát được ở đây; công thức ngưỡng dưới đây tính cả hệ số đó,
     không liên quan tới việc buffer THẬT (trước resample) có bị chặn đúng hay không —
     điều đó đã được `test_stream_forces_flush_when_speech_exceeds_max_turn_speech_ms`
@@ -236,10 +237,10 @@ async def test_stream_buffer_size_bounded_with_continuous_speech() -> None:
     max_pcm_len_seen = 0
 
     class _BoundedRecordingASR(_RecordingASR):
-        def _decode_pcm(self, pcm: bytes) -> str:  # type: ignore[override]
+        def _decode_scored(self, pcm: bytes) -> _Decoded:  # type: ignore[override]
             nonlocal max_pcm_len_seen
             max_pcm_len_seen = max(max_pcm_len_seen, len(pcm))
-            return super()._decode_pcm(pcm)
+            return super()._decode_scored(pcm)
 
     asr = _BoundedRecordingASR(growing)
     frames = [_LOUD] * 200  # audio nói liên tục dài, không có silence nào
@@ -254,9 +255,194 @@ async def test_stream_buffer_size_bounded_with_continuous_speech() -> None:
         pass
 
     # max_turn_speech_ms=150ms @ frame 30ms -> buffer tối đa 5 frame trước khi forced_flush
-    # trigger; resample 8k->16k nhân đôi byte quan sát ở _decode_pcm (hệ số x2).
+    # trigger; resample 8k->16k nhân đôi byte quan sát ở _decode_scored (hệ số x2).
     max_frames_per_segment = 150 // FRAME_MS
     assert max_pcm_len_seen <= _FRAME_BYTES * max_frames_per_segment * 2
+
+
+@pytest.mark.parametrize("frame_ms", [10, 30])
+async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> None:
+    """VAD nội bộ nhận speech trễ; không được bỏ âm tiết đầu mà pipeline đã gửi."""
+    frame_bytes = 8000 * frame_ms // 1000 * 2
+    quiet_count = 600 // frame_ms
+    speech_count = 120 // frame_ms
+    tail_count = 60 // frame_ms
+    frames = [
+        bytes((marker, 0)) * (frame_bytes // 2)
+        for marker in range(1, quiet_count + speech_count + tail_count + 1)
+    ]
+
+    class _ScriptedClassifier:
+        index = 0
+
+        def is_speech(self, _frame: bytes) -> bool:
+            self.index += 1
+            return quiet_count < self.index <= quiet_count + speech_count
+
+    class _CapturingASR(_RecordingASR):
+        def __init__(self) -> None:
+            super().__init__(_GrowingFakeRecognizer())
+            self.decoded: list[bytes] = []
+
+        def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
+            assert source_rate == 8000
+            self.decoded.append(pcm)
+            return _Decoded("TÔI CÓ ĐẾN ĐƯỢC")
+
+    asr = _CapturingASR()
+    events = [
+        event
+        async for event in asr.stream(
+            _aiter(frames),
+            silence_classifier=_ScriptedClassifier(),
+            end_silence_ms=60,
+            min_emit_interval_ms=10_000,
+            min_decode_ms=60,
+        )
+    ]
+
+    expected_start = quiet_count - 300 // frame_ms
+    assert asr.decoded == [b"".join(frames[expected_start:])]
+    assert len(events) == 1 and events[0].is_final
+
+    # Pre-roll không được tính thành speech để lách ngưỡng chống hallucination.
+    short_asr = _CapturingASR()
+    short_events = [
+        event
+        async for event in short_asr.stream(
+            _aiter(frames),
+            silence_classifier=_ScriptedClassifier(),
+            end_silence_ms=60,
+            min_decode_ms=400,
+        )
+    ]
+    assert short_events == []
+    assert short_asr.decoded == []
+
+
+_UTTERANCE_A = b"\x01\x10" * (_FRAME_BYTES // 2)
+_UTTERANCE_B = b"\x02\x10" * (_FRAME_BYTES // 2)
+
+
+class _LabellingASR(_RecordingASR):
+    """Decode ra nhãn câu có mặt trong buffer ("A", "B", "A B") — thấy được câu cũ có
+    còn nằm lại trong buffer khi câu mới tới hay không."""
+
+    def __init__(self) -> None:
+        super().__init__(_GrowingFakeRecognizer())
+
+    def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
+        labels: list[str] = []
+        for start in range(0, len(pcm), _FRAME_BYTES):
+            label = {_UTTERANCE_A[:2]: "A", _UTTERANCE_B[:2]: "B"}.get(pcm[start : start + 2])
+            if label and (not labels or labels[-1] != label):
+                labels.append(label)
+        return _Decoded(" ".join(labels))
+
+
+async def _finals(asr: ZipFormerASR, frames: list, **options) -> list[str]:
+    options = {"end_silence_ms": 600, "min_emit_interval_ms": 10_000, **options}
+    return [e.text async for e in asr.stream(_aiter(frames), **options) if e.is_final]
+
+
+async def test_finalize_marker_closes_utterance_before_silence_endpoint() -> None:
+    """Hồi quy (cuộc gọi LiveKit 2026-09-26): pipeline ngừng đưa audio khi ASR mới thấy
+    570/600 ms im lặng -> câu cũ nằm lại buffer rồi bị chốt/ghép cùng câu sau. FINALIZE
+    phải chốt ngay câu đang có, câu sau bắt đầu từ buffer rỗng."""
+    frames = [_UTTERANCE_A] * 5 + [_SILENT] * 3 + [AsrSegmentEnd.FINALIZE] + [_UTTERANCE_B] * 5
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["A", "B"]
+
+
+async def test_discard_marker_drops_utterance_without_event() -> None:
+    """Bot bắt đầu nói giữa câu: phần dở bị bỏ, không phát final, không ghép vào câu sau
+    (bug thật: "ANH SINH ANH SINH NGÀY ...")."""
+    frames = [_UTTERANCE_A] * 5 + [AsrSegmentEnd.DISCARD] + [_UTTERANCE_B] * 5
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["B"]
+
+
+async def test_finalize_marker_keeps_min_decode_guard() -> None:
+    """FINALIZE không được lách ngưỡng chống hallucination trên audio siêu ngắn."""
+    frames = [_UTTERANCE_A] * 2 + [AsrSegmentEnd.FINALIZE]
+
+    assert await _finals(_LabellingASR(), frames, min_decode_ms=400) == []
+
+
+class _ScoredFakeRecognizer:
+    """Recognizer giả trả text + ys_log_probs như sherpa-onnx OfflineRecognizer thật."""
+
+    def __init__(self, text: str, log_probs: list[float]) -> None:
+        self._result = type("Result", (), {"text": text, "ys_log_probs": log_probs})()
+
+    def create_stream(self):
+        stream = _FakeStream("")
+        stream.result = self._result
+        return stream
+
+    def decode_stream(self, stream) -> None:
+        pass
+
+
+async def test_final_carries_confidence_from_token_log_probs() -> None:
+    """Confidence = trung bình nhân xác suất token (exp của trung bình ys_log_probs); chỉ để
+    ghi log/đo, core không đọc `asr_confidence`."""
+    import math
+
+    asr = ZipFormerASR(
+        ZipFormerConfig(encoder_path="e", decoder_path="d", joiner_path="j", tokens_path="t"),
+        recognizer=_ScoredFakeRecognizer(" VÂNG", [math.log(0.5), math.log(0.8)]),
+    )
+    frames = [_LOUD] * 5 + [_SILENT] * 21
+
+    events = [
+        e
+        async for e in asr.stream(
+            _aiter(frames), end_silence_ms=600, min_emit_interval_ms=10_000, min_decode_ms=0
+        )
+    ]
+
+    assert [e.text for e in events] == ["VÂNG"]
+    assert events[0].confidence == pytest.approx(math.sqrt(0.5 * 0.8))
+
+
+async def test_empty_decode_has_no_confidence() -> None:
+    asr = ZipFormerASR(
+        ZipFormerConfig(encoder_path="e", decoder_path="d", joiner_path="j", tokens_path="t"),
+        recognizer=_ScoredFakeRecognizer("", []),
+    )
+
+    assert asr._decode_scored(b"\x00\x10" * 160) == _Decoded("")
+
+
+async def _count_decodes(partial_interval_ratio: float, speech_frames: int = 200) -> int:
+    growing = _GrowingFakeRecognizer()
+    asr = _RecordingASR(growing)
+    asr._config = ZipFormerConfig(
+        encoder_path="e",
+        decoder_path="d",
+        joiner_path="j",
+        tokens_path="t",
+        partial_interval_ratio=partial_interval_ratio,
+    )
+    frames = [_LOUD] * speech_frames + [_SILENT] * 21
+    async for _ in asr.stream(
+        _aiter(frames), end_silence_ms=600, min_emit_interval_ms=300, min_decode_ms=0
+    ):
+        pass
+    return growing.decode_calls
+
+
+async def test_partial_interval_ratio_spaces_out_decodes_for_long_utterance() -> None:
+    """Mỗi partial decode lại toàn bộ buffer: giãn nhịp theo độ dài buffer thì câu dài tốn ít
+    lần decode hơn; 0 giữ nhịp cố định 300 ms như cũ."""
+    fixed = await _count_decodes(0.0)  # 6 s nói liên tục
+    spaced = await _count_decodes(0.2)
+
+    assert fixed == 20 + 1  # 6 s / 300 ms partial + 1 final
+    assert spaced <= fixed * 0.6
+    # Câu ngắn (1,2 s: 0,2 x buffer < 300 ms) giữ nguyên nhịp — partial cho barge-in không đổi.
+    assert await _count_decodes(0.2, speech_frames=40) == await _count_decodes(0.0, 40)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,8 @@ phòng khám (Clinic API) để đọc/ghi lịch hẹn.
 - **Trích xuất thông tin** bằng luật, có tầng LLM tuỳ chọn để hiểu câu nói vòng và nhận
   diện tên.
 - **Voice pipeline**: ASR ZipFormer self-host (hoặc Gemini / PhoWhisper), TTS OpenAI, ElevenLabs hoặc
-  Vbee (có thể cấu hình provider dự phòng), âm thanh băng hẹp 8 kHz như đường dây điện thoại.
+  Vbee (có thể cấu hình provider dự phòng); giọng bot băng hẹp 8 kHz như đường dây điện thoại,
+  clip người gọi giữ tần số gốc rồi resample một lần về 16 kHz của model.
 - **Session trên Redis**: chạy được nhiều worker, dữ liệu khách hàng chỉ lưu tạm và tự xoá
   khi cuộc gọi kết thúc hoặc hết hạn; chặn ghi trùng khi kết quả ghi không xác định.
 
@@ -98,6 +99,8 @@ Server chạy tại `http://localhost:8000`.
 | `POST` | `/v1/calls/{call_id}/turn` | Gửi một lượt của người gọi, nhận câu trả lời của bot |
 | `GET` | `/health` | Kiểm tra server còn sống |
 | `GET` | `/ready` | Kiểm tra server sẵn sàng (kết nối Redis và dọn session) |
+| `POST` | `/v1/stt/turn`, `/v1/stt/turn/upload` | Thử STT trên một lượt nói (bật bằng `STT_EVAL_ENABLED=true`), xem [stt-eval-api.md](docs/reference/stt-eval-api.md) |
+| `POST` | `/v1/stt/transcribe`, `/v1/stt/transcribe/upload` | Thử STT trên file dài nhiều câu (cùng cờ và tài liệu) |
 
 Ví dụ:
 
@@ -234,6 +237,7 @@ docs/reference/                 # tài liệu thiết kế
 | Slot filling họ tên | [name-slot-filling.md](docs/reference/name-slot-filling.md) |
 | Vận hành session | [session-operations.md](docs/reference/session-operations.md) |
 | Luồng STT | [stt-flow.md](docs/reference/stt-flow.md) |
+| API thử chất lượng STT | [stt-eval-api.md](docs/reference/stt-eval-api.md) |
 | Cài model ZipFormer | [zipformer-model-setup.md](docs/reference/zipformer-model-setup.md) |
 | Clinic API | [clinic-mock.md](docs/reference/clinic-mock.md) |
 | Clinic giả cho test | [clinic_mock_sim/README.md](src/clinic_mock_sim/README.md) |

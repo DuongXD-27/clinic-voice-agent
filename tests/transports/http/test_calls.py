@@ -133,8 +133,8 @@ def test_extraction_debug_reports_ner_without_pii() -> None:
     assert "nguyễn văn a" not in str(debug).lower()
 
 
-def test_demo_audio_upload_returns_public_narrowband_wav(client: TestClient) -> None:
-    source = AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=16000)
+def test_demo_audio_upload_resamples_browser_rate_to_16k(client: TestClient) -> None:
+    source = AudioSegment(pcm=b"\x00\x00" * 4800, sample_rate=48000)
     response = client.put(
         "/demo-api/audio/c_browser/1.wav",
         content=encode_wav(source),
@@ -144,7 +144,7 @@ def test_demo_audio_upload_returns_public_narrowband_wav(client: TestClient) -> 
     assert response.status_code == 200
     body = response.json()
     assert body["audio_url"] == "http://testserver/audio/demo-input/c_browser/1.wav"
-    assert body["sample_rate"] == 8000
+    assert body["sample_rate"] == 16000
     assert body["duration_ms"] == 100
     assert body["content_type"] == "audio/wav"
     saved = client.get("/audio/demo-input/c_browser/1.wav")

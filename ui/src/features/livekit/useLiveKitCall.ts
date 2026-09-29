@@ -3,8 +3,13 @@ import { useCallback, useEffect, useReducer, useRef, type Dispatch, type RefObje
 
 import { requestToken } from "./api";
 import { toTokenRequest, validateConfig, type LiveKitConfig } from "./model/config";
-import { initialSession, liveKitReducer, type LiveKitAction } from "./model/session";
-import { parseTranscript, TRANSCRIPT_TOPIC } from "./model/transcript";
+import {
+  initialSession,
+  liveKitReducer,
+  type LiveKitAction,
+  type LiveKitSession,
+} from "./model/session";
+import { parseStatus, parseTranscript, STATUS_TOPIC, TRANSCRIPT_TOPIC } from "./model/transcript";
 
 /**
  * Một cuộc gọi LiveKit từ trình duyệt: lấy token, vào room, bật mic, phát audio của bot vào
@@ -33,7 +38,16 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
         if (cancelled()) return;
         room = new Room();
         roomRef.current = room;
-        subscribe(room, dispatch, audio);
+        const joined = room;
+        subscribe(joined, dispatch, audio, (message) => {
+          // Worker không mở được cuộc gọi (vd. lịch outbound không dùng được) và sẽ không nói
+          // gì thêm: rời room, huỷ lần connect đang dở để nó không ghi đè thông báo lỗi.
+          attemptRef.current += 1;
+          if (roomRef.current === joined) roomRef.current = null;
+          joined.removeAllListeners();
+          void joined.disconnect();
+          dispatch({ type: "failed", message, at: Date.now() });
+        });
 
         dispatch({ type: "connecting", step: "Đang vào room…" });
         await room.connect(url, token);
@@ -85,6 +99,10 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
     await room?.disconnect();
   }, []);
 
+  const notify = useCallback((notice: LiveKitSession["notice"]) => {
+    dispatch({ type: "notice", notice });
+  }, []);
+
   /** Trình duyệt chặn autoplay: chỉ phát được sau một thao tác của người dùng. */
   const resumeAudio = useCallback(async () => {
     await roomRef.current?.startAudio();
@@ -101,13 +119,14 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
     [],
   );
 
-  return { session, connect, toggleMic, disconnect, resumeAudio };
+  return { session, connect, toggleMic, disconnect, resumeAudio, notify };
 }
 
 function subscribe(
   room: Room,
   dispatch: Dispatch<LiveKitAction>,
   audio: RefObject<HTMLAudioElement | null>,
+  onBotError: (message: string) => void,
 ) {
   room
     .on(RoomEvent.TrackSubscribed, (track) => {
@@ -128,6 +147,11 @@ function subscribe(
       });
     })
     .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+      if (topic === STATUS_TOPIC) {
+        const message = parseStatus(payload);
+        if (message) onBotError(message);
+        return;
+      }
       if (topic !== TRANSCRIPT_TOPIC) return;
       const line = parseTranscript(payload);
       if (line) dispatch({ type: "transcript", line, at: Date.now() });

@@ -31,8 +31,11 @@ from callbot.transports.http.config import ObservabilityApiSettings, settings
 from callbot.transports.http.demo import router as demo_router
 from callbot.transports.http.livekit_token import router as livekit_router
 from callbot.transports.http.observability import router as observability_router
+from callbot.transports.http.stt_eval import router as stt_eval_router
 from callbot.transports.http.ui import add_legacy_redirects, mount_ui
 from callbot.transports.livekit.settings import LiveKitSettings
+from speech.asr.offline import VadFactory
+from speech.asr.vad import FrameClassifier
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
@@ -74,6 +77,18 @@ def _default_livekit_settings() -> LiveKitSettings:
     return LiveKitSettings()
 
 
+def _default_stt_vad_factory() -> VadFactory:
+    model_path = SpeechSettings().silero_vad_model_path
+
+    def build(sample_rate: int) -> FrameClassifier:
+        # Silero stateful: mỗi request một instance
+        from speech.asr.vad.silero import SileroVadClassifier
+
+        return SileroVadClassifier(model_path, sample_rate=sample_rate)
+
+    return build
+
+
 def _configure_observability(app: FastAPI, supplied: ObservabilityApiSettings | None) -> None:
     """Register the opt-in internal router without risking core app startup."""
     try:
@@ -101,6 +116,8 @@ def create_app(
     livekit_settings_factory: Callable[[], LiveKitSettings] = _default_livekit_settings,
     tracer_factory: Callable[[], Tracer] = create_tracer,
     observability_settings: ObservabilityApiSettings | None = None,
+    stt_eval_enabled: Optional[bool] = None,
+    stt_vad_factory: Optional[VadFactory] = None,
     ui_dist_dir: Optional[str] = None,
     cleanup_interval_s: float = 30.0,
     audio_retention_s: Optional[float] = None,
@@ -224,6 +241,9 @@ def create_app(
     app.include_router(calls_router, dependencies=[Depends(require_api_key)])
     app.include_router(demo_router, dependencies=[Depends(require_api_key)])
     app.include_router(livekit_router)
+    if settings.stt_eval_enabled if stt_eval_enabled is None else stt_eval_enabled:
+        app.state.stt_vad_factory = stt_vad_factory or _default_stt_vad_factory()
+        app.include_router(stt_eval_router, dependencies=[Depends(require_api_key)])
     _configure_observability(app, observability_settings)
     add_legacy_redirects(app)
     mount_ui(app, settings.ui_dist_dir if ui_dist_dir is None else ui_dist_dir)

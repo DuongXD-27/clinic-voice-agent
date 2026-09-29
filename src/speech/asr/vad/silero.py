@@ -45,7 +45,8 @@ _SILERO_SAMPLE_RATE = 16_000
 class SileroVadClassifier:
     """`model_path`: path tới `silero_vad.onnx` (tải từ k2-fsa/sherpa-onnx releases, xem
     `silero_vad_model_path` trong `config/speech.yaml`). `threshold`: xác suất speech tối thiểu
-    (0-1) để `is_speech_detected()` trả True — mặc định 0.5 theo model gốc."""
+    (0-1) để `is_speech_detected()` trả True — mặc định 0.5 theo model gốc. `min_silence_ms`:
+    hangover của sherpa-onnx (mặc định 0,5 s)."""
 
     def __init__(
         self,
@@ -53,6 +54,7 @@ class SileroVadClassifier:
         *,
         sample_rate: int = 8_000,
         threshold: float = 0.5,
+        min_silence_ms: int = 500,
     ) -> None:
         import sherpa_onnx
 
@@ -60,6 +62,9 @@ class SileroVadClassifier:
         config = sherpa_onnx.VadModelConfig()
         config.silero_vad.model = model_path
         config.silero_vad.threshold = threshold
+        # Silero giữ trạng thái "đang nói" thêm chừng này sau khi hết tiếng (hangover) — cộng
+        # thẳng vào độ trễ chốt lượt, trước cả vad_end_silence_ms của StreamingVAD.
+        config.silero_vad.min_silence_duration = min_silence_ms / 1000
         config.sample_rate = _SILERO_SAMPLE_RATE
         self._vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=30)
         self._window_size = config.silero_vad.window_size

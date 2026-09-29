@@ -64,7 +64,7 @@ def test_demo_clinic_admin_requires_bot_api_keys() -> None:
 
 
 def test_sim_uses_listing3_by_default() -> None:
-    clinic = build_clinic(_settings())
+    clinic = build_clinic(_settings(clinic_backend="sim"))
     assert isinstance(clinic, FakeClinicAPI)
     assert clinic.appointments["apt_00417"]["starts_at"] == "2026-10-14T09:00:00+07:00"
     assert clinic.strict_slot_window is False
@@ -139,9 +139,9 @@ def test_app_runs_a_call_on_the_sim_without_a_clinic_factory(
     assert [(c.operation, c.outcome) for c in clinic.calls] == [("get_appointment", "ok")]
 
 
-def _compose_env(name: str) -> dict:
+def _compose_env(name: str, service: str = "bot") -> dict:
     compose = yaml.safe_load((ROOT / name).read_text(encoding="utf-8"))
-    return compose["services"]["bot"]["environment"]
+    return compose["services"][service]["environment"]
 
 
 def test_local_compose_defaults_to_sim_with_one_worker() -> None:
@@ -159,3 +159,5 @@ def test_image_forces_one_worker_when_the_sim_is_selected() -> None:
 def test_deploy_compose_pins_the_real_mock() -> None:
     # environment: ghi đè env_file .env — server không thể chuyển sang sim
     assert _compose_env("docker-compose.prod.yml")["CLINIC_BACKEND"] == "mock"
+    # Worker đọc clinic từ config/http.yaml: deploy cũng ghi cứng mock như bot
+    assert _compose_env("docker-compose.prod.yml", "livekit-worker")["CLINIC_BACKEND"] == "mock"

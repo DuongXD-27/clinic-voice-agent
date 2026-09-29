@@ -39,10 +39,9 @@ files = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt'];
     rm -rf /root/.cache/huggingface /app/models/zipformer/.cache
 
 # Silero VAD (~600KB, không .gitignore vì nhỏ nhưng vẫn tải lúc build cho nhất quán với
-# gipformer1.5 ở trên) — dùng cho NoiseTracker (Speech Admission/Turn Validator, LUÔN
-# Silero bất kể VAD_PROVIDER) và tuỳ chọn làm VAD chính khi VAD_PROVIDER=silero (chưa phải
-# mặc định, xem docs/reference/livekit-merge-to-main.md). SILERO_VAD_MODEL_PATH trong
-# docker-compose*.yml phải trỏ đúng đường dẫn này.
+# gipformer1.5 ở trên) — VAD chính mặc định (vad_provider trong config/speech.yaml) và luôn
+# dùng cho NoiseTracker (Turn Validator). SILERO_VAD_MODEL_PATH trong docker-compose*.yml phải
+# trỏ đúng đường dẫn này.
 RUN mkdir -p /app/models/silero && \
     curl -fL -o /app/models/silero/silero_vad.onnx \
     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx

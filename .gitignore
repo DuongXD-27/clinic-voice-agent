@@ -1,4 +1,5 @@
 temp/
+.local/
 
 __pycache__/
 *.pyc
@@ -17,12 +18,11 @@ traces.jsonl
 
 clinic-mock/
 
-# ZipFormer ONNX model assets (~74MB, không commit lên GitHub) — tự tải theo
-# docs/reference/zipformer-model-setup.md, hoặc Dockerfile tự tải lúc build image.
+# ONNX model assets (~74MB, không commit lên GitHub) — tự tải hoặc Dockerfile tự tải lúc build
+# image. Thư mục TÊN zipformer, nội dung model gipformer1.5 (g-group-ai-lab/gipformer1.5-68M-
+# rnnt) — thay zipformer-vi gốc do hallucination trên audio thật (docs/evidence/
+# livekit-audio-plan-execution-2026-09-28.md), không đổi tên thư mục để khớp Docker.
 src/inference/asr/providers/assets/zipformer/
-# Gipformer1.5 (g-group-ai-lab/gipformer1.5-68M-rnnt) — thay thế zipformer-vi do
-# hallucination trên audio thật (xem docs/evidence tương ứng); cùng lý do không commit.
-src/inference/asr/providers/assets/gipformer/
 # Silero VAD ONNX (k2-fsa/sherpa-onnx releases, ~640KB) — tự tải, không commit binary.
 src/speech/asr/vad/assets/
 

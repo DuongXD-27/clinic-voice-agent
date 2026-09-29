@@ -30,6 +30,12 @@ transducer "đói" tín hiệu khi audio quá ngắn để cung cấp đủ cont
 VAD nhận nhầm noise thành speech (đã xử lý ở TurnController.min_speech_ms) — ở đây VAD
 ĐÚNG, nhưng bản thân ASR không tin cậy trên input siêu ngắn.
 
+`stream()` (và `transcribe()`) gắn confidence = trung bình nhân xác suất các token của lần decode
+(exp của trung bình `ys_log_probs`, model offline có sẵn, không tốn thêm compute). Đo 28/09:
+"hủy lịch" nghe thành "THÙY LINH" vẫn có xác suất token 0,79/0,98/0,57 — confidence KHÔNG bắt
+được nghe nhầm; chỉ có thể giúp nhận ra ảo giác sinh từ nhiễu (xem eval/noise-bench). Hiện chỉ
+ghi log/đo, không có nhánh nào của pipeline đọc trường này.
+
 `stream()` nằm ngoài Protocol `ASRProvider` (chỉ ZipFormer hỗ trợ, không phải
 gemini/phowhisper) — gọi qua `ASRGateway.provider` (escape hatch), không qua
 `ASRGateway.transcribe()`. `frames` nhận PCM 8 kHz (phone) hoặc 16 kHz (web) cùng
@@ -39,13 +45,26 @@ boundary của provider.
 """
 
 import asyncio
-from typing import Any, AsyncIterator
+import logging
+import math
+from typing import Any, AsyncIterator, NamedTuple, Optional
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
-from speech.types import NARROWBAND_RATE, TranscriptEvent
+from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
+
+_PRE_SPEECH_PREROLL_MS = 300
+
+logger = logging.getLogger(__name__)
+
+
+class _Decoded(NamedTuple):
+    text: str
+    # exp(trung bình log-prob token) và xác suất token thấp nhất; None khi không có chữ.
+    confidence: Optional[float] = None
+    min_token_prob: Optional[float] = None
 
 
 class ZipFormerASR:
@@ -77,11 +96,12 @@ class ZipFormerASR:
         return self._recognizer
 
     def transcribe(self, pcm: bytes) -> ASRResult:
-        return ASRResult(text=self._decode_pcm(pcm))
+        decoded = self._decode_scored(pcm)
+        return ASRResult(text=decoded.text, confidence=decoded.confidence)
 
     async def stream(
         self,
-        frames: AsyncIterator[bytes],
+        frames: AsyncIterator[bytes | AsrSegmentEnd],
         *,
         audio_sample_rate: int = NARROWBAND_RATE,
         silence_classifier: FrameClassifier | None = None,
@@ -111,6 +131,10 @@ class ZipFormerASR:
         vượt ngưỡng này, dù chưa đủ `end_silence_ms` — chống memory leak khi audio speech
         liên tục không bao giờ có khoảng lặng đủ dài (docs/reference/
         livekit-architecture.md §5.5). `None` (mặc định) dùng `config.max_turn_speech_ms`.
+
+        `AsrSegmentEnd` trong `frames`: pipeline ngừng đưa audio (xem docstring enum).
+        FINALIZE chốt buffer như khi đủ `end_silence_ms`; DISCARD bỏ buffer không phát
+        event. Cả hai xoá luôn pre-speech — audio trước và sau chỗ ngắt không liền nhau.
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
@@ -125,6 +149,8 @@ class ZipFormerASR:
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
         buffer = bytearray()
+        pre_speech = bytearray()
+        pre_speech_max_bytes = audio_sample_rate * _PRE_SPEECH_PREROLL_MS // 1000 * 2
         in_speech = False
         last_emitted_text = ""
         silent_ms = 0.0
@@ -135,13 +161,38 @@ class ZipFormerASR:
         audio_ms_since_emit = 0.0
 
         async for frame in frames:
+            if isinstance(frame, AsrSegmentEnd):
+                if frame is AsrSegmentEnd.FINALIZE and buffer and speech_ms >= min_decode_ms:
+                    decoded = await asyncio.to_thread(
+                        self._decode_stream_scored, bytes(buffer), audio_sample_rate
+                    )
+                    if decoded.text:
+                        yield _final_event(decoded)
+                buffer.clear()
+                pre_speech.clear()
+                in_speech = False
+                last_emitted_text = ""
+                silent_ms = 0.0
+                audio_ms_since_emit = 0.0
+                speech_ms = 0.0
+                continue
             frame_ms = len(frame) / 2 / audio_sample_rate * 1000
             if frame_ms <= 0:
                 continue
             is_speech = silence_classifier.is_speech(frame)
             if not in_speech and not is_speech:
-                continue  # chưa có tiếng nói nào — bỏ qua, không tích buffer (tránh flush rỗng)
+                # VAD nội bộ có thể nhận ra giọng nói muộn hơn âm tiết đầu. Giữ tối đa
+                # 300ms audio trước speech_start để không vô hiệu hóa pre-roll của pipeline.
+                # Chỉ đưa vào buffer decode khi VAD xác nhận speech; silence/noise đơn lẻ
+                # vẫn không thể tạo transcript hoặc vượt ngưỡng min_decode_ms.
+                pre_speech.extend(frame)
+                if len(pre_speech) > pre_speech_max_bytes:
+                    del pre_speech[: len(pre_speech) - pre_speech_max_bytes]
+                continue
 
+            if not in_speech:
+                buffer.extend(pre_speech)
+                pre_speech.clear()
             in_speech = True
             buffer.extend(frame)
             audio_ms_since_emit += frame_ms
@@ -151,24 +202,32 @@ class ZipFormerASR:
             else:
                 silent_ms += frame_ms
             has_min_speech = speech_ms >= min_decode_ms
+            # Mỗi partial decode lại TOÀN BỘ buffer: câu càng dài càng tốn; giãn nhịp theo độ
+            # dài buffer nếu cấu hình (partial_interval_ratio), câu ngắn không đổi.
+            buffer_ms = len(buffer) / 2 / audio_sample_rate * 1000
+            emit_interval_ms = max(
+                min_emit_interval_ms, self._config.partial_interval_ratio * buffer_ms
+            )
 
-            if is_speech and audio_ms_since_emit >= min_emit_interval_ms and has_min_speech:
-                text = await asyncio.to_thread(
-                    self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+            if is_speech and audio_ms_since_emit >= emit_interval_ms and has_min_speech:
+                decoded = await asyncio.to_thread(
+                    self._decode_stream_scored, bytes(buffer), audio_sample_rate
                 )
                 audio_ms_since_emit = 0.0
-                if text and text != last_emitted_text:
-                    last_emitted_text = text
-                    yield TranscriptEvent(text=text, is_final=False)
+                if decoded.text and decoded.text != last_emitted_text:
+                    last_emitted_text = decoded.text
+                    yield TranscriptEvent(
+                        text=decoded.text, is_final=False, confidence=decoded.confidence
+                    )
 
             forced_flush = speech_ms >= max_turn_speech_ms
             if silent_ms >= end_silence_ms or forced_flush:
                 if has_min_speech:
-                    text = await asyncio.to_thread(
-                        self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+                    decoded = await asyncio.to_thread(
+                        self._decode_stream_scored, bytes(buffer), audio_sample_rate
                     )
-                    if text:
-                        yield TranscriptEvent(text=text, is_final=True)
+                    if decoded.text:
+                        yield _final_event(decoded)
                 # speech thật ngắn hơn min_decode_ms: coi là backchannel/tiếng động, bỏ
                 # qua hoàn toàn — không decode, không emit gì (kể cả rỗng). forced_flush
                 # (audio nói liên tục quá lâu) luôn có has_min_speech=True nên nhánh này
@@ -183,31 +242,54 @@ class ZipFormerASR:
                 speech_ms = 0.0
 
         if in_speech and buffer and speech_ms >= min_decode_ms:
-            text = await asyncio.to_thread(
-                self._decode_stream_pcm, bytes(buffer), audio_sample_rate
+            decoded = await asyncio.to_thread(
+                self._decode_stream_scored, bytes(buffer), audio_sample_rate
             )
-            if text:
-                yield TranscriptEvent(text=text, is_final=True)
+            if decoded.text:
+                yield _final_event(decoded)
 
-    def _decode_stream_pcm(self, pcm: bytes, source_rate: int) -> str:
+    def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
-        return self._decode_pcm(pcm)
+        return self._decode_scored(pcm)
+
+    def _decode_stream_pcm(self, pcm: bytes, source_rate: int) -> str:
+        return self._decode_stream_scored(pcm, source_rate).text
 
     def _decode_pcm_8k(self, pcm: bytes) -> str:
         """Compatibility helper cho test/caller cũ."""
         return self._decode_stream_pcm(pcm, NARROWBAND_RATE)
 
-    def _decode_pcm(self, pcm: bytes) -> str:
+    def _decode_scored(self, pcm: bytes) -> _Decoded:
         """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""
         import numpy as np
 
         if not pcm:
-            return ""
+            return _Decoded("")
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         recognizer = self._get_recognizer()
         stream = recognizer.create_stream()
         stream.accept_waveform(self.input_sample_rate, samples)
         recognizer.decode_stream(stream)
-        return stream.result.text.strip()
+        result = stream.result
+        text = result.text.strip()
+        log_probs = list(getattr(result, "ys_log_probs", None) or [])
+        if not text or not log_probs:
+            return _Decoded(text)
+        return _Decoded(
+            text,
+            confidence=math.exp(sum(log_probs) / len(log_probs)),
+            min_token_prob=math.exp(min(log_probs)),
+        )
+
+
+def _final_event(decoded: _Decoded) -> TranscriptEvent:
+    if decoded.confidence is not None:
+        # Không log text (PII); chỉ số để đối chiếu với turn qua thời điểm log.
+        logger.debug(
+            "zipformer final confidence=%.3f min_token_prob=%.3f",
+            decoded.confidence,
+            decoded.min_token_prob,
+        )
+    return TranscriptEvent(text=decoded.text, is_final=True, confidence=decoded.confidence)

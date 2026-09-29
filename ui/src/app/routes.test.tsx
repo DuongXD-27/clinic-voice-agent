@@ -18,11 +18,8 @@ describe("app", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeInTheDocument();
     const tools = within(screen.getByRole("region", { name: "Công cụ" }));
-    expect(tools.getByRole("link", { name: /Gọi thử HTTP/ })).toHaveAttribute("href", "/call");
-    expect(tools.getByRole("link", { name: /Gọi thử LiveKit/ })).toHaveAttribute(
-      "href",
-      "/livekit",
-    );
+    expect(tools.getByRole("link", { name: /Gọi từng lượt/ })).toHaveAttribute("href", "/call");
+    expect(tools.getByRole("link", { name: /Gọi trực tiếp/ })).toHaveAttribute("href", "/livekit");
     expect(tools.getByRole("link", { name: /Observability/ })).toHaveAttribute(
       "href",
       "/observability",
@@ -78,10 +75,15 @@ describe("app", () => {
     renderAt("/");
 
     const nav = within(screen.getByRole("navigation", { name: "Điều hướng chính" }));
-    await userEvent.click(nav.getByRole("link", { name: "Gọi thử HTTP" }));
+    await userEvent.click(nav.getByRole("link", { name: "Gọi từng lượt" }));
 
-    expect(screen.getByRole("heading", { level: 1, name: "Cuộc gọi thử" })).toBeInTheDocument();
-    expect(nav.getByRole("link", { name: "Gọi thử HTTP" })).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Cuộc gọi từng lượt (Text/Audio)" }),
+    ).toBeInTheDocument();
+    expect(nav.getByRole("link", { name: "Gọi từng lượt" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     await screen.findByText(/Nguồn: clinic giả/);
   });
 
@@ -89,7 +91,7 @@ describe("app", () => {
     renderAt("/livekit");
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Cuộc gọi giọng nói" }),
+      await screen.findByRole("heading", { level: 1, name: "Cuộc gọi trực tiếp" }),
     ).toBeInTheDocument();
   });
 
