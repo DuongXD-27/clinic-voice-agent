@@ -32,6 +32,11 @@ from callbot.tracing import Tracer as SpanTracer
 from callbot.tracing import null_tracer
 from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
+from inference.llm.prompt.semantic import (
+    PROMPT_VERSION,
+    PROMPT_VERSION_CANCEL_CONFIRM,
+    PROMPT_VERSION_LUNA,
+)
 
 
 def _default_session_store() -> SessionStore:
@@ -73,6 +78,17 @@ def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]
         create_gateway("openai", config=config),
         max_input_chars=settings.semantic_fallback_max_input_chars,
         max_completion_tokens=settings.semantic_fallback_max_tokens,
+        # Flag tắt: đúng prompt semantic_v5 như trước. Khi bật, Luna dùng prompt gọn chuyên biệt;
+        # model khác giữ semantic_v6 để không đổi hành vi ngoài phạm vi tối ưu này.
+        prompt_version=(
+            (
+                PROMPT_VERSION_LUNA
+                if settings.semantic_fallback_model.startswith("gpt-6-luna")
+                else PROMPT_VERSION_CANCEL_CONFIRM
+            )
+            if settings.cancel_semantic_confirm_enabled
+            else PROMPT_VERSION
+        ),
     )
 
 
@@ -95,6 +111,7 @@ def create_orchestrator(
             fallback=name_fallback,
             name_fallback=name_fallback is not None,
             semantic=_semantic_extractor(settings),
+            cancel_semantic_confirm=settings.cancel_semantic_confirm_enabled,
         ),
         policy=PolicyEngine(settings),
         dialogue=DialogueManager(gateway, IdentityVerifier(gateway)),

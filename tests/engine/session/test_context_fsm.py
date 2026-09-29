@@ -244,6 +244,48 @@ def test_cancel_needs_request_and_confirmation_in_different_turns() -> None:
     check_write(ctx, "CANCEL")
 
 
+@pytest.mark.parametrize(
+    "confirmation, question_turn",
+    [
+        # xác nhận của lượt trước, câu hỏi vẫn ở lượt 3: bằng chứng cũ
+        (_evidence("CONFIRMATION", "CANCEL", 3, QuestionId.CANCEL_RECONFIRM, question_turn=2), 3),
+        # câu hỏi xác nhận không còn ở lượt ngay trước (T-08: đã chen câu nhắc chung)
+        (_evidence("CONFIRMATION", "CANCEL", 4, QuestionId.CANCEL_RECONFIRM, question_turn=2), 2),
+        # bằng chứng trả lời một câu hỏi khác câu xác nhận hủy
+        (_evidence("CONFIRMATION", "CANCEL", 4, QuestionId.CONFIRM_READBACK), 3),
+        # nhãn không phải AGREE
+        (_evidence("CONFIRMATION", "CANCEL", 4, QuestionId.CANCEL_RECONFIRM, label="UNCLEAR"), 3),
+    ],
+    ids=["stale_turn", "question_not_just_asked", "other_question", "not_agree"],
+)
+def test_sf05_blocks_confirmations_that_do_not_answer_the_question_just_asked(
+    confirmation: ActionEvidence, question_turn: int
+) -> None:
+    ctx = _cancel_ctx(turn=4)
+    ctx.question = Question(QuestionId.CANCEL_RECONFIRM, "chắc chắn hủy?", question_turn, "CANCEL")
+    ctx.add_evidence(_evidence("REQUEST", "CANCEL", 1, QuestionId.CONFIRM_READBACK, label="CANCEL"))
+    ctx.add_evidence(confirmation)
+    with pytest.raises(SevereFailureBlocked, match="SF-05"):
+        assert_action_confirmed(ctx, "CANCEL")
+
+
+def test_sf05_request_after_the_confirmation_does_not_count() -> None:
+    ctx = _cancel_ctx(turn=4)
+    ctx.add_evidence(_evidence("CONFIRMATION", "CANCEL", 4, QuestionId.CANCEL_RECONFIRM))
+    ctx.add_evidence(_evidence("REQUEST", "CANCEL", 5, QuestionId.CONFIRM_READBACK, label="CANCEL"))
+    with pytest.raises(SevereFailureBlocked, match="SF-05"):
+        assert_action_confirmed(ctx, "CANCEL")
+
+
+def test_sf05_evidence_for_another_action_cannot_be_recorded_for_cancel() -> None:
+    ctx = _cancel_ctx(turn=4)
+    with pytest.raises(ValueError):
+        ctx.add_evidence(_evidence("CONFIRMATION", "CONFIRM", 4, QuestionId.CONFIRM_READBACK))
+    ctx.add_evidence(_evidence("REQUEST", "CANCEL", 3, QuestionId.CONFIRM_READBACK, label="CANCEL"))
+    with pytest.raises(SevereFailureBlocked, match="SF-05"):
+        assert_action_confirmed(ctx, "CANCEL")
+
+
 def test_check_write_rejects_inconsistent_state() -> None:
     ctx = _cancel_ctx(turn=4)
     with pytest.raises(InconsistentSession):
