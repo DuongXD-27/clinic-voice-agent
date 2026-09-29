@@ -39,6 +39,8 @@ _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
 _PLAYOUT_TIMEOUT_S = 20.0
+# Độ dài mỗi frame TTS đưa vào AudioSource — xem docstring _speak().
+_PLAYOUT_FRAME_MS = 20
 # Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
 _SILENCE_POLL_S = 0.25
 # Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
@@ -274,7 +276,9 @@ class CallBridge:
                 # nhưng vẫn bật được khi cần chẩn đoán ASR nghe sai gì (bật qua
                 # `logging.getLogger("callbot.transports.livekit.call_bridge").setLevel(logging.DEBUG)`).
                 logger.debug("call_bridge: turn %d text=%r", self._turn_number, turn.text)
-                await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
+                if not turn.silence_ms:
+                    # Lượt im lặng không có lời để hiện; câu hỏi lại của bot đã đủ ngữ cảnh.
+                    await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
                 caller = caller_input_from_turn(self._turn_number, turn)
                 action = await asyncio.to_thread(
                     self._orchestrator.handle_turn, self._room.name, caller
@@ -486,33 +490,41 @@ class CallBridge:
         await self._room.local_participant.publish_track(track, options)
 
     async def _speak(self, text: str) -> None:
-        """Publish TTS streaming từng chunk thay vì chờ đủ câu. Interruption có thể
-        cancel() giữa chừng — kiểm tra cờ trước MỖI chunk và dừng publish ngay (không
-        chỉ ngừng gọi API mà vẫn phát nốt chunk đã có)."""
+        """Publish TTS theo từng frame `_PLAYOUT_FRAME_MS`, kiểm tra barge-in trước MỖI frame
+        và dừng ngay (không chỉ ngừng gọi API mà vẫn phát nốt audio đã có).
+
+        Không bao giờ đưa cả chunk TTS vào một lần `capture_frame`: provider không stream
+        (Vbee) trả nguyên câu thành MỘT chunk. SDK tự chia frame lớn và đẩy dần trong task
+        native — huỷ lần await phía Python không dừng được task đó, nên sau barge-in bot vẫn
+        nói tiếp phần còn lại, và câu kế tiếp bị native từ chối
+        ("InvalidState - failed to capture frame"), sập job. Frame nhỏ thì phần còn treo sau
+        khi huỷ tối đa một frame, xong ngay khi `clear_queue()` xả hàng đợi."""
         if not text.strip() or self._audio_source is None:
             return
 
         self._turn_controller.on_bot_speaking_changed(True)
         self._interruption.on_bot_started_speaking(text)
         self._active_speak_task = asyncio.current_task()
-        # rtc.AudioFrame đòi len(data) chẵn (PCM16 = 2 byte/sample) — chunk từ
-        # synthesize_stream() cắt theo byte HTTP tuỳ ý, không đảm bảo ranh giới sample;
-        # giữ lại byte lẻ cuối chunk cho lần capture_frame kế tiếp thay vì cắt bỏ (mất
-        # audio) hay publish frame không hợp lệ (SDK raise ValueError, sập cả job).
+        sample_rate = self._tts.stream_sample_rate
+        frame_bytes = sample_rate * _PLAYOUT_FRAME_MS // 1000 * 2
+        # Chunk TTS cắt theo byte HTTP tuỳ ý; gom lại rồi cắt đúng ranh giới frame PCM16.
         pending = bytearray()
         interrupted = False
         try:
             async for chunk in self._tts.synthesize_stream(text):
-                if self._interruption.state == InterruptionState.INTERRUPTED:
+                if self._is_interrupted():
                     break
                 pending.extend(chunk)
-                usable_len = len(pending) - (len(pending) % 2)
-                if usable_len == 0:
-                    continue
-                pcm, pending = bytes(pending[:usable_len]), pending[usable_len:]
-                segment = AudioSegment(pcm=pcm, sample_rate=self._tts.stream_sample_rate)
-                await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
-            interrupted = self._interruption.state == InterruptionState.INTERRUPTED
+                while len(pending) >= frame_bytes and not self._is_interrupted():
+                    await self._capture(bytes(pending[:frame_bytes]), sample_rate)
+                    del pending[:frame_bytes]
+                if self._is_interrupted():
+                    break
+            # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
+            tail = len(pending) - len(pending) % 2
+            if tail and not self._is_interrupted():
+                await self._capture(bytes(pending[:tail]), sample_rate)
+            interrupted = self._is_interrupted()
             if interrupted:
                 # Chỉ dừng đẩy chunk MỚI là chưa đủ — chunk đã capture nhưng chưa phát
                 # ra loa vẫn còn trong hàng đợi playout của AudioSource, phải xoá luôn
@@ -537,14 +549,21 @@ class CallBridge:
                             _PLAYOUT_TIMEOUT_S,
                         )
         except asyncio.CancelledError:
-            interrupted = self._interruption.state == InterruptionState.INTERRUPTED
+            interrupted = self._is_interrupted()
             if not interrupted:
                 raise
         finally:
-            interrupted = interrupted or self._interruption.state == InterruptionState.INTERRUPTED
+            interrupted = interrupted or self._is_interrupted()
             self._turn_controller.on_bot_speaking_changed(False, preserve_candidate=interrupted)
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None
+
+    def _is_interrupted(self) -> bool:
+        return self._interruption.state == InterruptionState.INTERRUPTED
+
+    async def _capture(self, pcm: bytes, sample_rate: int) -> None:
+        segment = AudioSegment(pcm=pcm, sample_rate=sample_rate)
+        await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
 
     async def cancel(self) -> None:
         """Interruption target: dừng network TTS và audio đã queue ngay lập tức."""

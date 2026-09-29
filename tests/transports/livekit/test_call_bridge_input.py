@@ -88,6 +88,22 @@ async def test_silence_after_bot_speaks_sends_silent_turn() -> None:
     assert caller.silence_ms >= 50
 
 
+async def test_silent_turn_publishes_no_empty_caller_line() -> None:
+    """Lượt im lặng không có lời: UI không được hiện một bong bóng "caller" rỗng."""
+    opening = BotAction(utterance="Xin chào", state="AWAITING_INTENT")
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="UNREACHABLE")
+    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
+    bridge = _bridge(orchestrator, _ScriptedPipeline(), silence_timeout_ms=50)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    lines = [payload for payload, _, _ in bridge._room.local_participant.data]
+    assert [(line["role"], line["text"]) for line in lines] == [
+        ("bot", "Xin chào"),
+        ("bot", "Tạm biệt"),
+    ]
+
+
 async def test_timer_restarts_after_each_bot_reply() -> None:
     """Lượt thật -> bot trả lời -> người dùng im: lượt thứ hai là lượt im lặng."""
     opening = BotAction(utterance="Xin chào", state="AWAITING_INTENT")

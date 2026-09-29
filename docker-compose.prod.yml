@@ -66,7 +66,7 @@ services:
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       ASR_PROVIDER: zipformer
-      VAD_PROVIDER: ${VAD_PROVIDER:-webrtc}
+      # Cố ý không đặt VAD_PROVIDER: env ghi đè config/speech.yaml. Muốn đổi thì đặt trong .env.
       SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
