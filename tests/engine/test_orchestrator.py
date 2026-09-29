@@ -152,18 +152,18 @@ def test_reference_call_reschedule() -> None:
     opening = bot.start_call(_outbound("c_resched"))
     assert "14 tháng 10" not in opening.utterance
 
+    # Hình 0 tab Reschedule: một khung chiều -> bot hỏi có/không luôn, không hỏi "chọn khung nào"
     action = _run(
         bot,
         "c_resched",
-        [
-            "Nguyễn Văn A.",
-            "Ngày 14 tháng 3 năm 1978.",
-            "Tôi đổi sang buổi chiều được không?",
-            "khung 1",
-            "Được, đổi giúp tôi.",
-        ],
+        ["Nguyễn Văn A.", "Ngày 14 tháng 3 năm 1978.", "Tôi đổi sang buổi chiều được không?"],
     )
-    assert action.outcome == "RESCHEDULED"
+    assert action.state == "AWAITING_CONFIRMATION"
+    assert "2 giờ 30 chiều" in action.utterance and "đổi sang giờ đó" in action.utterance
+    assert _context(bot, "c_resched").selected_slot_id == "slot_91d2" and clinic.writes == []
+
+    action = _run(bot, "c_resched", ["Được, đổi giúp tôi."], start=4)
+    assert action.outcome == "RESCHEDULED" and "đổi lịch" in action.utterance
     assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
 
 
@@ -175,13 +175,14 @@ def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
 
     clinic.taken_slots.add("slot_91d2")  # người khác vừa lấy
     action = _run(bot, "c_taken", ["Được"], start=5)
-    assert action.state == "OFFERING_SLOTS" and action.utterance.startswith(t.SLOT_TAKEN)
-    assert "2 giờ 30 chiều" not in action.utterance
+    # Đọc lại /slots: chỉ còn một khung -> hỏi có/không luôn (Hình 0), vẫn cần xác nhận mới
+    assert action.state == "AWAITING_CONFIRMATION" and action.utterance.startswith(t.SLOT_TAKEN)
+    assert "2 giờ 30 chiều" not in action.utterance and "10 giờ sáng" in action.utterance
     ctx = _context(bot, "c_taken")
-    assert ctx.selected_slot_id is None and ctx.evidence == []
+    assert ctx.selected_slot_id == "slot_aa01" and ctx.evidence == []
     assert clinic.writes == []
 
-    action = _run(bot, "c_taken", ["khung 1", "được"], start=6)
+    action = _run(bot, "c_taken", ["được"], start=6)
     assert action.outcome == "RESCHEDULED"
     assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"})]
 

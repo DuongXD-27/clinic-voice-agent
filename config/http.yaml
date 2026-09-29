@@ -6,7 +6,8 @@
 # sim: clinic_mock_sim trong bộ nhớ, không cần mạng/key — chỉ demo local, mất dữ liệu khi restart.
 # docker-compose.yml local đặt CLINIC_BACKEND=sim; docker-compose.prod.yml ghi cứng mock.
 clinic_backend: sim
-# Chỉ khi sim — listing3 (apt_00417 09:00, 2 slot) | mentor_mock (giống mock sau reset)
+# Chỉ khi sim — listing3 (apt_00417 09:00, 2 slot) | mentor_mock (giống mock deploy sau reset,
+# gồm 10 bệnh nhân demo pt_3401–pt_3410, lịch apt_00418–apt_00427, slot slot_b501–slot_b510)
 clinic_sim_dataset: listing3
 # Chỉ khi sim — edge case dựng sẵn, cách nhau dấu phẩy (xem src/clinic_mock_sim/README.md), vd slot_race
 clinic_sim_scenario: ""

@@ -2,7 +2,7 @@
 
 import pytest
 
-from callbot.engine.extraction.agreement import extract_agreement
+from callbot.engine.extraction.agreement import extract_agreement, gives_up_slot_change, is_bare_da
 from callbot.engine.extraction.schema import Agreement, Provenance, QuestionId
 
 CANCEL = QuestionId.CANCEL_RECONFIRM
@@ -65,15 +65,27 @@ def test_cancel_reconfirm_refusals(text: str) -> None:
 @pytest.mark.parametrize(
     "text, expected",
     [
-        ("vâng", Agreement.UNCLEAR),
+        # T-10 D-2: "vâng / ừ" là đồng ý; "dạ" một mình không bao giờ (PRD R-23, GC-CONF-01)
+        ("vâng", Agreement.AGREE),
+        ("ừ", Agreement.AGREE),
+        ("dạ vâng", Agreement.AGREE),
+        ("vang", Agreement.AGREE),
         ("dạ", Agreement.UNCLEAR),
+        ("dạ ạ", Agreement.UNCLEAR),
+        ("ok", Agreement.AGREE),
         ("có", Agreement.AGREE),
         ("được", Agreement.AGREE),
         ("Được, đổi giúp tôi.", Agreement.AGREE),
+        ("đổi giúp tôi", Agreement.AGREE),
+        ("đổi luôn", Agreement.AGREE),
         ("đồng ý", Agreement.AGREE),
         ("chốt đi em", Agreement.AGREE),
         ("được không em", Agreement.UNCLEAR),
+        ("chắc là được", Agreement.UNCLEAR),
+        ("vâng nhưng để tôi hỏi vợ đã", Agreement.UNCLEAR),
+        ("dạ hôm đó tôi bận", Agreement.UNCLEAR),
         ("không", Agreement.REFUSE),
+        ("không, khung khác", Agreement.REFUSE),
         ("thôi để sau", Agreement.REFUSE),
     ],
 )
@@ -311,3 +323,33 @@ def test_not_wanting_a_change_is_not_a_refusal_to_attend(text: str) -> None:
 @pytest.mark.parametrize("text", ["không cần đổi", "không đổi"])
 def test_not_changing_is_still_a_refusal_when_choosing_a_slot(text: str) -> None:
     assert extract_agreement(text, SLOT).value is Agreement.REFUSE
+
+
+@pytest.mark.parametrize("text", ["doi giup toi", "doi luon"])
+def test_unaccented_doi_is_not_a_slot_agreement(text: str) -> None:
+    """ "doi" = đợi: "đợi giúp tôi" không được mở khóa đổi lịch."""
+    assert extract_agreement(text, SLOT).value is not Agreement.AGREE
+
+
+@pytest.mark.parametrize("text", ["dạ", "Dạ.", "dạ ạ"])
+def test_bare_da(text: str) -> None:
+    assert is_bare_da(text)
+
+
+@pytest.mark.parametrize("text", ["dạ vâng", "dạ hôm đó tôi bận", "vâng"])
+def test_da_with_more_is_not_bare(text: str) -> None:
+    assert not is_bare_da(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["thôi không đổi nữa", "giữ lịch cũ", "không, thôi", "thôi", "để nguyên", "không cần đổi"],
+)
+def test_giving_up_a_slot_change(text: str) -> None:
+    assert gives_up_slot_change(text)
+
+
+@pytest.mark.parametrize("text", ["không", "không được", "không, khung khác"])
+def test_bare_refusal_is_not_giving_up(text: str) -> None:
+    """Q-4: "không" trần chưa rõ muốn gì — Dialogue hỏi A/B, không đoán là bỏ đổi lịch."""
+    assert not gives_up_slot_change(text)

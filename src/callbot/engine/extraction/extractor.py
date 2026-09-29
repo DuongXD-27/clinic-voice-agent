@@ -11,8 +11,9 @@ Thứ tự trong một lượt:
 5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
    trả lời không phải tên / ngày sinh.
-6. slot_choice  — chỉ OFFER_SLOTS.
-7. agreement    — câu hỏi xác nhận; ở OFFER_SLOTS chỉ khi không rút ra tiêu chí slot (chỉ ra REFUSE/UNCLEAR).
+6. slot_choice  — câu hỏi chọn slot: OFFER_SLOTS, SLOT_READBACK, SLOT_REFUSE_CHOICE, ASK_SLOT_PREFERENCE.
+7. agreement    — câu hỏi xác nhận; ở các câu hỏi chọn slot khác chỉ khi không rút ra tiêu chí slot
+   (chỉ ra REFUSE/UNCLEAR).
 8. cancel_reason — khi đang hủy.
 """
 
@@ -97,6 +98,15 @@ _CONSISTENT_INTENTS: dict[QuestionId, frozenset[Intent]] = {
     QuestionId.CANCEL_RECONFIRM: frozenset({Intent.NONE, Intent.CANCEL}),
 }
 _CANCEL_QUESTIONS = frozenset({QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_CANCEL_REASON})
+# Câu hỏi mà người gọi có thể trả lời bằng khung / tiêu chí thời gian / "khung khác" (T-10)
+_SLOT_QUESTIONS = frozenset(
+    {
+        QuestionId.OFFER_SLOTS,
+        QuestionId.SLOT_READBACK,
+        QuestionId.SLOT_REFUSE_CHOICE,
+        QuestionId.ASK_SLOT_PREFERENCE,
+    }
+)
 
 
 def _resolve_refusal_inside_reason(
@@ -199,7 +209,7 @@ class InformationExtractor:
                 intent = fallback_intent
 
         slot_choice = skipped
-        if question is QuestionId.OFFER_SLOTS:
+        if question in _SLOT_QUESTIONS:
             slot_choice = extract_slot_choice(
                 transcript, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
@@ -207,8 +217,8 @@ class InformationExtractor:
         agreement: Field[Agreement] = skipped
         if question in CONFIRMATION_QUESTIONS:
             agreement = self._agreement(question, transcript, intent, clinical)
-        elif question is QuestionId.OFFER_SLOTS and not slot_choice.found:
-            # Chỉ để nhận lời từ chối chọn slot ("thôi không đổi nữa"). OFFER_SLOTS không có ngưỡng
+        elif question in _SLOT_QUESTIONS and not slot_choice.found:
+            # Chỉ để nhận lời từ chối chọn slot ("thôi không đổi nữa"). Các câu hỏi này không có ngưỡng
             # AGREE trong agreement._agree_span nên kết quả không bao giờ là AGREE, không mở khóa ghi.
             agreement = extract_agreement(transcript, question)
 

@@ -103,6 +103,13 @@ class CallContext:
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
+    # Yêu cầu thời gian của người gọi (lời nói, không phải trạng thái lịch — §4.2.2) và các khung đã
+    # đọc / bị từ chối cho yêu cầu đó: đọc trang tiếp không lặp khung, giữ tiêu chí sau SLOT_TAKEN (T-10)
+    slot_request: Optional[str] = None
+    offered_slot_ids: list[str] = field(default_factory=list)
+    refused_slot_ids: list[str] = field(default_factory=list)
+    # Số ngày / khoảng thời gian người gọi đã nêu cho việc đổi / đặt đang chờ (R-29, T-10 §3.2)
+    slot_round: int = 0
 
     # Policy counters
     failed_understandings: int = 0
@@ -157,6 +164,8 @@ class CallContext:
             self.evidence = []
         if action != self.pending_action:
             self.cancel_reason = None
+            self.reset_slot_request(None)
+            self.slot_round = 0
         self.pending_action = action
         self.selected_slot_id = slot_id
 
@@ -172,6 +181,14 @@ class CallContext:
         self.evidence = []
         self.cancel_reason = None
         self.presented_slot_ids = []
+        self.reset_slot_request(None)
+        self.slot_round = 0
+
+    def reset_slot_request(self, request: Optional[str]) -> None:
+        """Yêu cầu thời gian mới: khung đã đọc / bị từ chối của yêu cầu cũ không còn áp dụng."""
+        self.slot_request = request
+        self.offered_slot_ids = []
+        self.refused_slot_ids = []
 
     def add_evidence(self, evidence: ActionEvidence) -> None:
         if evidence.action != self.pending_action or evidence.slot_id != self.selected_slot_id:
@@ -212,6 +229,10 @@ class CallContext:
             "cancel_reason": self.cancel_reason,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
+            "slot_request": self.slot_request,
+            "offered_slot_ids": list(self.offered_slot_ids),
+            "refused_slot_ids": list(self.refused_slot_ids),
+            "slot_round": self.slot_round,
             "failed_understandings": self.failed_understandings,
             "unclear_streak": self.unclear_streak,
             "silent_turns": self.silent_turns,
@@ -249,6 +270,11 @@ class CallContext:
             cancel_reason=data["cancel_reason"],
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
+            # Khóa thêm ở T-10: phiên lưu trước đó chưa có
+            slot_request=data.get("slot_request"),
+            offered_slot_ids=list(data.get("offered_slot_ids", [])),
+            refused_slot_ids=list(data.get("refused_slot_ids", [])),
+            slot_round=int(data.get("slot_round", 0)),
             failed_understandings=data["failed_understandings"],
             unclear_streak=data["unclear_streak"],
             silent_turns=data["silent_turns"],

@@ -6,10 +6,12 @@ Ngưỡng AGREE đặt theo HÀNH ĐỘNG mà câu trả lời mở khóa, khôn
 |-------------------|---------------------|----------------------|--------------------------|-------------------------|
 | ASK_ATTENDANCE    | (không ghi)         | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
 | CONFIRM_READBACK  | CONFIRMED           | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
-| SLOT_READBACK     | RESCHEDULED/BOOKED  | UNCLEAR              | AGREE                    | "được", "đồng ý", ...   |
+| SLOT_READBACK     | RESCHEDULED/BOOKED  | "vâng/ừ" AGREE, "dạ" UNCLEAR | AGREE            | "được", "đồng ý", ...   |
 | CANCEL_RECONFIRM  | CANCELLED           | UNCLEAR              | UNCLEAR                  | động từ hủy tường minh  |
 
 CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): "dạ" đáp lễ phép không bao giờ được hủy lịch.
+SLOT_READBACK (T-10 D-2, PRD R-23): "dạ" một mình không bao giờ là đồng ý; Dialogue hỏi lại và nhắc
+người gọi nói "đồng ý". "vâng", "ừ", "dạ vâng" là đồng ý.
 Tín hiệu mâu thuẫn ("thôi hủy đi", "không, hủy đi") -> UNCLEAR, Dialogue hỏi lại bằng câu A/B.
 Ngập ngừng ("để xem", "chắc là được", "có lẽ") -> UNCLEAR ở mọi câu hỏi xác nhận, kể cả khi có "vâng" (T-04).
 
@@ -152,6 +154,9 @@ _POLITE = compile_phrases(
 _POLITE_AGREE = frozenset(
     clean(p) for p in ["vâng", "dạ", "ừ", "ờ", "vâng ạ", "dạ vâng", "ừ ừ"]
 ) | frozenset(strip_diacritics(clean(p)) for p in ["vâng", "vâng ạ", "dạ vâng"])
+# Ở câu chốt slot, "dạ" một mình không phải đồng ý (PRD R-23, GC-CONF-01; T-10 D-2)
+_SLOT_POLITE_AGREE = _POLITE_AGREE - {clean("dạ")}
+_BARE_DA = clean("dạ")
 _AFFIRM = compile_phrases(
     [
         "có",
@@ -183,8 +188,24 @@ _AFFIRM = compile_phrases(
 # Chỉ ở câu hỏi đến khám: "đến chứ" là khẳng định sẽ đến, không có từ đồng ý nào khác trong câu
 _ATTEND_AFFIRM = compile_phrases(["đến chứ", "đi chứ"])
 _SLOT_ACTION = compile_phrases(
-    ["đổi đi", "đặt đi", "chốt", "chốt đi", "lấy khung đó", "lấy giờ đó", "lấy luôn"],
-    unaccented_exclude=["đổi đi"],  # "doi di" = đợi đi
+    [
+        "đổi đi",
+        "đặt đi",
+        "chốt",
+        "chốt đi",
+        "lấy khung đó",
+        "lấy giờ đó",
+        "lấy luôn",
+        # Hình 0 contract: "Được, đổi giúp tôi." (T-10 D-2)
+        "đổi giúp tôi",
+        "đổi giúp em",
+        "đổi luôn",
+        "đổi sang giờ đó",
+        "đặt giúp tôi",
+        "đặt luôn",
+    ],
+    # "doi" = đợi: "doi di", "doi giup toi" có thể là "đợi đi", "đợi giúp tôi"
+    unaccented_exclude=["đổi đi", "đổi giúp tôi", "đổi giúp em", "đổi luôn", "đổi sang giờ đó"],
 )
 _CANCEL_VERB = compile_phrases(["hủy"])
 _CONTRAST = compile_phrases(
@@ -232,8 +253,20 @@ _ATTEND_COMPLEMENTS = compile_phrases(
     unaccented_exclude=["đúng giờ", "đúng hẹn"],  # "dung" = đừng
 )
 _SLOT_COMPLEMENTS = compile_phrases(
-    ["khung đó", "khung này", "giờ đó", "khung", "đổi", "đặt", "giúp", "cho", "này", "lịch"],
-    unaccented_exclude=["đổi"],  # "doi" = đợi
+    [
+        "khung đó",
+        "khung này",
+        "giờ đó",
+        "khung",
+        "đổi",
+        "đặt",
+        "giúp",
+        "cho",
+        "này",
+        "lịch",
+        "sang",
+    ],
+    unaccented_exclude=["đổi", "sang"],  # "doi" = đợi, "sang" = sáng
 )
 
 # Không có "chứ": "được chứ" là khẳng định, không phải hỏi lại
@@ -414,7 +447,8 @@ def _agree_span(question_id: QuestionId, cues: _Cues) -> Optional[str]:
         # SF-05: chỉ động từ hủy tường minh. "vâng", "có", "đúng", "không sao" một mình đều chưa đủ.
         return cues.cancel_verb
     if question_id is QuestionId.SLOT_READBACK:
-        return cues.affirm or cues.slot_action or cues.idiom
+        polite = cues.polite if cues.polite in _SLOT_POLITE_AGREE else None
+        return cues.affirm or cues.slot_action or cues.idiom or polite
     if question_id in (QuestionId.CONFIRM_READBACK, QuestionId.ASK_ATTENDANCE):
         polite = cues.polite if cues.polite in _POLITE_AGREE else None
         return cues.affirm or cues.idiom or polite
@@ -435,6 +469,64 @@ def attendance_leaves_content(transcript: str, span: Optional[str]) -> bool:
     unaccented = is_unaccented(text)
     text = remove_phrases(text, _INTENT_ANSWER_FILLER, unaccented)
     return _leaves_content(text, QuestionId.CONFIRM_READBACK, span, unaccented)
+
+
+# Kể mình bận vào lúc đó. IE vẫn trả UNCLEAR như mọi câu kể hoàn cảnh (T-04 §8); riêng ở bước chọn
+# slot, Dialogue hiểu là không nhận khung vừa đọc (T-10 §3.8.1). "ban" không dấu = "bạn"
+_BUSY = compile_phrases(
+    [
+        "bận",
+        "bận rồi",
+        "bận mất rồi",
+        "kẹt lịch",
+        "kẹt việc",
+        "vướng lịch",
+        "vướng việc",
+        "có việc",
+        "phải đi làm",
+        "đi công tác",
+        "không rảnh",
+        "không đi được",
+        "không đến được",
+        "không kịp",
+    ],
+    unaccented_exclude=["bận"],
+)
+# Ở bước chọn slot: người gọi bỏ việc đổi / đặt, giữ lịch cũ — khác "không" trần (chưa rõ muốn gì)
+_GIVE_UP_SLOT = compile_phrases(
+    [
+        *_KEEP_WORDS,
+        *_NOT_CHANGE_WORDS,
+        "giữ lịch cũ",
+        "để nguyên",
+        "thôi",
+        "thôi khỏi",
+        "không đặt nữa",
+    ]
+)
+
+
+def mentions_busy(transcript: str) -> bool:
+    """ "hôm đó tôi bận mất rồi", "tôi phải đi làm": người gọi không rảnh vào lúc bot vừa đọc."""
+    return find_phrase(clean(transcript), _BUSY) is not None
+
+
+def is_bare_da(transcript: str) -> bool:
+    """Chỉ "dạ": ở câu chốt slot không phải đồng ý, Dialogue nhắc người gọi nói "đồng ý" (D-2).
+
+    Bản không dấu "da", "da a" cũng tính (ASR không dấu, R127).
+    """
+    return clean(transcript) in (_BARE_DA, clean("dạ ạ"), "da", "da a")
+
+
+def mentions_cancel(transcript: str) -> bool:
+    """Có động từ "hủy": "không đi được, hủy đi" là muốn hủy, không chỉ là bận."""
+    return find_phrase(clean(transcript), _CANCEL_VERB) is not None
+
+
+def gives_up_slot_change(transcript: str) -> bool:
+    """ "thôi không đổi nữa", "giữ lịch cũ": bỏ việc đổi / đặt; "không" trần thì không (T-10 Q-4)."""
+    return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
 
 
 def mentions_keeping(transcript: str) -> bool:
