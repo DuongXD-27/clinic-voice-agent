@@ -98,6 +98,8 @@ Server chạy tại `http://localhost:8000`.
 | `POST` | `/v1/calls/{call_id}/turn` | Gửi một lượt của người gọi, nhận câu trả lời của bot |
 | `GET` | `/health` | Kiểm tra server còn sống |
 | `GET` | `/ready` | Kiểm tra server sẵn sàng (kết nối Redis và dọn session) |
+| `POST` | `/v1/stt/turn`, `/v1/stt/turn/upload` | Thử STT trên một lượt nói (bật bằng `STT_EVAL_ENABLED=true`), xem [stt-eval-api.md](docs/reference/stt-eval-api.md) |
+| `POST` | `/v1/stt/transcribe`, `/v1/stt/transcribe/upload` | Thử STT trên file dài nhiều câu (cùng cờ và tài liệu) |
 
 Ví dụ:
 
@@ -234,6 +236,7 @@ docs/reference/                 # tài liệu thiết kế
 | Slot filling họ tên | [name-slot-filling.md](docs/reference/name-slot-filling.md) |
 | Vận hành session | [session-operations.md](docs/reference/session-operations.md) |
 | Luồng STT | [stt-flow.md](docs/reference/stt-flow.md) |
+| API thử chất lượng STT | [stt-eval-api.md](docs/reference/stt-eval-api.md) |
 | Cài model ZipFormer | [zipformer-model-setup.md](docs/reference/zipformer-model-setup.md) |
 | Clinic API | [clinic-mock.md](docs/reference/clinic-mock.md) |
 | Clinic giả cho test | [clinic_mock_sim/README.md](src/clinic_mock_sim/README.md) |

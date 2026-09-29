@@ -26,8 +26,12 @@ class Settings(YamlSettings):
     # người test (engine không dùng). Chỉ đặt qua env; mặc định tắt.
     demo_clinic_admin_enabled: bool = False
 
-    # Secret: bearer key cho /v1/calls và /demo-api (auth.py), dạng sk_..., nhiều key cách nhau
-    # dấu phẩy. Để trống = tắt auth.
+    # Mount /v1/stt/* (stt_eval.py) cho PM thử chất lượng STT trên file WAV. Chỉ đặt qua env;
+    # mặc định tắt vì route tải URL tùy ý và tốn CPU ASR dùng chung với cuộc gọi thật.
+    stt_eval_enabled: bool = False
+
+    # Secret: bearer key cho /v1/calls, /v1/stt và /demo-api (auth.py), dạng sk_..., nhiều key
+    # cách nhau dấu phẩy. Để trống = tắt auth.
     bot_api_keys: str = ""
 
     # Bản build UI phục vụ tại /ui (ui.py); rỗng = không mount
@@ -48,6 +52,8 @@ class Settings(YamlSettings):
             raise ValueError("DEMO_CLINIC_ADMIN_ENABLED=true requires BOT_API_KEYS")
         if self.demo_clinic_admin_enabled and self.clinic_backend == "mock":
             self.require_clinic_mock_base_url()
+        if self.stt_eval_enabled and not self.api_keys():
+            raise ValueError("STT_EVAL_ENABLED=true requires BOT_API_KEYS")
         return self
 
 

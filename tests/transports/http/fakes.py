@@ -15,13 +15,16 @@ class FakeASR:
     model = "fake-asr-v1"
     input_sample_rate = 16000
 
-    def __init__(self, transcript: str = "") -> None:
+    def __init__(self, transcript: str = "", confidence: Optional[float] = None) -> None:
         self.transcript = transcript
+        self.confidence = confidence
         self.received: list[AudioSegment] = []
 
     def transcribe(self, segment: AudioSegment) -> Transcript:
         self.received.append(segment)
-        return Transcript(text=self.transcript, is_silence=not self.transcript)
+        return Transcript(
+            text=self.transcript, confidence=self.confidence, is_silence=not self.transcript
+        )
 
     async def stream(self, frames: AsyncIterator[bytes]) -> AsyncIterator[TranscriptEvent]:
         raise NotImplementedError

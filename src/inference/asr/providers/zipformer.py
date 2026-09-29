@@ -30,7 +30,7 @@ transducer "đói" tín hiệu khi audio quá ngắn để cung cấp đủ cont
 VAD nhận nhầm noise thành speech (đã xử lý ở TurnController.min_speech_ms) — ở đây VAD
 ĐÚNG, nhưng bản thân ASR không tin cậy trên input siêu ngắn.
 
-`stream()` gắn `TranscriptEvent.confidence` = trung bình nhân xác suất các token của lần decode
+`stream()` (và `transcribe()`) gắn confidence = trung bình nhân xác suất các token của lần decode
 (exp của trung bình `ys_log_probs`, model offline có sẵn, không tốn thêm compute). Đo 28/09:
 "hủy lịch" nghe thành "THÙY LINH" vẫn có xác suất token 0,79/0,98/0,57 — confidence KHÔNG bắt
 được nghe nhầm; chỉ có thể giúp nhận ra ảo giác sinh từ nhiễu (xem eval/noise-bench). Hiện chỉ
@@ -96,7 +96,8 @@ class ZipFormerASR:
         return self._recognizer
 
     def transcribe(self, pcm: bytes) -> ASRResult:
-        return ASRResult(text=self._decode_pcm(pcm))
+        decoded = self._decode_scored(pcm)
+        return ASRResult(text=decoded.text, confidence=decoded.confidence)
 
     async def stream(
         self,
@@ -259,9 +260,6 @@ class ZipFormerASR:
     def _decode_pcm_8k(self, pcm: bytes) -> str:
         """Compatibility helper cho test/caller cũ."""
         return self._decode_stream_pcm(pcm, NARROWBAND_RATE)
-
-    def _decode_pcm(self, pcm: bytes) -> str:
-        return self._decode_scored(pcm).text
 
     def _decode_scored(self, pcm: bytes) -> _Decoded:
         """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""

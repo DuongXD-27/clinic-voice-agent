@@ -21,6 +21,7 @@ OUTPUT = Path(__file__).resolve().parents[1] / "ui" / "openapi.json"
 def render() -> str:
     app = create_app(
         observability_settings=ObservabilityApiSettings(enabled=True, trace_dir="unused"),
+        stt_eval_enabled=True,
     )
     return json.dumps(app.openapi(), indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 

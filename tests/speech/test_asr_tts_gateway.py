@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from inference.asr import ASRGateway, ASRResult, create_asr_gateway
@@ -74,6 +76,23 @@ def test_recognizer_resamples_to_model_rate() -> None:
     assert transcript.is_silence is False
     sample_rate, _samples = fake.decoded[0].accepted
     assert sample_rate == WIDEBAND_RATE
+
+
+def test_zipformer_transcribe_returns_token_confidence() -> None:
+    pytest.importorskip("numpy")
+    fake = _FakeRecognizer(text="có")
+    fake.create_stream = lambda: _ScoredStream("có", [math.log(0.8), math.log(0.5)])
+
+    result = _zipformer(fake).transcribe(b"\x00\x00" * 1600, WIDEBAND_RATE)
+
+    assert result.text == "có"
+    assert result.confidence == pytest.approx(math.sqrt(0.8 * 0.5))
+
+
+class _ScoredStream(_FakeStream):
+    def __init__(self, text: str, log_probs: list[float]) -> None:
+        super().__init__(text)
+        self.result.ys_log_probs = log_probs
 
 
 def test_recognizer_blank_result_is_silence() -> None:

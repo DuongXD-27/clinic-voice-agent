@@ -64,6 +64,7 @@ Lỗi nghiệp vụ trong lượt (Clinic từ chối lệnh ghi, guardrail ch�
 |---|---|
 | `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
 | `/demo-api/*` | Có |
+| `/v1/stt/*` (API thử STT, xem [stt-eval-api.md](stt-eval-api.md)) | Có. Chỉ mount khi `STT_EVAL_ENABLED=true`, và khi đó bắt buộc phải có `BOT_API_KEYS` |
 | `/health`, `/ready`, `/audio/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/ui/*` là file tĩnh của giao diện web |
 
 Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/ui/call` (link cũ `/demo/` chuyển hướng tới đây) có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
