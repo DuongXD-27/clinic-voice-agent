@@ -51,9 +51,8 @@ silero_min_silence_ms: 500
 # (mỗi frame phân loại một lần). Bật thì VAD chính là Silero, bỏ qua vad_provider.
 # Đã đối chiếu 28/09 (eval/noise-bench/bench.py --profile target, +speech_shared_detector=true):
 # 0/869 trial khác kết quả so với 3 bản Silero độc lập trên bộ web+golden — an toàn về kết quả,
-# chỉ giảm số lần suy luận/frame. Vẫn để tắt mặc định: mục tiêu (Silero làm VAD chính) bản thân
-# nó chưa được bật cho production, cờ này chỉ có ý nghĩa khi đó.
-speech_shared_detector: false
+# chỉ giảm số lần suy luận/frame, và ba nơi luôn cùng một nhãn cho mỗi frame.
+speech_shared_detector: true
 
 # URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
 public_base_url: http://localhost:8000
