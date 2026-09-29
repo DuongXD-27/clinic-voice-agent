@@ -68,6 +68,14 @@ class OutboundStartFailed(EngineError):
         super().__init__("Không thể chuẩn bị cuộc gọi outbound")
 
 
+class CallStartBlocked(EngineError):
+    """Output Guard chặn lời mở đầu (R-01 §3.7): chưa tạo phiên, chưa nói gì, chưa ghi Clinic."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(f"Lời mở đầu bị Output Guard chặn ({code})")
+
+
 # --- Gọi Clinic mock (F-05) ---------------------------------------------------------
 
 # Mã lỗi mock có thể trả (Phụ lục A + mã riêng của bản mentor) và mã do client đặt cho lỗi transport

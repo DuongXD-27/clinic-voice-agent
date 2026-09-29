@@ -1,4 +1,4 @@
-"""Tầng ngữ nghĩa (Structured Outputs, `gpt-4o-mini`) — plan `docs/plans/t05-cancel-dialogue.md` §8.
+"""Tầng ngữ nghĩa dùng Structured Outputs — plan `docs/plans/t05-cancel-dialogue.md` §8.
 
 Luật đọc từ khóa không thấy được ranh giới mệnh đề: "tôi không đủ tiền" thành REFUSE, "không, hủy đi"
 thành "không hủy". Tầng này phân loại LẠI câu trong ngữ cảnh câu hỏi đang chờ, cho đúng một lần gọi
@@ -24,7 +24,7 @@ from callbot.engine.extraction.text import normalize
 from callbot.engine.types import CancelReason, Direction, PendingAction
 from inference.common.telemetry import InferenceTimer
 from inference.llm.gateway import LLMGateway
-from inference.llm.prompt.semantic import PROMPT_VERSION, build_messages
+from inference.llm.prompt.semantic import PROMPT_VERSION, PROMPT_VERSIONS, build_messages
 
 logger = logging.getLogger(__name__)
 
@@ -197,11 +197,23 @@ class LLMSemanticExtractor:
     """Một request cho cả lượt; mọi lỗi provider trả `None` để bộ gọi đi nhánh hỏi lại."""
 
     def __init__(
-        self, gateway: LLMGateway, *, max_input_chars: int, max_completion_tokens: int
+        self,
+        gateway: LLMGateway,
+        *,
+        max_input_chars: int,
+        max_completion_tokens: int,
+        prompt_version: str = PROMPT_VERSION,
     ) -> None:
+        if prompt_version not in PROMPT_VERSIONS:
+            raise ValueError(f"prompt version không hỗ trợ: {prompt_version}")
         self._gateway = gateway
         self._max_input_chars = max_input_chars
         self._max_completion_tokens = max_completion_tokens
+        self._prompt_version = prompt_version
+
+    @property
+    def prompt_version(self) -> str:
+        return self._prompt_version
 
     def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
         timer = InferenceTimer()
@@ -216,9 +228,9 @@ class LLMSemanticExtractor:
                 status = "too_long"
                 return None
             reply = self._gateway.generate_structured(
-                build_messages(context),
+                build_messages(context, version=self._prompt_version),
                 schema=SemanticReading.model_json_schema(),
-                schema_name=PROMPT_VERSION,
+                schema_name=self._prompt_version,
                 max_completion_tokens=self._max_completion_tokens,
             )
             if reply.status != "completed" or reply.content is None:
@@ -238,7 +250,7 @@ class LLMSemanticExtractor:
                 extra={
                     "semantic_provider": self._gateway.provider_name,
                     "semantic_model": self._gateway.model,
-                    "semantic_prompt_version": PROMPT_VERSION,
+                    "semantic_prompt_version": self._prompt_version,
                     "semantic_route_reason": context.route_reason,
                     "semantic_question_id": (
                         context.question_id.value if context.question_id else None

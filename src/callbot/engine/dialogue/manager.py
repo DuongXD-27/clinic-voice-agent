@@ -26,7 +26,6 @@ from callbot.engine.errors import (
     ClinicWriteRejected,
     EngineError,
     SlotTaken,
-    WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
@@ -46,6 +45,7 @@ from callbot.engine.extraction.schema import (
 from callbot.engine.extraction.slot_choice import filter_slots, parse_slot_criteria
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.policy_engine import Understanding
+from callbot.engine.policy.sources import SourceRecorder
 from callbot.engine.session.context import ActionEvidence, CallContext, PendingAction
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.types import (
@@ -81,6 +81,8 @@ class DialogueManager:
         verifier: IdentityVerifier,
     ) -> None:
         self._gateway = gateway
+        # Lệnh đọc dùng để NÓI đi qua SourceRecorder: Output Guard render lại từ đúng dữ liệu này (R-01)
+        self._reads = SourceRecorder(gateway)
         self._verifier = verifier
 
     # --- Mở đầu / kết thúc -----------------------------------------------------
@@ -99,7 +101,7 @@ class DialogueManager:
         if ctx.question is None:
             return BotAction(utterance=t.SILENCE, state=ctx.state)
         ctx.question = replace(ctx.question, turn=ctx.turn)
-        return BotAction(utterance=f"{t.SILENCE} {ctx.question.text}", state=ctx.state)
+        return BotAction(utterance=t.silence_reprompt(ctx.question.text), state=ctx.state)
 
     def transfer(self, ctx: CallContext, reason: TransferReason) -> BotAction:
         """Luôn chuyển máy: Clinic lỗi thì nhân viên vẫn xử lý được cuộc gọi.
@@ -109,8 +111,9 @@ class DialogueManager:
         TRANSFERRED, ghi log để vận hành đối soát. Chỉ lỗi chưa rõ kết quả mới chặn lượt.
         """
         if not ctx.ended:
+            # Gateway chỉ trả về khi body ở đúng TRANSFERRED (T-12); sai trạng thái là WriteOutcomeUnknown
             try:
-                written = self._gateway.transfer(ctx, reason)
+                self._gateway.transfer(ctx, reason)
             except TURN_ABORTING_ERRORS as exc:
                 if isinstance(exc, EngineError) and exc.transfer_reason is None:
                     exc.transfer_reason = reason
@@ -120,11 +123,6 @@ class DialogueManager:
                     "Ghi TRANSFERRED thất bại cho %s (%s), vẫn chuyển máy",
                     ctx.call_id,
                     type(exc).__name__,
-                )
-                written = None
-            if written is not None and written.get("status") != "TRANSFERRED":
-                raise WriteOutcomeUnknown(
-                    f"{ctx.call_id}: transfer trả status {written.get('status')}"
                 )
         return BotAction(
             t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason
@@ -136,7 +134,7 @@ class DialogueManager:
         Không ghi được UNREACHABLE -> chuyển máy SYSTEM_ERROR (có ghi /transfer), không báo UNREACHABLE.
         """
         try:
-            written = self._gateway.mark_unreachable(ctx, reason)
+            self._gateway.mark_unreachable(ctx, reason)
         except TURN_ABORTING_ERRORS:
             raise
         except _CLINIC_FAILURES as exc:
@@ -144,10 +142,6 @@ class DialogueManager:
                 "Ghi UNREACHABLE thất bại cho %s (%s), chuyển máy", ctx.call_id, type(exc).__name__
             )
             return self.transfer(ctx, "SYSTEM_ERROR")
-        if written.get("status") != "UNREACHABLE":
-            raise WriteOutcomeUnknown(
-                f"{ctx.call_id}: unreachable trả status {written.get('status')}"
-            )
         return BotAction(
             t.GOODBYE_UNREACHABLE,
             "ENDED",
@@ -264,7 +258,7 @@ class DialogueManager:
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
-        appointment = self._gateway.get_actionable_appointment(ctx)
+        appointment = self._reads.get_actionable_appointment(ctx)
         return Reply(
             ask(
                 ctx,
@@ -291,13 +285,8 @@ class DialogueManager:
         if agreement is Agreement.AGREE and self._answers_last_question(ctx):
             ctx.set_pending("CONFIRM")
             self._record_confirmation(ctx, ex)
+            # Gateway chỉ trả về khi bản ghi đã ở CONFIRMED (T-12); 2xx sai trạng thái -> đối soát
             written = self._gateway.confirm(ctx)
-            if written.get("status") != "CONFIRMED":
-                # Mock nhận lệnh (2xx) nhưng bản ghi không ở CONFIRMED: không báo thành công, cũng không
-                # ghi /transfer thay thế (lệnh đã commit, phiên đã khóa) — chặn lượt để đối soát.
-                raise WriteOutcomeUnknown(
-                    f"{ctx.call_id}: confirm trả status {written.get('status')}"
-                )
             return Reply(self._finish("CONFIRMED", t.confirmed(ctx, written)))
         if agreement is Agreement.REFUSE:
             ctx.clear_pending()
@@ -305,7 +294,7 @@ class DialogueManager:
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_CHANGE_OR_CANCEL, "AWAITING_INTENT"))
         if ex.agreement.found or intent is Intent.CONFIRM:
             # Chưa rõ: đọc lại ngày, giờ, cơ sở bằng câu có / không (kiến trúc §3.2), chưa ghi
-            appointment = self._gateway.get_actionable_appointment(ctx)
+            appointment = self._reads.get_actionable_appointment(ctx)
             return Reply(
                 ask(
                     ctx,
@@ -325,7 +314,7 @@ class DialogueManager:
         if ctx.call.direction == "outbound":
             if intent is Intent.CONFIRM:
                 ctx.set_pending("CONFIRM")
-                appointment = self._gateway.get_actionable_appointment(ctx)
+                appointment = self._reads.get_actionable_appointment(ctx)
                 return Reply(
                     ask(
                         ctx,
@@ -433,8 +422,9 @@ class DialogueManager:
                 # Đọc lại /slots, đề xuất lại và cần xác nhận mới — không retry mù
                 ctx.select_slot(None)
                 return self._offer_slots(ctx, now, prefix=t.SLOT_TAKEN)
-            outcome: Outcome = "RESCHEDULED" if action == "RESCHEDULE" else "BOOKED"
-            return Reply(self._finish(outcome, t.done(outcome, slot)))
+            if action == "RESCHEDULE":
+                return Reply(self._finish("RESCHEDULED", t.rescheduled_done(ctx, slot)))
+            return Reply(self._finish("BOOKED", t.booked_done(ctx, slot)))
         if agreement is Agreement.REFUSE:
             if ex.intent.value in (Intent.RESCHEDULE, Intent.BOOK):
                 # "không, khung khác" — vẫn đổi / đặt, chỉ bỏ slot này
@@ -465,14 +455,9 @@ class DialogueManager:
             # IE chỉ trả AGREE ở đây khi có động từ hủy tường minh (SF-05); "vâng" là UNCLEAR
             self._record_confirmation(ctx, ex)
             self._update_cancel_reason(ctx, ex)
-            written = self._gateway.cancel(ctx, ctx.cancel_reason or DEFAULT_CANCEL_REASON)
-            if written.get("status") != "CANCELLED":
-                # Như T-04: Mock nhận lệnh (2xx) nhưng bản ghi không ở CANCELLED thì không báo đã hủy,
-                # cũng không ghi /transfer thay thế — chặn lượt để đối soát.
-                raise WriteOutcomeUnknown(
-                    f"{ctx.call_id}: cancel trả status {written.get('status')}"
-                )
-            return Reply(self._finish("CANCELLED", t.done("CANCELLED")))
+            # Như T-04: Gateway chỉ trả về khi bản ghi đã ở CANCELLED (T-12)
+            self._gateway.cancel(ctx, ctx.cancel_reason or DEFAULT_CANCEL_REASON)
+            return Reply(self._finish("CANCELLED", t.cancelled_done()))
         if ex.intent.value is Intent.RESCHEDULE:
             # Xét TRƯỚC nhánh REFUSE chung: "không hủy nữa, tôi muốn đổi lịch" là từ chối hủy kèm
             # yêu cầu đổi lịch, không phải muốn giữ lịch (T-05 §3.3). `_start` xóa dữ liệu hủy.
@@ -526,7 +511,7 @@ class DialogueManager:
         ctx.clear_pending()
         if ctx.call.direction == "inbound":
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.BOOKING_ABANDONED, "AWAITING_INTENT"))
-        appointment = self._gateway.get_actionable_appointment(ctx)
+        appointment = self._reads.get_actionable_appointment(ctx)
         return Reply(
             ask(
                 ctx,
@@ -544,7 +529,7 @@ class DialogueManager:
         criteria_text: Optional[str] = None,
         prefix: str = "",
     ) -> Reply:
-        slots = self._gateway.list_open_slots(ctx, now)
+        slots = self._reads.list_open_slots(ctx, now)
         if not slots:
             ctx.clear_pending()
             return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))

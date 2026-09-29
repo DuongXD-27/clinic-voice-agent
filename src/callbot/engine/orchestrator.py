@@ -2,30 +2,63 @@
 
 SessionManager lo khóa, thứ tự lượt, replay và commit; orchestrator chỉ xử lý nội dung lượt.
 Trace xuất SAU khi commit: lỗi trace không làm lượt đã commit chạy lại.
+
+R-01: mọi câu bot nói — kể cả lời mở đầu, câu fallback và câu thay thế — đi qua Output Guard ở đây,
+trước commit. HTTP và LiveKit cùng gọi orchestrator nên dùng chung đúng một chốt kiểm tra đầu ra;
+lượt replay trả lại action đã được guard lúc commit.
 """
 
 import logging
 from collections.abc import Callable
+from copy import deepcopy
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Optional, Protocol, TypeVar
 
 from callbot.engine.diagnostics import build_diagnostics
+from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.manager import DialogueManager, Reply
-from callbot.engine.errors import TURN_ABORTING_ERRORS, EngineError
+from callbot.engine.errors import (
+    TURN_ABORTING_ERRORS,
+    CallStartBlocked,
+    EngineError,
+    WriteOutcomeUnknown,
+)
 from callbot.engine.extraction.extractor import InformationExtractor
 from callbot.engine.extraction.schema import ExtractionResult, QuestionId, TurnContext, to_local
+from callbot.engine.journal import turn_entries
+from callbot.engine.policy import output_guard
 from callbot.engine.policy.guardrails import SevereFailureBlocked
+from callbot.engine.policy.output_guard import GuardInput, GuardVerdict, Receipt
 from callbot.engine.policy.policy_engine import PolicyDecision, PolicyEngine
-from callbot.engine.session.context import CallContext
+from callbot.engine.policy.sources import SourceRegistry, bind_sources
+from callbot.engine.policy.utterances import RenderRecord, bind_ledger
+from callbot.engine.session.context import CallContext, Question
 from callbot.engine.session.manager import SessionManager, TurnOutcome, TurnRun
 from callbot.engine.types import BotAction, CallerInput, CallStart
+from callbot.tracing import SpanHandle, current_span, null_tracer, trace_event
 from callbot.tracing import Tracer as SpanTracer
-from callbot.tracing import current_span, null_tracer, trace_event
 from callbot.tracing.errors import classify_guardrail
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T", BotAction, Reply)
+
+
+@dataclass
+class _TurnOutput:
+    """Dữ liệu Output Guard đối chiếu, chụp ở ĐẦU lượt trước khi Dialogue chạy."""
+
+    prior_question: Optional[Question]
+    sources: SourceRegistry
+    ledger: list[RenderRecord] = field(default_factory=list)
+
+
+def _transfer_system_error() -> BotAction:
+    """Hằng cuối cùng khi cả câu fallback cũng không qua guard — không đệ quy, không ghi thêm."""
+    return BotAction(
+        t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason="SYSTEM_ERROR"
+    )
 
 
 class Tracer(Protocol):
@@ -127,9 +160,7 @@ class CallOrchestrator:
 
     def start_call(self, call: CallStart) -> BotAction:
         with self._span_tracer.span(component="CORE", operation="core.start_call") as core:
-            action, replayed = self._sessions.open(
-                call, lambda ctx: self._dialogue_step(ctx, self._dialogue.opening)
-            )
+            action, replayed = self._sessions.open(call, self._opening)
             core.enrich(
                 state_after=action.state,
                 outcome=action.outcome,
@@ -144,6 +175,23 @@ class CallOrchestrator:
                 {"event": "call_started", "direction": call.direction, "state": action.state},
             )
         return action
+
+    def _opening(self, ctx: CallContext) -> BotAction:
+        """Lời mở đầu qua Output Guard TRƯỚC khi SessionManager tạo phiên (R-01 §3.7).
+
+        Bước mở đầu không có nhật ký lệnh và không đặt chỗ lượt, nên không bao giờ chuyển máy hay ghi
+        Clinic: bị chặn thì không tạo phiên, không nói gì — gửi lại cùng `call_id` sau khi sửa lỗi.
+        """
+        action = self._dialogue_step(ctx, self._dialogue.opening)
+        with self._span_tracer.span(component="GUARD", operation="core.output_guard") as span:
+            verdict = output_guard.check_opening(action, ctx)
+            if verdict.ok:
+                span.enrich(guard_verdict="PASS", render_count=0)
+                return action
+            self._trace_guard_block(span, verdict)
+        assert verdict.code is not None
+        logger.error("Output Guard chặn lời mở đầu %s (%s)", ctx.call_id, verdict.rule)
+        raise CallStartBlocked(verdict.code)
 
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
         return self.handle_turn_with_details(call_id, caller).action
@@ -186,50 +234,44 @@ class CallOrchestrator:
             core.enrich(state_before=state_before, silent=caller.is_silence)
         ctx.turn = caller.turn
         ctx.record("caller", caller.transcript)
+        # R-01: chụp đầu lượt (deepcopy) — câu hỏi đang chờ và slot vừa nạp từ store
+        turn = _TurnOutput(deepcopy(ctx.question), SourceRegistry(ctx.slots))
         extraction: Optional[ExtractionResult] = None
+        action: Optional[BotAction] = None
         handled: Optional[Exception] = None
-        try:
-            decision = self._policy.check_preconditions(ctx)
-            self._policy_event("preconditions", decision)
-            if decision.kind != "CONTINUE":
-                action = self._execute(ctx, decision)
-            else:
-                with self._span_tracer.span(
-                    component="EXTRACTION", operation="core.extract"
-                ) as span:
-                    extraction = self._extractor.extract(
-                        build_turn_context(ctx, caller.turn, received_at),
-                        caller.transcript,
-                        silence_ms=caller.silence_ms,
-                    )
-                    try:
-                        span.enrich(**_extraction_attributes(extraction))
-                    except Exception:
-                        logger.warning("TRACE_EXTRACTION_METADATA_REJECTED")
-                action = self._decide(ctx, extraction, received_at)
-        except TURN_ABORTING_ERRORS as exc:
-            self._annotate(exc, extraction)
-            raise
-        except SevereFailureBlocked as blocked:
-            error = classify_guardrail(blocked.code)
-            trace_event(
-                "guardrail.blocked",
-                status="ERROR",
-                error_type=error.error_type,
-                error_code=error.error_code,
-            )
-            if core is not None and core.component == "CORE":
-                core.set_error_code(error.error_type, error.error_code)
-                core.enrich(guardrail_code=error.error_code)
-            logger.error("Chặn severe failure %s tại %s", blocked.code, ctx.call_id)
-            handled = blocked
-            action = self._transfer_after_error(ctx, extraction, blocked)
-        except Exception as exc:
-            if core is not None and core.component == "CORE":
-                core.set_error(exc)
-            logger.error("Lỗi xử lý lượt %s của %s", caller.turn, ctx.call_id)
-            handled = exc
-            action = self._transfer_after_error(ctx, extraction, exc)
+        with bind_sources(turn.sources), bind_ledger(turn.ledger):
+            try:
+                decision = self._policy.check_preconditions(ctx)
+                self._policy_event("preconditions", decision)
+                if decision.kind != "CONTINUE":
+                    action = self._execute(ctx, decision)
+                else:
+                    with self._span_tracer.span(
+                        component="EXTRACTION", operation="core.extract"
+                    ) as span:
+                        extraction = self._extractor.extract(
+                            build_turn_context(ctx, caller.turn, received_at),
+                            caller.transcript,
+                            silence_ms=caller.silence_ms,
+                        )
+                        try:
+                            span.enrich(**_extraction_attributes(extraction))
+                        except Exception:
+                            logger.warning("TRACE_EXTRACTION_METADATA_REJECTED")
+                    action = self._decide(ctx, extraction, received_at)
+            except TURN_ABORTING_ERRORS as exc:
+                self._annotate(exc, extraction)
+                raise
+            except SevereFailureBlocked as blocked:
+                self._trace_guardrail(core, blocked.code)
+                logger.error("Chặn severe failure %s tại %s", blocked.code, ctx.call_id)
+                handled = blocked
+            except Exception as exc:
+                if core is not None and core.component == "CORE":
+                    core.set_error(exc)
+                logger.error("Lỗi xử lý lượt %s của %s", caller.turn, ctx.call_id)
+                handled = exc
+            action, handled = self._settle(ctx, action, handled, extraction, turn)
 
         self._apply(ctx, action)
         if core is not None and core.component == "CORE":
@@ -268,6 +310,184 @@ class CallOrchestrator:
         if decision.kind == "TRANSFER":
             return self._execute(ctx, decision)
         return reply.action
+
+    def _settle(
+        self,
+        ctx: CallContext,
+        action: Optional[BotAction],
+        error: Optional[Exception],
+        extraction: Optional[ExtractionResult],
+        turn: _TurnOutput,
+    ) -> tuple[BotAction, Optional[Exception]]:
+        """Receipt gate đi trước mọi fallback (R-01 §3.5), rồi Output Guard (§3.6).
+
+        Đã có lệnh ghi thành công thì lỗi sau đó (vd. render câu báo lỗi) không được biến thành chuyển
+        máy: báo đúng kết quả đã ghi bằng câu không chi tiết.
+        """
+        receipt = self._receipt(extraction)
+        if error is not None:
+            turn.sources.restore_slots(ctx)
+            if receipt is not None:
+                with self._span_tracer.span(
+                    component="GUARD", operation="core.output_guard"
+                ) as span:
+                    self._trace_writes(span, turn)
+                    span.enrich(guard_verdict="REPLACE")
+                    return self._replace(ctx, receipt, turn, None), error
+            fallback = self._fallback_transfer(ctx, extraction, error, turn)
+            guarded, _ = self._guard(ctx, fallback, extraction, turn, fallback=True)
+            return guarded, error
+        assert action is not None
+        guarded, blocked = self._guard(ctx, action, extraction, turn, fallback=False)
+        return guarded, blocked
+
+    def _guard(
+        self,
+        ctx: CallContext,
+        action: BotAction,
+        extraction: Optional[ExtractionResult],
+        turn: _TurnOutput,
+        *,
+        fallback: bool,
+    ) -> tuple[BotAction, Optional[SevereFailureBlocked]]:
+        receipt = self._receipt(extraction)
+        output_guard.normalize_question(ctx, action)
+        with self._span_tracer.span(component="GUARD", operation="core.output_guard") as span:
+            verdict = self._check(ctx, action, receipt, turn)
+            self._trace_writes(span, turn)
+            if receipt is not None:
+                if verdict.ok and output_guard.matches_receipt(action, receipt):
+                    span.enrich(guard_verdict="PASS")
+                    return action, None
+                # Đã ghi thành công: cấm chuyển máy / ghi thêm, thay bằng câu báo đúng receipt
+                rule = verdict.rule or "OG-5"
+                span.enrich(guard_verdict="REPLACE", guard_rule=rule)
+                return self._replace(ctx, receipt, turn, rule), None
+            if verdict.ok:
+                span.enrich(guard_verdict="PASS")
+                return action, None
+            self._trace_guard_block(span, verdict)
+        assert verdict.code is not None
+        blocked = SevereFailureBlocked(verdict.code, f"Output Guard {verdict.rule}")
+        self._trace_guardrail(current_span(), verdict.code)
+        logger.error("Output Guard chặn %s (%s) tại %s", verdict.rule, verdict.code, ctx.call_id)
+        # Fallback không giữ trạng thái đang vi phạm: khôi phục slot gốc, chuẩn hóa rồi mới kiểm lại
+        turn.sources.restore_slots(ctx)
+        replacement = (
+            _transfer_system_error()
+            if fallback
+            else self._fallback_transfer(ctx, extraction, blocked, turn)
+        )
+        receipt = self._receipt(extraction)
+        output_guard.normalize_question(ctx, replacement)
+        if receipt is not None:
+            if not (
+                self._check(ctx, replacement, receipt, turn).ok
+                and output_guard.matches_receipt(replacement, receipt)
+            ):
+                replacement = self._replace(ctx, receipt, turn, verdict.rule or "OG-5")
+        elif not self._check(ctx, replacement, None, turn).ok:
+            replacement = _transfer_system_error()
+        return replacement, blocked
+
+    def _fallback_transfer(
+        self,
+        ctx: CallContext,
+        extraction: Optional[ExtractionResult],
+        error: Exception,
+        turn: _TurnOutput,
+    ) -> BotAction:
+        """Chuyển máy SYSTEM_ERROR; lỗi thường xảy ra SAU khi /transfer đã ghi thành công không được làm
+        mất kết quả đó (receipt gate áp cả cho fallback).
+
+        Lỗi chặn lượt (TURN_ABORTING_ERRORS) giữ nguyên đường đối soát. Chưa có lệnh thành công thì lỗi
+        đi tiếp như trước; còn lệnh chưa rõ kết quả thì `_receipt` chặn đối soát.
+        """
+        try:
+            return self._transfer_after_error(ctx, extraction, error)
+        except TURN_ABORTING_ERRORS:
+            raise
+        except Exception:
+            receipt = self._receipt(extraction)
+            if receipt is None:
+                raise
+            logger.error(
+                "Lỗi sau khi ghi %s tại %s, giữ kết quả đã ghi", receipt.outcome, ctx.call_id
+            )
+            return self._replace(ctx, receipt, turn, None)
+
+    def _replace(
+        self, ctx: CallContext, receipt: Receipt, turn: _TurnOutput, rule: Optional[str]
+    ) -> BotAction:
+        """`rule` là luật guard đã trượt; None khi thay vì lỗi xử lý sau lệnh ghi thành công."""
+        safe = output_guard.safe_action(receipt)
+        turn.sources.restore_slots(ctx)
+        output_guard.normalize_question(ctx, safe)
+        trace_event(
+            "output_guard.replaced",
+            guard_rule=rule,
+            outcome=receipt.outcome,
+            write_operation=receipt.command.operation,
+        )
+        if not self._check(ctx, safe, receipt, turn).ok:
+            # Hằng DONE_SAFE vẫn được dùng: không đệ quy, không chuyển máy sau khi đã ghi thành công
+            logger.error(
+                "Câu thay thế %s không qua Output Guard tại %s", receipt.outcome, ctx.call_id
+            )
+        return safe
+
+    @staticmethod
+    def _check(
+        ctx: CallContext, action: BotAction, receipt: Optional[Receipt], turn: _TurnOutput
+    ) -> GuardVerdict:
+        return output_guard.check(
+            GuardInput(action, ctx, turn.prior_question, turn.ledger, turn.sources, receipt)
+        )
+
+    def _receipt(self, extraction: Optional[ExtractionResult]) -> Optional[Receipt]:
+        try:
+            return output_guard.receipt_gate(turn_entries())
+        except WriteOutcomeUnknown as exc:
+            # Không gọi _transfer_after_error: chuyển máy là một lệnh ghi mới
+            self._annotate(exc, extraction)
+            raise
+
+    @staticmethod
+    def _trace_writes(span: SpanHandle, turn: _TurnOutput) -> None:
+        writes = output_guard.summarize_writes(turn_entries())
+        span.enrich(
+            render_count=len(turn.ledger),
+            write_attempted=writes.attempted,
+            write_succeeded=writes.succeeded,
+            write_operation=writes.operation,
+            write_status_match=writes.status_match,
+        )
+
+    @staticmethod
+    def _trace_guard_block(span: SpanHandle, verdict: GuardVerdict) -> None:
+        assert verdict.code is not None
+        error = classify_guardrail(verdict.code)
+        span.enrich(guard_verdict="BLOCK", guard_rule=verdict.rule)
+        span.set_error_code(error.error_type, error.error_code)
+        span.event(
+            "output_guard.blocked",
+            guard_rule=verdict.rule,
+            error_type=error.error_type,
+            error_code=error.error_code,
+        )
+
+    @staticmethod
+    def _trace_guardrail(core: Optional[SpanHandle], code: str) -> None:
+        error = classify_guardrail(code)
+        trace_event(
+            "guardrail.blocked",
+            status="ERROR",
+            error_type=error.error_type,
+            error_code=error.error_code,
+        )
+        if core is not None and core.component == "CORE":
+            core.set_error_code(error.error_type, error.error_code)
+            core.enrich(guardrail_code=error.error_code)
 
     def _transfer_after_error(
         self, ctx: CallContext, extraction: Optional[ExtractionResult], error: Exception

@@ -12,7 +12,7 @@ from typing import Any, Mapping
 from callbot.tracing.errors import ERROR_CODES, ERROR_TYPES, RESULT_CODES
 from callbot.tracing.models import CompletedSpan
 
-COMPONENTS = frozenset({"TURN", "CORE", "EXTRACTION", "DIALOGUE", "CLINIC", "STT", "TTS"})
+COMPONENTS = frozenset({"TURN", "CORE", "EXTRACTION", "DIALOGUE", "GUARD", "CLINIC", "STT", "TTS"})
 OPERATIONS = frozenset(
     {
         "http.call_turn",
@@ -21,6 +21,7 @@ OPERATIONS = frozenset(
         "core.start_call",
         "core.extract",
         "core.dialogue",
+        "core.output_guard",
         "clinic.find_patient_by_phone",
         "clinic.get_appointment",
         "clinic.get_slots",
@@ -43,6 +44,8 @@ EVENT_FIELDS: dict[str, frozenset[str]] = {
         {"state_before", "state_after", "outcome", "status", "error_type", "error_code"}
     ),
     "guardrail.blocked": frozenset({"status", "error_type", "error_code"}),
+    "output_guard.blocked": frozenset({"guard_rule", "error_type", "error_code"}),
+    "output_guard.replaced": frozenset({"guard_rule", "outcome", "write_operation"}),
     "clinic.attempt": frozenset({"attempt", "http_status", "latency_ms", "error_code"}),
 }
 SPAN_FIELDS = frozenset(
@@ -61,6 +64,13 @@ SPAN_FIELDS = frozenset(
         "dialogue_action",
         "clinic_call_count",
         "guardrail_code",
+        "guard_verdict",
+        "guard_rule",
+        "render_count",
+        "write_attempted",
+        "write_succeeded",
+        "write_operation",
+        "write_status_match",
         "error_type",
         "error_code",
         "question_id",
@@ -145,6 +155,9 @@ _SEMANTIC_FIELDS = frozenset(
         "decision_reason",
         "dialogue_action",
         "guardrail_code",
+        "guard_verdict",
+        "guard_rule",
+        "write_operation",
         "question_id",
         "question_before",
         "question_after",
@@ -236,6 +249,9 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             "retry_count",
             "token_count",
             "sample_rate_hz",
+            "render_count",
+            "write_attempted",
+            "write_succeeded",
         } and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
             raise UnsafeTraceData("trace numeric value is invalid")
         if key in {
