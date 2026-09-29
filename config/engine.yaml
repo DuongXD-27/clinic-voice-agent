@@ -13,6 +13,9 @@ semantic_fallback_timeout_s: 3.0
 semantic_fallback_max_tokens: 400
 # Câu dài hơn thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định)
 semantic_fallback_max_input_chars: 1500
+# Model đề xuất xác nhận hủy, luật kiểm chứng (docs/evidence/t05-cancel-dialogue.md, đợt 3).
+# Bật dùng semantic_v7_luna với GPT-6 Luna; model khác giữ semantic_v6
+cancel_semantic_confirm_enabled: true
 
 clinic_id: cl_vinmec
 

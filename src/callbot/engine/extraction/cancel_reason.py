@@ -9,6 +9,8 @@ Nêu nhiều lý do khác nhau trong cùng câu -> UNSPECIFIED (không chọn h�
   được; `span` là các cụm đã khớp. Lý do cũ bị thay bằng UNSPECIFIED, không giữ ngầm.
 """
 
+import re
+
 from callbot.engine.extraction.schema import Field, Provenance
 from callbot.engine.extraction.text import (
     PhraseSet,
@@ -65,6 +67,19 @@ _PHRASES: dict[CancelReason, PhraseSet] = {
         unaccented_exclude=["đắt", "đắt quá"],  # "dat" = đặt / đạt / đất
     ),
 }
+
+
+def reason_matches(text: str, reason: CancelReason, unaccented: bool) -> list[re.Match[str]]:
+    """Mọi lần khớp cụm của `reason` trong `text` (đã `clean`), kể cả các cụm chồng nhau.
+
+    Để agreement bỏ trọn phần lý do có căn cứ khỏi câu xác nhận hủy: "khám chỗ khác rồi" khớp cả
+    "khám chỗ khác" lẫn "chỗ khác rồi" — bỏ lần lượt từng cụm sẽ để sót lại "khám".
+    """
+    return [
+        match
+        for _, pattern in _PHRASES[reason].for_text(text, unaccented)
+        for match in pattern.finditer(text)
+    ]
 
 
 def extract_cancel_reason(transcript: str) -> Field[CancelReason]:

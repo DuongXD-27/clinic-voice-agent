@@ -5,13 +5,20 @@ Hai việc tách bạch:
   của rule hay model; `found == True` KHÔNG có nghĩa là rule đã đúng.
 - `merge_semantic`: bảng quyền T-05 §8.3.4. Model được làm rõ lý do, chuyển nhu cầu và báo việc ngoài
   phạm vi (`OUT_OF_SCOPE` -> Policy chuyển máy); model KHÔNG được nâng NONE / UNCLEAR / REFUSE thành
-  AGREE để mở khóa lệnh ghi.
+  AGREE để mở khóa lệnh ghi. Ngoại lệ duy nhất: route `CANCEL_LEFTOVER` (chỉ có khi bật
+  CANCEL_SEMANTIC_CONFIRM_ENABLED) cho model ĐỀ XUẤT AGREE; `extractor._keep_cancel_threshold` kiểm
+  chứng lại toàn bộ rồi mới giữ (evidence T-05, đợt 3).
 """
 
 from enum import Enum
 from typing import Optional
 
-from callbot.engine.extraction.agreement import attendance_leaves_content, mentions_keeping
+from callbot.engine.extraction.agreement import (
+    UnclearCause,
+    attendance_leaves_content,
+    cancel_unclear_cause,
+    mentions_keeping,
+)
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.schema import (
     Agreement,
@@ -45,6 +52,9 @@ class RouteReason(str, Enum):
     CANCEL_REFUSAL_WITH_REASON = "CANCEL_REFUSAL_WITH_REASON"  # từ chối + lý do trong cùng câu
     CANCEL_CONTRADICTION = "CANCEL_CONTRADICTION"  # tín hiệu ngược nhau / ngập ngừng
     CANCEL_UNRESOLVED = "CANCEL_UNRESOLVED"  # câu hủy không thuộc tập toàn câu rõ ràng
+    # Chỉ khi bật CANCEL_SEMANTIC_CONFIRM_ENABLED: luật UNCLEAR chỉ vì còn từ ngoài danh sách, model
+    # được đề xuất mệnh đề hủy để chốt ở extractor kiểm chứng (evidence T-05, đợt 3)
+    CANCEL_LEFTOVER = "CANCEL_LEFTOVER"
     INTENT_UNCLEAR = "INTENT_UNCLEAR"  # ASK_INTENT / CONFIRM_READBACK chưa có ý định dùng được
     # Outbound: luật ra CONFIRM nhưng chính luật chưa chắc ("hôm đó tôi sẽ đi công tác") (T-04 §8)
     ATTENDANCE_UNCLEAR = "ATTENDANCE_UNCLEAR"
@@ -122,8 +132,13 @@ def route_semantic(
     agreement: Field[Agreement],
     cancel_reason: Field[CancelReason],
     direction: Direction = "outbound",
+    cancel_promotion: bool = False,
 ) -> Optional[RouteReason]:
-    """`None` = chỉ dùng rule. Gọi sau khi rule của mọi trường liên quan đã chạy."""
+    """`None` = chỉ dùng rule. Gọi sau khi rule của mọi trường liên quan đã chạy.
+
+    `cancel_promotion` (flag tắt mặc định) chỉ tách `CANCEL_LEFTOVER` khỏi `CANCEL_CONTRADICTION`;
+    tắt thì route y hệt trước đây.
+    """
     text = clean(transcript)
     if not text:
         return None
@@ -143,6 +158,13 @@ def route_semantic(
     if question_id is QuestionId.CANCEL_RECONFIRM:
         if agreement.value is Agreement.REFUSE and cancel_reason.found:
             return RouteReason.CANCEL_REFUSAL_WITH_REASON
+        if (
+            cancel_promotion
+            and agreement.value is Agreement.UNCLEAR
+            and agreement.found
+            and cancel_unclear_cause(transcript) is UnclearCause.LEFTOVER
+        ):
+            return RouteReason.CANCEL_LEFTOVER
         if agreement.value is Agreement.UNCLEAR and agreement.found:
             return RouteReason.CANCEL_CONTRADICTION
         if agreement.value is Agreement.AGREE:
@@ -274,6 +296,10 @@ def merge_semantic(
         agreement = Field(
             Agreement.UNCLEAR, Provenance.FALLBACK, span=outcome.reply_span or result.transcript
         )
+    elif kind is ReplyKind.CONFIRM_ACTION and route_reason is RouteReason.CANCEL_LEFTOVER:
+        # Chỉ là ĐỀ XUẤT: `extractor._keep_cancel_threshold` kiểm chứng span và ngữ cảnh lượt rồi mới
+        # giữ AGREE; không đạt thì hạ UNCLEAR, hỏi lại.
+        agreement = Field(Agreement.AGREE, Provenance.FALLBACK, span=outcome.reply_span)
     elif kind is ReplyKind.CONFIRM_ACTION:
         # Model KHÔNG nâng ngưỡng ghi: giữ nguyên kết luận rule. Câu đã bị router đánh dấu mâu thuẫn
         # thì vẫn phải hỏi lại và nhận xác nhận mới ở lượt sau.

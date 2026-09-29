@@ -21,6 +21,10 @@ class EngineSettings(YamlSettings):
     semantic_fallback_max_tokens: int
     # Câu dài hơn mức này thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định).
     semantic_fallback_max_input_chars: int
+    # Cho model đề xuất xác nhận hủy, luật kiểm chứng (evidence T-05, đợt 3).
+    # Mặc định TẮT: tắt thì prompt (semantic_v5), route và merge y hệt trước đây. Chỉ bật khi đạt
+    # điều kiện §7 của plan (test đối kháng, 5 repeat model thật không ghi hủy sai, snapshot).
+    cancel_semantic_confirm_enabled: bool
 
     clinic_id: str
 
