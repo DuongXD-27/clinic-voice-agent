@@ -12,7 +12,8 @@ Một lượt đi qua các bước:
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Optional
 
@@ -27,7 +28,7 @@ from callbot.engine.errors import (
     WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.schema import VN_TZ
-from callbot.engine.journal import ClinicCommand, bind_journal
+from callbot.engine.journal import ClinicCommand, EntryStatus, JournalEntry, bind_journal
 from callbot.engine.session.context import CallContext
 from callbot.engine.session.fsm import check_invariants, ensure_transition
 from callbot.engine.session.store import CommandRecord, SessionRecord, SessionStore
@@ -310,12 +311,17 @@ class SessionManager:
 
 
 class StoreCommandJournal:
-    """`journal.CommandJournal` trên session store, gắn với một lượt."""
+    """`journal.CommandJournal` trên session store, gắn với một lượt.
+
+    Ngoài store, giữ `JournalEntry` của từng lệnh trong RAM: receipt (command + result) chỉ được ghi
+    SAU KHI store đã ghi nhận `SUCCEEDED`, nên một receipt thành công luôn có nhật ký bền vững đi kèm.
+    """
 
     def __init__(self, store: SessionStore, call_id: str, turn: int) -> None:
         self._store = store
         self._call_id = call_id
         self._turn = turn
+        self._entries: dict[str, JournalEntry] = {}
 
     def begin(self, command: ClinicCommand) -> None:
         self._store.begin_command(
@@ -329,14 +335,32 @@ class StoreCommandJournal:
                 if_match=command.if_match,
             )
         )
+        # Gửi lại cùng key (VERSION_CONFLICT, lỗi tạm thời) thay lệnh cũ: một key là một lệnh
+        self._entries[command.idempotency_key] = JournalEntry(command, "PENDING")
 
     def succeeded(self, command: ClinicCommand, result: dict[str, Any]) -> None:
         self._store.finish_command(
             self._call_id, command.idempotency_key, "SUCCEEDED", result=result
         )
+        # deepcopy tách receipt khỏi dict mà Gateway trả tiếp cho Dialogue
+        self._entries[command.idempotency_key] = JournalEntry(
+            deepcopy(command), "SUCCEEDED", deepcopy(result)
+        )
 
     def failed(self, command: ClinicCommand, error: str) -> None:
         self._store.finish_command(self._call_id, command.idempotency_key, "FAILED", error=error)
+        self._mark(command, "FAILED")
 
     def unknown(self, command: ClinicCommand, error: str) -> None:
+        # Đánh dấu trước: store lỗi thì lệnh vẫn là chưa rõ, không bao giờ trở thành "chưa gửi"
+        self._mark(command, "UNKNOWN")
         self._store.finish_command(self._call_id, command.idempotency_key, "UNKNOWN", error=error)
+
+    def entries(self) -> list[JournalEntry]:
+        return list(self._entries.values())
+
+    def _mark(self, command: ClinicCommand, status: EntryStatus) -> None:
+        entry = self._entries.get(command.idempotency_key)
+        self._entries[command.idempotency_key] = (
+            replace(entry, status=status) if entry is not None else JournalEntry(command, status)
+        )

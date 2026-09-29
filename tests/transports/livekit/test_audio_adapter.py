@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import pytest
+from tests.transports.livekit_support import require_livekit
 
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
@@ -52,7 +53,7 @@ def test_livekit_frame_to_segment_passthrough_when_already_target_rate() -> None
 
 
 def test_segment_to_livekit_frame_roundtrip_fields() -> None:
-    pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/rtc")
+    require_livekit()
     pcm = b"\x00\x10" * 80
     segment = AudioSegment(pcm=pcm, sample_rate=24000)
 

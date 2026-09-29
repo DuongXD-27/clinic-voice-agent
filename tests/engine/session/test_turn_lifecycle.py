@@ -340,3 +340,24 @@ def test_version_conflict_retries_once_with_same_key(store) -> None:
     assert keys == {"c_conflict:3:confirm"}
     [command] = store.list_commands("c_conflict")
     assert (command.status, command.attempts) == ("SUCCEEDED", 2)
+
+
+def test_replayed_turn_returns_guarded_action_without_rerunning_guard(store, monkeypatch) -> None:
+    """R-01: guard chạy trước commit; replay của phiên còn hoạt động trả lại action đã guard."""
+    from callbot.engine.policy import output_guard
+
+    checked = []
+    check = output_guard.check
+
+    def counting(inp):
+        checked.append(inp.action.utterance)
+        return check(inp)
+
+    monkeypatch.setattr(output_guard, "check", counting)
+    bot = create_orchestrator(FakeClinicAPI(), store=store)
+    bot.start_call(_outbound("c_r01_replay"))
+    first = _say(bot, "c_r01_replay", 1, "Nguyễn Văn A")
+    assert not first.ended and checked == [first.utterance]
+
+    again = _say(bot, "c_r01_replay", 1, "Nguyễn Văn A")
+    assert again == first and checked == [first.utterance]
