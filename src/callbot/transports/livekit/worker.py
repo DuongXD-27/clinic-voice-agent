@@ -114,9 +114,13 @@ async def entrypoint(ctx: JobContext) -> None:
         await bridge.run()
     finally:
         await asyncio.to_thread(tracer.close, 2.0)
-        close = getattr(clinic, "close", None)
-        if close is not None:
-            close()
+        try:
+            # Mỗi cuộc gọi một bundle: đóng kết nối TTS giữ sẵn, không để rò theo job
+            bundle.tts.close()
+        finally:
+            close = getattr(clinic, "close", None)
+            if close is not None:
+                close()
 
 
 def main() -> None:

@@ -44,6 +44,8 @@ class VbeeTTSConfig(TTSConfig):
     # Trần tổng cho một câu. Giữ thấp: lỗi thì còn thời gian cho ElevenLabs dự phòng trong 8 s/lượt
     timeout_s: float = Field(validation_alias="VBEE_TIMEOUT_S")
     connect_timeout_s: float = Field(validation_alias="VBEE_CONNECT_TIMEOUT_S")
+    # Giữ kết nối rảnh bao lâu để lượt sau dùng lại; phải ngắn hơn thời gian server Vbee tự đóng
+    keepalive_s: float = Field(validation_alias="VBEE_KEEPALIVE_S")
 
 
 class ElevenLabsTTSConfig(TTSConfig):

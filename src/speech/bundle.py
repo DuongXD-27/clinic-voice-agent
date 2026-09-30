@@ -97,6 +97,9 @@ class SpeechSynthesizer:
         if cancel is not None:
             await cancel()
 
+    def close(self) -> None:
+        self._gateway.close()
+
 
 @dataclass
 class SpeechBundle:

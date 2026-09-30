@@ -16,6 +16,8 @@ vbee:
   # Trần tổng một câu; giữ thấp để còn thời gian cho provider dự phòng trong 8 giây/lượt
   timeout_s: 3.0 # VBEE_TIMEOUT_S
   connect_timeout_s: 1.5 # VBEE_CONNECT_TIMEOUT_S
+  # Giữ kết nối rảnh để lượt sau khỏi bắt tay TCP + TLS lại; dưới thời gian server Vbee tự đóng
+  keepalive_s: 30.0 # VBEE_KEEPALIVE_S
 
 elevenlabs: # ELEVENLABS_API_KEY
   # Bắt buộc khi dùng ElevenLabs; voice thuộc tài khoản thì đặt qua env.

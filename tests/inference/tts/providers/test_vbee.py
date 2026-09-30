@@ -127,6 +127,50 @@ def test_timeout_and_network_errors_are_unavailable() -> None:
     assert err.value.code == "connection_failed"
 
 
+def test_consecutive_sentences_share_one_client() -> None:
+    clients: list[httpx.Client] = []
+    transport = httpx.MockTransport(_audio())
+
+    def factory() -> httpx.Client:
+        clients.append(httpx.Client(transport=transport))
+        return clients[-1]
+
+    tts = VbeeTTS(_config(), client_factory=factory)
+    for _ in range(3):
+        assert tts.synthesize(TEXT).pcm == PCM
+
+    assert len(clients) == 1
+    assert not clients[0].is_closed
+
+
+def test_client_survives_errors_and_closes_once() -> None:
+    statuses = iter([503, 200])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status = next(statuses)
+        return httpx.Response(status, content=PCM, headers={"content-type": "audio/pcm"})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    tts = VbeeTTS(_config(), client_factory=lambda: client)
+
+    with pytest.raises(TTSUnavailable):
+        tts.synthesize(TEXT)
+    assert tts.synthesize(TEXT).pcm == PCM
+
+    tts.close()
+    assert client.is_closed
+
+
+def test_default_client_keeps_idle_connection_for_configured_time() -> None:
+    tts = VbeeTTS(_config(keepalive_s=42.0, timeout_s=2.5, connect_timeout_s=1.0))
+    try:
+        pool = tts._client._transport._pool
+        assert pool._keepalive_expiry == 42.0
+        assert tts._client.timeout == httpx.Timeout(2.5, connect=1.0)
+    finally:
+        tts.close()
+
+
 def test_missing_credentials_fail_at_construction() -> None:
     with pytest.raises(ValueError, match="VBEE_API_TOKEN"):
         VbeeTTS(_config(api_token=""))

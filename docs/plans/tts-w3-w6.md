@@ -34,7 +34,7 @@
 
 | Phần | Đã có | Chưa có |
 |---|---|---|
-| TTS trên HTTP | Vbee chính + ElevenLabs dự phòng trong gateway; WAV 8 kHz ghi xong trước response; đọc nguyên `utterance`; **audio mode trên prod đã verify 28/09 (PASS, tổng lớn nhất 3,79 s / 8 s)** | Dùng chung kết nối Vbee (mỗi câu mở mới, mất ~300–400 ms); số chi phí/phiên |
+| TTS trên HTTP | Vbee chính + ElevenLabs dự phòng trong gateway; WAV 8 kHz ghi xong trước response; đọc nguyên `utterance`; **audio mode trên prod đã verify 28/09 (PASS, tổng lớn nhất 3,79 s / 8 s)** | ~~Dùng chung kết nối Vbee~~ (xong 29/09; trên EC2 bắt tay chỉ ~9 ms, không phải ~300–400 ms như ước tính từ mạng VN); số chi phí/phiên |
 | TTS trên LiveKit | `CallBridge` phát TTS theo chunk và gọi `cancel()` khi bị ngắt; xoá hàng đợi phát | **Vbee chưa có `synthesize_stream` / `cancel()`**: chưa nối được vào LiveKit. Đường stream đi thẳng vào provider, **không qua gateway nên không có fallback** |
 | STT (Việt) | STT stream + VAD, `InterruptionController`, chống bot tự nghe mình (SNR) | — |
 | Engine (Hoàn) | Core dùng chung cho HTTP và LiveKit | Giữ partial turn theo phần bot đã nói (P-03) |
@@ -94,7 +94,9 @@ Mỗi task gồm:
 **Xong khi:** test "text gửi TTS = utterance" pass; 100% câu của 5 kịch bản đã nghe và ghi kết quả; không câu nào vượt 300 ký tự mà không có fallback.
 **Căn cứ:** §4.1.3, Bảng 1 · **Đầu ra:** test + bảng câu đã nghe (đưa vào evidence Gate W3)
 
-#### T3 29/09 · Đường A+B — Giảm độ trễ TTS
+#### T3 29/09 · Đường A+B — Giảm độ trễ TTS ✅ Đã xong
+
+> Kết quả: đã dùng chung kết nối, test pass. Trên EC2 gần như không giảm độ trễ: bắt tay TCP + TLS tới Vbee chỉ ~9 ms, first_byte trung vị 207 → 194 ms (trong mức dao động), p95 không đổi. Vẫn giữ thay đổi (rủi ro thấp, nền cho stream 30/09), nhưng không báo là cải thiện latency. `AsyncClient` dùng chung chuyển sang task 30/09. Evidence: `docs/evidence/tts-vbee-connection-reuse.md`, script `scripts/tts_probe.py`.
 
 **Gửi PM:** Tối ưu latency TTS bằng cách reuse connection tới Vbee thay vì mở connection mới cho mỗi câu, bỏ được phần handshake lặp lại ở mỗi turn. Benchmark trước/sau trên EC2 để có số đo cho tiêu chí latency.
 
@@ -131,6 +133,7 @@ Mỗi task gồm:
 
 **Nội dung:**
 1. **Hàm stream.** Thêm `async def synthesize_stream(text) -> AsyncIterator[bytes]` vào `VbeeTTS`:
+   - Dùng một `httpx.AsyncClient` chung (chuyển từ task 29/09), `keepalive_expiry` theo `VBEE_KEEPALIVE_S`; đóng bằng `aclose()` khi job LiveKit kết thúc (`worker.py` đã gọi `bundle.tts.close()`).
    - Gọi `async_client.stream("POST", endpoint, json=payload)`, đọc `aiter_raw()`, `yield` từng chunk ngay khi về.
    - Vbee trả chunk lẻ byte (vd. 4090 B rồi 6 B): giữ byte lẻ lại ghép vào chunk sau, chỉ `yield` số byte chẵn (PCM16).
    - Giữ trần tổng thời gian và cách phân loại lỗi giống `synthesize`: 429/5xx/timeout → `TTSUnavailable`; 4xx → `TTSRejected`; 200 nhưng trả JSON → `TTSUnavailable`.

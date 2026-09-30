@@ -35,8 +35,23 @@ class VbeeTTS:
             "Accept": "audio/*, application/json",
         }
         self._timeout = build_http_timeout(config.timeout_s, config.connect_timeout_s)
-        # Điểm thay thế trong unit test: httpx.Client(transport=httpx.MockTransport(...))
-        self._client_factory = client_factory or httpx.Client
+        # Một client cho mọi câu: giữ kết nối TCP + TLS tới Vbee giữa các lượt thay vì bắt tay
+        # lại mỗi câu. httpx.Client an toàn khi nhiều thread cùng gọi (HTTP chạy synthesize
+        # trong asyncio.to_thread). Điểm thay thế trong unit test: client_factory trả
+        # httpx.Client(transport=httpx.MockTransport(...)).
+        self._client = (client_factory or self._default_client)()
+
+    def _default_client(self) -> httpx.Client:
+        # keepalive_expiry mặc định của httpx là 5 s — ngắn hơn khoảng cách giữa hai lượt
+        # nói, gần như lượt nào cũng phải bắt tay lại.
+        return httpx.Client(
+            timeout=self._timeout,
+            limits=httpx.Limits(keepalive_expiry=self._config.keepalive_s),
+        )
+
+    def close(self) -> None:
+        """Đóng kết nối giữ sẵn tới Vbee; gọi khi app/worker tắt."""
+        self._client.close()
 
     @property
     def model(self) -> str:
@@ -69,26 +84,25 @@ class VbeeTTS:
         ttfa_ms = None
         audio = bytearray()
         try:
-            with self._client_factory() as client:
-                with client.stream(
-                    "POST",
-                    self._config.endpoint,
-                    headers=self._headers,
-                    json=self._payload(text),
-                    timeout=self._timeout,
-                ) as response:
-                    if response.status_code != 200:
-                        raise _from_status(response.status_code)
-                    content_type = response.headers.get("content-type", "")
-                    if content_type.startswith(("application/json", "text/")):
-                        # Lỗi bọc trong 200: không đọc body vào message để tránh lộ dữ liệu
-                        raise TTSUnavailable("Vbee trả JSON thay vì audio", code="bad_response")
-                    for chunk in response.iter_bytes():
-                        if chunk and ttfa_ms is None:
-                            ttfa_ms = (time.perf_counter() - started) * 1000
-                        audio.extend(chunk)
-                        if time.perf_counter() > deadline:
-                            raise _timeout(self._config.timeout_s)
+            with self._client.stream(
+                "POST",
+                self._config.endpoint,
+                headers=self._headers,
+                json=self._payload(text),
+                timeout=self._timeout,
+            ) as response:
+                if response.status_code != 200:
+                    raise _from_status(response.status_code)
+                content_type = response.headers.get("content-type", "")
+                if content_type.startswith(("application/json", "text/")):
+                    # Lỗi bọc trong 200: không đọc body vào message để tránh lộ dữ liệu
+                    raise TTSUnavailable("Vbee trả JSON thay vì audio", code="bad_response")
+                for chunk in response.iter_bytes():
+                    if chunk and ttfa_ms is None:
+                        ttfa_ms = (time.perf_counter() - started) * 1000
+                    audio.extend(chunk)
+                    if time.perf_counter() > deadline:
+                        raise _timeout(self._config.timeout_s)
         except httpx.TimeoutException as exc:
             raise _timeout(self._config.timeout_s) from exc
         except httpx.HTTPError as exc:

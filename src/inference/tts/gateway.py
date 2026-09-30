@@ -58,6 +58,16 @@ class TTSGateway:
             result = self.fallback.synthesize(text)
             return replace(result, fallback_used=True) if result is not None else None
 
+    def close(self) -> None:
+        """Đóng kết nối giữ sẵn của provider chính và dự phòng (gọi khi app/worker tắt)."""
+        try:
+            close = getattr(self._provider, "close", None)
+            if close is not None:
+                close()
+        finally:
+            if self.fallback is not None:
+                self.fallback.close()
+
 
 def _provider_types() -> dict[str, tuple[type[TTSConfig], type]]:
     from inference.tts.providers.elevenlabs import ElevenLabsTTS

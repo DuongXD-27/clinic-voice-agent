@@ -80,6 +80,38 @@ def test_blank_text_calls_no_provider() -> None:
     assert primary.spoken == backup.spoken == []
 
 
+class _Closable(_Provider):
+    def __init__(self, model: str, closed: list[str], error: Exception | None = None) -> None:
+        super().__init__(model)
+        self._closed = closed
+        self._close_error = error
+
+    def close(self) -> None:
+        self._closed.append(self.model)
+        if self._close_error is not None:
+            raise self._close_error
+
+
+def test_close_reaches_primary_and_fallback() -> None:
+    closed: list[str] = []
+    _gateway(_Closable("vbee", closed), _Closable("eleven", closed)).close()
+    assert closed == ["vbee", "eleven"]
+
+
+def test_close_still_closes_fallback_when_primary_close_fails() -> None:
+    closed: list[str] = []
+    gateway = _gateway(_Closable("vbee", closed, RuntimeError("x")), _Closable("eleven", closed))
+    with pytest.raises(RuntimeError):
+        gateway.close()
+    assert closed == ["vbee", "eleven"]
+
+
+def test_close_skips_provider_without_close() -> None:
+    closed: list[str] = []
+    _gateway(_Provider("vbee"), _Closable("eleven", closed)).close()
+    assert closed == ["eleven"]
+
+
 def test_create_tts_gateway_builds_vbee_with_elevenlabs_fallback(monkeypatch) -> None:
     monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_x")
     monkeypatch.setenv("ELEVENLABS_VOICE_ID", "v1")
