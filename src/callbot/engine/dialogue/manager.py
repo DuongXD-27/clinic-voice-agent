@@ -401,13 +401,18 @@ class DialogueManager:
 
     def _slot_choice(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         choice = ex.slot_choice.value
+        if _busy(ex.transcript):
+            # Xét trước khi hiểu giờ trong câu là chọn khung: "10 giờ rưỡi tôi bận" là không nhận khung
+            # 10 giờ rưỡi, không phải chọn nó (T-10 §3.8.1)
+            return self._drop_busy_slots(ctx, ex, now)
         if choice is not None and _weekday_off_page(choice, ctx.presented_slot_ids):
             # "thứ Ba" / "chiều thứ Sáu" không khớp khung nào vừa đọc: yêu cầu mới, quy thứ trần theo
             # R-30 (tuần này; đã qua / hôm nay thì hỏi lại) — không tự hiểu thành thứ đó tuần sau
             # (GC-DATE-03, eval R142)
             return self._new_request(ctx, now, ex.transcript)
-        if choice is not None and choice.kind == "MATCH":
-            return Reply(self._read_back(ctx, choice.slot_id))
+        picked = _picked(ctx, choice)
+        if picked is not None:
+            return Reply(self._read_back(ctx, picked))
         if choice is not None and choice.kind == "MORE":
             return self._offer_next(ctx, now, _more_prefix(ex))
         if choice is not None and choice.kind == "ANY" and ctx.presented_slot_ids:
@@ -418,22 +423,52 @@ class DialogueManager:
             if choice.kind == "AMBIGUOUS" and not _names_a_date(choice.criteria):
                 # "cái 3 giờ", "buổi sáng": chỉ giờ / buổi / thứ, khớp nhiều khung đã có -> không tự chọn
                 # (IE §5.7): đọc tối đa 2 khung khớp (R-25) rồi hỏi lại. Không coi là yêu cầu mới, nếu
-                # không "3 giờ chiều thứ Tư" thành thứ Tư tuần này đã kín (eval R135)
-                candidates = [s for s in ctx.slots if s["slot_id"] in choice.slot_ids]
-                page = candidates[:MAX_SLOTS_PRESENTED]
-                return Reply(self._present(ctx, now, page, t.SLOT_AMBIGUOUS), "NEUTRAL")
+                # không "3 giờ chiều thứ Tư" thành thứ Tư tuần này đã kín (eval R135). Khung đã từ
+                # chối không đọc lại (V-9)
+                candidates = [
+                    s
+                    for s in ctx.slots
+                    if s["slot_id"] in choice.slot_ids and s["slot_id"] not in ctx.refused_slot_ids
+                ]
+                if len(candidates) > 1:
+                    page = candidates[:MAX_SLOTS_PRESENTED]
+                    return Reply(self._present(ctx, now, page, t.SLOT_AMBIGUOUS), "NEUTRAL")
+                if candidates and candidates[0]["slot_id"] in _pickable(ctx):
+                    return Reply(self._read_back(ctx, candidates[0]["slot_id"]))
             if _new_time_request(choice.criteria):
                 # "ngày 19 thì sao": yêu cầu thời gian mới, lọc lại từ GET /slots (T-10 V-10)
                 return self._new_request(ctx, now, ex.transcript)
             # "khung 3" khi mới đọc 2 khung: nói rõ rồi đọc lại trang, không tự chọn
             page = [s for s in ctx.slots if s["slot_id"] in ctx.presented_slot_ids]
             return Reply(self._present(ctx, now, page, t.SLOT_NOT_IN_PAGE), "UNCLEAR")
-        if ex.agreement.value is Agreement.REFUSE or _busy(ex.transcript):
-            # "hôm đó tôi bận mất rồi": không nhận các khung vừa đọc (T-10 §3.8.1)
+        if ex.agreement.value is Agreement.REFUSE:
             return self._refuse_slots(ctx, ex, now)
         if ctx.call.direction == "outbound" and ex.intent.value is Intent.CANCEL:
             return self._start(ctx, Intent.CANCEL, ex, now)
         return self._not_understood(ctx)
+
+    def _drop_busy_slots(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        """Người gọi báo bận khi nghe các khung (T-10 §3.8.1).
+
+        Có nhắc khung ("10 giờ rưỡi tôi bận", "chiều tôi bận", "khung 1 tôi bận"): bỏ các khung đó
+        (V-9), đọc lại khung còn lại của trang vừa đọc. Không nhắc khung nào ("hôm đó tôi bận") hoặc
+        trang không còn khung: không nhận các khung vừa đọc, hỏi A/B như "không" trần (Q-4).
+        """
+        busy_ids = _mentioned_slot_ids(ex.slot_choice.value)
+        if busy_ids:
+            _refuse(ctx, busy_ids)
+            ctx.select_slot(None)
+            left = [
+                s
+                for s in ctx.slots
+                if s["slot_id"] in ctx.presented_slot_ids
+                and s["slot_id"] not in ctx.refused_slot_ids
+            ]
+            if len(left) == 1:
+                return Reply(self._offer_one(ctx, left[0]))
+            if left:
+                return Reply(self._present(ctx, now, left))
+        return self._refuse_slots(ctx, ex, now)
 
     def _slot_readback(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         action, slot_id = ctx.pending_action, ctx.selected_slot_id
@@ -461,27 +496,31 @@ class DialogueManager:
         choice = ex.slot_choice.value
         # "sao lại là thứ Sáu", "thứ Sáu à": hỏi lại câu vừa đọc, không phải chọn khung / ngày khác
         asking = asks_back(ex.transcript)
-        if (
-            choice is not None
-            and choice.kind == "MATCH"
-            and choice.slot_id != slot_id
-            and not asking
-        ):
-            # "thôi lấy khung 2": đổi sang khung khác, bằng chứng của khung cũ bị xóa
-            return Reply(self._read_back(ctx, choice.slot_id))
+        # IE trả UNCLEAR cho câu kể hoàn cảnh (T-04 §8); ở câu chốt khung, "tôi bận" là không nhận khung.
+        # Xét trước khi hiểu giờ trong câu là chọn khung: "10 giờ rưỡi tôi bận" không phải chọn 10 giờ rưỡi
+        busy = agreement is not Agreement.AGREE and _busy(ex.transcript)
+        busy_ids = _mentioned_slot_ids(choice) if busy else []
+        if busy_ids and slot_id not in busy_ids:
+            # Bận khung khác (không phải khung đang chốt): bỏ khung đó, hỏi lại có/không khung này
+            _refuse(ctx, busy_ids)
+            return self._reask_readback(ctx, slot, action, bare_da=False)
+        picked = None if busy or asking else _picked(ctx, choice)
+        if picked is not None and picked != slot_id:
+            # "thôi lấy khung 2": đổi sang khung khác đã đọc, bằng chứng của khung cũ bị xóa
+            return Reply(self._read_back(ctx, picked))
+        # Nhắc lại chính khung đang chốt ("3 giờ rưỡi", "cái thứ Năm") là chưa trả lời có/không
+        restates = choice is not None and slot_id in choice.slot_ids
         new_time = (
             choice is not None
             and ex.slot_choice.found
             and _new_time_request(choice.criteria)
-            and not asking
+            and not (asking or busy or restates)
         )
         more = choice is not None and choice.kind == "MORE"
-        # IE trả UNCLEAR cho câu kể hoàn cảnh (T-04 §8); ở câu chốt khung, "tôi bận" là không nhận khung
-        busy = agreement is not Agreement.AGREE and _busy(ex.transcript)
         if agreement is Agreement.REFUSE or more or new_time or busy:
-            # Bỏ khung này, không đọc lại nó cho yêu cầu hiện tại (T-10 V-9). Các khung đã đọc mà người
-            # gọi chưa từ chối vẫn là lựa chọn ("không, khung khác" -> khung còn lại cùng ngày)
-            ctx.refused_slot_ids.append(slot_id)
+            # Bỏ khung này và các khung người gọi báo bận, không đọc lại (T-10 V-9). Các khung đã đọc
+            # mà người gọi chưa từ chối vẫn là lựa chọn ("không, khung khác" -> khung còn lại cùng ngày)
+            _refuse(ctx, [slot_id, *busy_ids])
             ctx.offered_slot_ids = []
             ctx.select_slot(None)
             if new_time:
@@ -495,31 +534,46 @@ class DialogueManager:
         bare_da = is_bare_da(ex.transcript)
         if (
             ex.agreement.found
+            or restates
             or (choice is not None and choice.kind == "MATCH")
             or asking
             or bare_da
         ):
-            # Chưa rõ: hỏi lại câu có/không cùng khung. "dạ" không phải đồng ý (PRD R-23, GC-CONF-01):
-            # nhắc người gọi nói "đồng ý" (T-10 D-2)
-            reask = t.slot_readback_da if bare_da else t.slot_readback
-            return Reply(
-                ask(
-                    ctx,
-                    QuestionId.SLOT_READBACK,
-                    reask(ctx, slot, action),
-                    "AWAITING_CONFIRMATION",
-                    action=action,
-                    slot_id=slot_id,
-                ),
-                "UNCLEAR",
-            )
+            return self._reask_readback(ctx, slot, action, bare_da)
         return self._not_understood(ctx)
 
+    def _reask_readback(
+        self, ctx: CallContext, slot: dict[str, Any], action: str, bare_da: bool
+    ) -> Reply:
+        """Chưa rõ: hỏi lại câu có/không cùng khung. "dạ" không phải đồng ý (PRD R-23, GC-CONF-01):
+        nhắc người gọi nói "đồng ý" (T-10 D-2)."""
+        reask = t.slot_readback_da if bare_da else t.slot_readback
+        return Reply(
+            ask(
+                ctx,
+                QuestionId.SLOT_READBACK,
+                reask(ctx, slot, action),
+                "AWAITING_CONFIRMATION",
+                action=action,
+                slot_id=slot["slot_id"],
+            ),
+            "UNCLEAR",
+        )
+
     def _slot_refuse_choice(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
-        """Câu A/B "nghe khung khác hay giữ lịch cũ" sau lời từ chối trần (T-10 Q-4)."""
+        """Câu A/B "nghe khung khác hay giữ lịch cũ" sau lời từ chối trần (T-10 Q-4).
+
+        Chỉ khung đã đọc và chưa bị từ chối mới chọn thẳng được; nêu thời gian khác là yêu cầu mới
+        (tính vòng R-29, quy thứ R-30).
+        """
         choice = ex.slot_choice.value
-        if choice is not None and choice.kind == "MATCH":
-            return Reply(self._read_back(ctx, choice.slot_id))
+        if _busy(ex.transcript) and _mentioned_slot_ids(choice):
+            # "chiều tôi bận": bỏ các khung đó (V-9), vẫn chưa biết nghe khung khác hay giữ lịch
+            _refuse(ctx, _mentioned_slot_ids(choice))
+            return self._refuse_slots(ctx, ex, now)
+        picked = _picked(ctx, choice)
+        if picked is not None:
+            return Reply(self._read_back(ctx, picked))
         if choice is not None and ex.slot_choice.found and _new_time_request(choice.criteria):
             return self._new_request(ctx, now, ex.transcript)
         if choice is not None and choice.kind in ("MORE", "ANY"):
@@ -534,11 +588,20 @@ class DialogueManager:
         return self._not_understood(ctx)
 
     def _slot_preference(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
-        """Đã đọc hết khung của yêu cầu: người gọi nêu ngày khác hoặc giữ lịch cũ (T-10 §3.2)."""
+        """Đã đọc hết khung của yêu cầu: người gọi nêu ngày khác hoặc giữ lịch cũ (T-10 §3.2).
+
+        Nêu ngày / giờ là yêu cầu mới kể cả khi khớp đúng một khung: tính vòng (R-29), quy thứ trần
+        (R-30), bỏ khung đã từ chối (V-9). Chỉ khung đã đọc và chưa bị từ chối mới chọn thẳng được.
+        """
         assert ctx.pending_action in ("RESCHEDULE", "BOOK")
         choice = ex.slot_choice.value
-        if choice is not None and choice.kind == "MATCH":
-            return Reply(self._read_back(ctx, choice.slot_id))
+        if _busy(ex.transcript) and _mentioned_slot_ids(choice):
+            # "thứ Sáu tôi bận": không phải xin thứ Sáu — bỏ các khung đó, hỏi lại ngày
+            _refuse(ctx, _mentioned_slot_ids(choice))
+            return self._ask_slot_preference(ctx)
+        picked = _picked(ctx, choice)
+        if picked is not None:
+            return Reply(self._read_back(ctx, picked))
         if choice is not None and ex.slot_choice.found and _new_time_request(choice.criteria):
             return self._new_request(ctx, now, ex.transcript)
         if choice is not None and choice.kind == "ANY":
@@ -547,10 +610,8 @@ class DialogueManager:
             if ctx.slot_round >= MAX_SLOT_ROUNDS:
                 return self._rounds_exhausted(ctx)
             ctx.slot_round += 1
-            # Khung người gọi đã từ chối vẫn không đọc lại (V-9); bỏ tiêu chí và các khung đã đọc
-            refused = list(ctx.refused_slot_ids)
+            # Bỏ tiêu chí, ngày xin và các khung đã đọc; khung đã từ chối vẫn không đọc lại (V-9)
             ctx.reset_slot_request(None)
-            ctx.refused_slot_ids = refused
             return self._offer_slots(ctx, now)
         if gives_up_slot_change(ex.transcript):
             return self._give_up(ctx)
@@ -558,12 +619,16 @@ class DialogueManager:
             return self._start(ctx, Intent.CANCEL, ex, now)
         if choice is not None and choice.kind == "MORE":
             # "ngày khác" mà chưa nói ngày nào: hỏi cụ thể
-            action = ctx.pending_action
-            text = t.ASK_SLOT_PREFERENCE[action]
-            return Reply(
-                ask(ctx, QuestionId.ASK_SLOT_PREFERENCE, text, ctx.state, action=action), "UNCLEAR"
-            )
+            return self._ask_slot_preference(ctx)
         return self._not_understood(ctx)
+
+    def _ask_slot_preference(self, ctx: CallContext) -> Reply:
+        action = ctx.pending_action
+        assert action is not None
+        text = t.ASK_SLOT_PREFERENCE[action]
+        return Reply(
+            ask(ctx, QuestionId.ASK_SLOT_PREFERENCE, text, ctx.state, action=action), "UNCLEAR"
+        )
 
     # --- Hủy lịch --------------------------------------------------------------------------
 
@@ -671,26 +736,37 @@ class DialogueManager:
         criteria = _criteria(request if request is not None else ctx.slot_request or "", now)
         day, clinic_id = None, None
         if ctx.pending_action == "RESCHEDULE":
-            day = requested_date(criteria, now)
+            if request is not None:
+                day = requested_date(criteria, now)
+            elif ctx.slot_day is not None:
+                # Đề xuất lại (SLOT_TAKEN): tìm lại từ ngày người gọi xin, kể cả khi yêu cầu đã bỏ
+                # tiêu chí vì ngày đó kín / không đúng giờ — không tra từ hôm nay (R-29)
+                day = date.fromisoformat(ctx.slot_day)
             clinic_id = self._gateway.get_appointment(ctx).get("clinic_id")
         slots = self._reads.list_open_slots(ctx, now, date_from=day, clinic_id=clinic_id)
+        taken = prefix == t.SLOT_TAKEN
         if not slots:
             # Hết sạch khung trống: nói lý do rồi chuyển máy (D-4)
             ctx.clear_pending()
-            return Reply(self.transfer(ctx, "OUT_OF_SCOPE", t.NO_SLOTS_TRANSFER))
+            text = t.SLOT_TAKEN_NO_SLOTS_TRANSFER if taken else t.NO_SLOTS_TRANSFER
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE", text))
         if request is not None:
+            day_iso = day.isoformat() if day is not None else None
             if criteria.empty:
                 # D-1: chưa nêu thời gian -> 2 khung sớm nhất + mời nêu ngày khác trong cùng câu
                 ctx.reset_slot_request(None)
                 return self._offer_next(ctx, now, invite=True)
-            if filter_slots(slots, criteria):
-                ctx.reset_slot_request(request)
+            # Khung đã từ chối không tính là khớp (V-9): "10 giờ rưỡi" sau khi đã không nhận khung
+            # 10 giờ rưỡi duy nhất là chưa có khung đúng giờ xin
+            refused = set(ctx.refused_slot_ids)
+            if filter_slots([s for s in slots if s["slot_id"] not in refused], criteria):
+                ctx.reset_slot_request(request, day_iso)
             else:
                 # Không có khung theo yêu cầu: nói rõ rồi đọc khung sớm nhất, không im lặng coi như
                 # đúng ý (G-3). Xin giờ không có không phải hiểu sai (Q-3). Có ngày xin: báo ngày đó
                 # kín rồi đọc khung gần ngày xin nhất — cửa sổ bắt đầu từ ngày xin nên sớm nhất là
                 # gần nhất (GC-RES-02, D-3)
-                ctx.reset_slot_request(None)
+                ctx.reset_slot_request(None, day_iso)
                 if day is not None and not filter_slots(slots, _dates_only(criteria)):
                     return self._offer_next(ctx, now, understanding="NEUTRAL", full_date=day)
                 # Ngày xin còn khung nhưng không đúng giờ xin: cửa sổ bắt đầu từ ngày xin nên khung
@@ -710,7 +786,7 @@ class DialogueManager:
         """Đọc các khung chưa đọc / chưa bị từ chối của yêu cầu hiện tại, tối đa 2 khung (R-25)."""
         remaining = self._unoffered(ctx, now)
         if not remaining:
-            return self._slots_exhausted(ctx)
+            return self._slots_exhausted(ctx, taken=prefix == t.SLOT_TAKEN)
         if len(remaining) == 1:
             # Chỉ còn một khung: đọc và hỏi có/không luôn (Hình 0), không hỏi "chọn khung nào"
             return Reply(self._offer_one(ctx, remaining[0], prefix, full_date), understanding)
@@ -757,7 +833,8 @@ class DialogueManager:
         assert action is not None
         ctx.select_slot(slot["slot_id"])
         ctx.presented_slot_ids = [slot["slot_id"]]
-        ctx.offered_slot_ids.append(slot["slot_id"])
+        if slot["slot_id"] not in ctx.offered_slot_ids:
+            ctx.offered_slot_ids.append(slot["slot_id"])
         return ask(
             ctx,
             QuestionId.SLOT_READBACK,
@@ -804,13 +881,14 @@ class DialogueManager:
             "UNCLEAR",
         )
 
-    def _slots_exhausted(self, ctx: CallContext) -> Reply:
+    def _slots_exhausted(self, ctx: CallContext, taken: bool = False) -> Reply:
         """Đã đọc / bị từ chối hết khung của yêu cầu: hỏi ngày khác, vẫn giữ việc đổi / đặt (§3.2).
 
         Đã nêu đủ 2 ngày thì không hỏi ngày thứ ba: giữ lịch cũ, chuyển máy (§3.2 c).
+        `taken`: khung vừa chốt có người đặt (G-7) — câu nói phải báo điều đó.
         """
         if ctx.slot_round >= MAX_SLOT_ROUNDS:
-            return self._rounds_exhausted(ctx)
+            return self._rounds_exhausted(ctx, taken)
         action = ctx.pending_action
         assert action is not None
         ctx.select_slot(None)
@@ -819,7 +897,7 @@ class DialogueManager:
             ask(
                 ctx,
                 QuestionId.ASK_SLOT_PREFERENCE,
-                t.SLOT_EXHAUSTED[action],
+                (t.SLOT_TAKEN_EXHAUSTED if taken else t.SLOT_EXHAUSTED)[action],
                 "AWAITING_INTENT",
                 action=action,
             )
@@ -846,10 +924,11 @@ class DialogueManager:
             return self._rounds_exhausted(ctx)
         return self._abandon(ctx)
 
-    def _rounds_exhausted(self, ctx: CallContext) -> Reply:
+    def _rounds_exhausted(self, ctx: CallContext, taken: bool = False) -> Reply:
         """Hết 2 vòng (R-29, GC-RES-05): lịch cũ giữ nguyên, không ghi gì, chuyển PATIENT_REQUEST."""
         ctx.clear_pending()
-        return Reply(self.transfer(ctx, "PATIENT_REQUEST", t.ROUNDS_EXHAUSTED_TRANSFER))
+        text = t.SLOT_TAKEN_ROUNDS_TRANSFER if taken else t.ROUNDS_EXHAUSTED_TRANSFER
+        return Reply(self.transfer(ctx, "PATIENT_REQUEST", text))
 
     def _not_understood(
         self,
@@ -908,6 +987,36 @@ def _criteria(request: str, now: datetime) -> SlotCriteria:
 def _busy(transcript: str) -> bool:
     """ "bận", "không đi được giờ này": không nhận khung vừa đọc. Có "hủy" thì để nhánh hủy xử lý."""
     return mentions_busy(transcript) and not mentions_cancel(transcript)
+
+
+def _mentioned_slot_ids(choice: Optional[SlotChoice]) -> list[str]:
+    """Các khung câu nói nhắc tới ("10 giờ rưỡi", "buổi chiều", "khung 1") trong các khung đã tải."""
+    if choice is None or choice.kind not in ("MATCH", "AMBIGUOUS"):
+        return []
+    return list(choice.slot_ids)
+
+
+def _refuse(ctx: CallContext, slot_ids: list[str]) -> None:
+    for slot_id in slot_ids:
+        if slot_id not in ctx.refused_slot_ids:
+            ctx.refused_slot_ids.append(slot_id)
+
+
+def _pickable(ctx: CallContext) -> set[str]:
+    """Khung chọn thẳng được: đã đọc cho yêu cầu hiện tại (trang này hoặc trang trước), chưa bị từ chối."""
+    return {*ctx.presented_slot_ids, *ctx.offered_slot_ids} - set(ctx.refused_slot_ids)
+
+
+def _picked(ctx: CallContext, choice: Optional[SlotChoice]) -> Optional[str]:
+    """Khung người gọi chọn trong các khung đã đọc.
+
+    IE khớp trên mọi khung đã tải, nên MATCH một khung chưa đọc ("8 giờ sáng ngày 20" khi đang đọc
+    ngày 15) hay đã từ chối là yêu cầu thời gian mới, không phải chọn: phải qua `_new_request` để tính
+    vòng (R-29), quy thứ trần (R-30) và bỏ khung đã từ chối (V-9).
+    """
+    if choice is None or choice.kind != "MATCH":
+        return None
+    return choice.slot_id if choice.slot_id in _pickable(ctx) else None
 
 
 def _weekday_off_page(choice: SlotChoice, presented: list[str]) -> bool:

@@ -65,6 +65,7 @@ def test_context_roundtrip_keeps_every_field() -> None:
     ctx.patient_id = "pt_3391"
     ctx.presented_slot_ids = ["slot_b", "slot_a"]
     ctx.slot_request, ctx.offered_slot_ids, ctx.refused_slot_ids = "chiều", ["slot_b"], ["slot_a"]
+    ctx.slot_day = "2026-10-15"
     ctx.slot_round = 2
     ctx.add_evidence(_evidence("CONFIRMATION", "RESCHEDULE", 5, QuestionId.SLOT_READBACK, "slot_b"))
     ctx.cancel_reason = "COST"
@@ -79,21 +80,31 @@ def test_context_roundtrip_keeps_every_field() -> None:
 def test_context_saved_before_t10_still_loads() -> None:
     """Khóa thêm ở T-10 đọc bằng .get: phiên lưu trước đó vẫn mở được."""
     data = _verified_resched().to_dict()
-    for key in ("slot_request", "offered_slot_ids", "refused_slot_ids", "slot_round"):
+    for key in ("slot_request", "slot_day", "offered_slot_ids", "refused_slot_ids", "slot_round"):
         del data[key]
     ctx = CallContext.from_dict(data)
     assert ctx.slot_request is None and ctx.offered_slot_ids == [] and ctx.refused_slot_ids == []
-    assert ctx.slot_round == 0
+    assert ctx.slot_day is None and ctx.slot_round == 0
+
+
+def test_new_slot_request_keeps_refused_slots() -> None:
+    """V-9: khung đã từ chối vẫn bị bỏ qua khi người gọi nêu yêu cầu khác trong cùng việc đổi lịch."""
+    ctx = _verified_resched()
+    ctx.reset_slot_request("chiều", "2026-10-15")
+    ctx.offered_slot_ids, ctx.refused_slot_ids = ["slot_a"], ["slot_b"]
+    ctx.reset_slot_request("ngày 20", "2026-10-20")
+    assert ctx.slot_request == "ngày 20" and ctx.slot_day == "2026-10-20"
+    assert ctx.offered_slot_ids == [] and ctx.refused_slot_ids == ["slot_b"]
 
 
 def test_new_action_or_clear_forgets_the_slot_request() -> None:
     ctx = _verified_resched()
-    ctx.reset_slot_request("chiều")
+    ctx.reset_slot_request("chiều", "2026-10-15")
     ctx.offered_slot_ids, ctx.refused_slot_ids = ["slot_a"], ["slot_b"]
     ctx.slot_round = 1
     ctx.set_pending("CANCEL")
     assert ctx.slot_request is None and ctx.offered_slot_ids == [] and ctx.refused_slot_ids == []
-    assert ctx.slot_round == 0
+    assert ctx.slot_day is None and ctx.slot_round == 0
 
     ctx.set_pending("RESCHEDULE")
     ctx.reset_slot_request("chiều")

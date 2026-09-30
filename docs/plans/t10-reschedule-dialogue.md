@@ -262,7 +262,7 @@ Mọi câu có giờ đi qua `guardrails.assert_can_disclose`. Không đọc kho
 | "cái gần nhất", "cái sớm nhất", "cái trước", "cái đầu" | `OFFER_SLOTS` | Chọn khung 1 của trang |
 | "cái sau", "cái kia", "cái còn lại" (trang 2 khung) | `OFFER_SLOTS` | Chọn khung 2 của trang |
 | "còn gì nữa (không)", "còn không", "có khung nào khác không" | mọi câu hỏi chọn khung | MORE |
-| "bận (mất) rồi", "kẹt lịch", "có việc", "phải đi làm", "đi công tác", "không rảnh" ("không tiện / không đi được / không kịp" đã là từ chối vì có "không") | `OFFER_SLOTS`, `SLOT_READBACK` | Từ chối khung vừa đọc. **IE vẫn trả UNCLEAR** như mọi câu kể hoàn cảnh (luật chung T-04 §8, test của Hoàn giữ nguyên); Dialogue gọi `mentions_busy` và xử lý như "không" |
+| "bận (mất) rồi", "kẹt lịch", "có việc", "phải đi làm", "đi công tác", "không rảnh" ("không tiện / không đi được / không kịp" đã là từ chối vì có "không") | `OFFER_SLOTS`, `SLOT_READBACK` | Từ chối khung vừa đọc. **IE vẫn trả UNCLEAR** như mọi câu kể hoàn cảnh (luật chung T-04 §8, test của Hoàn giữ nguyên); Dialogue gọi `mentions_busy` và xử lý như "không". Câu bận có giờ / buổi / khung ("10 giờ rưỡi tôi bận", "chiều tôi bận") chỉ bỏ các khung đó (§3.8.4) |
 | "nào cũng được", "khi nào cũng được", "tùy em", "sớm nhất" | `ASK_SLOT_PREFERENCE`, lượt đầu | ANY (bước 5) |
 | Câu hỏi lại: "sao lại…", "…à", "…hả", "…nhỉ", "thật à", "phải không" | `SLOT_READBACK` | Không chọn khung; hỏi lại câu có/không cùng khung. Rule vẫn gắn cờ nghi ngờ (§3.8.2) |
 | "tuần sau nữa", "đầu tháng sau", "cuối tháng" | mọi câu hỏi chọn khung | Theo R-30, bước 6 (§3.5.2) |
@@ -327,6 +327,23 @@ Nhãn không nằm trong cột của câu hỏi đang chờ → bỏ, coi như L
 Đã sửa theo eval: khớp nhiều khung chỉ theo giờ / buổi / thứ thì đọc tối đa 2 khung khớp (IE §5.7, không tự chọn; trước đó bị coi là yêu cầu mới và có ca thành "thứ Tư 30/9 đã kín"); thứ trần không khớp khung nào vừa đọc thì theo R-30; "giờ thứ 2", "giờ / khung còn lại"; "không đi được giờ này" ở bước chọn khung là từ chối khung, không sang hủy; "không" ở câu A/B hỏi lại; "đổi sang giờ đó" là đồng ý; "da" không dấu. Eval Confirm / Cancel của Hoàn chạy trước và sau khi sửa: **giống hệt từng câu**.
 
 Còn fail (8): 5 ca cần LLM (R056, R060, R075, R113, R120 — bước 9); 2 ca lâm sàng "tôi có câu hỏi về bệnh", "tôi cần tư vấn bác sĩ" không được nhận ra ở mọi bước (rule `clinical.py`, báo Hoàn); 1 ca P2 "thứ 5 hoặc thứ 6" (bước 10).
+
+#### 3.8.4 Rà soát thứ tự nhánh (30-09)
+
+IE khớp câu nói trên **mọi khung đã tải**, nên MATCH không có nghĩa là khách chọn khung. Ba handler `_slot_choice`, `_slot_refuse_choice`, `_slot_preference` và câu chốt `_slot_readback` xét MATCH trước nên sai 4 kiểu (không ca nào ghi sai, vì vẫn cần đồng ý ở câu chốt):
+
+| Lỗi | Ví dụ | Trước | Sau |
+| --- | --- | --- | --- |
+| Bận kèm giờ = chọn giờ đó | "10 giờ rưỡi tôi bận" | Chốt 10 giờ 30 | Bỏ khung đó, đọc khung còn lại của trang |
+| Ngày mới khớp 1 khung không tính vòng (R-29) | "8 giờ sáng ngày 20" | Chốt thẳng, `slot_round` không tăng, đổi ngày mãi | Yêu cầu mới, tính vòng; vòng 3 chuyển máy |
+| Thứ trần không theo R-30 | "9 giờ thứ Sáu" ở câu hỏi ngày khác | Chốt thứ Sáu 16/10 | "Thứ Sáu 2/10 đã kín" + khung gần nhất |
+| Đọc lại khung đã từ chối (V-9) | Không nhận 10 giờ 30, rồi "10 giờ rưỡi" | Chốt lại 10 giờ 30 | "Chưa thấy khung giờ đó" + khung khác |
+| `SlotTaken` hết khung mất câu báo | Khung vừa bị đặt, không còn khung | "Em đã đọc hết khung…" (khách tưởng xong) | `SLOT_TAKEN_EXHAUSTED`, `SLOT_TAKEN_ROUNDS_TRANSFER`, `SLOT_TAKEN_NO_SLOTS_TRANSFER` |
+| `SlotTaken` mất ngày xin | Xin 20/10 (không đúng giờ) hoặc 17/10 (kín) | Tra lại từ hôm nay → đọc 14/10 | Tra từ ngày xin (`ctx.slot_day`) |
+
+Thứ tự mới ở mọi handler: **bận** (bỏ khung được nhắc) → **chọn** (chỉ khung đã đọc cho yêu cầu hiện tại và chưa bị từ chối, `_picked`) → **thời gian mới** (`_new_request`: vòng, R-30) → MORE / ANY / bỏ đổi. Ở câu chốt, nhắc lại chính khung đang chốt ("3 giờ rưỡi") là chưa trả lời, hỏi lại có/không.
+
+**Quyết định (Hưng 30-09): V-9 áp dụng suốt việc đổi / đặt đang chờ**, không chỉ trong một yêu cầu: `reset_slot_request` không xóa `refused_slot_ids`; chỉ đổi / bỏ hành động mới xóa. Eval sau sửa (`result/30-09-2026/reschedule/after-orderfix`): vẫn 113/121, 0 ghi sai; 3 ca (R042, R045, R140) đổi từ PICK_SLOT sang NEW_TIME, vẫn đạt — ngày ngoài trang giờ tính vòng. Eval Confirm / Cancel / No-answer của Hoàn: giống hệt trước khi sửa.
 
 ## 4. Các bước và ưu tiên
 

@@ -165,6 +165,30 @@ NO_SLOTS_TRANSFER = static(
     "NO_SLOTS_TRANSFER",
     "Dạ, hiện em không còn khung trống nào. Em xin phép chuyển máy cho nhân viên hỗ trợ anh chị ạ.",
 )
+# Khung vừa chốt có người khác đặt (G-7) mà không còn khung nào để đọc tiếp: vẫn phải nói khung đó
+# không đặt được, nếu không người gọi vừa nói "đồng ý" sẽ tưởng đã đổi / đặt xong
+SLOT_TAKEN_EXHAUSTED: dict[str, str] = {
+    "RESCHEDULE": static(
+        "SLOT_TAKEN_EXHAUSTED_RESCHEDULE",
+        "Dạ, khung giờ đó vừa có người đặt và em không còn khung phù hợp khác. "
+        "Anh chị muốn đổi sang ngày khác hay giữ lịch cũ ạ?",
+    ),
+    "BOOK": static(
+        "SLOT_TAKEN_EXHAUSTED_BOOK",
+        "Dạ, khung giờ đó vừa có người đặt và em không còn khung phù hợp khác. "
+        "Anh chị muốn đặt vào ngày khác không ạ?",
+    ),
+}
+SLOT_TAKEN_ROUNDS_TRANSFER = static(
+    "SLOT_TAKEN_ROUNDS_TRANSFER",
+    "Dạ, khung giờ đó vừa có người đặt. Em giữ nguyên lịch cũ của anh chị và xin phép chuyển máy "
+    "cho nhân viên để tìm giờ phù hợp ạ.",
+)
+SLOT_TAKEN_NO_SLOTS_TRANSFER = static(
+    "SLOT_TAKEN_NO_SLOTS_TRANSFER",
+    "Dạ, khung giờ đó vừa có người đặt và hiện em không còn khung trống nào. "
+    "Em xin phép chuyển máy cho nhân viên hỗ trợ anh chị ạ.",
+)
 # Lý do hỏi lại ngày (R-30): khớp `extraction.schema.DateIssue`
 DATE_ISSUES = frozenset({"PAST", "INVALID", "TOO_BROAD", "TODAY"})
 # Người gọi muốn ngày khác nhưng chưa nói ngày nào

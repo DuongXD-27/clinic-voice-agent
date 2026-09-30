@@ -625,3 +625,156 @@ def test_eval_ordinals(text: str, slot_id: str) -> None:
     action = _say(bot, "c_eval_ord", text)
     assert action.state == "AWAITING_CONFIRMATION"
     assert _context(bot, "c_eval_ord").selected_slot_id == slot_id
+
+
+# --- Thứ tự nhánh chọn khung: bận / chọn / yêu cầu mới (30-09) ----------------------------------
+# Trang ngày 15/10: khung 1 = 10 giờ 30 (slot_b501), khung 2 = 3 giờ 30 chiều (slot_b502)
+
+
+@pytest.mark.parametrize(
+    ("line", "refused", "left"),
+    [
+        ("10 giờ rưỡi tôi bận", ["slot_b501"], "slot_b502"),
+        ("khung 1 tôi bận", ["slot_b501"], "slot_b502"),
+        ("10 giờ 30 thì tôi không đi được", ["slot_b501"], "slot_b502"),
+        ("3 giờ rưỡi chiều tôi bận", ["slot_b502", "slot_b506"], "slot_b501"),
+        (
+            "buổi chiều tôi bận",
+            ["slot_b502", "slot_b504", "slot_b506", "slot_b508", "slot_b510"],
+            "slot_b501",
+        ),
+    ],
+)
+def test_busy_with_a_time_at_the_offer_drops_those_slots(line: str, refused, left: str) -> None:
+    """ "10 giờ rưỡi tôi bận" là không nhận khung đó, không phải chọn nó: đọc khung còn lại."""
+    clinic, bot, _ = _call("c_busy_time", "Tôi muốn đổi sang ngày 15 tháng 10")
+    action = _say(bot, "c_busy_time", line)
+
+    ctx = _context(bot, "c_busy_time")
+    assert ctx.refused_slot_ids == refused and ctx.selected_slot_id == left
+    assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
+
+
+@pytest.mark.parametrize("line", ["10 giờ rưỡi tôi bận", "khung 1 thì tôi bận"])
+def test_busy_with_another_slot_at_the_read_back_keeps_the_read_back(line: str) -> None:
+    """Đang chốt 3 giờ 30, "10 giờ rưỡi tôi bận": bỏ 10 giờ 30, hỏi lại có/không 3 giờ 30."""
+    clinic, bot = _at_read_back("c_busy_other")
+    action = _say(bot, "c_busy_other", line)
+
+    ctx = _context(bot, "c_busy_other")
+    assert ctx.selected_slot_id == "slot_b502" and ctx.refused_slot_ids == ["slot_b501"]
+    assert action.utterance.startswith("Dạ, em xác nhận đổi lịch sang 3 giờ 30 chiều thứ Năm")
+    assert clinic.writes == []
+
+
+@pytest.mark.parametrize("line", ["3 giờ rưỡi tôi bận", "chiều tôi bận lắm"])
+def test_busy_with_the_read_back_time_drops_it_instead_of_searching_it(line: str) -> None:
+    """Đang chốt 3 giờ 30, "3 giờ rưỡi tôi bận": không tra lại 3 giờ 30 và đọc lại khung vừa bận."""
+    clinic, bot = _at_read_back("c_busy_same")
+    action = _say(bot, "c_busy_same", line)
+
+    ctx = _context(bot, "c_busy_same")
+    assert "slot_b502" in ctx.refused_slot_ids and ctx.selected_slot_id is None
+    assert action.utterance == t.SLOT_REFUSE_CHOICE["RESCHEDULE"] and clinic.writes == []
+
+
+def _at_preference(call_id: str):
+    """Hỏi ngày khác sau khi từ chối khung duy nhất 14/10 (vòng 1)."""
+    clinic, bot, _ = _call(call_id, "Tôi muốn đổi sang ngày 14 tháng 10")
+    _say(bot, call_id, "không")
+    assert _context(bot, call_id).question.question_id is QuestionId.ASK_SLOT_PREFERENCE
+    return clinic, bot
+
+
+def test_a_new_day_matching_one_slot_is_a_round() -> None:
+    """R-29: "8 giờ sáng ngày 20" khớp đúng 1 khung vẫn là ngày thứ hai; từ chối nữa thì chuyển máy."""
+    clinic, bot = _at_preference("c_round_match")
+    _say(bot, "c_round_match", "8 giờ sáng ngày 20")
+    assert _context(bot, "c_round_match").slot_round == 2
+
+    action = _say(bot, "c_round_match", "không")
+    assert action.ended and action.transfer_reason == "PATIENT_REQUEST"
+    assert ("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_b507"}) not in clinic.writes
+
+
+@pytest.mark.parametrize("setup", ["offer", "refuse_choice"])
+def test_a_day_off_the_page_is_a_new_request_everywhere(setup: str) -> None:
+    """Ở câu đọc khung và câu A/B, ngày chưa đọc khớp 1 khung cũng tính vòng (R-29)."""
+    if setup == "offer":
+        _, bot, _ = _call("c_round_off", "Tôi muốn đổi sang ngày 15 tháng 10")
+        rounds = 1
+    else:
+        _, bot, _ = _call("c_round_off", "Tôi muốn đổi lịch")
+        _say(bot, "c_round_off", "khung 1", "không")
+        rounds = 0
+    _say(bot, "c_round_off", "8 giờ sáng ngày 20")
+    ctx = _context(bot, "c_round_off")
+    assert ctx.selected_slot_id == "slot_b507" and ctx.slot_round == rounds + 1
+
+
+def test_bare_weekday_at_the_preference_follows_r30() -> None:
+    """ "9 giờ thứ Sáu" là thứ Sáu tuần này (02/10, kín), không phải thứ Sáu 16/10 có khung 9 giờ."""
+    _, bot = _at_preference("c_pref_fri")
+    action = _say(bot, "c_pref_fri", "9 giờ thứ Sáu")
+    assert action.utterance.startswith("Dạ, thứ Sáu ngày 2 tháng 10 đã kín lịch.")
+    assert _context(bot, "c_pref_fri").selected_slot_id is None
+
+
+def test_refused_slot_is_not_read_again_for_a_new_request() -> None:
+    """V-9: đã không nhận 10 giờ 30 thì "10 giờ rưỡi" không đọc lại khung đó."""
+    clinic, bot = _at_read_back("c_v9")
+    _say(bot, "c_v9", "khung 1")  # đổi sang chốt 10 giờ 30
+    _say(bot, "c_v9", "không")
+    action = _say(bot, "c_v9", "10 giờ rưỡi")
+
+    ctx = _context(bot, "c_v9")
+    assert action.utterance.startswith(t.SLOT_NO_MATCH)
+    assert "slot_b501" not in ctx.presented_slot_ids and ctx.selected_slot_id != "slot_b501"
+
+
+def test_refused_slot_is_not_picked_at_the_refuse_choice() -> None:
+    _, bot, _ = _call("c_v9_ab", "Tôi muốn đổi lịch")
+    _say(bot, "c_v9_ab", "khung 1", "không")  # không nhận 3 giờ chiều 14/10
+    action = _say(bot, "c_v9_ab", "3 giờ chiều ngày 14")
+    assert action.utterance.startswith(t.SLOT_NO_MATCH)
+    assert "slot_91d2" not in _context(bot, "c_v9_ab").presented_slot_ids
+
+
+# --- Khung vừa có người đặt (G-7) ---------------------------------------------------------------
+
+
+def test_taken_slot_with_nothing_left_still_says_it_was_taken() -> None:
+    clinic, bot, _ = _call("c_taken_none", "Tôi muốn đổi sang ngày 14 tháng 10")
+    clinic.take_slot("slot_91d2")
+    action = _say(bot, "c_taken_none", "đồng ý")
+    assert action.utterance == t.SLOT_TAKEN_EXHAUSTED["RESCHEDULE"]
+    assert not any(w[1] == "RESCHEDULED" for w in clinic.writes)
+
+
+def test_taken_slot_in_the_last_round_says_it_was_taken_before_transferring() -> None:
+    clinic, bot = _at_preference("c_taken_last")
+    _say(bot, "c_taken_last", "8 giờ sáng ngày 20")
+    clinic.take_slot("slot_b507")
+    action = _say(bot, "c_taken_last", "đồng ý")
+    assert action.utterance == t.SLOT_TAKEN_ROUNDS_TRANSFER
+    assert action.transfer_reason == "PATIENT_REQUEST"
+
+
+@pytest.mark.parametrize(
+    ("request_text", "pick", "taken", "first_day"),
+    [
+        ("Tôi muốn đổi sang 9 giờ ngày 20 tháng 10", "khung 1", "slot_b507", "20 tháng 10"),
+        ("Tôi muốn đổi sang ngày 17 tháng 10", "khung 2", "slot_b506", "19 tháng 10"),
+    ],
+)
+def test_taken_slot_searches_again_from_the_requested_day(
+    request_text: str, pick: str, taken: str, first_day: str
+) -> None:
+    """Ngày xin không đúng giờ / đã kín: đề xuất lại vẫn tìm từ ngày xin, không quay về 14/10."""
+    clinic, bot, _ = _call("c_taken_day", request_text)
+    _say(bot, "c_taken_day", pick)
+    clinic.take_slot(taken)
+    action = _say(bot, "c_taken_day", "đồng ý")
+
+    assert action.utterance.startswith(t.SLOT_TAKEN)
+    assert f"ngày {first_day};" in action.utterance and "14 tháng 10" not in action.utterance

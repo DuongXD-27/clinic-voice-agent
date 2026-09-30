@@ -104,9 +104,12 @@ class CallContext:
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
     # Yêu cầu thời gian của người gọi (lời nói, không phải trạng thái lịch — §4.2.2) và các khung đã
-    # đọc / bị từ chối cho yêu cầu đó: đọc trang tiếp không lặp khung, giữ tiêu chí sau SLOT_TAKEN (T-10)
+    # đọc cho yêu cầu đó: đọc trang tiếp không lặp khung, giữ tiêu chí sau SLOT_TAKEN (T-10)
     slot_request: Optional[str] = None
+    # Ngày người gọi xin (ISO), mốc tìm khung của yêu cầu — kể cả khi ngày đó kín / không đúng giờ xin
+    slot_day: Optional[str] = None
     offered_slot_ids: list[str] = field(default_factory=list)
+    # Khung người gọi đã từ chối: bỏ qua suốt việc đổi / đặt đang chờ, qua mọi yêu cầu (V-9)
     refused_slot_ids: list[str] = field(default_factory=list)
     # Số ngày / khoảng thời gian người gọi đã nêu cho việc đổi / đặt đang chờ (R-29, T-10 §3.2)
     slot_round: int = 0
@@ -164,8 +167,7 @@ class CallContext:
             self.evidence = []
         if action != self.pending_action:
             self.cancel_reason = None
-            self.reset_slot_request(None)
-            self.slot_round = 0
+            self._clear_slot_search()
         self.pending_action = action
         self.selected_slot_id = slot_id
 
@@ -181,14 +183,22 @@ class CallContext:
         self.evidence = []
         self.cancel_reason = None
         self.presented_slot_ids = []
-        self.reset_slot_request(None)
-        self.slot_round = 0
+        self._clear_slot_search()
 
-    def reset_slot_request(self, request: Optional[str]) -> None:
-        """Yêu cầu thời gian mới: khung đã đọc / bị từ chối của yêu cầu cũ không còn áp dụng."""
+    def reset_slot_request(self, request: Optional[str], day: Optional[str] = None) -> None:
+        """Yêu cầu thời gian mới: đọc lại từ đầu các khung của yêu cầu đó.
+
+        Khung đã bị từ chối vẫn bị bỏ qua (V-9): người gọi đã không nhận thì không đọc lại, kể cả
+        khi yêu cầu mới khớp khung đó. Chỉ đổi / bỏ hành động mới xóa.
+        """
         self.slot_request = request
+        self.slot_day = day
         self.offered_slot_ids = []
+
+    def _clear_slot_search(self) -> None:
+        self.reset_slot_request(None)
         self.refused_slot_ids = []
+        self.slot_round = 0
 
     def add_evidence(self, evidence: ActionEvidence) -> None:
         if evidence.action != self.pending_action or evidence.slot_id != self.selected_slot_id:
@@ -230,6 +240,7 @@ class CallContext:
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
+            "slot_day": self.slot_day,
             "offered_slot_ids": list(self.offered_slot_ids),
             "refused_slot_ids": list(self.refused_slot_ids),
             "slot_round": self.slot_round,
@@ -272,6 +283,7 @@ class CallContext:
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có
             slot_request=data.get("slot_request"),
+            slot_day=data.get("slot_day"),
             offered_slot_ids=list(data.get("offered_slot_ids", [])),
             refused_slot_ids=list(data.get("refused_slot_ids", [])),
             slot_round=int(data.get("slot_round", 0)),
