@@ -411,11 +411,14 @@ def test_audio_spans_export_to_jsonl_and_langfuse_without_speech_content(
         for record in records
         if record["parent_span_id"] == root["span_id"]
     }
-    assert set(direct) == {"STT", "CORE", "TTS"}
+    assert set(direct) == {"CORE", "TTS"}
+    stt = next(record for record in records if record["component"] == "STT" and record["turn"] == 1)
+    assert stt["parent_span_id"] == direct["CORE"]["span_id"]
+    assert stt["trace_id"] == root["trace_id"] and stt["call_key"] == root["call_key"]
     assert all(record["trace_id"] == root["trace_id"] for record in direct.values())
     assert all(record["call_key"] == root["call_key"] for record in direct.values())
-    assert direct["STT"]["provider"] == "fake"
-    assert direct["STT"]["model"] == "fake-asr-v1"
+    assert stt["provider"] == "fake"
+    assert stt["model"] == "fake-asr-v1"
     assert direct["TTS"]["provider"] == "fake"
     assert direct["TTS"]["model"] == "fake-tts-v1"
 
@@ -431,7 +434,14 @@ def test_audio_spans_export_to_jsonl_and_langfuse_without_speech_content(
         for span in exported
         if span.get("parentSpanId") == exported_root["spanId"]
     }
-    assert set(exported_direct) == {"STT", "CORE", "TTS"}
+    assert set(exported_direct) == {"CORE", "TTS"}
+    exported_stt = next(
+        span
+        for span in exported
+        if _otlp_attributes(span)["langfuse.observation.metadata.component"] == "STT"
+        and _otlp_attributes(span)["langfuse.observation.metadata.turn"] == "1"
+    )
+    assert exported_stt["parentSpanId"] == exported_direct["CORE"]["spanId"]
     assert all(span["traceId"] == exported_root["traceId"] for span in exported_direct.values())
     assert all(
         _otlp_attributes(span)["langfuse.session.id"]

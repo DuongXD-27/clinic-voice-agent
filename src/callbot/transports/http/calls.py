@@ -313,7 +313,7 @@ def _call_turn_impl(
     if not is_audio and payload.audio_url is not None:
         raise _error(422, "AUDIO_URL_NOT_ALLOWED", "Cuộc gọi text mode không nhận audio_url")
 
-    def _turn() -> tuple:
+    def _resolve_input():
         text = payload.text
         confidence = None
         if payload.audio_url is not None and payload.silence_ms == 0:
@@ -321,14 +321,26 @@ def _call_turn_impl(
             text = transcript.text
             confidence = transcript.confidence
         # silence_ms giữ nguyên giá trị harness gửi (§1.1.7) — không suy diễn lại từ ASR
-        caller = caller_input_from_transcript(
+        return caller_input_from_transcript(
             payload.turn,
             text,
             silence_ms=payload.silence_ms,
             audio_url=payload.audio_url,
             confidence=confidence,
         )
-        run = orchestrator.handle_turn_with_details(call_id, caller)
+
+    def _turn() -> tuple:
+        caller = caller_input_from_transcript(
+            payload.turn,
+            payload.text,
+            silence_ms=payload.silence_ms,
+            audio_url=payload.audio_url,
+        )
+        run = orchestrator.handle_turn_with_details(
+            call_id,
+            caller,
+            **({"resolve_input": _resolve_input} if is_audio else {}),
+        )
         action = run.action
         audio_url = (
             _synthesize(_tracer(orchestrator), speech, call_id, payload.turn, action.utterance)
