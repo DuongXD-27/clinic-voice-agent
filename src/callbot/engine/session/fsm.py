@@ -105,11 +105,14 @@ def check_invariants(ctx: CallContext, state: Optional[CallState] = None) -> Non
             problems.append("chưa xác minh không được có hành động chờ")
 
     if state == "AWAITING_INTENT" and ctx.pending_action is not None:
-        # Ngoại lệ duy nhất: đồng ý câu tóm tắt gộp đọc lại (Figure 0) -> ghi CONFIRMED ngay lượt này
-        readback = ctx.question is not None and (
-            ctx.question.question_id is QuestionId.CONFIRM_READBACK
+        # Ngoại lệ 1: đồng ý câu tóm tắt gộp đọc lại (Figure 0) -> ghi CONFIRMED ngay lượt này.
+        # Ngoại lệ 2: đã đọc hết khung của yêu cầu -> hỏi ngày khác, vẫn giữ việc đổi / đặt lịch (T-10).
+        question = ctx.question.question_id if ctx.question else None
+        readback = ctx.pending_action == "CONFIRM" and question is QuestionId.CONFIRM_READBACK
+        new_request = (
+            ctx.pending_action in _SLOT_ACTIONS and question is QuestionId.ASK_SLOT_PREFERENCE
         )
-        if not (ctx.pending_action == "CONFIRM" and readback):
+        if not (readback or new_request):
             problems.append("AWAITING_INTENT không được có hành động chờ")
 
     if state == "OFFERING_SLOTS":

@@ -4,7 +4,8 @@ Hai bộ dữ liệu:
 - `seed_listing3`: giá trị Listing 3 của contract (apt_00417 lúc 09:00, hai slot trống). Test engine hiện có
   ghi cứng các giá trị này — đây là mặc định của `FakeClinicAPI()`.
 - `seed_mentor_mock`: y như `seed_default()` của mock sau /_harness/reset (apt_00417 lúc 15:30, một slot
-  canonical, cộng bộ per-tenant). Mock gắn hậu tố tenant vào id per-tenant; sim giữ id gốc.
+  canonical, 10 bệnh nhân demo pt_3401–pt_3410 với lịch apt_00418–apt_00427 và 10 slot trống
+  slot_b501–slot_b510, cộng bộ per-tenant). Mock gắn hậu tố tenant vào id per-tenant; sim giữ id gốc.
 
 State của sim nằm trên `FakeClinicAPI` (không có `Store` riêng như mock) để test đọc thẳng
 `clinic.appointments`, `clinic.writes`...
@@ -64,6 +65,65 @@ CANONICAL_SLOTS = [
         "provider_id": DEFAULT_PROVIDER,
     },
 ]
+# Bản ghi demo mock thêm ngày 24-09-2026 (clinic-mock `aa8b94e`, mentor cho phép): hồ sơ thường, không
+# edge case. Mỗi bệnh nhân một lịch SCHEDULED chiếm slot riêng không nằm trong danh sách trống.
+DEMO_PATIENTS = [
+    {
+        "patient_id": patient_id,
+        "display_name": display_name,
+        "phone": phone,
+        "dob": dob,
+        "verify": {"full_name": full_name, "dob": dob},
+    }
+    for patient_id, display_name, phone, dob, full_name in [
+        ("pt_3401", "T. T. B.", "0901234501", "1990-06-21", "Trần Thị Bình"),
+        ("pt_3402", "L. V. C.", "0901234502", "1965-01-09", "Lê Văn Cường"),
+        ("pt_3403", "P. T. D.", "0901234503", "1988-12-02", "Phạm Thị Dung"),
+        ("pt_3404", "H. M. Đ.", "0901234504", "1975-07-30", "Hoàng Minh Đức"),
+        ("pt_3405", "V. T. H.", "0901234505", "1995-03-17", "Vũ Thị Hoa"),
+        ("pt_3406", "Đ. Q. H.", "0901234506", "1982-09-05", "Đặng Quốc Hùng"),
+        ("pt_3407", "B. T. L.", "0901234507", "1970-11-23", "Bùi Thị Lan"),
+        ("pt_3408", "Đ. V. L.", "0901234508", "1999-02-14", "Đỗ Văn Long"),
+        ("pt_3409", "N. T. M.", "0901234509", "1986-05-08", "Ngô Thị Minh"),
+        ("pt_3410", "D. T. P.", "0901234510", "1960-10-01", "Dương Thanh Phong"),
+    ]
+]
+# Sau slot_91d2 theo cả thứ tự lẫn giờ để slot_91d2 vẫn được đề xuất đầu tiên (như mock)
+DEMO_SLOTS = [
+    {
+        "slot_id": slot_id,
+        "clinic_id": DEFAULT_CLINIC,
+        "start_time": f"{start}:00+07:00",
+        "end_time": f"{end}:00+07:00",
+        "provider_id": DEFAULT_PROVIDER,
+    }
+    for slot_id, start, end in [
+        ("slot_b501", "2026-10-15T10:30", "2026-10-15T11:00"),
+        ("slot_b502", "2026-10-15T15:30", "2026-10-15T16:00"),
+        ("slot_b503", "2026-10-16T09:00", "2026-10-16T09:30"),
+        ("slot_b504", "2026-10-16T14:00", "2026-10-16T14:30"),
+        ("slot_b505", "2026-10-19T10:00", "2026-10-19T10:30"),
+        ("slot_b506", "2026-10-19T15:30", "2026-10-19T16:00"),
+        ("slot_b507", "2026-10-20T08:00", "2026-10-20T08:30"),
+        ("slot_b508", "2026-10-20T14:00", "2026-10-20T14:30"),
+        ("slot_b509", "2026-10-21T09:00", "2026-10-21T09:30"),
+        ("slot_b510", "2026-10-21T15:00", "2026-10-21T15:30"),
+    ]
+]
+# (appointment_id, slot của lịch, patient_id, bắt đầu, kết thúc, khoa)
+DEMO_APPOINTMENTS = [
+    ("apt_00418", "slot_a418", "pt_3401", "2026-10-15T08:00", "2026-10-15T08:30", "Nội tổng quát"),
+    ("apt_00419", "slot_a419", "pt_3402", "2026-10-15T09:30", "2026-10-15T10:00", "Tim mạch"),
+    ("apt_00420", "slot_a420", "pt_3403", "2026-10-15T14:00", "2026-10-15T14:30", "Sản phụ khoa"),
+    ("apt_00421", "slot_a421", "pt_3404", "2026-10-16T08:30", "2026-10-16T09:00", "Tiêu hóa"),
+    ("apt_00422", "slot_a422", "pt_3405", "2026-10-16T10:00", "2026-10-16T10:30", "Da liễu"),
+    ("apt_00423", "slot_a423", "pt_3406", "2026-10-16T15:00", "2026-10-16T15:30", "Cơ xương khớp"),
+    ("apt_00424", "slot_a424", "pt_3407", "2026-10-19T08:00", "2026-10-19T08:30", "Mắt"),
+    ("apt_00425", "slot_a425", "pt_3408", "2026-10-19T09:00", "2026-10-19T09:30", "Tai Mũi Họng"),
+    ("apt_00426", "slot_a426", "pt_3409", "2026-10-19T14:30", "2026-10-19T15:00", "Răng Hàm Mặt"),
+    ("apt_00427", "slot_a427", "pt_3410", "2026-10-20T09:00", "2026-10-20T09:30", "Thần kinh"),
+]
+
 MOCK_TENANT_PATIENTS = [
     {
         "patient_id": "p_12345",
@@ -119,6 +179,30 @@ def seed_mentor_mock(sim: "FakeClinicAPI") -> None:
     )
     for slot in CANONICAL_SLOTS:
         sim.seed_slot(slot)
+    for patient in DEMO_PATIENTS:
+        sim.seed_patient(patient)
+    for slot in DEMO_SLOTS:
+        sim.seed_slot(slot)
+    patients = {patient["patient_id"]: patient for patient in DEMO_PATIENTS}
+    for appointment_id, slot_id, patient_id, start, end, department in DEMO_APPOINTMENTS:
+        patient = patients[patient_id]
+        sim.seed_appointment(
+            {
+                "appointment_id": appointment_id,
+                "status": "SCHEDULED",
+                "clinic_id": DEFAULT_CLINIC,
+                "starts_at": f"{start}:00+07:00",
+                "ends_at": f"{end}:00+07:00",
+                "department": department,
+                "patient": {
+                    "patient_id": patient_id,
+                    "display_name": patient["display_name"],
+                    "verify": patient["verify"],
+                },
+                "version": 1,
+            },
+            slot_id=slot_id,
+        )
     for patient in MOCK_TENANT_PATIENTS:
         sim.seed_patient(patient)
     for slot in MOCK_TENANT_SLOTS:

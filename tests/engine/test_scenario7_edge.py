@@ -52,7 +52,8 @@ def test_case_a_slot_plus_7_days_uses_one_window_and_is_offered() -> None:
 
     action = _offer(bot, "c_s7_a")
 
-    assert action.state == "OFFERING_SLOTS" and action.ended is False
+    # Một khung duy nhất: đọc và hỏi có/không luôn (T-10, Hình 0)
+    assert action.state == "AWAITING_CONFIRMATION" and action.ended is False
     assert clinic.slot_reads == 1
     assert [slot["slot_id"] for slot in _context(bot, "c_s7_a").slots] == ["slot_7d"]
 
@@ -64,7 +65,7 @@ def test_case_b_boundary_plus_14_days_is_offered_once() -> None:
     action = _offer(bot, "c_s7_b")
 
     # Fake/official contract uses half-open windows [from, to), so the boundary is in window 2.
-    assert action.state == "OFFERING_SLOTS"
+    assert action.state == "AWAITING_CONFIRMATION"
     assert clinic.slot_reads == 2
     assert [slot["slot_id"] for slot in _context(bot, "c_s7_b").slots] == ["slot_14d"]
 
@@ -75,7 +76,7 @@ def test_case_c_slot_plus_22_days_regression_reaches_offering_slots() -> None:
 
     action = _offer(bot, "c_s7_c")
 
-    assert action.state == "OFFERING_SLOTS" and action.ended is False
+    assert action.state == "AWAITING_CONFIRMATION" and action.ended is False
     assert action.outcome is None and action.transfer_reason is None
     assert clinic.slot_reads == 2
     assert [slot["slot_id"] for slot in _context(bot, "c_s7_c").slots] == ["slot_22d"]
@@ -117,7 +118,7 @@ def test_case_f_earlier_slot_prevents_later_window_query() -> None:
 
     action = _offer(bot, "c_s7_f")
 
-    assert action.state == "OFFERING_SLOTS"
+    assert action.state == "AWAITING_CONFIRMATION"
     assert clinic.slot_reads == 1
     assert [slot["slot_id"] for slot in _context(bot, "c_s7_f").slots] == ["slot_7d"]
 
@@ -129,8 +130,9 @@ def test_case_g_unoffered_slot_choice_never_writes() -> None:
 
     action = _run(bot, "c_s7_g", ["khung 2"], start=4)
 
-    assert action.state == "OFFERING_SLOTS"
-    assert _context(bot, "c_s7_g").selected_slot_id is None
+    # Bot đã đọc khung duy nhất để hỏi có/không; "khung 2" không có -> không chọn khung nào khác
+    assert action.state == "AWAITING_CONFIRMATION"
+    assert _context(bot, "c_s7_g").selected_slot_id == "slot_only"
     assert clinic.writes == [] and clinic.requests == []
 
 
@@ -145,11 +147,12 @@ def test_case_h_slot_taken_refreshes_without_blind_booking_retry() -> None:
 
     action = _run(bot, "c_s7_h", ["Vâng, tôi xác nhận đặt lịch này"], start=5)
 
-    assert action.state == "OFFERING_SLOTS" and action.ended is False
+    # Đọc lại /slots còn một khung: hỏi có/không cho khung đó, cần xác nhận mới (GC-RES-06)
+    assert action.state == "AWAITING_CONFIRMATION" and action.ended is False
     assert clinic.writes == []
     assert clinic.slot_reads == 2
     context = _context(bot, "c_s7_h")
-    assert context.selected_slot_id is None
+    assert context.selected_slot_id == "slot_fallback" and context.evidence == []
     assert [slot["slot_id"] for slot in context.slots] == ["slot_fallback"]
 
 
@@ -165,7 +168,6 @@ def test_case_i_complete_plus_22_day_booking_writes_exactly_once() -> None:
             NAME,
             DOB,
             "Tôi muốn đặt lịch khám",
-            "khung 1",
             "Vâng, tôi xác nhận đặt lịch này",
         ],
     )
