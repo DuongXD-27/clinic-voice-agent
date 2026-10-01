@@ -26,7 +26,7 @@ from callbot.engine.session.retention import RetentionPolicy
 from callbot.engine.session.settings import SessionSettings
 from callbot.engine.settings import EngineSettings
 from callbot.engine.tools import ClinicAPI, ClinicGateway
-from callbot.engine.types import BotAction, CallerInput, CallStart
+from callbot.engine.types import BotAction, CallerInput, CallStart, PhoneStatus
 from callbot.engine.verification import IdentityVerifier
 from callbot.tracing import Tracer as SpanTracer
 from callbot.tracing import null_tracer
@@ -120,6 +120,7 @@ def create_orchestrator(
 
 
 __all__ = [
+    "PhoneStatus",
     "BotAction",
     "CallBusy",
     "CallConflict",

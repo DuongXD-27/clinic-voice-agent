@@ -1,6 +1,7 @@
 """Kiểu dữ liệu dùng chung của engine — enum theo Appendix A của contract."""
 
 from dataclasses import asdict, dataclass
+from enum import Enum
 from typing import Any, Literal, Optional
 
 CallState = Literal[
@@ -45,6 +46,13 @@ TransferReason = Literal[
 UnreachableReason = Literal["SILENCE", "VOICEMAIL", "NO_ANSWER", "LINE_BUSY"]
 
 
+class PhoneStatus(str, Enum):
+    """Dial results supplied by a phone adapter, never inferred from speech."""
+
+    NO_ANSWER = "NO_ANSWER"
+    LINE_BUSY = "LINE_BUSY"
+
+
 @dataclass(frozen=True)
 class CallStart:
     call_id: str
@@ -75,6 +83,21 @@ class CallerInput:
     audio_url: Optional[str] = None
     # Metadata ASR khi đầu vào đến từ audio; text mode để None
     asr_confidence: Optional[float] = None
+    phone_status: Optional[PhoneStatus] = None
+
+    def __post_init__(self) -> None:
+        if self.phone_status is not None:
+            if type(self.turn) is not int or self.turn < 1:
+                raise ValueError("phone status requires a positive integer turn")
+            if not isinstance(self.phone_status, PhoneStatus):
+                raise ValueError("phone_status must be a PhoneStatus")
+            if (
+                self.text is not None
+                or self.audio_url is not None
+                or self.silence_ms != 0
+                or self.asr_confidence is not None
+            ):
+                raise ValueError("phone status cannot be combined with caller speech or silence")
 
     @property
     def is_silence(self) -> bool:
@@ -89,7 +112,11 @@ class CallerInput:
 
         Không chuẩn hoá text: hai câu gần nghĩa vẫn là hai request khác nhau.
         """
-        return {"text": self.text, "silence_ms": self.silence_ms, "audio_url": self.audio_url}
+        result = {"text": self.text, "silence_ms": self.silence_ms, "audio_url": self.audio_url}
+        # Keep existing speech fingerprints compatible with stored turns.
+        if self.phone_status is not None:
+            result["phone_status"] = self.phone_status.value
+        return result
 
 
 @dataclass

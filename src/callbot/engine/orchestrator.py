@@ -249,6 +249,10 @@ class CallOrchestrator:
                 self._policy_event("preconditions", decision)
                 if decision.kind != "CONTINUE":
                     action = self._execute(ctx, decision)
+                elif caller.phone_status is not None:
+                    decision = self._policy.check_phone_status(ctx, caller.phone_status)
+                    self._policy_event("phone_status", decision)
+                    action = self._execute(ctx, decision)
                 else:
                     with self._span_tracer.span(
                         component="EXTRACTION", operation="core.extract"
