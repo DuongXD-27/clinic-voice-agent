@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, AsyncIterator, Optional
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
 from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
+from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
     segment_to_livekit_frame,
@@ -86,14 +87,13 @@ def call_start_from_room(
 
 def caller_input_from_turn(turn_number: int, turn: UserTurnCompleted) -> CallerInput:
     """Lượt im lặng (`silence_ms > 0`, hợp đồng core: Phụ lục A) không mang text."""
-    if turn.silence_ms > 0:
-        return CallerInput(turn=turn_number, text=None, silence_ms=turn.silence_ms)
-    return CallerInput(
-        turn=turn_number,
-        text=turn.text,
-        silence_ms=0,
-        audio_url=None,
-        asr_confidence=turn.confidence,
+    if not isinstance(turn, UserTurnCompleted):
+        raise TypeError("Core accepts only completed user turns, not raw ASR events")
+    return caller_input_from_transcript(
+        turn_number,
+        turn.text,
+        silence_ms=turn.silence_ms,
+        confidence=turn.confidence,
     )
 
 
@@ -373,7 +373,11 @@ class CallBridge:
             raise
         except BaseException as exc:
             self._pipeline_error = exc
-            logger.exception("call_bridge: voice pipeline failed room=%s", self._room.name)
+            logger.error(
+                "call_bridge: voice pipeline failed room=%s error=%s",
+                self._room.name,
+                type(exc).__name__,
+            )
         finally:
             await self._put_turn_done()
 

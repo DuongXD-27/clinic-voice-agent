@@ -14,7 +14,6 @@ from callbot.engine import (
     CallBusy,
     CallConflict,
     CallEnded,
-    CallerInput,
     CallOrchestrator,
     CallStart,
     ReconciliationRequired,
@@ -34,6 +33,7 @@ from callbot.transports.http.schemas import (
     TurnRequest,
     TurnResponse,
 )
+from callbot.transports.input_mapping import caller_input_from_transcript
 from speech.bundle import SpeechBundle
 from speech.types import Transcript
 
@@ -117,7 +117,7 @@ def _transcribe(tracer: Tracer, speech: SpeechBundle, audio_url: str) -> Transcr
             segment = speech.audio_loader(audio_url)
         except Exception as exc:
             _set_speech_error(span, exc, stage="STT_LOAD")
-            raise
+            raise _error(503, "UPSTREAM", "Không thể tải hoặc giải mã audio đầu vào") from exc
         _enrich_audio(span, segment)
         started = perf_counter_ns()
         try:
@@ -125,7 +125,7 @@ def _transcribe(tracer: Tracer, speech: SpeechBundle, audio_url: str) -> Transcr
         except Exception as exc:
             span.enrich(latency_ms=_elapsed_ms(started))
             _set_speech_error(span, exc, stage="STT_PROVIDER")
-            raise
+            raise _error(503, "UPSTREAM", "Không thể nhận dạng audio đầu vào") from exc
         span.enrich(
             latency_ms=_elapsed_ms(started),
             silence_detected=transcript.is_silence,
@@ -158,6 +158,8 @@ def _translate_errors(call_id: str, operation: Callable[[], T]) -> T:
     # Không trả chi tiết exception cho client: có thể chứa URL/header của clinic mock
     try:
         return operation()
+    except HTTPException:
+        raise
     except SessionNotFound as exc:
         raise _error(404, "CALL_NOT_FOUND", f"Không tìm thấy cuộc gọi {call_id}") from exc
     except CallConflict as exc:
@@ -314,17 +316,17 @@ def _call_turn_impl(
     def _turn() -> tuple:
         text = payload.text
         confidence = None
-        if payload.audio_url is not None:
+        if payload.audio_url is not None and payload.silence_ms == 0:
             transcript = _transcribe(_tracer(orchestrator), speech, payload.audio_url)
             text = transcript.text
             confidence = transcript.confidence
         # silence_ms giữ nguyên giá trị harness gửi (§1.1.7) — không suy diễn lại từ ASR
-        caller = CallerInput(
-            turn=payload.turn,
-            text=text,
+        caller = caller_input_from_transcript(
+            payload.turn,
+            text,
             silence_ms=payload.silence_ms,
             audio_url=payload.audio_url,
-            asr_confidence=confidence,
+            confidence=confidence,
         )
         run = orchestrator.handle_turn_with_details(call_id, caller)
         action = run.action

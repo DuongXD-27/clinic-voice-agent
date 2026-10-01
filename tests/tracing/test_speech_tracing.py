@@ -179,11 +179,11 @@ def test_tts_none_is_successful_unavailable_output(
 @pytest.mark.parametrize(
     ("failure", "http_status", "error_type", "error_code"),
     [
-        (RuntimeError("private STT provider response"), 500, "PROVIDER", "STT_PROVIDER_ERROR"),
-        (httpx.ReadTimeout("private STT timeout"), 504, "TIMEOUT", "STT_TIMEOUT"),
+        (RuntimeError("private STT provider response"), 503, "PROVIDER", "STT_PROVIDER_ERROR"),
+        (httpx.ReadTimeout("private STT timeout"), 503, "TIMEOUT", "STT_TIMEOUT"),
     ],
 )
-def test_stt_provider_failure_is_safe_and_preserves_http_behavior(
+def test_stt_provider_failure_is_safe_and_reports_upstream_unavailable(
     failure, http_status, error_type, error_code, tmp_path, redis_store_factory, redis_server
 ) -> None:
     sink = MemorySink()
@@ -219,7 +219,7 @@ def test_audio_load_failure_is_an_stt_stage_error(
     )
     with TestClient(app) as client:
         assert _start(client, "audio-load-failure", mode="audio").status_code == 200
-        assert _audio_turn(client, "audio-load-failure").status_code == 500
+        assert _audio_turn(client, "audio-load-failure").status_code == 503
 
     stt = next(span for span in sink.spans if span.component == "STT")
     assert stt.status == "ERROR"

@@ -52,6 +52,7 @@ và lượt hỏi; `SessionManager` chỉ ghi phiên và áp dụng trạng thá
 | Redis session lỗi hoặc hết bộ nhớ | `503 SESSION_STORE_UNAVAILABLE`; không gửi lệnh Clinic khi chưa lưu được nhật ký |
 | `audio_url` trên cuộc gọi text | `422 AUDIO_URL_NOT_ALLOWED` |
 | `text` trên cuộc gọi audio | `422 TEXT_NOT_ALLOWED` |
+| Tải/giải mã clip hoặc ASR lỗi, kể cả timeout | `503 UPSTREAM`; chưa gọi Core, không tiêu thụ lượt và không ghi Clinic; có thể gửi lại cùng lượt khi đầu vào/provider đã phục hồi |
 | Clinic timeout / lỗi ngoài lượt xử lý | `504 UPSTREAM_TIMEOUT` / `502 UPSTREAM_ERROR` |
 | Lỗi ngoài dự kiến | `500 INTERNAL_ERROR` |
 
