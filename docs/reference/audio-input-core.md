@@ -29,6 +29,9 @@ cùng Extraction → Policy → Dialogue → Output Guard → FSM → Session.
 5. Lỗi task ASR/VAD/nguồn frame được truyền lên bridge và dọn tài nguyên.
    Không tạo lượt rỗng, lượt im lặng hay phone status để thay thế lỗi; không ghi thêm Clinic.
    Bridge chỉ log tên lớp lỗi, tránh ghi transcript hoặc URL trong exception.
+6. Khi pipeline kết thúc bình thường, sentinel EOF đứng sau toàn bộ lượt đã chốt;
+   hàng đợi đầy không được làm mất một lượt. Chỉ lỗi/cleanup mới ưu tiên sentinel
+   để giải phóng bridge.
 
 ## Kiểm chứng và phạm vi
 
@@ -65,3 +68,17 @@ cùng Extraction → Policy → Dialogue → Output Guard → FSM → Session.
   giữa commit terminal và lưu biên nhận, không thể phục hồi câu cũ; vẫn chặn gọi lại Core
   và không ghi Clinic lần hai. Kết quả ghi chưa xác định vẫn yêu cầu đối soát, không có
   biên nhận output để che lỗi đó.
+
+## Mức kiểm chứng
+
+Regression đối chiếu 7/7 flow và ca biên trên Core thật: utterance, state, counters,
+outcome, chuỗi API và bản ghi Clinic của text/audio phải bằng nhau. ASR/TTS giả lập chỉ
+điều khiển transcript và lỗi trong các ca này. LiveKit Bridge thật cũng được đối chiếu
+7/7 flow với Core thật, dùng pipeline phát lượt đã chốt và media/TTS giả.
+Test ASR local opt-in dùng clip 8 kHz
+có sẵn cho identity, confirm và voicemail; không gọi Luna hay TTS thật.
+
+Đây chưa phải full Audio E2E 7/7 với provider: bộ clip có nhãn hiện chưa phủ cancel,
+reschedule và inbound booking, và TTS thật chưa được nối. WAV của TTS giả trong test
+chỉ kiểm tra việc giao đúng utterance và xuất artifact, không chứng minh phát âm trung thực.
+Không thay đổi điều kiện identity, xác nhận hủy, nguồn slot hay cơ chế ghi Clinic.

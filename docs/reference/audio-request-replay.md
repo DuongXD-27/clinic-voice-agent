@@ -19,4 +19,5 @@ cùng trace root, pseudonym và quy tắc không xuất transcript/URL ra log.
 
 Regression kiểm tra ASR đổi transcript ở lần retry nhưng kết quả Core giữ nguyên,
 URL khác bị từ chối trước ASR, lượt nhảy số/đã đóng không gọi ASR, worker bị ngắt sau
-reserve dùng lại transcript. Phục hồi TTS/artifact sau commit thuộc PR output riêng.
+reserve dùng lại transcript. Cơ chế phục hồi TTS/artifact sau commit được mô tả trong
+[mapping audio vào Core](audio-input-core.md).

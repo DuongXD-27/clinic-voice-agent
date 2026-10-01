@@ -590,6 +590,10 @@ class CallBridge:
             self._frame_queue.put_nowait(_FRAME_DONE)
 
     async def _put_turn_done(self) -> None:
+        if self._pipeline_error is None and not self._closing:
+            # EOF bình thường phải đứng SAU mọi lượt đã chốt, không bỏ lượt khi queue đầy.
+            await self._turn_queue.put(_TURN_DONE)
+            return
         try:
             self._turn_queue.put_nowait(_TURN_DONE)
         except asyncio.QueueFull:
