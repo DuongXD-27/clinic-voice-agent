@@ -88,12 +88,9 @@ class Agreement(str, Enum):
 
 
 class LineSignal(str, Enum):
-    """Trùng tên với `unreachable_reason` ở Phụ lục A (rev 1.1). `SILENCE` không có ở đây:
-    im lặng đến từ `silence_ms` của harness, không phải từ lời nói (xem `ExtractionResult.silent`)."""
+    """Speech can identify voicemail only. Silence uses silence_ms; dial results use PhoneStatus."""
 
     VOICEMAIL = "VOICEMAIL"  # lời chào hộp thư thoại
-    LINE_BUSY = "LINE_BUSY"  # thông báo tổng đài: thuê bao đang bận
-    NO_ANSWER = "NO_ANSWER"  # thông báo tổng đài: không liên lạc được, ngoài vùng phủ sóng, số không có thực
     NONE = "NONE"
 
 

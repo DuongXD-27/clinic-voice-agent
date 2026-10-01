@@ -279,6 +279,22 @@ def test_denied_voicemail_continues_identity_without_writing() -> None:
 
 
 @pytest.mark.parametrize(
+    "line",
+    [
+        "Thuê bao đang bận",
+        "Số máy quý khách vừa gọi tạm thời không liên lạc được",
+        "The number you are calling is busy",
+        "The number you have dialed cannot be reached",
+    ],
+)
+def test_operator_transcript_never_marks_dial_failure(line: str) -> None:
+    _, clinic, actions = _call("c_operator_speech", "outbound", [line])
+    assert actions[-1].outcome != "UNREACHABLE"
+    assert not any(write[1] == "UNREACHABLE" for write in clinic.writes)
+    assert clinic.appointments["apt_00417"]["attempt_count"] == 0
+
+
+@pytest.mark.parametrize(
     "failures",
     [
         [clinic_error(409, "INVALID_STATE_TRANSITION")],

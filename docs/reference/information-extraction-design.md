@@ -40,7 +40,7 @@
 
 | # | Trước | Sau | Lý do |
 |---|---|---|---|
-| 17 | `line_signal`: `VOICEMAIL` \| `OPERATOR_MESSAGE` | `VOICEMAIL` \| `LINE_BUSY` \| `NO_ANSWER` — **trùng tên** `unreachable_reason` (mục 5.9); thông báo tổng đài chỉ nhận khi có dấu hiệu tổng đài; thêm mẫu lời chào tiếng Anh | Phụ lục A thêm `unreachable_reason`; §4.2.5: VOICEMAIL đến bằng clip lời chào |
+| 17 | `line_signal`: hộp thư thoại / thông báo tổng đài | Chỉ trích `VOICEMAIL` từ lời nói; `NO_ANSWER` / `LINE_BUSY` chỉ đến từ trạng thái điện thoại có kiểu `PhoneStatus` | Hợp đồng §4.2.5; [tín hiệu trạng thái điện thoại](phone-status.md) |
 | 18 | Transcript rỗng cho ra các trường `NONE`, không phân biệt với "không hiểu" | `extract(..., silence_ms)`; `silence_ms > 0` → `ExtractionResult.silent = True`, mọi trường `skipped` (mục 4) | §1.1.7: "A silent turn is not a failed understanding under §1.1.5"; Phụ lục A: im lặng = `silence_ms > 0` |
 | 19 | Câu hỏi "có đến được không" là `ASK_ATTENDANCE`, sau đó mới đọc lại | Câu tóm tắt + đọc lại + hỏi đến được không **gộp một lượt** là `CONFIRM_READBACK` (mục 5.6) | Figure 0 rev 1.1: "Có, tôi đến được." → `CONFIRMED` ngay |
 
@@ -57,7 +57,7 @@
 | `agreement` | Bộ nhận diện riêng, gắn với câu bot vừa hỏi | `AGREE` \| `REFUSE` \| `UNCLEAR` |
 | `slot_choice` | Lọc trên danh sách `GET /slots` của cuộc gọi | `MATCH(slot_id)` \| `AMBIGUOUS(slot_ids)` \| `NO_MATCH` |
 | `cancel_reason` | Ánh xạ cụm từ tường minh → Phụ lục A | mã Phụ lục A, mặc định `UNSPECIFIED` |
-| `line_signal` | Mẫu câu tổng đài / hộp thư thoại | `VOICEMAIL` \| `LINE_BUSY` \| `NO_ANSWER` \| `NONE` (trùng tên `unreachable_reason`) |
+| `line_signal` | Mẫu lời chào hộp thư thoại | `VOICEMAIL` \| `NONE`; kết quả quay số dùng `PhoneStatus`, không thuộc IE |
 | `silent` | `silence_ms > 0` của harness, không suy từ transcript | `true` → mọi trường `skipped` |
 | ~~`phone`~~ | Hoãn — xem mục 5.3 | — |
 
@@ -342,13 +342,13 @@ Giá trị **trùng tên** `unreachable_reason` ở Phụ lục A rev 1.1, để
 |---|---|---|
 | "để lại lời nhắn", "sau tiếng bíp", "hộp thư thoại", "leave a message", "after the tone" | `VOICEMAIL` | `POST /unreachable` với `VOICEMAIL`; **không** để lại chi tiết lịch hẹn (§1.1.7) |
 | Lời chào hộp thư cá nhân (T-08): "bạn đã gọi đến số", "cảm ơn bạn đã gọi", "hiện không thể nghe máy", "hiện không nghe máy được", "you've reached", "can't take your call", "please leave your name" | `VOICEMAIL` | như trên |
-| Dấu hiệu tổng đài + "bận" ("số máy quý khách vừa gọi hiện đang bận", "the number you are calling is busy") | `LINE_BUSY` | `POST /unreachable` với `LINE_BUSY` |
-| Dấu hiệu tổng đài, không nói bận ("thuê bao … tạm thời không liên lạc được", "ngoài vùng phủ sóng", "không có thực") | `NO_ANSWER` | `POST /unreachable` với `NO_ANSWER` |
+| Trạng thái `LINE_BUSY` từ adapter điện thoại, không suy từ transcript | Không thuộc IE | Policy trong Core → `POST /unreachable` với `LINE_BUSY` |
+| Trạng thái `NO_ANSWER` từ adapter điện thoại, không suy từ transcript | Không thuộc IE | Policy trong Core → `POST /unreachable` với `NO_ANSWER` |
 
 - `VOICEMAIL` xét trước: "thuê bao không liên lạc được, vui lòng để lại lời nhắn" là đã vào hộp thư.
 - Mẫu lời chào cá nhân chỉ gồm cụm người đã nghe máy gần như không nói. **Không** nhận "không nghe máy được", "sẽ gọi lại cho bạn", "gọi lại sau": người thật đang bận vẫn nói các câu đó (bẫy ở `test_human_speech_is_not_a_line_signal`).
-- `LINE_BUSY` / `NO_ANSWER` **bắt buộc có dấu hiệu tổng đài** ("thuê bao", "số máy quý khách", "ngoài vùng phủ sóng", "the number you have dialed"…). Người nghe máy nói "tôi đang bận" hay "không liên lạc được với anh ấy" là người thật; kết thúc `UNREACHABLE` với họ là case fail.
-- Theo §4.2.5, trên đường chấm chỉ có `SILENCE` và `VOICEMAIL`; `LINE_BUSY` / `NO_ANSWER` chỉ xuất hiện ở cuộc gọi thật tuần 6. Nếu clip lời chào của harness nghe giống thông báo tổng đài, IE vẫn báo đúng điều nó nghe; Policy quyết định mã (mục 6.4, mục 10 câu 9).
+- `LINE_BUSY` / `NO_ANSWER` **bắt buộc chỉ đến từ trạng thái điện thoại**. Transcript có lời thông báo tổng đài cũng không đủ để xác định kết quả quay số.
+- Trên đường chấm điểm chỉ có `SILENCE` và `VOICEMAIL`. Trạng thái điện thoại là đầu vào nội bộ của adapter, không phải trường trong API chấm điểm.
 
 Chạy trước mọi bộ khác ở **mọi lượt outbound trước khi xác minh xong** (`question_id` rỗng, `ASK_NAME`, `ASK_DOB`), không chỉ lượt đầu: §4.2.5 nói VOICEMAIL đến bằng clip lời chào nhưng không nói ở lượt nào. Khác `NONE` thì dừng, không đọc câu hộp thư thành tên. Inbound không chạy (§1.1.7 rev 1.1 chỉ áp dụng outbound).
 
@@ -477,7 +477,7 @@ Ranh giới `OUT_OF_SCOPE` và `NOT_UNDERSTOOD`: **hiểu được** người g�
 
 | Điều kiện | `unreachable_reason` |
 |---|---|
-| `line_signal ∈ {VOICEMAIL, LINE_BUSY, NO_ANSWER}` | cùng tên với `line_signal` |
+| `line_signal = VOICEMAIL` | `VOICEMAIL`; Policy kiểm tra trạng thái điện thoại ở nhánh riêng |
 | 3 lượt `silent` liên tiếp | `SILENCE` |
 
 - Gọi `POST /appointments/{id}/unreachable`, body **chỉ** `unreachable_reason`; không gửi `attempt_count` (mock tự tăng, gửi kèm bị 400) — §4.2.5.
