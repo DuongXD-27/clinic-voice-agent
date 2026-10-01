@@ -72,7 +72,11 @@ Lấy cố định 600 ms đổi chữ ở gần như mọi điều kiện, đú
 ### Quyết định
 
 - (a) bật ngay.
-- (b) để **tắt**. Chỉ bật (`asr_voice_lookback_ms: 300`) sau khi người nghe xác nhận các ca chưa rõ ở trên. Cơ chế làm đúng việc ở các ca mất chữ đầu đã thấy; rủi ro còn lại là câu một từ đổi nghĩa và giọng nền.
+- (b) **bật mặc định `asr_voice_lookback_ms: 300`** (01/10, quyết định owner theo số đo trên):
+  - golden có nhãn tốt lên; office không đổi câu nào;
+  - trên cuộc gọi thật, phần lớn thay đổi là lấy lại chữ đầu.
+- Rủi ro còn lại: câu một từ đổi thành từ đệm, và giọng nền bị kéo vào. Theo dõi qua `asr_lookback_ms` trong log `TURN_ACCEPTED`/`TURN_DROPPED`.
+- Thiếu bộ phân loại dùng chung hoặc probe (`onnxruntime`) thì bundle bỏ qua lookback và ghi cảnh báo. Cuộc gọi vẫn chạy với 300 ms cố định, không lỗi cấu hình.
 
 ## Kết quả xác minh cục bộ
 

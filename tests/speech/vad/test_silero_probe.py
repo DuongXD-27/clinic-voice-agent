@@ -67,3 +67,7 @@ def test_lookback_reads_the_shared_detector_probe(monkeypatch: pytest.MonkeyPatc
     enabled = options(asr_voice_lookback_ms=300)
     assert enabled["voice_lookback_ms"] == 300
     assert enabled["voice_probability"].__self__.has_probe
+    # Thiếu bộ phân loại dùng chung: bỏ qua (giữ 300 ms cố định), không làm hỏng cuộc gọi.
+    assert "voice_probability" not in options(
+        asr_voice_lookback_ms=300, speech_shared_detector=False
+    )

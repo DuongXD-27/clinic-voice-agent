@@ -59,8 +59,9 @@ speech_diagnostics_probe: true
 # ASR nhận thêm audio trước lúc Silero báo có giọng, nhưng chỉ lùi qua phần CÓ giọng (xác suất
 # Silero thô >= 0,5), tối đa thêm chừng này ms ngoài 300 ms cố định. Sửa lỗi mất chữ đầu khi
 # Silero báo trễ (cần 250 ms giọng liên tục). Không lùi qua im lặng: lấy cố định 600 ms từng làm
-# model bịa chữ. 0 = tắt. Chưa bật: chờ đo noise-bench (short/web/golden, có nhiễu).
-asr_voice_lookback_ms: 0
+# model bịa chữ. 0 = tắt. Bật 01/10 theo số đo (docs/evidence/short-answer-streaming-2026-10-01.md):
+# golden sạch WER 0,120 -> 0,113, office không đổi câu nào; log asr_lookback_ms cho biết khi nó chạy.
+asr_voice_lookback_ms: 300
 
 # URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
 public_base_url: http://localhost:8000

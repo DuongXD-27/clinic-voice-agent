@@ -181,10 +181,7 @@ def _build_detector_probe(settings: SpeechSettings) -> Optional[ProbabilityProbe
         return None
     from speech.asr.vad.silero_probe import build_probe
 
-    probe = build_probe(settings.silero_vad_model_path, settings.sample_rate)
-    if probe is None and settings.asr_voice_lookback_ms:
-        logger.warning("speech_bundle: không có Silero probe, tắt asr_voice_lookback_ms")
-    return probe
+    return build_probe(settings.silero_vad_model_path, settings.sample_rate)
 
 
 def build_streaming_bundle(
@@ -226,9 +223,15 @@ def build_streaming_bundle(
         "silence_classifier": asr_endpoint_classifier,
         "end_silence_ms": settings.vad_end_silence_ms,
     }
-    if settings.asr_voice_lookback_ms and detector is not None and detector.has_probe:
-        asr_stream_options["voice_probability"] = detector.probability
-        asr_stream_options["voice_lookback_ms"] = settings.asr_voice_lookback_ms
+    if settings.asr_voice_lookback_ms:
+        if detector is not None and detector.has_probe:
+            asr_stream_options["voice_probability"] = detector.probability
+            asr_stream_options["voice_lookback_ms"] = settings.asr_voice_lookback_ms
+        else:
+            logger.warning(
+                "speech_bundle: asr_voice_lookback_ms cần speech_shared_detector và Silero probe"
+                " (onnxruntime) — giữ pre-speech 300 ms cố định"
+            )
     stt_pipeline = STTPipeline(
         asr,
         vad,
