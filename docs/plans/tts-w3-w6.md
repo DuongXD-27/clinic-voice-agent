@@ -1,6 +1,6 @@
 # Task TTS tuần 3 → tuần 6 (28/09 – 24/10)
 
-**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 28/09/2026
+**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 29/09/2026
 **Nguồn:** `tailieu/callbot-contract-vi.md` (AIHR-PC-001 rev 1.1) là căn cứ chính. PRD v1.6 và Master plan được ghi rõ ở cột *Căn cứ* khi dùng tới.
 
 **Quy ước cột *Căn cứ*:** `MUST` = contract bắt buộc · `§5` = ảnh hưởng điểm · `Phụ lục B` = contract khuyến nghị · `MP` = Master plan · `SP` = mục tiêu sản phẩm (luồng streaming hoàn chỉnh).
@@ -48,7 +48,24 @@ Mỗi task gồm:
 - **Gửi PM:** 1–2 câu tóm tắt để dán vào sheet hoặc daily.
 - **Nội dung:** các bước làm cụ thể (file, cách làm, cách test).
 - **Xong khi:** điều kiện để tick Done.
-- **Căn cứ** và **Đầu ra**.
+- **Căn cứ**, **Đầu ra** và **Nhánh** git.
+
+### Nhánh git
+
+Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần một nhánh cho Đường A (test, đo, evidence) và một nhánh cho Đường B (code streaming); phần code lớn tách riêng. Tên theo quy ước `<loại>/tts-w<tuần>-<chủ-đề>` với prefix repo đang dùng (`feature/`, `fix/`, `docs/`); không ghi ngày trong tên vì một nhánh kéo dài 2–3 ngày. Tạo nhánh từ `main` mới nhất; trong nhánh vẫn commit và viết evidence theo từng task (vd. `test(tts): 29/09 kiểm utterance fidelity 5 kịch bản`).
+
+| Nhánh | Gộp task | PR trước |
+|---|---|---|
+| `feature/tts-w3-vbee-streaming` | 29/09 dùng chung kết nối Vbee · 30/09 Vbee stream + `cancel()` · 01/10 fallback trên stream | 01/10 |
+| `feature/tts-w3-grading-path` | 29/09 kiểm audio đọc đúng lời bot · 01/10 chi phí/phiên · 02/10 Gate W3 | 02/10 |
+| `feature/p01-livekit-sip` | P-01: cấu hình LiveKit SIP + softphone (chỉ tạo khi bắt đầu có code/config) | 03/10 |
+| `feature/tts-w4-livekit-vbee` | 05/10 chốt phối hợp STT / Engine / TTS · 06/10 cuộc gọi LiveKit chạy Vbee | 06/10 |
+| `feature/tts-w4-playback-control` | 07/10 bot im khi khách nói chen · 08/10 chuyển máy và cúp máy | 08/10 |
+| `docs/tts-w4-gate` | 05/10 kiểm câu Reschedule · 09/10 diễn tập #1 · 10/10 Gate W4 | 10/10 |
+| `feature/tts-w5-phone-audio` | 13/10 giọng nói trên điện thoại thật (chỉ khi phải sửa code, vd. μ-law / resample) | 13/10 |
+| `docs/tts-w5-freeze-gate` | 12/10 kiểm câu Booking · 14/10 audit · 15/10 freeze + runbook · 16/10 Gate W5 | 16/10 |
+| `fix/tts-<lỗi>` | Mỗi lỗi từ diễn tập / dự phòng tuần 6 một nhánh nhỏ (vd. `fix/tts-cancel-leak`) | khi sửa xong |
+| `docs/tts-w6-handover` | 23–24/10 bàn giao | 24/10 |
 
 ### Tuần 3 (28/09 – 02/10): đường chấm ổn định, bắt đầu stream Vbee
 
@@ -73,7 +90,7 @@ Mỗi task gồm:
 5. **Viết script.** Gom bước 3 thành `scripts/audio_smoke.py` (in bảng thời gian) để các ngày sau chạy lại được.
 
 **Xong khi:** config trong container đúng provider (Vbee + ElevenLabs); mọi lượt có `audio_url` tải được; tổng mỗi lượt < 8 s; `mode=text` trả `null`.
-**Căn cứ:** Listing 1–2, §4.1.2, §5.3 · **Đầu ra:** bảng thời gian từng lượt + `scripts/audio_smoke.py`
+**Căn cứ:** Listing 1–2, §4.1.2, §5.3 · **Đầu ra:** bảng thời gian từng lượt + `scripts/audio_smoke.py` · **Nhánh:** `restructure-tts` (đã xong)
 
 #### T3 29/09 · Đường A — Kiểm audio đọc đúng lời bot
 
@@ -92,7 +109,7 @@ Mỗi task gồm:
 5. **Câu Vbee đọc sai:** báo Hoàn đổi câu chữ trong template (vd. viết lại cho dễ đọc). **Không** sửa câu ở lớp TTS, vì như vậy audio sẽ khác `utterance`.
 
 **Xong khi:** test "text gửi TTS = utterance" pass; 100% câu của 5 kịch bản đã nghe và ghi kết quả; không câu nào vượt 300 ký tự mà không có fallback.
-**Căn cứ:** §4.1.3, Bảng 1 · **Đầu ra:** test + bảng câu đã nghe (đưa vào evidence Gate W3)
+**Căn cứ:** §4.1.3, Bảng 1 · **Đầu ra:** test + bảng câu đã nghe (đưa vào evidence Gate W3) · **Nhánh:** `feature/tts-w3-grading-path`
 
 #### T3 29/09 · Đường A+B — Giảm độ trễ TTS ✅ Đã xong
 
@@ -110,7 +127,7 @@ Mỗi task gồm:
 5. **Đo trên EC2** bằng script đo byte (bản đo 26/09 nằm ở scratchpad của phiên chat, cần chép vào `scripts/tts_probe.py` trước khi mất): so kết nối mới mỗi câu với kết nối dùng lại, 3 loại câu (ngắn / vừa / dài).
 
 **Xong khi:** test pass; số đo trên EC2 cho thấy giảm thời gian tới byte đầu so với trước.
-**Căn cứ:** §5 (p95), §6.5 · **Đầu ra:** bảng số trước/sau
+**Căn cứ:** §5 (p95), §6.5 · **Đầu ra:** bảng số trước/sau · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
 #### T3 29/09 · Đường B — P-01 Chuẩn bị telephony
 
@@ -125,7 +142,7 @@ Mỗi task gồm:
 6. **Ưu tiên demo inbound** (khách gọi vào đặt lịch): chỉ cần một số nhận cuộc gọi, tránh hạn chế khi gọi ra số di động +84 (Phụ lục B.2).
 
 **Xong khi:** gọi được từ điện thoại thật vào bot qua LiveKit; có softphone dự phòng; đã ghi khả năng transfer.
-**Căn cứ:** Task gốc P-01 (B), §1.3.1, §1.3.4, Phụ lục B.2 · **Đầu ra:** carrier + số điện thoại, cấu hình LiveKit SIP, ghi chú test call
+**Căn cứ:** Task gốc P-01 (B), §1.3.1, §1.3.4, Phụ lục B.2 · **Đầu ra:** carrier + số điện thoại, cấu hình LiveKit SIP, ghi chú test call · **Nhánh:** `feature/p01-livekit-sip` (tạo khi bắt đầu cấu hình SIP)
 
 #### T4 30/09 · Đường B — Vbee phát giọng theo luồng
 
@@ -146,7 +163,7 @@ Mỗi task gồm:
 4. **Thử với Vbee thật:** thêm cờ `--stream` cho `scripts/tts_say.py`, in thời điểm từng chunk về.
 
 **Xong khi:** test pass; chạy thật thấy chunk đầu về trước khi sinh xong cả câu.
-**Căn cứ:** SP, §6.5 · **Đầu ra:** code + test
+**Căn cứ:** SP, §6.5 · **Đầu ra:** code + test · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
 #### T5 01/10 · Đường B — Dự phòng khi Vbee lỗi trên cuộc gọi thời gian thực
 
@@ -163,7 +180,7 @@ Mỗi task gồm:
 5. **Unit test:** Vbee lỗi trước chunk đầu → nhận audio ElevenLabs; Vbee lỗi giữa chừng → dừng, không có audio ElevenLabs; cả hai lỗi → ném lỗi, `CallBridge` xử lý như hiện nay.
 
 **Xong khi:** test fallback trên stream pass; test cũ của gateway (HTTP) vẫn pass.
-**Căn cứ:** SP, §4.1.3 · **Đầu ra:** code + test
+**Căn cứ:** SP, §4.1.3 · **Đầu ra:** code + test · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
 #### T5 01/10 · Đường A — Chi phí giọng nói mỗi cuộc gọi
 
@@ -176,7 +193,7 @@ Mỗi task gồm:
 4. **Format.** Xem format báo cáo chi phí chương trình đã công bố trên kênh chưa (§5.4). Có rồi thì trình bày theo đó; chưa có thì ghi vào mục 7 để hỏi.
 
 **Xong khi:** có bảng USD/phiên theo từng kịch bản, ghi rõ nguồn đơn giá.
-**Căn cứ:** §5, §5.4, Phụ lục B · **Đầu ra:** bảng USD/phiên
+**Căn cứ:** §5, §5.4, Phụ lục B · **Đầu ra:** bảng USD/phiên · **Nhánh:** `feature/tts-w3-grading-path`
 
 #### T6 02/10 · Đường A — Gate W3
 
@@ -191,7 +208,7 @@ Mỗi task gồm:
 - tiến độ stream Vbee (30/09 – 01/10).
 
 **Xong khi:** file evidence đủ các mục trên, có link test và số liệu.
-**Căn cứ:** MP (Gate W3) · **Đầu ra:** `tts-gate-w3.md`
+**Căn cứ:** MP (Gate W3) · **Đầu ra:** `tts-gate-w3.md` · **Nhánh:** `feature/tts-w3-grading-path`
 
 ### Tuần 4 (05/10 – 10/10): nối streaming end-to-end với STT và Engine
 
@@ -212,7 +229,7 @@ Mỗi task gồm:
 4. **Ghi kết quả** vào `docs/reference/` (một bảng interface + phân vai).
 
 **Xong khi:** Việt và Hoàn đồng ý bảng interface và phân vai.
-**Căn cứ:** §1.3.2, Phụ lục B.2, MP · **Đầu ra:** bảng interface + phân vai
+**Căn cứ:** §1.3.2, Phụ lục B.2, MP · **Đầu ra:** bảng interface + phân vai · **Nhánh:** `feature/tts-w4-livekit-vbee`
 
 #### T2 05/10 · Đường A — Kiểm câu thoại đổi lịch
 
@@ -226,7 +243,7 @@ Mỗi task gồm:
 Điền dữ liệu mẫu với số khung tối đa mỗi lượt (R-25: tối đa 2 khung) để có câu dài nhất, rồi kiểm ≤ 300 ký tự. Nghe và ghi bảng.
 
 **Xong khi:** 100% câu Reschedule đã nghe và ghi kết quả; câu đọc sai đã báo Hoàn.
-**Căn cứ:** §4.1.3, Bảng 1 (tuần 4) · **Đầu ra:** bảng câu đã nghe
+**Căn cứ:** §4.1.3, Bảng 1 (tuần 4) · **Đầu ra:** bảng câu đã nghe · **Nhánh:** `docs/tts-w4-gate`
 
 #### T3 06/10 · Đường B — Cuộc gọi thời gian thực chạy giọng Vbee
 
@@ -240,7 +257,7 @@ Mỗi task gồm:
 4. **Kiểm cách chia chunk.** Không còn chuyện đẩy cả câu thành một frame lớn; câu dài phát liên tục, không đứt.
 
 **Xong khi:** cuộc gọi LiveKit chạy Vbee end-to-end; có bảng thời gian 4 mốc.
-**Căn cứ:** SP, Phụ lục B.2 · **Đầu ra:** bảng thời gian end-to-end
+**Căn cứ:** SP, Phụ lục B.2 · **Đầu ra:** bảng thời gian end-to-end · **Nhánh:** `feature/tts-w4-livekit-vbee`
 
 #### T4 07/10 · Đường B — Bot im khi khách nói chen
 
@@ -256,7 +273,7 @@ Mỗi task gồm:
 5. **Đo** thời gian từ lúc xác nhận ngắt lời đến lúc hết tiếng (trên cuộc gọi LiveKit thật).
 
 **Xong khi:** test pass; trên cuộc gọi thật bot im khi bị ngắt lời, Engine nhận được phần text đã phát.
-**Căn cứ:** Phụ lục B.2, MP · **Đầu ra:** test + số ms từ ngắt đến im
+**Căn cứ:** Phụ lục B.2, MP · **Đầu ra:** test + số ms từ ngắt đến im · **Nhánh:** `feature/tts-w4-playback-control`
 
 #### T5 08/10 · Đường B — Chuyển máy và cúp máy
 
@@ -269,7 +286,7 @@ Mỗi task gồm:
 3. **Test:** chuyển máy giữa câu dài; cúp máy khi bot đang nói; cúp máy khi đang chờ Vbee trả chunk đầu.
 
 **Xong khi:** 3 test pass; sau khi cúp máy không còn request Vbee treo.
-**Căn cứ:** MP, §1.3.2 · **Đầu ra:** test chuyển máy / cúp máy
+**Căn cứ:** MP, §1.3.2 · **Đầu ra:** test chuyển máy / cúp máy · **Nhánh:** `feature/tts-w4-playback-control`
 
 #### T6 09/10 · Đường B — Diễn tập #1
 
@@ -281,7 +298,7 @@ Mỗi task gồm:
 - Lỗi TTS: fix trong ngày nếu nhỏ, ghi lại nếu lớn.
 
 **Xong khi:** mọi kịch bản chạy hết một lượt; danh sách lỗi có owner và trạng thái.
-**Căn cứ:** MP · **Đầu ra:** danh sách lỗi
+**Căn cứ:** MP · **Đầu ra:** danh sách lỗi · **Nhánh:** `docs/tts-w4-gate` (lỗi cần sửa code: `fix/tts-<lỗi>`)
 
 #### T7 10/10 · Đường B — Gate W4
 
@@ -295,7 +312,7 @@ Mỗi task gồm:
 - kết quả diễn tập #1 và lỗi đã fix.
 
 **Xong khi:** file evidence đủ các mục trên.
-**Căn cứ:** MP (Gate W4) · **Đầu ra:** `tts-gate-w4.md`
+**Căn cứ:** MP (Gate W4) · **Đầu ra:** `tts-gate-w4.md` · **Nhánh:** `docs/tts-w4-gate`
 
 ### Tuần 5 (12/10 – 16/10): điện thoại thật, Booking vào test, freeze
 
@@ -313,7 +330,7 @@ Mỗi task gồm:
 Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn từ diễn tập #1.
 
 **Xong khi:** 100% câu Booking đã nghe; lỗi TTS từ diễn tập #1 đã đóng hoặc có kế hoạch.
-**Căn cứ:** §4.1.3, Bảng 1 (tuần 5) · **Đầu ra:** bảng câu đã nghe
+**Căn cứ:** §4.1.3, Bảng 1 (tuần 5) · **Đầu ra:** bảng câu đã nghe · **Nhánh:** `docs/tts-w5-freeze-gate`
 
 #### T3 13/10 · Đường B — Giọng nói trên điện thoại thật
 
@@ -327,7 +344,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 5. **Phương án dự phòng.** Kiểm lại softphone SIP đã dựng ở P-01 vẫn gọi được vào trunk (Phụ lục B.2).
 
 **Xong khi:** ít nhất 1 cuộc gọi điện thoại thật chạy trọn kịch bản, nghe rõ giọng bot.
-**Căn cứ:** §1.3.1, §1.3.3, Phụ lục B.2 · **Đầu ra:** kết quả cuộc gọi thử
+**Căn cứ:** §1.3.1, §1.3.3, Phụ lục B.2 · **Đầu ra:** kết quả cuộc gọi thử · **Nhánh:** `feature/tts-w5-phone-audio` (chỉ khi phải sửa code)
 
 #### T4 14/10 · Đường A+B — Diễn tập #2 và tự kiểm audio
 
@@ -339,7 +356,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 3. **Có sai lệch** thì tìm nguyên nhân (câu template khó đọc hay lỗi provider) và sửa ngay. Sai lệch lặp lại có hệ thống là rủi ro hỏng mọi lần chấm.
 
 **Xong khi:** diễn tập chạy trọn; bảng audit 10 cuộc gọi, 0 sai lệch nghĩa.
-**Căn cứ:** §4.1.3, MP · **Đầu ra:** báo cáo audit
+**Căn cứ:** §4.1.3, MP · **Đầu ra:** báo cáo audit · **Nhánh:** `docs/tts-w5-freeze-gate`
 
 #### T5 15/10 · Đường A+B — Freeze và runbook
 
@@ -356,7 +373,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 3. **Nhờ một người khác** trong team đọc runbook và làm thử một lần đổi provider.
 
 **Xong khi:** config đã ghi và khoá; runbook có người khác làm theo được.
-**Căn cứ:** §5 (25% vận hành, bàn giao), MP · **Đầu ra:** runbook
+**Căn cứ:** §5 (25% vận hành, bàn giao), MP · **Đầu ra:** runbook · **Nhánh:** `docs/tts-w5-freeze-gate`
 
 #### T6 16/10 · Đường A+B — Gate W5
 
@@ -370,7 +387,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 - config đã freeze và runbook (15/10).
 
 **Xong khi:** file evidence đủ các mục trên.
-**Căn cứ:** MP (Gate W5) · **Đầu ra:** evidence cuối
+**Căn cứ:** MP (Gate W5) · **Đầu ra:** evidence cuối · **Nhánh:** `docs/tts-w5-freeze-gate`
 
 ### Tuần 6 (19/10 – 24/10)
 
@@ -379,14 +396,14 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 **Gửi PM:** Contingency sau Gate W5: chỉ hotfix các lỗi ưu tiên cao phát sinh, chạy lại regression liên quan sau mỗi lần sửa và không thay đổi config đã freeze.
 
 **Nội dung:** chỉ sửa lỗi ưu tiên cao; mỗi lần sửa chạy lại test liên quan và `scripts/audio_smoke.py`; không đổi config đã freeze.
-**Căn cứ:** MP
+**Căn cứ:** MP · **Nhánh:** `fix/tts-<lỗi>` (mỗi lỗi một nhánh)
 
 #### 21–22/10 — Cuộc gọi live
 
 **Gửi PM:** Standby TTS cho live call bắt buộc: trước giờ gọi kiểm tra quota và health của Vbee/ElevenLabs, chạy smoke test; trong lúc gọi monitor log lỗi và fallback.
 
 **Nội dung:** trước giờ gọi, kiểm tra quota Vbee / ElevenLabs, chạy `scripts/audio_smoke.py` và một cuộc gọi thử; trong lúc gọi theo dõi log TTS (lỗi, fallback).
-**Căn cứ:** §1.3.1
+**Căn cứ:** §1.3.1 · **Nhánh:** không cần (chỉ vận hành)
 
 #### 23–24/10 — Bàn giao
 
@@ -397,7 +414,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 - phần TTS trong tài liệu bàn giao;
 - gom các bảng kiểm §4.1.3 để sẵn khi chương trình lấy mẫu.
 
-**Căn cứ:** §4.1.3, §5 (25%), Phụ lục B
+**Căn cứ:** §4.1.3, §5 (25%), Phụ lục B · **Nhánh:** `docs/tts-w6-handover`
 
 ---
 
