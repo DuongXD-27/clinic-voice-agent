@@ -37,5 +37,12 @@ Kiểm thử hồi quy: `tests/transports/test_phone_status.py` gửi sự kiệ
 đã chuẩn hóa vào Core thật và Clinic giả. `tests/engine/test_silence_line_signal.py`
 kiểm tra transcript có thông báo tổng đài không tạo lệnh ghi quay số thất bại.
 
+Bộ đánh giá `scripts/no_answer_eval.py` cũng phân biệt hai loại đầu vào này.
+Trong `eval/no_answer/cases.csv`, các lượt `<phone_status:NO_ANSWER>` và
+`<phone_status:LINE_BUSY>` là sự kiện giả lập tường minh, được gửi qua adapter;
+chỉ được dùng với `scope=telephony` và `direction=outbound`. Câu thông báo tổng đài
+thông thường vẫn được gửi như transcript, kể cả trong scope `telephony`.
+Bộ đánh giá không dùng `expect_reason` để tạo tín hiệu đầu vào.
+
 Thiết kế này thay thế cách suy ra busy/no-answer từ transcript được mô tả trong
 kế hoạch T-08 ban đầu và các bằng chứng QA audio trước đây.
