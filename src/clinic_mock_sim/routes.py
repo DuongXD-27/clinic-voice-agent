@@ -272,6 +272,7 @@ class FakeClinicAPI(FaultInjector):
             idempotency_key,
             {"if_match": version},
             apply,
+            if_match_used=version is not None,
         )
 
     def cancel_appointment(
@@ -302,6 +303,7 @@ class FakeClinicAPI(FaultInjector):
             {"if_match": version, "cancel_reason": cancel_reason, "confirmed": confirmed},
             apply,
             validate=lambda: _check_enum(cancel_reason, CANCEL_REASONS, "cancel_reason"),
+            if_match_used=version is not None,
         )
 
     def transfer_appointment(
@@ -331,6 +333,7 @@ class FakeClinicAPI(FaultInjector):
             {"if_match": version, "transfer_reason": transfer_reason},
             apply,
             validate=lambda: _check_enum(transfer_reason, TRANSFER_REASONS, "transfer_reason"),
+            if_match_used=version is not None,
         )
 
     def reschedule_appointment(
@@ -388,6 +391,7 @@ class FakeClinicAPI(FaultInjector):
             idempotency_key,
             {"if_match": version, "new_slot_id": new_slot_id, "requested_by": "PATIENT"},
             apply,
+            if_match_used=version is not None,
         )
 
     def mark_unreachable(
@@ -423,6 +427,7 @@ class FakeClinicAPI(FaultInjector):
             validate=lambda: _check_enum(
                 unreachable_reason, UNREACHABLE_REASONS, "unreachable_reason"
             ),
+            if_match_used=version is not None,
         )
 
     # --- Bên trong -----------------------------------------------------------------
@@ -436,9 +441,11 @@ class FakeClinicAPI(FaultInjector):
         payload: dict[str, Any],
         apply: Callable[[], dict[str, Any]],
         validate: Optional[Callable[[], None]] = None,
+        *,
+        if_match_used: bool = False,
     ) -> dict[str, Any]:
         method, _, path = endpoint.partition(" ")
-        with self._call(operation, method, path.removeprefix("/v1")):
+        with self._call(operation, method, path.removeprefix("/v1"), if_match_used=if_match_used):
             self.requests.append((key or "", op_label))
             fault = self._take_fault(operation)
             if fault is not None and not fault[1]:
@@ -480,8 +487,10 @@ class FakeClinicAPI(FaultInjector):
                 return store.normalize_slot(slot)
         return None
 
-    def _call(self, operation: str, method: str, path: str) -> CallRecorder:
-        return CallRecorder(self, operation, method, path)
+    def _call(
+        self, operation: str, method: str, path: str, *, if_match_used: bool = False
+    ) -> CallRecorder:
+        return CallRecorder(self, operation, method, path, if_match_used=if_match_used)
 
 
 def _check_version(appt: dict[str, Any], if_match: Optional[int]) -> None:

@@ -15,9 +15,18 @@ if TYPE_CHECKING:
 
 
 class CallRecorder:
-    def __init__(self, sim: "FakeClinicAPI", operation: str, method: str, path: str) -> None:
+    def __init__(
+        self,
+        sim: "FakeClinicAPI",
+        operation: str,
+        method: str,
+        path: str,
+        *,
+        if_match_used: bool = False,
+    ) -> None:
         self._sim, self._operation, self._method, self._path = sim, operation, method, path
         self._latency_ms = 0
+        self._if_match_used = if_match_used
 
     def __enter__(self) -> None:
         self._latency_ms = int(self._sim._apply_delay(self._operation) * 1000)  # noqa: SLF001
@@ -45,4 +54,5 @@ class CallRecorder:
             request_id=REQUEST_ID,
             latency_ms=self._latency_ms,
             outcome=outcome,  # type: ignore[arg-type]
+            if_match_used=self._if_match_used,
         )

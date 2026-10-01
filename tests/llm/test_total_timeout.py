@@ -1,6 +1,8 @@
 """R-31: the full model response has one monotonic three-second deadline."""
 
+import gzip
 import json
+import zlib
 from threading import Event, Lock
 
 import httpx
@@ -278,3 +280,54 @@ def test_failure_classification_and_generation_result(monkeypatch, outcome, expe
 
 def test_transport_deadline_exception_is_distinct_from_httpx_phase_timeout():
     assert not issubclass(TotalRequestTimeout, httpx.TimeoutException)
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", None])
+@pytest.mark.parametrize("status", [200, 503])
+def test_rebuilt_response_headers_describe_decoded_body(encoding, status):
+    clock = FakeClock()
+    body = {"gzip": gzip.compress, "deflate": zlib.compress}.get(encoding, lambda b: b)(_BODY)
+    headers = [
+        ("Content-Type", "application/json"),
+        ("Content-Length", str(len(body))),
+        ("X-Request-Id", "synthetic-request"),
+        ("Set-Cookie", "first=1"),
+        ("Set-Cookie", "second=2"),
+    ]
+    if encoding:
+        headers.append(("Content-Encoding", encoding))
+    requests = []
+    responses = []
+
+    def handler(request):
+        requests.append(request)
+        response = httpx.Response(
+            status,
+            headers=headers,
+            stream=DelayedBody(clock, 0.25, body),
+            extensions={"http_version": b"HTTP/2"},
+        )
+        responses.append(response)
+        return response
+
+    timed = post_with_total_timeout(
+        lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+        total_timeout_s=3.0,
+        clock=clock,
+        url="https://example.test",
+    )
+    response = timed.response
+    assert response.content == _BODY
+    assert response.json() == json.loads(_BODY)
+    assert response.status_code == status
+    assert "content-encoding" not in response.headers
+    assert int(response.headers["content-length"]) == len(_BODY)
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["x-request-id"] == "synthetic-request"
+    assert response.headers.get_list("set-cookie") == ["first=1", "second=2"]
+    assert response.request is requests[0]
+    assert response.extensions["http_version"] == b"HTTP/2"
+    assert responses[0].headers["content-length"] == str(len(body))
+    if encoding:
+        assert responses[0].headers["content-encoding"] == encoding
+    assert timed.model_call_latency_ms == pytest.approx(250)

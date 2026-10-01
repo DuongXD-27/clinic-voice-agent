@@ -63,9 +63,14 @@ def post_with_total_timeout(
                 body_received_at = clock()
                 if cancelled.is_set() or body_received_at > deadline:
                     raise TotalRequestTimeout
+                # iter_bytes() has already decoded the body. Preserve other headers,
+                # but let HTTPX calculate the length of the decoded content.
+                headers = response.headers.copy()
+                headers.pop("content-encoding", None)
+                headers.pop("content-length", None)
                 state["response"] = httpx.Response(
                     response.status_code,
-                    headers=response.headers,
+                    headers=headers,
                     content=bytes(body),
                     request=response.request,
                     extensions=response.extensions,

@@ -298,7 +298,7 @@ def test_version_conflict_is_one_logical_span_with_two_attempts(redis_store_fact
     assert len(spans) == 1
     assert spans[0]["attempt_count"] == 2
     assert spans[0]["retry_count"] == 1
-    assert spans[0]["if_match_used"] is False  # This test's in-memory fake has no HTTP headers.
+    assert spans[0]["if_match_used"] is True
     assert spans[0]["idempotency_used"] is True
     assert spans[0]["version_conflict"] is True
     assert spans[0]["status"] == "OK"
