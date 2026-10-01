@@ -44,6 +44,7 @@ class SpanHandle:
         operation: str,
         parent: SpanHandle | None = None,
         enabled: bool = True,
+        observation_type: str = "SPAN",
     ) -> None:
         self._tracer = tracer
         self.trace_id = trace_id
@@ -55,6 +56,7 @@ class SpanHandle:
         self.operation = operation
         self._parent = parent
         self.enabled = enabled
+        self.observation_type = observation_type
         self._start_time = _utc_now()
         self._start_ns = perf_counter_ns()
         self._status = "OK"
@@ -102,6 +104,10 @@ class SpanHandle:
             return
         if self.enabled:
             self._status = status
+
+    @property
+    def elapsed_ms(self) -> float:
+        return max(0.0, (perf_counter_ns() - self._start_ns) / 1_000_000)
 
     def set_error(self, exc: BaseException) -> None:
         try:
@@ -165,6 +171,7 @@ class SpanHandle:
                 status=self._status,
                 attributes=dict(self._attributes),
                 events=tuple(self._events),
+                observation_type=self.observation_type,
             )
             self._tracer._emit(completed)
         except Exception:
@@ -242,6 +249,12 @@ class Tracer:
             return _SpanScope(self._noop(component, operation, turn))
 
     def span(self, *, component: str, operation: str) -> _SpanScope:
+        return self._child(component=component, operation=operation, observation_type="SPAN")
+
+    def generation(self, *, component: str, operation: str) -> _SpanScope:
+        return self._child(component=component, operation=operation, observation_type="GENERATION")
+
+    def _child(self, *, component: str, operation: str, observation_type: str) -> _SpanScope:
         parent = _CURRENT_SPAN.get()
         if parent is None or not parent.enabled:
             return _SpanScope(self._noop(component, operation, parent.turn if parent else 0))
@@ -258,6 +271,7 @@ class Tracer:
                     component=component,
                     operation=operation,
                     parent=parent,
+                    observation_type=observation_type,
                 )
             )
         except Exception:

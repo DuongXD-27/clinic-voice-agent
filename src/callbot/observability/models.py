@@ -200,3 +200,4 @@ class OverviewResult(JsonReadyModel):
     provider_model_metrics: tuple[ProviderModelMetrics, ...]
     hourly: tuple[HourlyBucket, ...]
     diagnostics: SourceDiagnostics
+    extended: dict[str, Any] | None = None

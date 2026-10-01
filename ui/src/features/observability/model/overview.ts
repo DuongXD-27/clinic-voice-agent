@@ -31,7 +31,7 @@ export function kpiCards(data: Overview): KpiCard[] {
   });
   return [
     latency("turn", "Lượt (end-to-end)", data.turn_latency),
-    latency("stt", "STT", data.stt_latency),
+    latency("stt", "STT observation", data.stt_latency),
     latency("core", "Core", data.core_latency),
     latency("tts", "TTS", data.tts_latency),
     {

@@ -65,12 +65,14 @@ def test_write_headers_and_unreachable_body_per_4_2_5() -> None:
         return httpx.Response(200, json={"status": "UNREACHABLE", "attempt_count": 1, "version": 4})
 
     client = _client(handler)
-    client.mark_unreachable("apt_00417", "SILENCE", 3, "c_1:3:unreachable")
-    client.cancel_appointment("apt_00417", "COST", 3, "c_1:4:cancel", confirmed=True)
+    with collect_api_calls() as records:
+        client.mark_unreachable("apt_00417", "SILENCE", 3, "c_1:3:unreachable")
+        client.cancel_appointment("apt_00417", "COST", 3, "c_1:4:cancel", confirmed=True)
 
     unreachable, cancel = seen
     assert unreachable.headers["Idempotency-Key"] == "c_1:3:unreachable"
     assert unreachable.headers["If-Match"] == "3"
+    assert [record.if_match_used for record in records] == [True, True]
     assert json.loads(unreachable.content) == {
         "unreachable_reason": "SILENCE"
     }  # không attempt_count

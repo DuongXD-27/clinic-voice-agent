@@ -34,12 +34,15 @@ class MetricsQueryService:
     ) -> OverviewResult:
         start, end = require_utc_range(start_time, end_time)
         spans = list(self._source.query(start, end))
+        score_query = getattr(self._source, "query_scores", None)
+        scores = list(score_query(start, end)) if callable(score_query) else []
         return self._aggregator.overview(
             spans,
             start_time=start,
             end_time=end,
             slow_turn_threshold_ms=slow_turn_threshold_ms,
             diagnostics=self._source.diagnostics,
+            scores=scores,
         )
 
     def get_call(

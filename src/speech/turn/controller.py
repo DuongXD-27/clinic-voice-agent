@@ -75,6 +75,10 @@ class _Candidate:
     vad_ended: bool = False
     finalized: bool = False
     started_at: Optional[float] = None
+    vad_ended_at: Optional[float] = None
+    first_partial_at: Optional[float] = None
+    final_at: Optional[float] = None
+    partial_count: int = 0
     # >0 nếu speech_start xảy ra khi vẫn còn trong post-bot echo guard — cộng thêm vào
     # min_speech_s khi kiểm tra thời lượng tối thiểu (xem on_vad_event/_has_min_duration),
     # để dư âm/tiếng vọng ngắn ngay sau khi bot dứt lời cần "nói tiếp" đủ lâu hơn bình
@@ -229,6 +233,7 @@ class TurnController:
                     )
         elif event.kind == "speech_end":
             self._candidate.vad_ended = True
+            self._candidate.vad_ended_at = self._clock()
             # Final ASR có thể đã tới trước speech_end (ASR tự endpoint sớm hơn VAD) —
             # chốt ngay nếu vậy; ngược lại CHỜ final thật, không dùng partial ngay lập tức.
             if self._try_emit(allow_partial=False):
@@ -238,11 +243,17 @@ class TurnController:
     async def on_transcript_event(self, event: TranscriptEvent) -> None:
         self._candidate.text = event.text
         self._candidate.confidence = event.confidence
+        now = self._clock()
         if event.is_final:
+            self._candidate.final_at = now
             self._candidate.has_final_transcript = True
             # final đã tới -> không còn event ASR nào khác cho candidate này -> cơ hội
             # cuối, Validator không được WAIT nữa (xem docstring __init__/_try_emit).
             self._try_emit(allow_partial=True, is_last_chance=True)
+        else:
+            self._candidate.partial_count += 1
+            if self._candidate.first_partial_at is None:
+                self._candidate.first_partial_at = now
 
     def on_evidence_updated(
         self,
@@ -315,7 +326,24 @@ class TurnController:
             # ACCEPT, hoặc WAIT+is_last_chance (fallback về hành vi cũ) -> đi tiếp.
         candidate.finalized = True
         self._cancel_timeout()
-        self._queue.put_nowait(UserTurnCompleted(text=text, confidence=candidate.confidence))
+        started = candidate.started_at
+
+        def elapsed(at: Optional[float]) -> Optional[float]:
+            return (
+                max(0.0, (at - started) * 1000) if at is not None and started is not None else None
+            )
+
+        self._queue.put_nowait(
+            UserTurnCompleted(
+                text=text,
+                confidence=candidate.confidence,
+                audio_duration_ms=elapsed(candidate.vad_ended_at),
+                first_partial_ms=elapsed(candidate.first_partial_at),
+                final_ms=elapsed(candidate.final_at),
+                partial_count=candidate.partial_count,
+                vad_end_reason="vad_end" if candidate.vad_ended else "asr_final",
+            )
+        )
         return True
 
     def _has_min_duration(self, candidate: _Candidate) -> bool:

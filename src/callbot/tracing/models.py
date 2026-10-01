@@ -34,11 +34,12 @@ class CompletedSpan:
     status: str
     attributes: dict[str, Any] = field(default_factory=dict)
     events: tuple[TraceEvent, ...] = ()
+    observation_type: str = "SPAN"
 
     def to_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
-            "schema_version": "trace.v1",
-            "record_type": "span",
+            "schema_version": "trace.v2" if self.observation_type != "SPAN" else "trace.v1",
+            "record_type": "generation" if self.observation_type == "GENERATION" else "span",
             "trace_id": self.trace_id,
             "span_id": self.span_id,
             "parent_span_id": self.parent_span_id,
@@ -51,6 +52,8 @@ class CompletedSpan:
             "duration_ms": self.duration_ms,
             "status": self.status,
         }
+        if self.observation_type != "SPAN":
+            result["observation_type"] = self.observation_type
         result.update(self.attributes)
         if self.events:
             result["events"] = [event.to_dict() for event in self.events]

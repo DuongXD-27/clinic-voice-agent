@@ -6,7 +6,13 @@ from urllib.parse import quote
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from inference.common.transport import HttpClientFactory, build_http_timeout
+from inference.common.transport import (
+    MODEL_CALL_HARD_LIMIT_S,
+    HttpClientFactory,
+    TotalRequestTimeout,
+    build_http_timeout,
+    post_with_total_timeout,
+)
 from inference.llm.config import GeminiConfig
 from inference.llm.providers.base import ReplyStatus, StructuredReply
 
@@ -93,16 +99,19 @@ class GeminiProvider:
         payload = {"contents": contents, "generationConfig": generation}
         if system:
             payload["systemInstruction"] = {"parts": system}
+        timed = None
         try:
-            with self._client_factory() as client:
-                response = client.post(
-                    f"{self._config.endpoint}/{quote(model, safe='')}:generateContent",
-                    headers={"x-goog-api-key": self._config.api_key.get_secret_value()},
-                    timeout=self._timeout,
-                    json=payload,
-                )
-                response.raise_for_status()
-                result = _Response.model_validate_json(response.content)
+            timed = post_with_total_timeout(
+                self._client_factory,
+                total_timeout_s=min(self._config.timeout_s, MODEL_CALL_HARD_LIMIT_S),
+                url=f"{self._config.endpoint}/{quote(model, safe='')}:generateContent",
+                headers={"x-goog-api-key": self._config.api_key.get_secret_value()},
+                timeout=self._timeout,
+                json=payload,
+            )
+            response = timed.response
+            response.raise_for_status()
+            result = _Response.model_validate_json(response.content)
             status: ReplyStatus = "invalid_response"
             text = None
             if result.promptFeedback and result.promptFeedback.blockReason not in {
@@ -136,12 +145,18 @@ class GeminiProvider:
                 (usage.candidatesTokenCount + usage.thoughtsTokenCount)
                 if usage and usage.candidatesTokenCount is not None
                 else None,
+                model_call_latency_ms=timed.model_call_latency_ms,
             )
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, TotalRequestTimeout):
             return StructuredReply("timeout")
         except httpx.HTTPStatusError:
-            return StructuredReply("http_error")
+            return StructuredReply(
+                "http_error", model_call_latency_ms=timed.model_call_latency_ms if timed else None
+            )
         except httpx.RequestError:
             return StructuredReply("network_error")
         except ValidationError:
-            return StructuredReply("invalid_response")
+            return StructuredReply(
+                "invalid_response",
+                model_call_latency_ms=timed.model_call_latency_ms if timed else None,
+            )

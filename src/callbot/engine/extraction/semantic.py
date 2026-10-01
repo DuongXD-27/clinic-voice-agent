@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from callbot.engine.extraction.schema import Agreement, ClinicalLevel, Intent, QuestionId
 from callbot.engine.extraction.text import normalize
 from callbot.engine.types import CancelReason, Direction, PendingAction
+from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
 from inference.common.telemetry import InferenceTimer
 from inference.llm.gateway import LLMGateway
 from inference.llm.prompt.semantic import PROMPT_VERSION, PROMPT_VERSIONS, build_messages
@@ -227,19 +228,33 @@ class LLMSemanticExtractor:
                 # Cắt bớt có thể cắt mất chính lời phủ định -> để nhánh hỏi lại xử lý
                 status = "too_long"
                 return None
-            reply = self._gateway.generate_structured(
-                build_messages(context, version=self._prompt_version),
-                schema=SemanticReading.model_json_schema(),
-                schema_name=self._prompt_version,
-                max_completion_tokens=self._max_completion_tokens,
-            )
-            if reply.status != "completed" or reply.content is None:
-                status = reply.status
-                return None
-            reading = SemanticReading.model_validate_json(reply.content)
-            outcome = ground_reading(reading, context)
-            status = "accepted" if outcome is not None else "rejected"
-            return outcome
+            messages = build_messages(context, version=self._prompt_version)
+            schema = SemanticReading.model_json_schema()
+            status = "error"
+            with generation_scope("llm.semantic_extract") as generation:
+                try:
+                    reply = self._gateway.generate_structured(
+                        messages,
+                        schema=schema,
+                        schema_name=self._prompt_version,
+                        max_completion_tokens=self._max_completion_tokens,
+                    )
+                    if reply.status != "completed" or reply.content is None:
+                        status = reply.status
+                        return None
+                    status = "invalid_response"
+                    reading = SemanticReading.model_validate_json(reply.content)
+                    outcome = ground_reading(reading, context)
+                    status = "accepted" if outcome is not None else "rejected"
+                    return outcome
+                finally:
+                    finish_generation(
+                        generation,
+                        self._gateway.provider_name,
+                        self._gateway.model,
+                        reply,
+                        normalized_result(status),
+                    )
         except ValidationError:
             status = "invalid_response"
         finally:

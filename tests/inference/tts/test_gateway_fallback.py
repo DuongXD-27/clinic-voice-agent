@@ -36,7 +36,10 @@ def _gateway(primary: _Provider, backup: _Provider) -> TTSGateway:
 def test_primary_success_does_not_touch_fallback() -> None:
     primary, backup = _Provider("vbee"), _Provider("eleven")
 
-    assert _gateway(primary, backup).synthesize(TEXT).pcm == b"vbee"
+    result = _gateway(primary, backup).synthesize(TEXT)
+    assert result.pcm == b"vbee"
+    assert result.provider_actual == "vbee"
+    assert result.fallback_used is False
     assert backup.spoken == []
 
 
@@ -48,6 +51,8 @@ def test_primary_error_falls_back_once_and_logs_code_not_text(caplog) -> None:
         result = _gateway(primary, backup).synthesize(f"  {TEXT} ")
 
     assert result.pcm == b"eleven"
+    assert result.provider_actual == "elevenlabs"
+    assert result.fallback_used is True
     assert primary.spoken == backup.spoken == [TEXT]
     assert "http_503" in caplog.text and "elevenlabs" in caplog.text
     assert "Nguyễn" not in caplog.text

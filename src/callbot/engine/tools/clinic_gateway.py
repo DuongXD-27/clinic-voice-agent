@@ -142,9 +142,12 @@ def traced_clinic(
                                 http_status=last.status if last else None,
                                 latency_ms=sum(record.latency_ms for record in records),
                                 attempt_count=len(attempts),
+                                retry_count=max(0, len(attempts) - 1),
+                                if_match_used=any(record.if_match_used for record in attempts),
                                 version_conflict=version_conflict,
                                 idempotency_used=idempotency_used and bool(attempts),
                                 result_code=_clinic_result_code(last) if last else None,
+                                outcome=last.outcome if last else None,
                             )
                             for number, record in enumerate(attempts, start=1):
                                 span.event(
@@ -153,6 +156,7 @@ def traced_clinic(
                                     http_status=record.status,
                                     latency_ms=record.latency_ms,
                                     error_code=_clinic_error_code(record),
+                                    version_conflict=record.code == "VERSION_CONFLICT",
                                 )
                         except Exception:
                             logger.warning("TRACE_CLINIC_METADATA_REJECTED")

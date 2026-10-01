@@ -26,6 +26,7 @@ from callbot.engine import (
 from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
 from callbot.engine.errors import CallStartBlocked, OutboundStartFailed
 from callbot.tracing import Tracer, null_tracer
+from callbot.tracing.pricing import stt_cost, tts_cost
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -123,14 +124,23 @@ def _transcribe(tracer: Tracer, speech: SpeechBundle, audio_url: str) -> Transcr
         try:
             transcript = speech.asr.transcribe(segment)
         except Exception as exc:
-            span.enrich(latency_ms=_elapsed_ms(started))
+            latency_ms = _elapsed_ms(started)
+            span.enrich(latency_ms=latency_ms, provider_latency_ms=latency_ms)
             _set_speech_error(span, exc, stage="STT_PROVIDER")
             raise
+        latency_ms = _elapsed_ms(started)
         span.enrich(
-            latency_ms=_elapsed_ms(started),
+            latency_ms=latency_ms,
+            provider_latency_ms=latency_ms,
             silence_detected=transcript.is_silence,
             transcript_empty=not bool(transcript.text.strip()),
+            confidence=transcript.confidence,
+            input_mode="batch",
+            result="OK",
         )
+        cost = stt_cost(_safe_speech_label(speech.asr, "model"), segment.duration_ms)
+        if cost is not None:
+            span.enrich(cost_usd=cost)
         return transcript
 
 
@@ -223,10 +233,15 @@ def start_call(
     with tracer.start_trace(
         call_id=payload.call_id, turn=0, component="TURN", operation="http.start_call"
     ) as span:
-        span.enrich(route_template="/v1/calls", http_method="POST")
+        span.enrich(
+            route_template="/v1/calls",
+            http_method="POST",
+            direction=payload.direction,
+            mode=payload.mode,
+        )
         try:
             result = _start_call_impl(payload, orchestrator, speech, call_mode)
-            span.enrich(http_status=200, final_state=result.state)
+            span.enrich(http_status=200, final_state=result.state, ended=result.state == "ENDED")
             return result
         except HTTPException as exc:
             span.enrich(http_status=exc.status_code)
@@ -283,12 +298,21 @@ def call_turn(
     with tracer.start_trace(
         call_id=call_id, turn=payload.turn, component="TURN", operation="http.call_turn"
     ) as span:
-        span.enrich(route_template="/v1/calls/{call_id}/turn", http_method="POST")
+        span.enrich(
+            route_template="/v1/calls/{call_id}/turn",
+            http_method="POST",
+            mode="audio" if call_mode.is_audio(call_id) else "text",
+        )
         try:
             result = _call_turn_impl(
                 request, response, call_id, payload, orchestrator, speech, call_mode
             )
-            span.enrich(http_status=200, final_state=result.state, outcome=result.outcome)
+            span.enrich(
+                http_status=200,
+                final_state=result.state,
+                outcome=result.outcome,
+                ended=result.ended,
+            )
             return result
         except HTTPException as exc:
             span.enrich(http_status=exc.status_code)
@@ -412,6 +436,8 @@ def _synthesize(
         span.enrich(
             provider=_safe_speech_label(speech.tts, "name"),
             model=_safe_speech_label(speech.tts, "model"),
+            provider_requested=_safe_speech_label(speech.tts, "name"),
+            character_count=len(text),
         )
         started = perf_counter_ns()
         try:
@@ -425,6 +451,19 @@ def _synthesize(
         if segment is None:
             return None
         _enrich_audio(span, segment, include_bytes=True)
+        span.enrich(
+            provider_actual=getattr(segment, "provider_actual", None),
+            voice=getattr(segment, "voice", None),
+            ttfa_ms=getattr(segment, "ttfa_ms", None),
+            fallback_used=getattr(segment, "fallback_used", False),
+            audio_format="pcm16",
+            result="OK",
+        )
+        cost = tts_cost(
+            getattr(segment, "provider_actual", None), getattr(segment, "voice", None), len(text)
+        )
+        if cost is not None:
+            span.enrich(cost_usd=cost)
         try:
             return speech.audio_store.save(call_id, turn, segment)
         except Exception as exc:

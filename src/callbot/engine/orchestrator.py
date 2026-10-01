@@ -182,6 +182,9 @@ class CallOrchestrator:
         Bước mở đầu không có nhật ký lệnh và không đặt chỗ lượt, nên không bao giờ chuyển máy hay ghi
         Clinic: bị chặn thì không tạo phiên, không nói gì — gửi lại cùng `call_id` sau khi sửa lỗi.
         """
+        root = current_span()
+        if root is not None:
+            root.enrich(direction=ctx.call.direction)
         action = self._dialogue_step(ctx, self._dialogue.opening)
         with self._span_tracer.span(component="GUARD", operation="core.output_guard") as span:
             verdict = output_guard.check_opening(action, ctx)
@@ -232,6 +235,7 @@ class CallOrchestrator:
         state_before = ctx.state
         if core is not None and core.component == "CORE":
             core.enrich(state_before=state_before, silent=caller.is_silence)
+            core.enrich_ancestor("TURN", direction=ctx.call.direction, state_before=state_before)
         ctx.turn = caller.turn
         ctx.record("caller", caller.transcript)
         # R-01: chụp đầu lượt (deepcopy) — câu hỏi đang chờ và slot vừa nạp từ store
@@ -280,6 +284,12 @@ class CallOrchestrator:
                 state_after=ctx.state,
                 outcome=action.outcome,
                 dialogue_action=self._trace_dialogue_action(action, _question(ctx)),
+                misunderstanding_count=ctx.failed_understandings,
+                silence_count=ctx.silent_turns,
+                identity_result="MATCH" if ctx.identity_verified else "UNKNOWN",
+            )
+            core.enrich_ancestor(
+                "TURN", state_after=ctx.state, ended=action.ended, outcome=action.outcome
             )
         trace = extraction.to_trace() if extraction else None
         diagnostics = build_diagnostics(

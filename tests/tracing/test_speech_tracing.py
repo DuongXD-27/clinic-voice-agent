@@ -15,7 +15,7 @@ from tests.transports.http.fakes import FakeASR, FakeTTS
 from callbot.engine import EngineSettings
 from callbot.tracing import CompositeTraceSink, JsonlTraceSink, Tracer
 from callbot.tracing.config import TracingSettings, create_tracer
-from callbot.tracing.langfuse_sink import LangfuseOtlpSettings, LangfuseOtlpTraceSink
+from callbot.tracing.langfuse_sink import LangfuseOtlpSettings, LangfuseOtlpTraceSink, _otlp_span
 from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
 from callbot.transports.http.call_mode import CallModeStore
@@ -197,6 +197,7 @@ def test_stt_provider_failure_is_safe_and_preserves_http_behavior(
 
     stt = next(span for span in sink.spans if span.component == "STT")
     assert stt.status == "ERROR"
+    assert _otlp_span(stt, "test")["status"] == {"code": 2}
     assert stt.attributes["error_type"] == error_type
     assert stt.attributes["error_code"] == error_code
     assert "private STT" not in json.dumps(stt.to_dict())
@@ -246,6 +247,7 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
 
     provider_span = next(span for span in provider_sink.spans if span.component == "TTS")
     assert provider_span.status == "ERROR"
+    assert _otlp_span(provider_span, "test")["status"] == {"code": 2}
     assert provider_span.attributes["error_type"] == "PROVIDER"
     assert provider_span.attributes["error_code"] == "TTS_PROVIDER_ERROR"
 

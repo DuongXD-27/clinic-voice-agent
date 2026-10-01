@@ -628,6 +628,10 @@ export interface components {
             component_errors: components["schemas"]["ComponentErrorResponse"][];
             core_latency: components["schemas"]["LatencyStatsResponse"];
             diagnostics: components["schemas"]["DiagnosticsResponse"];
+            /** Extended */
+            extended?: {
+                [key: string]: unknown;
+            } | null;
             /** Hourly */
             hourly: components["schemas"]["HourlyBucketResponse"][];
             /** Provider Model Breakdown */
