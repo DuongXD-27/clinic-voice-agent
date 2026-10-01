@@ -50,6 +50,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
+      # /v1/stt (STT_EVAL_ENABLED) cắt đoạn bằng Silero; model chỉ có ở đường dẫn tải lúc build.
+      SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
