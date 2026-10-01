@@ -21,14 +21,15 @@ _SILENT = b"\x00\x00" * 240
 
 
 class _SlowFinalASR:
-    """Partial sớm, rồi một lần decode chậm 0,4 s; final chỉ tới khi đã xử lý hết câu."""
+    """Giữ backlog sau partial đến VAD speech_end, rồi mới xử lý hết câu."""
 
     name = "fake"
     input_sample_rate = 8000
 
-    def __init__(self, log: list[str], final_at_frame: int) -> None:
+    def __init__(self, log: list[str], final_at_frame: int, release: asyncio.Event) -> None:
         self._log = log
         self._final_at = final_at_frame
+        self._release = release
 
     def transcribe(self, segment) -> Transcript:
         raise NotImplementedError
@@ -42,21 +43,24 @@ class _SlowFinalASR:
             if count == 3:
                 yield TranscriptEvent(text="tôi muốn", is_final=False)
             if count == 6:
-                await asyncio.sleep(0.4)
+                await self._release.wait()
             if count == self._final_at:
                 self._log.append("asr final")
                 yield TranscriptEvent(text="tôi muốn đặt lịch", is_final=True)
 
 
 class _LoggingController(TurnController):
-    def __init__(self, log: list[str], **kwargs) -> None:
+    def __init__(self, log: list[str], *, release: asyncio.Event, **kwargs) -> None:
         super().__init__(**kwargs)
         self._log = log
+        self._release = release
 
     async def on_vad_event(self, event: VadEvent) -> None:
         if event.kind != "speech":
             self._log.append(f"vad {event.kind}")
         await super().on_vad_event(event)
+        if event.kind == "speech_end":
+            self._release.set()
 
 
 async def _realtime(frames: list[bytes]) -> AsyncIterator[bytes]:
@@ -67,14 +71,17 @@ async def _realtime(frames: list[bytes]) -> AsyncIterator[bytes]:
 
 async def test_slow_asr_does_not_stall_vad_and_turn_waits_for_final() -> None:
     log: list[str] = []
+    release = asyncio.Event()
     frames = [_LOUD] * 10 + [_SILENT] * 30
     pipeline = STTPipeline(
-        asr=_SlowFinalASR(log, final_at_frame=len(frames)),
+        asr=_SlowFinalASR(log, final_at_frame=len(frames), release=release),
         vad=StreamingVAD(EnergyFrameClassifier(100.0)),
-        async_vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=600),
+        async_vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=900),
         queue_max_frames=5,  # trước đây cũng là trần hàng đợi ASR: ASR ngủ là VAD đứng
     )
-    controller = _LoggingController(log, min_speech_ms=0, max_wait_after_vad_end_ms=50)
+    controller = _LoggingController(
+        log, release=release, min_speech_ms=0, max_wait_after_vad_end_ms=50
+    )
 
     turns = [turn async for turn in pipeline.stream(_realtime(frames), turn_controller=controller)]
 

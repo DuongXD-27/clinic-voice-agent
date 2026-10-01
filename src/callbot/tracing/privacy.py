@@ -12,11 +12,15 @@ from typing import Any, Mapping
 from callbot.tracing.errors import ERROR_CODES, ERROR_TYPES, RESULT_CODES
 from callbot.tracing.models import CompletedSpan
 
-COMPONENTS = frozenset({"TURN", "CORE", "EXTRACTION", "DIALOGUE", "GUARD", "CLINIC", "STT", "TTS"})
+COMPONENTS = frozenset(
+    {"TURN", "CORE", "EXTRACTION", "DIALOGUE", "GUARD", "CLINIC", "STT", "TTS", "LLM"}
+)
 OPERATIONS = frozenset(
     {
         "http.call_turn",
         "http.start_call",
+        "livekit.call_turn",
+        "livekit.start_call",
         "core.handle_turn",
         "core.start_call",
         "core.extract",
@@ -33,6 +37,8 @@ OPERATIONS = frozenset(
         "clinic.mark_unreachable",
         "speech.stt.transcribe",
         "speech.tts.synthesize",
+        "llm.semantic_extract",
+        "llm.name_slot_fill",
     }
 )
 EVENT_FIELDS: dict[str, frozenset[str]] = {
@@ -46,7 +52,9 @@ EVENT_FIELDS: dict[str, frozenset[str]] = {
     "guardrail.blocked": frozenset({"status", "error_type", "error_code"}),
     "output_guard.blocked": frozenset({"guard_rule", "error_type", "error_code"}),
     "output_guard.replaced": frozenset({"guard_rule", "outcome", "write_operation"}),
-    "clinic.attempt": frozenset({"attempt", "http_status", "latency_ms", "error_code"}),
+    "clinic.attempt": frozenset(
+        {"attempt", "http_status", "latency_ms", "error_code", "version_conflict"}
+    ),
 }
 SPAN_FIELDS = frozenset(
     {
@@ -129,6 +137,37 @@ SPAN_FIELDS = frozenset(
         "token_count",
         "timeout",
         "provider_status",
+        "direction",
+        "mode",
+        "ended",
+        "result",
+        "error_class",
+        "configured_model",
+        "actual_model",
+        "total_tokens",
+        "cached_input_tokens",
+        "reasoning_tokens",
+        "cost_usd",
+        "provider_latency_ms",
+        "model_call_latency_ms",
+        "confidence",
+        "input_mode",
+        "provider_requested",
+        "provider_actual",
+        "fallback_used",
+        "fallback_reason",
+        "character_count",
+        "ttfa_ms",
+        "audio_format",
+        "interrupted",
+        "truncated",
+        "if_match_used",
+        "misunderstanding_count",
+        "silence_count",
+        "identity_result",
+        "confirmation_result",
+        "released_fields",
+        "provider_error_code",
     }
 )
 _ROUTES = frozenset({"/v1/calls", "/v1/calls/{call_id}/turn"})
@@ -185,10 +224,22 @@ _SEMANTIC_FIELDS = frozenset(
         "vad_end_reason",
         "text_length_bucket",
         "provider_status",
+        "direction",
+        "mode",
+        "result",
+        "error_class",
+        "input_mode",
+        "fallback_reason",
+        "audio_format",
+        "identity_result",
+        "confirmation_result",
+        "released_fields",
+        "provider_error_code",
     }
 )
 _SEMANTIC_VALUE = re.compile(r"^[A-Za-z0-9_.:-]+$")
 _SAFE_LABEL = re.compile(r"^[A-Za-z0-9_.:/+-]{1,100}$")
+_SENSITIVE_LABEL = re.compile(r"(?i)(?:patient|appointment|apt|phone|dob)[_:-]|\+?\d{7,}")
 _TRACE_ID = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID = re.compile(r"^[0-9a-f]{16}$")
 _CALL_KEY = re.compile(r"^ck_[A-Za-z0-9_-]+_[A-Za-z0-9_-]+$")
@@ -232,8 +283,20 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             not isinstance(value, str) or _SEMANTIC_VALUE.fullmatch(value) is None
         ):
             raise UnsafeTraceData("trace semantic value is invalid")
-        if key in {"provider", "model", "voice", "config_version"} and (
-            not isinstance(value, str) or _SAFE_LABEL.fullmatch(value) is None or "://" in value
+        if key in {
+            "provider",
+            "model",
+            "voice",
+            "config_version",
+            "configured_model",
+            "actual_model",
+            "provider_requested",
+            "provider_actual",
+        } and (
+            not isinstance(value, str)
+            or _SAFE_LABEL.fullmatch(value) is None
+            or "://" in value
+            or _SENSITIVE_LABEL.search(value) is not None
         ):
             raise UnsafeTraceData("trace label value is invalid")
         if key in {
@@ -252,14 +315,27 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             "render_count",
             "write_attempted",
             "write_succeeded",
+            "total_tokens",
+            "cached_input_tokens",
+            "reasoning_tokens",
+            "character_count",
+            "misunderstanding_count",
+            "silence_count",
         } and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
             raise UnsafeTraceData("trace numeric value is invalid")
+        if key == "confidence" and value > 1:
+            raise UnsafeTraceData("trace confidence is invalid")
         if key in {
             "latency_ms",
             "audio_duration_ms",
             "first_partial_ms",
             "final_ms",
             "complete_ms",
+            "provider_latency_ms",
+            "model_call_latency_ms",
+            "ttfa_ms",
+            "cost_usd",
+            "confidence",
         } and (
             not isinstance(value, (int, float))
             or isinstance(value, bool)
@@ -322,6 +398,10 @@ def validate_completed_span(span: CompletedSpan) -> None:
         raise UnsafeTraceData("turn is invalid")
     if span.status not in {"OK", "ERROR", "CANCELLED"}:
         raise UnsafeTraceData("trace status is invalid")
+    if span.observation_type not in {"SPAN", "GENERATION"}:
+        raise UnsafeTraceData("trace observation type is invalid")
+    if span.observation_type == "GENERATION" and span.component != "LLM":
+        raise UnsafeTraceData("generation must be an LLM observation")
     _validate_timestamp(span.start_time)
     _validate_timestamp(span.end_time)
     if (

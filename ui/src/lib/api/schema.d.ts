@@ -628,12 +628,17 @@ export interface components {
             component_errors: components["schemas"]["ComponentErrorResponse"][];
             core_latency: components["schemas"]["LatencyStatsResponse"];
             diagnostics: components["schemas"]["DiagnosticsResponse"];
+            /** Extended */
+            extended?: {
+                [key: string]: unknown;
+            } | null;
             /** Hourly */
             hourly: components["schemas"]["HourlyBucketResponse"][];
             /** Provider Model Breakdown */
             provider_model_breakdown: components["schemas"]["ProviderModelResponse"][];
             slow_turn: components["schemas"]["RateResponse"];
             stt_empty: components["schemas"]["SttEmptyResponse"];
+            /** @description STT observation span duration; not provider inference latency. Use extended.stt_provider_latency for measured batch inference. */
             stt_latency: components["schemas"]["LatencyStatsResponse"];
             time_range: components["schemas"]["TimeRangeResponse"];
             tts_latency: components["schemas"]["LatencyStatsResponse"];

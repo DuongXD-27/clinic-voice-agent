@@ -65,6 +65,8 @@ class VbeeTTS:
             )
         # httpx chỉ có timeout theo pha; tự giữ trần tổng như adapter ElevenLabs
         deadline = time.perf_counter() + self._config.timeout_s
+        started = time.perf_counter()
+        ttfa_ms = None
         audio = bytearray()
         try:
             with self._client_factory() as client:
@@ -82,6 +84,8 @@ class VbeeTTS:
                         # Lỗi bọc trong 200: không đọc body vào message để tránh lộ dữ liệu
                         raise TTSUnavailable("Vbee trả JSON thay vì audio", code="bad_response")
                     for chunk in response.iter_bytes():
+                        if chunk and ttfa_ms is None:
+                            ttfa_ms = (time.perf_counter() - started) * 1000
                         audio.extend(chunk)
                         if time.perf_counter() > deadline:
                             raise _timeout(self._config.timeout_s)
@@ -96,7 +100,12 @@ class VbeeTTS:
         pcm = bytes(audio[: len(audio) - len(audio) % 2])
         if not pcm:
             raise TTSUnavailable("Vbee không trả audio", code="no_audio")
-        return TTSResult(pcm=pcm, sample_rate=self._config.sample_rate)
+        return TTSResult(
+            pcm=pcm,
+            sample_rate=self._config.sample_rate,
+            voice=self._config.voice_code,
+            ttfa_ms=ttfa_ms,
+        )
 
 
 def _timeout(timeout_s: float) -> TTSUnavailable:

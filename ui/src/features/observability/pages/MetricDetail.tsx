@@ -41,7 +41,7 @@ interface Props {
 
 const TITLES: Record<Metric, string> = {
   turn: "Latency cả lượt",
-  stt: "Latency STT",
+  stt: "Thời lượng observation STT",
   core: "Latency Core (engine hội thoại)",
   tts: "Latency TTS",
   error: "Lỗi",

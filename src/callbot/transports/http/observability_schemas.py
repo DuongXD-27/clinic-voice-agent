@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from callbot.observability.models import (
     CallDetail,
@@ -145,7 +147,9 @@ class OverviewResponse(BaseModel):
     time_range: TimeRangeResponse
     turn_count: int
     turn_latency: LatencyStatsResponse
-    stt_latency: LatencyStatsResponse
+    stt_latency: LatencyStatsResponse = Field(
+        description="STT observation span duration; not provider inference latency. Use extended.stt_provider_latency for measured batch inference."
+    )
     core_latency: LatencyStatsResponse
     tts_latency: LatencyStatsResponse
     clinic_latency: LatencyStatsResponse
@@ -156,6 +160,7 @@ class OverviewResponse(BaseModel):
     provider_model_breakdown: list[ProviderModelResponse]
     hourly: list[HourlyBucketResponse]
     diagnostics: DiagnosticsResponse
+    extended: dict[str, Any] | None = None
 
     @classmethod
     def from_dto(cls, value: OverviewResult) -> OverviewResponse:
@@ -184,6 +189,7 @@ class OverviewResponse(BaseModel):
             ],
             hourly=[HourlyBucketResponse.from_dto(item) for item in value.hourly],
             diagnostics=DiagnosticsResponse.from_dto(value.diagnostics),
+            extended=value.extended,
         )
 
 

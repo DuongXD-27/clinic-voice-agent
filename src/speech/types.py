@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal, Optional
 
@@ -18,6 +18,10 @@ class AudioSegment:
 
     pcm: bytes
     sample_rate: int = NARROWBAND_RATE
+    provider_actual: Optional[str] = field(default=None, compare=False)
+    voice: Optional[str] = field(default=None, compare=False)
+    ttfa_ms: Optional[float] = field(default=None, compare=False)
+    fallback_used: bool = field(default=False, compare=False)
 
     @property
     def duration_ms(self) -> int:

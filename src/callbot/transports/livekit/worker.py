@@ -8,10 +8,12 @@ riêng, nhiều job chạy chung 1 worker process không được share state).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
 from callbot.engine import EngineSettings, create_orchestrator
+from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
 from callbot.transports.livekit.call_bridge import CallBridge
@@ -76,7 +78,8 @@ async def entrypoint(ctx: JobContext) -> None:
     # Cùng CLINIC_BACKEND với bot HTTP. sim: mỗi job (mỗi cuộc gọi) một clinic mới seed lại, nên
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
-    orchestrator = create_orchestrator(clinic, EngineSettings())
+    tracer = create_tracer()
+    orchestrator = create_orchestrator(clinic, EngineSettings(), tracer=tracer)
     turn_controller = TurnController(
         min_speech_ms=speech_settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=speech_settings.turn_max_wait_after_vad_end_ms,
@@ -110,6 +113,7 @@ async def entrypoint(ctx: JobContext) -> None:
     try:
         await bridge.run()
     finally:
+        await asyncio.to_thread(tracer.close, 2.0)
         close = getattr(clinic, "close", None)
         if close is not None:
             close()

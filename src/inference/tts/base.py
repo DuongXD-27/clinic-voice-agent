@@ -12,6 +12,10 @@ class TTSResult:
 
     pcm: bytes
     sample_rate: int
+    provider_actual: str | None = None
+    voice: str | None = None
+    ttfa_ms: float | None = None
+    fallback_used: bool = False
 
 
 class TTSProvider(Protocol):

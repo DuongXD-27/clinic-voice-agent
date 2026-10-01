@@ -222,8 +222,11 @@ def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
         "audio_duration_ms": 12,
         "sample_rate_hz": 8000,
         "latency_ms": stt.attributes["latency_ms"],
+        "provider_latency_ms": stt.attributes["latency_ms"],
         "silence_detected": False,
         "transcript_empty": False,
+        "input_mode": "batch",
+        "result": "OK",
     }
     assert stt.attributes["latency_ms"] >= 0
     assert tts_turn.status == "OK"
@@ -235,6 +238,11 @@ def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
         "sample_rate_hz": 8000,
         "bytes": 200,
         "chunks": 1,
+        "provider_requested": "fake",
+        "character_count": len(turn.json()["utterance"]),
+        "fallback_used": False,
+        "audio_format": "pcm16",
+        "result": "OK",
     }
     assert tts_turn.attributes["latency_ms"] >= 0
 

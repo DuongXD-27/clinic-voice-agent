@@ -684,6 +684,18 @@
           "diagnostics": {
             "$ref": "#/components/schemas/DiagnosticsResponse"
           },
+          "extended": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extended"
+          },
           "hourly": {
             "items": {
               "$ref": "#/components/schemas/HourlyBucketResponse"
@@ -705,7 +717,8 @@
             "$ref": "#/components/schemas/SttEmptyResponse"
           },
           "stt_latency": {
-            "$ref": "#/components/schemas/LatencyStatsResponse"
+            "$ref": "#/components/schemas/LatencyStatsResponse",
+            "description": "STT observation span duration; not provider inference latency. Use extended.stt_provider_latency for measured batch inference."
           },
           "time_range": {
             "$ref": "#/components/schemas/TimeRangeResponse"

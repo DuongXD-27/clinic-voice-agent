@@ -40,6 +40,8 @@ def test_synthesize_returns_pcm_at_8khz_with_voice_as_model() -> None:
     assert result.pcm == PCM
     assert result.sample_rate == 8000
     assert tts.model == "hn_female_ngochuyen_full_48k-fhg"
+    assert result.voice == tts.model
+    assert result.ttfa_ms is not None and result.ttfa_ms >= 0
 
 
 def test_request_carries_auth_headers_and_pcm_payload() -> None:
