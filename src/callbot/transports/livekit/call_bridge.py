@@ -22,8 +22,16 @@ from callbot.transports.livekit.audio_adapter import (
 from speech.asr.evidence import TranscriptEvidenceTracker
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import FrameClassifier
+from speech.audio.ingress import IngressMonitor
 from speech.audio.noise_tracker import NoiseTracker
 from speech.bundle import SpeechSynthesizer
+from speech.diagnostics import (
+    BargeInRecord,
+    ProbabilityProbe,
+    SpeechDiagnostics,
+    UtteranceRecord,
+    record_as_log_fields,
+)
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
@@ -45,6 +53,41 @@ _PLAYOUT_FRAME_MS = 20
 _SILENCE_POLL_S = 0.25
 # Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
 TRANSCRIPT_TOPIC = "callbot.transcript"
+# Attribute trình duyệt gửi kèm: thiết lập mic thật sự được áp dụng (MediaStreamTrack.getSettings).
+AUDIO_SETTINGS_ATTRIBUTE = "audio.settings"
+
+
+def _log_fields(fields: dict[str, object]) -> str:
+    return " ".join(f"{key}={value}" for key, value in fields.items())
+
+
+def _log_utterance(record: UtteranceRecord) -> None:
+    """Một dòng mỗi đoạn giọng — chỉ số, không text (PII)."""
+    event = "TURN_ACCEPTED" if record.decision == "EMITTED" else "TURN_DROPPED"
+    logger.info("%s %s", event, _log_fields(record_as_log_fields(record)))
+
+
+def _log_barge_in(record: BargeInRecord) -> None:
+    logger.info("BARGE_IN %s", _log_fields(record_as_log_fields(record)))
+
+
+def build_call_diagnostics(probe: Optional[ProbabilityProbe] = None) -> SpeechDiagnostics:
+    """Chẩn đoán cho một cuộc gọi, ghi log mỗi đoạn giọng và mỗi ứng viên ngắt lời."""
+    return SpeechDiagnostics(probe=probe, on_utterance=_log_utterance, on_barge_in=_log_barge_in)
+
+
+def participant_kind(participant: object) -> str:
+    """Tên loại participant (STANDARD, SIP, AGENT...) — không bao giờ log identity: với SIP
+    identity có thể chứa số điện thoại."""
+    kind = getattr(participant, "kind", None)
+    if kind is None:
+        return "UNKNOWN"
+    try:
+        from livekit import rtc
+
+        return rtc.ParticipantKind.Name(kind).removeprefix("PARTICIPANT_KIND_")
+    except Exception:
+        return str(kind)
 
 
 @dataclass(frozen=True)
@@ -124,6 +167,7 @@ class CallBridge:
         caller_identity: Optional[str] = None,
         silence_timeout_ms: int = 0,
         krisp_noise_suppression_enabled: bool = False,
+        diagnostics: Optional[SpeechDiagnostics] = None,
     ) -> None:
         self._room = room
         self._orchestrator = orchestrator
@@ -177,8 +221,15 @@ class CallBridge:
         # module speech/turn/interruption.py: barge-in false-positive từ noise trong lúc
         # bot nói không thể lọc trước ASR (audio phải tới ASR thật để tự confirm), nên cần lớp
         # phòng thủ riêng ở đây.
+        # Chỉ quan sát (speech/diagnostics.py): cùng instance với TurnController của worker.
+        self._diagnostics = diagnostics
+        self._ingress = IngressMonitor()
+        self._caller: Optional[object] = None
         self._interruption = InterruptionController(
-            self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
+            self,
+            validator=interruption_validator,
+            min_snr_db=interruption_min_snr_db,
+            diagnostics=diagnostics,
         )
 
     async def run(self) -> None:
@@ -191,6 +242,7 @@ class CallBridge:
         try:
             self._room.on("track_subscribed", self._on_track_subscribed)
             self._room.on("disconnected", self._on_disconnected)
+            self._room.on("participant_attributes_changed", self._on_attributes_changed)
             for participant in self._room.remote_participants.values():
                 for publication in participant.track_publications.values():
                     if publication.track is not None:
@@ -359,6 +411,9 @@ class CallBridge:
             )
 
     async def _consume_turns(self) -> None:
+        extra: dict[str, object] = {}
+        if self._diagnostics is not None:
+            extra["diagnostics"] = self._diagnostics
         try:
             async for turn in self._stt_pipeline.stream(
                 self._frames(),
@@ -367,6 +422,7 @@ class CallBridge:
                 evidence_tracker=self._evidence_tracker,
                 noise_tracker=self._noise_tracker,
                 noise_classifier=self._noise_classifier,
+                **extra,
             ):
                 await self._turn_queue.put(turn)
         except asyncio.CancelledError:
@@ -394,11 +450,36 @@ class CallBridge:
         elif identity != self._caller_identity:
             logger.info("call_bridge: bỏ qua track audio của participant khác %s", identity)
             return
+        self._caller = participant
+        logger.info(
+            "AUDIO_INGRESS room=%s kind=%s source=%s audio_settings=%s",
+            self._room.name,
+            participant_kind(participant),
+            _track_source_name(source),
+            _audio_settings(participant),
+        )
         # Người gọi publish lại mic (đổi thiết bị): luồng mới thay luồng cũ, không chạy song song.
         if self._pump_task is not None and not self._pump_task.done():
             self._pump_task.cancel()
         self._pump_task = asyncio.ensure_future(self._pump_track(track))
         self._tasks.append(self._pump_task)
+
+    def _on_attributes_changed(self, changed: object, participant: object) -> None:
+        """Trình duyệt gửi `audio.settings` sau khi bật mic, thường muộn hơn lúc track được
+        subscribe: log lại khi nó tới. Chỉ để đo — không quyết định gì theo attribute này."""
+        try:
+            if AUDIO_SETTINGS_ATTRIBUTE not in (changed or {}):
+                return
+            if self._caller is not None and participant is not self._caller:
+                return
+            logger.info(
+                "AUDIO_INGRESS room=%s kind=%s audio_settings=%s",
+                self._room.name,
+                participant_kind(participant),
+                _audio_settings(participant),
+            )
+        except Exception as exc:
+            logger.warning("call_bridge: đọc audio.settings lỗi (%s)", type(exc).__name__)
 
     def _on_disconnected(self, *_args: object) -> None:
         self._signal_input_done()
@@ -449,11 +530,44 @@ class CallBridge:
                 if segment.pcm:
                     if dump_writer is not None:
                         dump_writer.writeframes(segment.pcm)
+                    self._observe_ingress(event.frame, segment)
                     await self._frame_queue.put(segment.pcm)
         finally:
             if dump_writer is not None:
                 dump_writer.close()
             await stream.aclose()
+
+    def _observe_ingress(self, frame: "rtc.AudioFrame", segment: AudioSegment) -> None:
+        """Chỉ đo — lỗi ở đây không được làm rơi audio của cuộc gọi."""
+        try:
+            first = self._ingress.frames == 0
+            self._ingress.observe(
+                segment.pcm,
+                segment.sample_rate,
+                num_channels=frame.num_channels,
+                queue_depth=self._frame_queue.qsize(),
+            )
+            if first:
+                logger.info(
+                    "AUDIO_INGRESS room=%s first_frame source_rate=%s channels=%s pipeline_rate=%s",
+                    self._room.name,
+                    frame.sample_rate,
+                    frame.num_channels,
+                    segment.sample_rate,
+                )
+        except Exception as exc:
+            logger.warning("call_bridge: đo audio đầu vào lỗi (%s)", type(exc).__name__)
+
+    def _log_ingress_summary(self) -> None:
+        try:
+            fields: dict[str, object] = dict(self._ingress.summary())
+            fields["kind"] = participant_kind(self._caller) if self._caller else "NONE"
+            fields["audio_settings"] = _audio_settings(self._caller)
+            if self._diagnostics is not None:
+                fields.update(self._diagnostics.summary())
+            logger.info("AUDIO_INGRESS_SUMMARY room=%s %s", self._room.name, _log_fields(fields))
+        except Exception as exc:
+            logger.warning("call_bridge: tổng kết audio đầu vào lỗi (%s)", type(exc).__name__)
 
     def _open_debug_dump(self):
         import wave
@@ -608,5 +722,26 @@ class CallBridge:
             pending.append(self._pipeline_task)
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
+        self._log_ingress_summary()
         if self._audio_source is not None:
             await self._audio_source.aclose()
+
+
+def _track_source_name(source: object) -> str:
+    try:
+        from livekit import rtc
+
+        return rtc.TrackSource.Name(source).removeprefix("SOURCE_")
+    except Exception:
+        return str(source)
+
+
+def _audio_settings(participant: Optional[object]) -> str:
+    """Giá trị attribute `audio.settings` (JSON các cờ AEC/NS/AGC/voiceIsolation, tần số) —
+    không phải PII. Trình duyệt có thể gửi sau khi track đã subscribe, nên đọc lại lúc tổng kết."""
+    attributes = getattr(participant, "attributes", None) or {}
+    try:
+        value = attributes.get(AUDIO_SETTINGS_ATTRIBUTE)
+    except AttributeError:
+        return "-"
+    return value.replace(" ", "") if value else "-"

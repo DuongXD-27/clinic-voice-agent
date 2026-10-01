@@ -279,3 +279,24 @@ def test_token_keeps_automatic_dispatch_without_agent_name(
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_token_lets_browser_report_its_audio_settings(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    """Trình duyệt chỉ đặt được attribute `audio.settings` khi token có can_update_own_metadata;
+    vẫn không được gửi data."""
+    api = require_livekit("livekit.api")
+    settings = LiveKitSettings(
+        _env_file=None,
+        livekit_url="wss://example.livekit.cloud",
+        livekit_api_key="test-key",
+        livekit_api_secret="test-secret-at-least-32-bytes-long",
+    )
+    app = _app(clinic, redis_store_factory, redis_server, tmp_path, settings)
+    with TestClient(app) as client:
+        token = client.post("/livekit/token", json={}).json()["token"]
+
+    claims = api.TokenVerifier("test-key", "test-secret-at-least-32-bytes-long").verify(token)
+    assert claims.video.can_update_own_metadata is True
+    assert claims.video.can_publish_data is False

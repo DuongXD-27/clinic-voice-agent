@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track } from "livekit-client";
 import { useCallback, useEffect, useReducer, useRef, type Dispatch, type RefObject } from "react";
 
 import { requestToken } from "./api";
+import { AUDIO_SETTINGS_ATTRIBUTE, audioSettingsAttribute } from "./model/audioSettings";
 import { toTokenRequest, validateConfig, type LiveKitConfig } from "./model/config";
 import {
   initialSession,
@@ -56,6 +57,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
         dispatch({ type: "connecting", step: "Đang bật microphone…" });
         await room.localParticipant.setMicrophoneEnabled(true);
         if (cancelled()) return;
+        reportAudioSettings(room);
         dispatch({
           type: "connected",
           roomName,
@@ -86,6 +88,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
     const enabled = !room.localParticipant.isMicrophoneEnabled;
     try {
       await room.localParticipant.setMicrophoneEnabled(enabled);
+      if (enabled) reportAudioSettings(room);
       dispatch({ type: "micChanged", enabled, at: Date.now() });
     } catch (error) {
       dispatch({ type: "notice", notice: { tone: "error", text: describe(error) } });
@@ -174,6 +177,23 @@ function subscribe(
         notice: { tone: "error", text: `Không truy cập được microphone: ${error.message}` },
       });
     });
+}
+
+/**
+ * Gửi worker thiết lập mic trình duyệt thật sự áp dụng (AEC/NS/AGC/voiceIsolation) để log đo
+ * đầu vào. Chỉ phục vụ đo: lỗi ở đây không được làm hỏng cuộc gọi.
+ */
+function reportAudioSettings(room: Room) {
+  try {
+    const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    const settings = track?.mediaStreamTrack.getSettings();
+    if (!settings) return;
+    void room.localParticipant
+      .setAttributes({ [AUDIO_SETTINGS_ATTRIBUTE]: audioSettingsAttribute(settings) })
+      .catch(() => undefined);
+  } catch {
+    // Không có track hoặc trình duyệt không hỗ trợ getSettings: bỏ qua.
+  }
 }
 
 function describe(error: unknown): string {

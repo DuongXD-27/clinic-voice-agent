@@ -44,7 +44,7 @@ lập, cả bốn đều cho phép confirm mà không đủ điều kiện:
 import logging
 import time
 from enum import Enum, auto
-from typing import Optional, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
@@ -52,6 +52,9 @@ from speech.audio.noise_tracker import NoiseEvidence
 from speech.turn.controller import is_meaningful_text
 from speech.turn.validator import TurnValidator, ValidationDecision
 from speech.types import TranscriptEvent
+
+if TYPE_CHECKING:
+    from speech.diagnostics import SpeechDiagnostics
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +83,7 @@ class InterruptionController:
         clock: Optional[object] = None,
         validator: Optional[TurnValidator] = None,
         min_snr_db: Optional[float] = None,
+        diagnostics: Optional["SpeechDiagnostics"] = None,
     ) -> None:
         """`min_confidence`: nếu ASR provider cung cấp `TranscriptEvent.confidence` (hiện
         ZipFormer luôn trả `None` — chưa hỗ trợ), partial dưới ngưỡng này bị gate chặn
@@ -125,6 +129,12 @@ class InterruptionController:
         # Text bot ĐANG đọc (câu đầy đủ, không phải chunk TTS) — dùng để phát hiện echo,
         # xem bug #5 trong docstring module.
         self._bot_text = ""
+        # Chỉ quan sát: ghi mỗi ứng viên ngắt lời kết thúc ra sao và sau bao lâu.
+        self._diagnostics = diagnostics
+
+    def _barge_in_finished(self, outcome: str) -> None:
+        if self._diagnostics is not None:
+            self._diagnostics.barge_in_finished(outcome)
 
     @property
     def state(self) -> InterruptionState:
@@ -138,12 +148,16 @@ class InterruptionController:
         """`bot_text`: câu đầy đủ bot chuẩn bị đọc (TTS input, không phải PCM) — dùng để
         `_passes_gate()` phát hiện echo (xem bug #5 trong docstring module). `""` (mặc
         định) tắt hẳn kiểm tra này — giữ hành vi cũ cho caller chưa cập nhật."""
+        if self._state == InterruptionState.INTERRUPTION_CANDIDATE:
+            self._barge_in_finished("RESET")
         self._state = InterruptionState.BOT_SPEAKING
         self._candidate_started_at = None
         self._stability = StabilityVerdict.UNKNOWN
         self._bot_text = bot_text
 
     def on_bot_stopped_speaking(self) -> None:
+        if self._state == InterruptionState.INTERRUPTION_CANDIDATE:
+            self._barge_in_finished("BOT_STOPPED")
         self._state = InterruptionState.IDLE
         self._candidate_started_at = None
 
@@ -160,6 +174,8 @@ class InterruptionController:
         if self._state == InterruptionState.BOT_SPEAKING:
             self._state = InterruptionState.INTERRUPTION_CANDIDATE
             self._candidate_started_at = self._clock()
+            if self._diagnostics is not None:
+                self._diagnostics.barge_in_started()
         return False
 
     async def on_partial_transcript(self, event: TranscriptEvent) -> bool:
@@ -297,6 +313,7 @@ class InterruptionController:
                 "duration_s=%s",
                 duration_s,
             )
+            self._barge_in_finished("REVERTED")
             self._state = InterruptionState.BOT_SPEAKING
             self._candidate_started_at = None
             self._stability = StabilityVerdict.UNKNOWN
@@ -304,4 +321,5 @@ class InterruptionController:
     async def _confirm(self) -> None:
         self._state = InterruptionState.INTERRUPTED
         self._confirmed_count += 1
+        self._barge_in_finished("CONFIRMED")
         await self._tts.cancel()

@@ -14,10 +14,11 @@ from typing import TYPE_CHECKING, Any
 from callbot.engine import EngineSettings, create_orchestrator
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
-from callbot.transports.livekit.call_bridge import CallBridge
+from callbot.transports.livekit.call_bridge import CallBridge, build_call_diagnostics
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
+from speech.asr.vad.silero_probe import build_probe
 from speech.bundle import build_streaming_bundle
 from speech.settings import SpeechSettings
 from speech.turn.controller import TurnController
@@ -77,12 +78,19 @@ async def entrypoint(ctx: JobContext) -> None:
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
     orchestrator = create_orchestrator(clinic, EngineSettings())
+    # Chỉ quan sát: log kết cục từng đoạn giọng (chỉ số) để biết cổng nào bỏ lượt.
+    diagnostics = build_call_diagnostics(
+        build_probe(speech_settings.silero_vad_model_path, livekit_settings.input_sample_rate)
+        if speech_settings.speech_diagnostics_probe
+        else None
+    )
     turn_controller = TurnController(
         min_speech_ms=speech_settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=speech_settings.turn_max_wait_after_vad_end_ms,
         max_wait_for_asr_ms=speech_settings.turn_max_wait_for_asr_ms,
         post_bot_guard_ms=speech_settings.turn_post_bot_guard_ms,
         validator=bundle.validator,
+        diagnostics=diagnostics,
     )
 
     bridge = CallBridge(
@@ -106,6 +114,7 @@ async def entrypoint(ctx: JobContext) -> None:
         caller_identity=participant.identity,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
+        diagnostics=diagnostics,
     )
     try:
         await bridge.run()

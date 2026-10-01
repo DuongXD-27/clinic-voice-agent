@@ -116,6 +116,10 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
                 can_publish=True,
                 can_subscribe=True,
                 can_publish_data=False,
+                # Trình duyệt gửi attribute `audio.settings` (cờ AEC/NS/AGC trình duyệt thật sự
+                # áp dụng) để worker log đo đầu vào. Không mở thêm quyền gì đáng kể: các attribute
+                # khác (direction, caller_number...) người test vốn đã tự khai khi xin token.
+                can_update_own_metadata=True,
             )
         )
     )

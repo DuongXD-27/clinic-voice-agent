@@ -247,5 +247,77 @@ async def test_republished_caller_mic_replaces_previous_stream(monkeypatch) -> N
     await bridge.aclose()
 
 
+async def test_ingress_log_names_kind_but_never_sip_identity(monkeypatch, caplog) -> None:
+    """Identity của SIP participant có thể chứa số điện thoại — log chỉ ghi loại participant
+    và cờ xử lý âm thanh của trình duyệt (attribute audio.settings)."""
+    bridge, _ = _track_bridge(monkeypatch, caller_identity=None)
+    caller = SimpleNamespace(
+        identity="sip_+84912345678",
+        kind=rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
+        attributes={"audio.settings": '{"echoCancellation": true}'},
+    )
+    frame = SimpleNamespace(sample_rate=48_000, num_channels=1)
+    segment = SimpleNamespace(pcm=b"\x10\x00" * 480, sample_rate=16_000)
+
+    with caplog.at_level("INFO", logger="callbot.transports.livekit.call_bridge"):
+        bridge._on_track_subscribed(_audio("mic"), _publication(), caller)
+        bridge._observe_ingress(frame, segment)
+        bridge._log_ingress_summary()
+
+    text = caplog.text
+    assert "kind=SIP" in text
+    assert "source=MICROPHONE" in text
+    assert 'audio_settings={"echoCancellation":true}' in text
+    assert "source_rate=48000" in text
+    assert "AUDIO_INGRESS_SUMMARY" in text
+    assert "84912345678" not in text
+    await bridge.aclose()
+
+
+async def test_diagnostics_reach_pipeline_only_when_enabled() -> None:
+    """Fake pipeline cũ không nhận `diagnostics` — chỉ truyền khi worker bật chẩn đoán."""
+    from speech.diagnostics import SpeechDiagnostics
+
+    seen: list[dict] = []
+
+    class _Recording:
+        async def stream(self, frames, **kwargs):
+            seen.append(kwargs)
+            if False:
+                yield None
+
+    for diagnostics in (None, SpeechDiagnostics()):
+        bridge = CallBridge(
+            _FakeRoom("web-diag"),
+            _FakeOrchestrator(opening=BotAction(utterance="", state="X"), turn_actions=[]),
+            _Recording(),
+            _FakeTTS(),
+            diagnostics=diagnostics,
+        )
+        await bridge._consume_turns()
+
+    assert "diagnostics" not in seen[0]
+    assert isinstance(seen[1]["diagnostics"], SpeechDiagnostics)
+
+
+async def test_late_audio_settings_from_caller_are_logged(monkeypatch, caplog) -> None:
+    bridge, _ = _track_bridge(monkeypatch, caller_identity=None)
+    caller = SimpleNamespace(identity="web-a", kind=0, attributes={})
+    other = SimpleNamespace(identity="web-b", kind=0, attributes={"audio.settings": "{}"})
+    bridge._on_track_subscribed(_audio("mic"), _publication(), caller)
+    caller.attributes = {"audio.settings": '{"voiceIsolation": false}'}
+
+    with caplog.at_level("INFO", logger="callbot.transports.livekit.call_bridge"):
+        bridge._on_attributes_changed({"audio.settings": "x"}, other)
+        bridge._on_attributes_changed({"direction": "inbound"}, caller)
+        bridge._on_attributes_changed({"audio.settings": "x"}, caller)
+
+    lines = [r.getMessage() for r in caplog.records if "audio_settings" in r.getMessage()]
+    assert lines == [
+        'AUDIO_INGRESS room=web-track-room kind=STANDARD audio_settings={"voiceIsolation":false}'
+    ]
+    await bridge.aclose()
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

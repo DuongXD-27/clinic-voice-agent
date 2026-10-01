@@ -75,6 +75,7 @@ from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.audio.codec import resample  # noqa: E402
 from speech.bundle import build_streaming_bundle  # noqa: E402
+from speech.diagnostics import SpeechDiagnostics, record_as_log_fields  # noqa: E402
 from speech.settings import SpeechSettings  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
 from speech.types import AudioSegment  # noqa: E402
@@ -333,12 +334,27 @@ class DecodeMeter:
         return self.calls, self.seconds, self.audio_seconds
 
 
+_PROBE_CACHE: dict[str, object] = {}
+
+
+def _probe_factory(settings: SpeechSettings):
+    """Probe Silero mới cho mỗi trial (có state). None nếu tắt bằng --no-probe hoặc thiếu
+    onnxruntime — vẫn đếm được lý do bỏ lượt, chỉ thiếu xác suất."""
+    if not _PROBE_CACHE.get("enabled", True):
+        return None
+    from speech.asr.vad.silero_probe import build_probe
+
+    return build_probe(settings.silero_vad_model_path, RATE)
+
+
 async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRecognizer) -> dict:
     """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core và thời điểm
-    (giây audio) chốt từng turn. Xác định: xem docstring module."""
+    (giây audio) chốt từng turn, cùng kết cục từng đoạn giọng (speech/diagnostics.py — chỉ quan
+    sát, không đổi quyết định). Xác định: xem docstring module."""
     recognizer = _CapturingRecognizer(asr)
     bundle = build_streaming_bundle(settings, asr=recognizer, frame_ms=30)
     clock = VirtualTime()
+    diagnostics = SpeechDiagnostics(clock=clock.now, probe=_probe_factory(settings))
     controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
@@ -347,6 +363,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         validator=bundle.validator,
         clock=clock.now,
         sleep=clock.sleep,
+        diagnostics=diagnostics,
     )
     frame_ms = FRAME * 1000 // RATE
 
@@ -369,6 +386,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         evidence_tracker=bundle.evidence_tracker,
         noise_tracker=bundle.noise_tracker,
         noise_classifier=bundle.noise_classifier,
+        diagnostics=diagnostics,
     ):
         turns.append(turn.text)
         turn_times.append(clock.now())
@@ -377,7 +395,18 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         "final_confidences": recognizer.final_confidences,
         "turns": turns,
         "turn_times": turn_times,
+        "utterances": [record_as_log_fields(r) for r in diagnostics.utterances],
     }
+
+
+def _reason_counts(rows: list[dict]) -> dict[str, int]:
+    """Đếm kết cục các đoạn giọng (EMITTED:emitted, DROPPED:min_decode, ...) trên các trial."""
+    counts: dict[str, int] = {}
+    for row in rows:
+        for u in row.get("utterances", []):
+            key = f"{u['decision']}:{u['reason']}"
+            counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _has_digit(text: str) -> bool:
@@ -619,6 +648,7 @@ def run(
                     "turns": turns,
                     "turn_times": out["turn_times"],
                     "latency_s": _latency(out["turn_times"], LEAD_S + len(case["speech"]) / RATE),
+                    "utterances": out["utterances"],
                     "drift_errors": drift_err,
                     "turn_drift_errors": turn_drift_err,
                     "drift_words": drift_n,
@@ -641,6 +671,7 @@ def run(
                         "finals": out["finals"],
                         "final_confidences": out["final_confidences"],
                         "turns": out["turns"],
+                        "utterances": out["utterances"],
                     }
                 )
                 false_finals += bool(out["finals"])
@@ -667,6 +698,8 @@ def run(
             "noise_only_trials": len(noise_only_rows),
             "latency_p50": _percentile(latencies, 50),
             "latency_p90": _percentile(latencies, 90),
+            "speech_outcomes": _reason_counts(rows),
+            "noise_outcomes": _reason_counts(noise_only_rows),
             "decode_calls": calls_after - calls_before,
             "decode_s": round(decode_s_after - decode_s_before, 2),
             "seconds": round(time.monotonic() - started, 1),
@@ -722,6 +755,34 @@ def compare(labels: list[str]) -> None:
             print(f"{condition:11} " + " ".join(cells))
 
 
+def diff(label_a: str, label_b: str) -> None:
+    """Hai lần chạy có cho cùng finals, turns và thời điểm chốt ở MỌI trial không (kiểm thay đổi
+    chỉ-quan-sát không đổi hành vi)."""
+    a, b = (
+        json.loads((WORK_DIR / "results" / f"{x}.json").read_text()) for x in (label_a, label_b)
+    )
+    keys = ("finals", "turns", "turn_times")
+    total = changed = 0
+    for condition, block in a["conditions"].items():
+        other = b["conditions"].get(condition)
+        if other is None:
+            print(f"{condition}: thiếu ở {label_b}")
+            continue
+        if len(block["cases"]) != len(other["cases"]) or len(block["noise_only"]) != len(
+            other["noise_only"]
+        ):
+            print(f"{condition}: số trial khác nhau")
+        pairs = list(zip(block["cases"], other["cases"], strict=False)) + list(
+            zip(block["noise_only"], other["noise_only"], strict=False)
+        )
+        for x, y in pairs:
+            total += 1
+            if any(x.get(k) != y.get(k) for k in keys):
+                changed += 1
+                print(f"{condition} {x.get('id', 'noise')}: khác")
+    print(f"{changed}/{total} trial khác")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--label")
@@ -739,7 +800,20 @@ def main() -> None:
         help="ghi đè SpeechSettings, vd. --set speech_foreground_gate_enabled=true",
     )
     parser.add_argument("--compare", nargs="+")
+    parser.add_argument(
+        "--no-probe", action="store_true", help="không chạy Silero song song (bỏ xác suất)"
+    )
+    parser.add_argument(
+        "--diff",
+        nargs=2,
+        metavar=("NHÃN_A", "NHÃN_B"),
+        help="so từng trial: finals/turns/thời điểm",
+    )
     args = parser.parse_args()
+    _PROBE_CACHE["enabled"] = not args.no_probe
+    if args.diff:
+        diff(*args.diff)
+        return
     if args.compare:
         compare(args.compare)
         return

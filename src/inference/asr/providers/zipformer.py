@@ -53,6 +53,7 @@ from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
+from speech.diagnostics import ASR_EMPTY_DECODE, ASR_SKIP_MIN_DECODE, report_asr_event
 from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
 
 _PRE_SPEECH_PREROLL_MS = 300
@@ -168,6 +169,10 @@ class ZipFormerASR:
                     )
                     if decoded.text:
                         yield _final_event(decoded)
+                    else:
+                        report_asr_event(ASR_EMPTY_DECODE)
+                elif frame is AsrSegmentEnd.FINALIZE and buffer:
+                    report_asr_event(ASR_SKIP_MIN_DECODE)
                 buffer.clear()
                 pre_speech.clear()
                 in_speech = False
@@ -228,6 +233,10 @@ class ZipFormerASR:
                     )
                     if decoded.text:
                         yield _final_event(decoded)
+                    else:
+                        report_asr_event(ASR_EMPTY_DECODE)
+                else:
+                    report_asr_event(ASR_SKIP_MIN_DECODE)
                 # speech thật ngắn hơn min_decode_ms: coi là backchannel/tiếng động, bỏ
                 # qua hoàn toàn — không decode, không emit gì (kể cả rỗng). forced_flush
                 # (audio nói liên tục quá lâu) luôn có has_min_speech=True nên nhánh này

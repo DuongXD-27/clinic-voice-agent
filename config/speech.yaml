@@ -53,6 +53,9 @@ silero_min_silence_ms: 500
 # 0/869 trial khác kết quả so với 3 bản Silero độc lập trên bộ web+golden — an toàn về kết quả,
 # chỉ giảm số lần suy luận/frame, và ba nơi luôn cùng một nhãn cho mỗi frame.
 speech_shared_detector: true
+# Chẩn đoán LiveKit (log TURN_ACCEPTED/TURN_DROPPED, chỉ số): chạy thêm Silero ONNX song song để
+# ghi xác suất giọng của từng đoạn. Chỉ quan sát, không đổi quyết định nào. false = bỏ xác suất.
+speech_diagnostics_probe: true
 
 # URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
 public_base_url: http://localhost:8000

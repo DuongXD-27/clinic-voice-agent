@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass
 from typing import AsyncIterator, Awaitable, Callable, Optional
 
+from speech import diagnostics as diag
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
 from speech.audio.noise_tracker import NoiseEvidence
@@ -86,6 +87,8 @@ class _Candidate:
     # validator cấu hình (giữ hành vi cũ, không tính toán thừa).
     noise_evidence: Optional[NoiseEvidence] = None
     stability: StabilityVerdict = StabilityVerdict.UNKNOWN
+    # Chỉ để chẩn đoán (speech/diagnostics.py): id của đoạn giọng, None khi không bật.
+    utterance_id: Optional[str] = None
 
 
 class TurnController:
@@ -99,6 +102,7 @@ class TurnController:
         sleep: Optional[Callable[[float], Awaitable[None]]] = None,
         validator: Optional[TurnValidator] = None,
         max_wait_for_asr_ms: int = 3_000,
+        diagnostics: Optional["diag.SpeechDiagnostics"] = None,
     ) -> None:
         """`min_speech_ms`: turn ngắn hơn ngưỡng này (tính từ speech_start) bị coi là
         tiếng động/backchannel, không được chốt thành UserTurnCompleted — kể cả khi VAD
@@ -123,7 +127,10 @@ class TurnController:
         `max_wait_for_asr_ms`: VAD không còn bị ASR chặn (pipeline.py), nên khi decode chậm VAD
         có thể báo hết câu trong lúc ASR còn tồn audio của chính câu đó. Hết
         `max_wait_after_vad_end_ms` mà ASR còn tồn (xem `set_asr_pending_probe`) thì chờ tiếp
-        tới tối đa chừng này rồi mới chốt bằng partial — partial lúc đó thiếu chữ cuối câu."""
+        tới tối đa chừng này rồi mới chốt bằng partial — partial lúc đó thiếu chữ cuối câu.
+
+        `diagnostics` (tuỳ chọn): ghi kết cục của mỗi đoạn giọng (chốt hay bỏ, ở cổng nào).
+        Chỉ quan sát — không đổi quyết định nào; phải dùng cùng `clock` với controller."""
         self._max_wait_after_vad_end_s = max_wait_after_vad_end_ms / 1000
         self._min_speech_s = min_speech_ms / 1000
         self._post_bot_guard_s = post_bot_guard_ms / 1000
@@ -138,6 +145,22 @@ class TurnController:
         self._bot_stopped_at: Optional[float] = None
         self._last_vad_activity_at: Optional[float] = None
         self._timeout_task: Optional[asyncio.Task] = None
+        self._diagnostics = diagnostics
+
+    def _finish(self, candidate: _Candidate, decision: str, stage: str, reason: str) -> None:
+        """Ghi kết cục cuối của đoạn cho chẩn đoán (không làm gì nếu không bật)."""
+        if self._diagnostics is None:
+            return
+        snr = candidate.noise_evidence.snr_db if candidate.noise_evidence is not None else None
+        self._diagnostics.utterance_finished(
+            candidate.utterance_id,
+            decision=decision,
+            stage=stage,
+            reason=reason,
+            snr_db=snr,
+            guard_extra_s=candidate.guard_extra_s,
+            words=len(candidate.text.split()),
+        )
 
     def on_bot_speaking_changed(self, speaking: bool, *, preserve_candidate: bool = False) -> None:
         """Interruption Controller gọi khi bot bắt đầu/dừng phát TTS.
@@ -151,10 +174,18 @@ class TurnController:
         lúc `on_bot_speaking_changed(False)` chạy, mọi candidate còn sót lại không phải
         là ngắt lời hợp lệ."""
         self._bot_speaking = speaking
+        if self._diagnostics is not None:
+            self._diagnostics.bot_speaking_changed(speaking)
         if not speaking:
             self._bot_stopped_at = self._clock()
         if not speaking and not preserve_candidate:
             if self._candidate.started_at is not None and not self._candidate.finalized:
+                self._finish(
+                    self._candidate,
+                    diag.DROPPED,
+                    diag.STAGE_BOT_SPEAKING,
+                    diag.REASON_DURING_BOT_SPEECH,
+                )
                 # Candidate có audio thật (VAD đã speech_start) bị huỷ vì tích luỹ TRONG
                 # LÚC bot nói và KHÔNG được InterruptionController xác nhận — nếu đây là
                 # audio user nói thật (không phải echo), nó biến mất không có turn nào,
@@ -212,9 +243,14 @@ class TurnController:
     async def on_vad_event(self, event: VadEvent) -> None:
         self._last_vad_activity_at = self._clock()
         if event.kind == "speech_start":
+            previous = self._candidate
+            if previous.started_at is not None and not previous.finalized:
+                self._finish(previous, diag.DROPPED, diag.STAGE_TURN, diag.REASON_SUPERSEDED)
             self._reset_candidate()
             now = self._clock()
             self._candidate.started_at = now
+            if self._diagnostics is not None:
+                self._candidate.utterance_id = self._diagnostics.utterance_started()
             if self._bot_stopped_at is not None:
                 elapsed_since_bot_stopped = now - self._bot_stopped_at
                 if elapsed_since_bot_stopped < self._post_bot_guard_s:
@@ -229,6 +265,8 @@ class TurnController:
                     )
         elif event.kind == "speech_end":
             self._candidate.vad_ended = True
+            if self._diagnostics is not None:
+                self._diagnostics.utterance_vad_ended(self._candidate.utterance_id)
             # Final ASR có thể đã tới trước speech_end (ASR tự endpoint sớm hơn VAD) —
             # chốt ngay nếu vậy; ngược lại CHỜ final thật, không dùng partial ngay lập tức.
             if self._try_emit(allow_partial=False):
@@ -283,6 +321,7 @@ class TurnController:
         if not text:
             return False
         if not is_meaningful_text(text):
+            self._finish(candidate, diag.DROPPED, diag.STAGE_CONTENT, diag.REASON_NOT_MEANINGFUL)
             # Rác nội dung (filler word đơn lẻ, chỉ dấu câu...) — không phải vấn đề thời
             # lượng nên chờ thêm không giúp gì; discard hẳn để không kẹt candidate lại
             # chờ speech_start mới ghi đè (on_vad_event đã tự _reset_candidate() ở đó,
@@ -298,12 +337,20 @@ class TurnController:
             self._schedule_min_duration_check(candidate)
             return False
         if self._validator is not None:
-            decision = self._validator.evaluate(
-                text,
-                noise_evidence=candidate.noise_evidence,
-                stability=candidate.stability,
-            )
+            decide = getattr(self._validator, "decide", None)
+            if decide is not None:
+                decision, reason = decide(
+                    text, noise_evidence=candidate.noise_evidence, stability=candidate.stability
+                )
+            else:
+                decision = self._validator.evaluate(
+                    text,
+                    noise_evidence=candidate.noise_evidence,
+                    stability=candidate.stability,
+                )
+                reason = decision.value
             if decision == ValidationDecision.DROP:
+                self._finish(candidate, diag.DROPPED, diag.STAGE_VALIDATOR, reason)
                 self._reset_candidate()
                 return False
             if decision == ValidationDecision.WAIT and not is_last_chance:
@@ -315,7 +362,12 @@ class TurnController:
             # ACCEPT, hoặc WAIT+is_last_chance (fallback về hành vi cũ) -> đi tiếp.
         candidate.finalized = True
         self._cancel_timeout()
-        self._queue.put_nowait(UserTurnCompleted(text=text, confidence=candidate.confidence))
+        self._finish(candidate, diag.EMITTED, diag.STAGE_TURN, diag.REASON_EMITTED)
+        self._queue.put_nowait(
+            UserTurnCompleted(
+                text=text, confidence=candidate.confidence, utterance_id=candidate.utterance_id
+            )
+        )
         return True
 
     def _has_min_duration(self, candidate: _Candidate) -> bool:
@@ -364,6 +416,16 @@ class TurnController:
                 self._min_speech_s + candidate.guard_extra_s,
                 candidate.guard_extra_s,
             )
+            # Đủ min_speech_ms mà vẫn thiếu: chính phần guard sau câu bot đã chặn đoạn này.
+            started = candidate.started_at
+            elapsed = self._clock() - started if started is not None else 0.0
+            guard_blocked = candidate.guard_extra_s > 0 and elapsed >= self._min_speech_s
+            self._finish(
+                candidate,
+                diag.DROPPED,
+                diag.STAGE_DURATION,
+                diag.REASON_POST_BOT_GUARD if guard_blocked else diag.REASON_MIN_SPEECH,
+            )
             self._reset_candidate()
             return
         # Timeout hết hạn -> không còn cơ hội nào khác chờ thêm event mới cho candidate
@@ -376,6 +438,15 @@ class TurnController:
             and not self._bot_speaking
         ):
             logger.debug("turn_controller: discard empty candidate after VAD timeout")
+            skipped = self._diagnostics is not None and self._diagnostics.asr_skipped(
+                candidate.utterance_id
+            )
+            self._finish(
+                candidate,
+                diag.DROPPED,
+                diag.STAGE_ASR,
+                diag.REASON_MIN_DECODE if skipped else diag.REASON_NO_TEXT,
+            )
             self._reset_candidate()
 
     async def _wait_for_asr_backlog(self, candidate: _Candidate) -> None:

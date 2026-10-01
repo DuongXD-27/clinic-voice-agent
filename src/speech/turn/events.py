@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -11,3 +11,5 @@ class UserTurnCompleted:
     text: str
     confidence: Optional[float] = None
     silence_ms: int = 0
+    # Chỉ để chẩn đoán (speech/diagnostics.py) — không tham gia so sánh bằng.
+    utterance_id: Optional[str] = field(default=None, compare=False)

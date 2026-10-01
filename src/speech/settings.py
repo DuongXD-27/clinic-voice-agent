@@ -99,6 +99,10 @@ class SpeechSettings(YamlSettings):
     # câu của ASR và evidence của Validator (speech/asr/vad/shared.py) thay cho 3 bản độc lập. Bật thì VAD chính là Silero bất kể `vad_provider` (evidence bắt buộc Silero, xem
     # trên); `vad_provider` khi đó chỉ còn áp dụng cho đường HTTP batch.
     speech_shared_detector: bool
+    # Chẩn đoán đường streaming (speech/diagnostics.py): chạy thêm Silero ONNX song song để ghi
+    # xác suất giọng của mỗi đoạn vào log. Chỉ quan sát — tắt thì vẫn có log kết cục từng đoạn,
+    # chỉ thiếu xác suất (đỡ một lần suy luận Silero mỗi 32 ms).
+    speech_diagnostics_probe: bool = True
 
     # URL công khai để dựng audio_url trả về cho harness
     public_base_url: str

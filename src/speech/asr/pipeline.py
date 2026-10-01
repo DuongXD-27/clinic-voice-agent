@@ -15,6 +15,7 @@ from speech.asr.vad.streaming import StreamingVAD, split_frames
 from speech.audio.codec import to_sample_rate
 from speech.audio.loader import load_from_url
 from speech.audio.noise_tracker import NoiseTracker, UtteranceEvidenceTracker
+from speech.diagnostics import SpeechDiagnostics, context_with
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
@@ -100,6 +101,7 @@ class STTPipeline:
         noise_tracker: Optional[NoiseTracker] = None,
         noise_classifier: Optional[FrameClassifier] = None,
         asr_hotwords: Optional[Callable[[], Optional[str]]] = None,
+        diagnostics: Optional[SpeechDiagnostics] = None,
     ) -> AsyncIterator[UserTurnCompleted]:
         """VAD và ASR chạy THẬT SỰ song song trên cùng nguồn frame, hợp nhất event vào
         TurnController để emit UserTurnCompleted — đây là turn-taking thật (không phải
@@ -118,6 +120,9 @@ class STTPipeline:
         bắt buộc đi kèm `noise_tracker`. Evidence được tính trên MỌI frame (kể cả khi bot
         đang nói) và đẩy vào `controller.on_evidence_updated()` mỗi khi có TranscriptEvent
         mới, để `TurnValidator.evaluate()` đọc được giá trị mới nhất lúc `_try_emit()` chạy.
+
+        `diagnostics` (tuỳ chọn): chỉ quan sát — nhận mọi frame (nhãn giọng nói đã có sẵn, xác
+        suất Silero nếu có probe) và sự kiện bỏ đoạn của ASR; không đổi luồng dữ liệu nào.
         """
         if noise_tracker is not None and noise_classifier is None:
             raise ValueError("noise_classifier bắt buộc khi truyền noise_tracker")
@@ -174,14 +179,22 @@ class STTPipeline:
             nonlocal was_candidate, latest_noise_evidence, latest_utterance_evidence
             try:
                 async for frame in frames:
+                    detected: Optional[bool] = None
                     if self._speech_detector is not None:
-                        self._speech_detector.classify(frame)
+                        detected = self._speech_detector.classify(frame)
                     await vad_queue.put(frame)
                     if noise_tracker is not None:
                         is_speech_for_evidence = noise_classifier.is_speech(frame)
+                        detected = is_speech_for_evidence if detected is None else detected
                         latest_noise_evidence = noise_tracker.observe(frame, is_speech_for_evidence)
                         latest_utterance_evidence = utterance_tracker.observe(
                             latest_noise_evidence, is_speech_for_evidence
+                        )
+                    if diagnostics is not None:
+                        diagnostics.observe_frame(
+                            frame,
+                            is_speech=bool(detected),
+                            frame_ms=len(frame) / 2 / self._sample_rate * 1000,
                         )
                     if controller.is_bot_speaking:
                         # Nhường lịch cho VAD drain để nó có thể xác nhận
@@ -279,7 +292,11 @@ class STTPipeline:
 
         fanout_task = asyncio.ensure_future(_fanout())
         vad_task = asyncio.ensure_future(_drain_vad())
-        asr_task = asyncio.ensure_future(_drain_asr())
+        # Provider ASR báo đoạn bị bỏ qua contextvar (speech/diagnostics.py), gắn riêng cho
+        # task này để mỗi cuộc gọi chỉ nhận sự kiện của chính nó.
+        asr_task = asyncio.get_running_loop().create_task(
+            _drain_asr(), context=context_with(diagnostics)
+        )
         try:
             while True:
                 next_turn = asyncio.ensure_future(controller.get_turn())
@@ -299,6 +316,8 @@ class STTPipeline:
             for task in (fanout_task, vad_task, asr_task):
                 task.cancel()
             await asyncio.gather(fanout_task, vad_task, asr_task, return_exceptions=True)
+            if diagnostics is not None:
+                diagnostics.close()
 
 
 async def _dequeue(queue: "asyncio.Queue[object]") -> AsyncIterator[bytes]:
