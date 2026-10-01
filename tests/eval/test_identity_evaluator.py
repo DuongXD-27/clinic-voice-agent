@@ -3,7 +3,13 @@
 import csv
 import json
 
-from scripts.identity_eval import RecordingGateway, build_parser, evaluate, summarise
+from scripts.identity_eval import (
+    RecordingGateway,
+    build_parser,
+    evaluate,
+    latency_stats,
+    summarise,
+)
 
 from callbot.engine.dialogue import templates as t
 from inference.llm.prompt.name_slot_filling import PROMPT_VERSION
@@ -64,6 +70,36 @@ def test_slot_filling_receives_the_bot_question(tmp_path):
     assert summary["fallback_method"] == "slot_filling"
     assert summary["ner_called_cases"] == 2
     assert summary["prompt_versions"] == [PROMPT_VERSION]
+
+
+def test_slot_filling_outcome_and_latency_are_reported_per_row(tmp_path):
+    results = evaluate(write_cases(tmp_path), RecordingGateway(FakeGateway()))
+    assert [row["slot_filling_status"] for row in results] == [
+        "accepted",
+        "accepted",
+        "not_called",
+    ]
+    assert all(float(row["slot_filling_elapsed_ms"]) >= 0 for row in results[:2])
+    assert results[2]["slot_filling_elapsed_ms"] == ""
+    # Cột cũ giữ nguyên nghĩa: elapsed_ms là cả lượt extract
+    assert {"status", "ner_transport_status", "elapsed_ms"} <= set(results[0])
+
+    summary = summarise(results)
+    assert summary["slot_filling_statuses"] == {"accepted": 2}
+    assert summary["slot_filling_elapsed_ms"]["n"] == 2
+    assert summary["name_rate_by_group"] == {"slot": round(2 / 3, 4)}
+
+
+def test_latency_stats_use_nearest_rank():
+    assert latency_stats([]) == {"n": 0, "p50": None, "p95": None, "p99": None, "max": None}
+    stats = latency_stats([float(v) for v in range(1, 101)])
+    assert (stats["n"], stats["p50"], stats["p95"], stats["p99"], stats["max"]) == (
+        100,
+        50.0,
+        95.0,
+        99.0,
+        100.0,
+    )
 
 
 def test_rules_only_mode_keeps_old_report_columns(tmp_path):

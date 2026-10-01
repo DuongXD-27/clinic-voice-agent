@@ -1,0 +1,264 @@
+{
+  "evaluation_scope": "identity_extraction",
+  "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
+  "mode": "slot_filling",
+  "fallback_method": "slot_filling",
+  "models": [
+    "gpt-6-luna"
+  ],
+  "prompt_versions": [
+    "name_slot_filling_v3"
+  ],
+  "cases": 215,
+  "scored_cases": 201,
+  "passed_cases": 189,
+  "failed_cases": 12,
+  "review_cases": 14,
+  "pass_rate": 0.9403,
+  "by_group": {
+    "ambiguous_bare": {
+      "REVIEW": 11
+    },
+    "boundary_review": {
+      "REVIEW": 3
+    },
+    "combined_dob": {
+      "PASS": 4
+    },
+    "contact": {
+      "PASS": 10
+    },
+    "contact_with_name": {
+      "PASS": 2
+    },
+    "contrast_pairs": {
+      "PASS": 10
+    },
+    "correction": {
+      "PASS": 2
+    },
+    "garbage": {
+      "PASS": 33,
+      "FAIL": 3
+    },
+    "garbage_unaccented": {
+      "FAIL": 9,
+      "PASS": 36
+    },
+    "greeting": {
+      "PASS": 4
+    },
+    "greeting_with_name": {
+      "PASS": 4
+    },
+    "listening": {
+      "PASS": 3
+    },
+    "mixed_question": {
+      "PASS": 1
+    },
+    "name_particle_collision": {
+      "PASS": 2
+    },
+    "names": {
+      "PASS": 11
+    },
+    "normalization": {
+      "PASS": 2
+    },
+    "other_person": {
+      "PASS": 4
+    },
+    "priority": {
+      "PASS": 5
+    },
+    "punctuation_loss": {
+      "PASS": 1
+    },
+    "reported_sentence": {
+      "PASS": 1
+    },
+    "self_intro": {
+      "PASS": 2
+    },
+    "self_intro_variants": {
+      "PASS": 3
+    },
+    "short_names": {
+      "PASS": 13
+    },
+    "state": {
+      "PASS": 1
+    },
+    "suffix_fixed": {
+      "PASS": 7
+    },
+    "suffix_other": {
+      "PASS": 9
+    },
+    "uncertain": {
+      "PASS": 4
+    },
+    "who": {
+      "PASS": 10
+    },
+    "who_variants": {
+      "PASS": 5
+    }
+  },
+  "mismatch_counts": {
+    "name": 12
+  },
+  "ner_called_cases": 125,
+  "ner_transport_statuses": {
+    "completed": 125
+  },
+  "name_rate_by_group": {
+    "ambiguous_bare": 0.8182,
+    "boundary_review": 1.0,
+    "combined_dob": 1.0,
+    "contact": 0.0,
+    "contact_with_name": 1.0,
+    "contrast_pairs": 0.5,
+    "correction": 1.0,
+    "garbage": 0.0833,
+    "garbage_unaccented": 0.2,
+    "greeting": 0.0,
+    "greeting_with_name": 1.0,
+    "listening": 0.0,
+    "mixed_question": 1.0,
+    "name_particle_collision": 1.0,
+    "names": 1.0,
+    "normalization": 1.0,
+    "other_person": 0.25,
+    "priority": 0.0,
+    "punctuation_loss": 1.0,
+    "reported_sentence": 1.0,
+    "self_intro": 1.0,
+    "self_intro_variants": 1.0,
+    "short_names": 1.0,
+    "state": 0.0,
+    "suffix_fixed": 1.0,
+    "suffix_other": 1.0,
+    "uncertain": 0.0,
+    "who": 0.0,
+    "who_variants": 0.0
+  },
+  "slot_filling_statuses": {
+    "accepted": 49,
+    "no_name": 74,
+    "rejected": 2
+  },
+  "slot_filling_elapsed_ms": {
+    "n": 125,
+    "p50": 1457.0,
+    "p95": 2359.0,
+    "p99": 2635.0,
+    "max": 2922.0
+  },
+  "failures": [
+    {
+      "id": "ID128",
+      "group": "garbage",
+      "transcript": "ngô nghê",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID137",
+      "group": "garbage",
+      "transcript": "vũ công giỏi",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID138",
+      "group": "garbage",
+      "transcript": "trần thế gian",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID141",
+      "group": "garbage_unaccented",
+      "transcript": "cao minh that",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID154",
+      "group": "garbage_unaccented",
+      "transcript": "huynh quang",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID156",
+      "group": "garbage_unaccented",
+      "transcript": "lai thu tien a",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID168",
+      "group": "garbage_unaccented",
+      "transcript": "tran nha",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID170",
+      "group": "garbage_unaccented",
+      "transcript": "tran the gian",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID171",
+      "group": "garbage_unaccented",
+      "transcript": "trieu dong",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID178",
+      "group": "garbage_unaccented",
+      "transcript": "vu cong gioi",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID183",
+      "group": "garbage_unaccented",
+      "transcript": "phan van qua",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    },
+    {
+      "id": "ID184",
+      "group": "garbage_unaccented",
+      "transcript": "do thi lon",
+      "mismatches": "name",
+      "ner_transport_status": "completed"
+    }
+  ],
+  "review_ids": [
+    "ID038",
+    "ID039",
+    "ID040",
+    "ID114",
+    "ID122",
+    "ID124",
+    "ID134",
+    "ID165",
+    "ID179",
+    "ID180",
+    "ID202",
+    "ID203",
+    "ID204",
+    "ID205"
+  ],
+  "source_results": "D:\\Documents\\VSF\\callbot-vinmec\\result\\01-10-2026\\identity\\slot_filling\\results.csv",
+  "results_modified_at": "2026-10-01T10:49:07+07:00",
+  "generated_at": "2026-10-01T10:49:07+07:00"
+}

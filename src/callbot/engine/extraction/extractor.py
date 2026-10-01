@@ -25,7 +25,12 @@ from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import read_dob
-from callbot.engine.extraction.fallback import FallbackExtractor, guard_fallback
+from callbot.engine.extraction.fallback import (
+    FallbackExtractor,
+    SlotFillingResult,
+    SlotFillingStatus,
+    guard_fallback,
+)
 from callbot.engine.extraction.full_name import (
     MIN_WORDS_AFTER_HONORIFIC,
     name_after_dob,
@@ -360,33 +365,63 @@ class InformationExtractor:
         if reading.field.found or reading.reason not in (
             Reason.NO_SIGNAL,
             Reason.UNRESOLVED_BOUNDARY,
+            Reason.UNANCHORED,
         ):
             return reading.field
-        if not self._name_fallback or self._fallback is None:
+        # UNANCHORED: câu đúng hình dạng tên nhưng thiếu dấu hiệu họ tên. Bỏ yêu cầu dấu hiệu là
+        # đúng đường luật cũ, nên tên ra đã bỏ lời dẫn / hậu tố ("dạ tôi tên Lê Na ạ" -> "lê na").
+        rule_name: Field[str] = Field.nothing()
+        if reading.reason is Reason.UNANCHORED:
+            loose = read_full_name(zone, require_anchor=False)
+            if loose.reason is Reason.OK:
+                rule_name = loose.field
+        result = self._slot_fill(reading.reason, zone, transcript, ctx)
+        if result.status is SlotFillingStatus.ACCEPTED:
+            return result.field
+        # Chỉ câu trả lời khẳng định "không có tên" của mô hình mới lật được tên của luật. Mô hình
+        # không trả lời được, trả lời không dùng được hoặc không được cấu hình: giữ tên của luật.
+        if result.status is SlotFillingStatus.NO_NAME:
             return Field.nothing()
-        logger.info("Name fallback route: %s", reading.reason.value)
+        return rule_name
+
+    def _slot_fill(
+        self, reason: Reason, zone: str, transcript: str, ctx: TurnContext
+    ) -> SlotFillingResult:
+        unavailable = SlotFillingResult(SlotFillingStatus.UNAVAILABLE, Field.nothing())
+        if not self._name_fallback or self._fallback is None:
+            return unavailable
+        logger.info("Name fallback route: %s", reason.value)
         try:
             proposed = self._fallback.full_name(
                 transcript,
                 question_id=QuestionId.ASK_NAME,
                 bot_question=ctx.question_text,
             )
-            # Span đối chiếu với câu trả lời của khách, không với câu hỏi của bot
-            guarded = guard_fallback(proposed, transcript, None)
         except Exception:  # adapter lỗi cũng không được khôi phục ứng viên tên đáng ngờ
-            logger.warning("Name fallback failed; requesting the name again", exc_info=False)
-            return Field.nothing()
+            logger.warning("Name fallback failed", exc_info=False)
+            return unavailable
+        if proposed is None:
+            return unavailable
+        if proposed.status is not SlotFillingStatus.ACCEPTED:
+            return SlotFillingResult(proposed.status, Field.nothing(), proposed.elapsed_ms)
+        rejected = SlotFillingResult(
+            SlotFillingStatus.REJECTED, Field.nothing(), proposed.elapsed_ms
+        )
+        # Span đối chiếu với câu trả lời của khách, không với câu hỏi của bot
+        guarded = guard_fallback(proposed.field, transcript, None)
         # Tên do slot filling trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
         # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
-        if guarded.found and not _contains(zone, clean(guarded.value or "")):
-            return Field.nothing()
-        if guarded.found and guarded.value:
-            # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
-            name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
-            if not valid_name_span(name):
-                return Field.nothing()
-            return Field(name, guarded.provenance, span=guarded.span)
-        return guarded
+        if not guarded.found or not guarded.value or not _contains(zone, clean(guarded.value)):
+            return rejected
+        # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
+        name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
+        if not valid_name_span(name):
+            return rejected
+        return SlotFillingResult(
+            SlotFillingStatus.ACCEPTED,
+            Field(name, guarded.provenance, span=guarded.span),
+            proposed.elapsed_ms,
+        )
 
     def _agreement(
         self,

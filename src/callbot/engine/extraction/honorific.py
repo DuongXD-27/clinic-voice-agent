@@ -12,12 +12,16 @@ _HONORIFICS = frozenset({"ông", "bà", "anh", "chị", "cô", "chú", "bác", "
 _HONORIFICS_UNACCENTED = frozenset(strip_diacritics(w) for w in _HONORIFICS) - {"chu"}
 
 
+def is_honorific(word: str) -> bool:
+    word = word.lower()
+    return word in _HONORIFICS or word in _HONORIFICS_UNACCENTED
+
+
 def strip_honorific(name: str, min_rest: int) -> str:
     """Bỏ MỘT danh xưng ở đầu nếu sau đó còn ít nhất `min_rest` từ; ngược lại giữ nguyên."""
     words = name.split()
     if len(words) - 1 < min_rest:
         return name
-    first = words[0].lower()
-    if first in _HONORIFICS or first in _HONORIFICS_UNACCENTED:
+    if is_honorific(words[0]):
         return " ".join(words[1:])
     return name
