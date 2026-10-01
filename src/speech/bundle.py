@@ -22,6 +22,7 @@ from speech.asr.vad.streaming import StreamingVAD
 from speech.audio.loader import load_from_url
 from speech.audio.noise_tracker import NoiseTracker
 from speech.audio.storage import AudioArtifactStore
+from speech.diagnostics import ProbabilityProbe
 from speech.settings import SpeechSettings
 from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
@@ -159,6 +160,19 @@ def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
     )
 
 
+def _build_detector_probe(settings: SpeechSettings) -> Optional[ProbabilityProbe]:
+    """Silero thô chạy trong bộ phân loại dùng chung, mỗi frame một lần: chẩn đoán và pre-speech
+    lùi theo giọng của ASR cùng đọc. Có trạng thái nên mỗi bundle (mỗi cuộc gọi) một bản."""
+    if not (settings.speech_diagnostics_probe or settings.asr_voice_lookback_ms):
+        return None
+    from speech.asr.vad.silero_probe import build_probe
+
+    probe = build_probe(settings.silero_vad_model_path, settings.sample_rate)
+    if probe is None and settings.asr_voice_lookback_ms:
+        logger.warning("speech_bundle: không có Silero probe, tắt asr_voice_lookback_ms")
+    return probe
+
+
 def build_streaming_bundle(
     settings: SpeechSettings,
     *,
@@ -179,7 +193,9 @@ def build_streaming_bundle(
     # trước sang lần sau.
     sync_classifier = _build_vad_classifier(settings)
     detector = (
-        SharedSpeechDetector(_build_noise_classifier(settings))
+        SharedSpeechDetector(
+            _build_noise_classifier(settings), probe=_build_detector_probe(settings)
+        )
         if settings.speech_shared_detector
         else None
     )
@@ -191,6 +207,14 @@ def build_streaming_bundle(
     vad = StreamingVAD(sync_classifier, end_silence_ms=settings.vad_end_silence_ms)
     async_vad = AsyncStreamingVAD(async_classifier, end_silence_ms=settings.vad_end_silence_ms)
     asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
+    asr_stream_options: dict[str, object] = {
+        "audio_sample_rate": settings.sample_rate,
+        "silence_classifier": asr_endpoint_classifier,
+        "end_silence_ms": settings.vad_end_silence_ms,
+    }
+    if settings.asr_voice_lookback_ms and detector is not None and detector.has_probe:
+        asr_stream_options["voice_probability"] = detector.probability
+        asr_stream_options["voice_lookback_ms"] = settings.asr_voice_lookback_ms
     stt_pipeline = STTPipeline(
         asr,
         vad,
@@ -198,11 +222,7 @@ def build_streaming_bundle(
         async_vad=async_vad,
         queue_max_frames=queue_max_frames,
         barge_in_preroll_frames=max(1, barge_in_preroll_ms // frame_ms),
-        asr_stream_options={
-            "audio_sample_rate": settings.sample_rate,
-            "silence_classifier": asr_endpoint_classifier,
-            "end_silence_ms": settings.vad_end_silence_ms,
-        },
+        asr_stream_options=asr_stream_options,
         speech_detector=detector,
     )
     tts = SpeechSynthesizer(

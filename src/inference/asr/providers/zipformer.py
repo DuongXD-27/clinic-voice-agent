@@ -47,16 +47,27 @@ boundary của provider.
 import asyncio
 import logging
 import math
-from typing import Any, AsyncIterator, NamedTuple, Optional
+from collections import deque
+from typing import Any, AsyncIterator, Callable, NamedTuple, Optional
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
 from speech.asr.vad.base import FrameClassifier
+from speech.asr.vad.silero_probe import VOICE_PROBABILITY
 from speech.audio.codec import resample
-from speech.diagnostics import ASR_EMPTY_DECODE, ASR_SKIP_MIN_DECODE, report_asr_event
+from speech.diagnostics import (
+    ASR_EMPTY_DECODE,
+    ASR_SKIP_MIN_DECODE,
+    ASR_VOICE_LOOKBACK,
+    report_asr_event,
+)
 from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
 
 _PRE_SPEECH_PREROLL_MS = 300
+# Lùi theo giọng (`voice_lookback_ms`): chỗ xác suất tụt ngắn hơn chừng này vẫn coi là liền câu
+# (giữa hai âm tiết); thêm chừng này audio trước frame có giọng đầu tiên cho phụ âm đầu.
+_VOICE_GAP_MS = 60
+_VOICE_MARGIN_MS = 90
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +77,79 @@ class _Decoded(NamedTuple):
     # exp(trung bình log-prob token) và xác suất token thấp nhất; None khi không có chữ.
     confidence: Optional[float] = None
     min_token_prob: Optional[float] = None
+
+
+class _PreSpeech:
+    """Audio ngay trước khi bộ phân loại báo có giọng — đưa vào đầu buffer decode.
+
+    Mặc định giữ đúng `_PRE_SPEECH_PREROLL_MS` cuối. Với `lookback_ms` > 0 và xác suất Silero
+    thô từng frame: nếu giọng liền mạch đã bắt đầu sớm hơn cửa sổ đó thì lùi thêm qua các frame
+    có giọng, tối đa `lookback_ms`, cộng `_VOICE_MARGIN_MS` cho phụ âm đầu. sherpa-onnx cần
+    250 ms giọng liên tục mới báo speech và một chỗ tụt 30 ms làm nó đếm lại: cuộc gọi 01/10 báo
+    trễ 0,6 s, chữ "được" của câu "được em nhé" không tới ASR. Không lùi qua im lặng hay tiếng
+    động: lấy cố định 600 ms từng làm model bịa chữ từ chính phần đó.
+    """
+
+    def __init__(
+        self,
+        sample_rate: int,
+        lookback_ms: int,
+        voice_probability: Optional[Callable[[bytes], Optional[float]]],
+    ) -> None:
+        self._bytes_per_ms = sample_rate * 2 / 1000
+        self._base_bytes = sample_rate * _PRE_SPEECH_PREROLL_MS // 1000 * 2
+        self._voice_probability = voice_probability if lookback_ms > 0 else None
+        self._max_bytes = self._base_bytes + (
+            sample_rate * lookback_ms // 1000 * 2 if self._voice_probability else 0
+        )
+        self._frames: deque[tuple[bytes, Optional[float]]] = deque()
+        self._size = 0
+
+    def add(self, frame: bytes) -> None:
+        probability = self._voice_probability(frame) if self._voice_probability else None
+        self._frames.append((frame, probability))
+        self._size += len(frame)
+        while self._frames and self._size - len(self._frames[0][0]) >= self._max_bytes:
+            self._size -= len(self._frames.popleft()[0])
+
+    def take(self) -> tuple[bytes, float]:
+        """Audio đưa vào ASR và số ms lùi thêm ngoài cửa sổ mặc định; xoá bộ đệm."""
+        frames = list(self._frames)
+        self.clear()
+        start = self._voiced_start(frames) if self._voice_probability else None
+        if start is None:
+            return b"".join(frame for frame, _ in frames)[-self._base_bytes :], 0.0
+        audio = b"".join(frame for frame, _ in frames[start:])
+        return audio, max(0, len(audio) - self._base_bytes) / self._bytes_per_ms
+
+    def clear(self) -> None:
+        self._frames.clear()
+        self._size = 0
+
+    def _voiced_start(self, frames: list[tuple[bytes, Optional[float]]]) -> Optional[int]:
+        """Frame đầu tiên cần lấy nếu giọng liền mạch vượt ra trước cửa sổ mặc định, ngược lại
+        None (giữ đúng hành vi mặc định)."""
+        window_start, covered = len(frames), 0
+        while window_start > 0 and covered < self._base_bytes:
+            window_start -= 1
+            covered += len(frames[window_start][0])
+        start: Optional[int] = None
+        gap_ms = 0.0
+        for index in range(len(frames) - 1, -1, -1):
+            frame, probability = frames[index]
+            if probability is not None and probability >= VOICE_PROBABILITY:
+                start, gap_ms = index, 0.0
+            else:
+                gap_ms += len(frame) / self._bytes_per_ms
+                if gap_ms > _VOICE_GAP_MS:
+                    break
+        if start is None or start >= window_start:
+            return None
+        margin_ms = 0.0
+        while start > 0 and margin_ms < _VOICE_MARGIN_MS:
+            start -= 1
+            margin_ms += len(frames[start][0]) / self._bytes_per_ms
+        return start
 
 
 class ZipFormerASR:
@@ -110,6 +194,8 @@ class ZipFormerASR:
         min_emit_interval_ms: int = 300,
         min_decode_ms: int | None = None,
         max_turn_speech_ms: int | None = None,
+        voice_probability: Callable[[bytes], Optional[float]] | None = None,
+        voice_lookback_ms: int = 0,
     ) -> AsyncIterator[TranscriptEvent]:
         """Giả lập streaming bằng chunked-offline decode (xem docstring module).
 
@@ -133,6 +219,10 @@ class ZipFormerASR:
         liên tục không bao giờ có khoảng lặng đủ dài (docs/reference/
         livekit-architecture.md §5.5). `None` (mặc định) dùng `config.max_turn_speech_ms`.
 
+        `voice_probability` + `voice_lookback_ms` (> 0): pre-speech lùi theo giọng (xem
+        `_PreSpeech`). `voice_probability(frame)` trả xác suất Silero thô đã tính cho frame đó.
+        Thiếu một trong hai thì giữ cửa sổ cố định `_PRE_SPEECH_PREROLL_MS`.
+
         `AsrSegmentEnd` trong `frames`: pipeline ngừng đưa audio (xem docstring enum).
         FINALIZE chốt buffer như khi đủ `end_silence_ms`; DISCARD bỏ buffer không phát
         event. Cả hai xoá luôn pre-speech — audio trước và sau chỗ ngắt không liền nhau.
@@ -150,8 +240,7 @@ class ZipFormerASR:
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
         buffer = bytearray()
-        pre_speech = bytearray()
-        pre_speech_max_bytes = audio_sample_rate * _PRE_SPEECH_PREROLL_MS // 1000 * 2
+        pre_speech = _PreSpeech(audio_sample_rate, voice_lookback_ms, voice_probability)
         in_speech = False
         last_emitted_text = ""
         silent_ms = 0.0
@@ -186,18 +275,18 @@ class ZipFormerASR:
                 continue
             is_speech = silence_classifier.is_speech(frame)
             if not in_speech and not is_speech:
-                # VAD nội bộ có thể nhận ra giọng nói muộn hơn âm tiết đầu. Giữ tối đa
-                # 300ms audio trước speech_start để không vô hiệu hóa pre-roll của pipeline.
+                # VAD nội bộ có thể nhận ra giọng nói muộn hơn âm tiết đầu. Giữ audio trước
+                # speech_start (_PreSpeech) để không vô hiệu hóa pre-roll của pipeline.
                 # Chỉ đưa vào buffer decode khi VAD xác nhận speech; silence/noise đơn lẻ
                 # vẫn không thể tạo transcript hoặc vượt ngưỡng min_decode_ms.
-                pre_speech.extend(frame)
-                if len(pre_speech) > pre_speech_max_bytes:
-                    del pre_speech[: len(pre_speech) - pre_speech_max_bytes]
+                pre_speech.add(frame)
                 continue
 
             if not in_speech:
-                buffer.extend(pre_speech)
-                pre_speech.clear()
+                onset, lookback_ms = pre_speech.take()
+                buffer.extend(onset)
+                if lookback_ms:
+                    report_asr_event(ASR_VOICE_LOOKBACK, lookback_ms)
             in_speech = True
             buffer.extend(frame)
             audio_ms_since_emit += frame_ms

@@ -5,6 +5,7 @@ import pytest
 
 from inference.asr.config import ZipFormerConfig
 from inference.asr.providers.zipformer import ZipFormerASR, _Decoded
+from speech import diagnostics as diag
 from speech.asr.vad.streaming import FRAME_MS
 from speech.types import AsrSegmentEnd
 
@@ -318,6 +319,99 @@ async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> No
     ]
     assert short_events == []
     assert short_asr.decoded == []
+
+
+def _lookback_case(probabilities: list[float], speech_from: int):
+    """Mỗi frame 30 ms một đối tượng riêng với xác suất Silero thô cho trước; bộ phân loại
+    (sherpa) chỉ báo speech từ `speech_from` tới hết phần có xác suất, sau đó là đuôi im lặng."""
+    frames = [bytes((index % 256, index // 256)) * (_FRAME_BYTES // 2) for index in range(60)]
+    voice = dict(
+        zip(map(id, frames), probabilities + [0.0] * (60 - len(probabilities)), strict=True)
+    )
+    speech_until = len(probabilities)
+
+    class _ScriptedClassifier:
+        index = 0
+
+        def is_speech(self, _frame: bytes) -> bool:
+            self.index += 1
+            return speech_from < self.index <= speech_until
+
+    class _CapturingASR(_RecordingASR):
+        def __init__(self) -> None:
+            super().__init__(_GrowingFakeRecognizer())
+            self.decoded: list[bytes] = []
+
+        def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
+            self.decoded.append(pcm)
+            return _Decoded("ĐƯỢC EM NHÉ")
+
+    async def run(**options) -> tuple[bytes, diag.SpeechDiagnostics]:
+        asr = _CapturingASR()
+        diagnostics = diag.SpeechDiagnostics(clock=lambda: 0.0)
+        diagnostics.utterance_started()
+
+        async def consume() -> None:
+            async for _ in asr.stream(
+                _aiter(frames),
+                silence_classifier=_ScriptedClassifier(),
+                end_silence_ms=60,
+                min_emit_interval_ms=10_000,
+                min_decode_ms=60,
+                **options,
+            ):
+                pass
+
+        loop = asyncio.get_running_loop()
+        await loop.create_task(consume(), context=diag.context_with(diagnostics))
+        (decoded,) = asr.decoded
+        return decoded, diagnostics
+
+    return frames, voice, run
+
+
+async def test_voice_lookback_recovers_first_word_the_detector_reported_late() -> None:
+    """Hồi quy (cuộc gọi 01/10): "được" 210 ms, tụt 30 ms, rồi "em nhé". sherpa đếm lại 250 ms
+    sau chỗ tụt nên báo speech trễ; cửa sổ 300 ms cố định không còn chứa "được"."""
+    probabilities = [0.0] * 20 + [0.9] * 7 + [0.4] + [0.95] * 18
+    frames, voice, run = _lookback_case(probabilities, speech_from=36)
+
+    fixed, _ = await run()
+    assert fixed.startswith(b"".join(frames[26:36]))  # 300 ms cố định: mất frame 20..25
+
+    looked_back, diagnostics = await run(
+        voice_probability=lambda f: voice[id(f)], voice_lookback_ms=300
+    )
+    # Giọng bắt đầu ở frame 20, thêm 90 ms đệm cho phụ âm đầu; không lấy phần im lặng trước đó.
+    assert looked_back.startswith(b"".join(frames[17:36]))
+    assert len(looked_back) - len(fixed) == 9 * _FRAME_BYTES
+    diagnostics.close()
+    assert diagnostics.utterances[0].asr_lookback_ms == 270.0
+
+
+async def test_voice_lookback_keeps_fixed_window_when_voice_starts_inside_it() -> None:
+    """Trường hợp thường: sherpa báo speech ~250 ms sau khi giọng bắt đầu — đã nằm gọn trong
+    300 ms, không lấy thêm gì (kể cả khi trước đó có tiếng động lẻ cách quãng)."""
+    probabilities = [0.0] * 10 + [0.8] + [0.0] * 17 + [0.95] * 18
+    frames, voice, run = _lookback_case(probabilities, speech_from=36)
+
+    fixed, _ = await run()
+    looked_back, diagnostics = await run(
+        voice_probability=lambda f: voice[id(f)], voice_lookback_ms=300
+    )
+
+    assert looked_back == fixed
+    diagnostics.close()
+    assert diagnostics.utterances[0].asr_lookback_ms == 0.0
+
+
+async def test_voice_lookback_is_capped() -> None:
+    probabilities = [0.95] * 46
+    frames, voice, run = _lookback_case(probabilities, speech_from=36)
+
+    looked_back, _ = await run(voice_probability=lambda f: voice[id(f)], voice_lookback_ms=300)
+
+    assert looked_back.startswith(b"".join(frames[16:36]))  # 300 + 300 ms, không hơn
 
 
 _UTTERANCE_A = b"\x01\x10" * (_FRAME_BYTES // 2)

@@ -1,10 +1,10 @@
-"""Xác suất giọng nói thô của Silero, chạy SONG SONG chỉ để quan sát.
+"""Xác suất giọng nói thô của Silero, chạy SONG SONG với bộ phân loại sherpa-onnx.
 
 `SileroVadClassifier` (sherpa-onnx `VoiceActivityDetector`) chỉ trả nhị phân, không lộ xác
 suất (`last_probability` là 0/1). Probe này chạy cùng file `silero_vad.onnx` (bản v4 của k2-fsa,
-nhánh 16 kHz, cửa sổ 512 mẫu, state h/c) trực tiếp bằng onnxruntime để ghi xác suất vào chẩn
-đoán (speech/diagnostics.py). Không thay quyết định VAD nào: viết lại cả hangover của sherpa cho
-khớp 100% là việc của bước đổi policy sau này, chưa phải lúc chỉ đo.
+nhánh 16 kHz, cửa sổ 512 mẫu, state h/c) trực tiếp bằng onnxruntime. Dùng cho chẩn đoán
+(speech/diagnostics.py) và, khi bật `asr_voice_lookback_ms`, để pre-speech của ASR lùi qua phần
+giọng sherpa báo trễ. Không thay quyết định speech/không-speech nào của VAD.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 _RATE = 16_000
 _WINDOW = 512
+# Từ đây trở lên là có giọng (ngưỡng mặc định của chính Silero, cũng là ngưỡng sherpa đang dùng).
+VOICE_PROBABILITY = 0.5
 
 
 class SileroProbe:

@@ -19,6 +19,8 @@ from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Callable, Optional, Protocol
 
+from speech.asr.vad.silero_probe import VOICE_PROBABILITY
+
 logger = logging.getLogger(__name__)
 
 EMITTED = "EMITTED"
@@ -44,9 +46,8 @@ REASON_CALL_ENDED = "call_ended"
 
 ASR_SKIP_MIN_DECODE = "skip_min_decode"
 ASR_EMPTY_DECODE = "empty_decode"
-
-# Xác suất Silero thô từ đây trở lên là có giọng (ngưỡng mặc định của chính Silero).
-_VOICE_PROBABILITY = 0.5
+# ASR lùi pre-speech qua phần giọng bộ phân loại báo trễ (`asr_voice_lookback_ms`); kèm số ms.
+ASR_VOICE_LOOKBACK = "voice_lookback"
 
 
 class ProbabilityProbe(Protocol):
@@ -74,6 +75,7 @@ class UtteranceRecord:
     guard_extra_ms: float
     words: int
     asr_skips: int
+    asr_lookback_ms: float
     during_bot_speech: bool
 
     @property
@@ -119,6 +121,7 @@ class _Open:
     prob_n: int = 0
     prob_max: Optional[float] = None
     asr_skips: int = 0
+    asr_lookback_ms: float = 0.0
     during_bot_speech: bool = False
 
 
@@ -143,6 +146,7 @@ class SpeechDiagnostics:
         self._seq = 0
         self._barge_seq = 0
         self._open: Optional[_Open] = None
+        self._pending_lookback_ms = 0.0
         self._barge_started: Optional[tuple[str, float]] = None
         self._bot_speaking = False
         self.utterances: list[UtteranceRecord] = []
@@ -158,9 +162,19 @@ class SpeechDiagnostics:
 
     # --- audio (pipeline._fanout, mỗi frame) ----------------------------------------------
 
-    def observe_frame(self, frame: bytes, *, is_speech: bool, frame_ms: float) -> None:
+    def observe_frame(
+        self,
+        frame: bytes,
+        *,
+        is_speech: bool,
+        frame_ms: float,
+        probability: Optional[float] = None,
+    ) -> None:
+        """`probability`: xác suất đã tính sẵn (probe của bộ phân loại dùng chung). Không có thì
+        dùng probe riêng, nếu được cấu hình."""
         now = self._now()
-        probability = self._safe_probability(frame)  # mọi frame: probe có trạng thái
+        if probability is None:
+            probability = self._safe_probability(frame)  # mọi frame: probe có trạng thái
         current = self._open
         if current is None or current.vad_ended_s is not None:
             # Sau speech_end, tiếng nói là của đoạn kế tiếp: speech_start của nó tới
@@ -177,7 +191,7 @@ class SpeechDiagnostics:
         current.prob_max = (
             probability if current.prob_max is None else max(current.prob_max, probability)
         )
-        if probability >= _VOICE_PROBABILITY:
+        if probability >= VOICE_PROBABILITY:
             current.voice_ms += frame_ms
             current.last_voice_s = now
 
@@ -198,9 +212,17 @@ class SpeechDiagnostics:
 
     # --- ASR (ZipFormer qua contextvar) ---------------------------------------------------
 
-    def on_asr_event(self, kind: str) -> None:
-        if self._open is not None and kind == ASR_SKIP_MIN_DECODE:
-            self._open.asr_skips += 1
+    def on_asr_event(self, kind: str, value: float = 0.0) -> None:
+        current = self._open
+        if kind == ASR_SKIP_MIN_DECODE and current is not None:
+            current.asr_skips += 1
+        elif kind == ASR_VOICE_LOOKBACK:
+            # ASR và VAD đọc hai hàng đợi riêng: ASR có thể vào đoạn mới trước khi
+            # TurnController mở đoạn đó — giữ lại cho đoạn kế tiếp.
+            if current is not None and current.vad_ended_s is None:
+                current.asr_lookback_ms += value
+            else:
+                self._pending_lookback_ms += value
 
     # --- TurnController -------------------------------------------------------------------
 
@@ -210,8 +232,10 @@ class SpeechDiagnostics:
         self._open = _Open(
             utterance_id=utterance_id,
             started_s=self._now(),
+            asr_lookback_ms=self._pending_lookback_ms,
             during_bot_speech=self._bot_speaking,
         )
+        self._pending_lookback_ms = 0.0
         return utterance_id
 
     def utterance_vad_ended(self, utterance_id: Optional[str]) -> None:
@@ -263,6 +287,7 @@ class SpeechDiagnostics:
             guard_extra_ms=round(guard_extra_s * 1000, 1),
             words=words,
             asr_skips=current.asr_skips,
+            asr_lookback_ms=round(current.asr_lookback_ms, 1),
             during_bot_speech=current.during_bot_speech,
         )
         self.utterances.append(record)
@@ -336,10 +361,10 @@ def context_with(diagnostics: Optional[SpeechDiagnostics]) -> contextvars.Contex
     return context
 
 
-def report_asr_event(kind: str) -> None:
+def report_asr_event(kind: str, value: float = 0.0) -> None:
     diagnostics = _CURRENT.get()
     if diagnostics is not None:
-        diagnostics.on_asr_event(kind)
+        diagnostics.on_asr_event(kind, value)
 
 
 def record_as_log_fields(record: UtteranceRecord | BargeInRecord) -> dict[str, object]:

@@ -297,3 +297,13 @@ def test_ingress_does_not_guess_bandwidth_from_a_click() -> None:
         monitor.observe(click, 16_000)
 
     assert monitor.bandwidth == "unknown"
+
+
+def test_lookback_reported_before_the_turn_opens_goes_to_the_next_utterance() -> None:
+    """ASR và VAD đọc hai hàng đợi riêng: ASR có thể vào đoạn mới trước TurnController."""
+    diagnostics = diag.SpeechDiagnostics(clock=_Clock())
+    diagnostics.on_asr_event(diag.ASR_VOICE_LOOKBACK, 270.0)
+    diagnostics.utterance_started()
+    diagnostics.close()
+
+    assert diagnostics.utterances[0].asr_lookback_ms == 270.0

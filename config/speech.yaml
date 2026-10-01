@@ -56,6 +56,11 @@ speech_shared_detector: true
 # Chẩn đoán LiveKit (log TURN_ACCEPTED/TURN_DROPPED, chỉ số): chạy thêm Silero ONNX song song để
 # ghi xác suất giọng của từng đoạn. Chỉ quan sát, không đổi quyết định nào. false = bỏ xác suất.
 speech_diagnostics_probe: true
+# ASR nhận thêm audio trước lúc Silero báo có giọng, nhưng chỉ lùi qua phần CÓ giọng (xác suất
+# Silero thô >= 0,5), tối đa thêm chừng này ms ngoài 300 ms cố định. Sửa lỗi mất chữ đầu khi
+# Silero báo trễ (cần 250 ms giọng liên tục). Không lùi qua im lặng: lấy cố định 600 ms từng làm
+# model bịa chữ. 0 = tắt. Chưa bật: chờ đo noise-bench (short/web/golden, có nhiễu).
+asr_voice_lookback_ms: 0
 
 # URL công khai để dựng audio_url trả về cho harness. Deploy: PUBLIC_BASE_URL trong .env.
 public_base_url: http://localhost:8000

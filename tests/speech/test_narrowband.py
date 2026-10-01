@@ -113,3 +113,10 @@ def test_pipeline_feeds_asr_at_8k() -> None:
     )
     assert result.text == "alo"
     assert asr.received[0].sample_rate == NARROWBAND_RATE
+
+
+def test_voice_lookback_requires_the_shared_detector() -> None:
+    with pytest.raises(ValidationError):
+        SpeechSettings(_env_file=None, asr_voice_lookback_ms=300, speech_shared_detector=False)
+    with pytest.raises(ValidationError):
+        SpeechSettings(_env_file=None, asr_voice_lookback_ms=-1)

@@ -136,10 +136,10 @@ class STTPipeline:
         controller.set_asr_pending_probe(lambda: not asr_idle or not asr_queue.empty())
         pre_roll: deque[bytes] = deque(maxlen=self._barge_in_preroll_frames)
         was_candidate = False
-        latest_noise_evidence = None
-        # TurnValidator đọc SNR của CẢ câu vừa nói, không phải frame mới nhất (luôn là im
-        # lặng lúc ASR final tới) — xem UtteranceEvidenceTracker. InterruptionController vẫn
-        # nhận evidence theo frame như trước.
+        # TurnValidator và InterruptionController đọc SNR của CẢ câu đang/vừa nói, không phải
+        # frame mới nhất — xem UtteranceEvidenceTracker. SNR theo frame của NoiseTracker có nền
+        # bị đầu câu kéo lên (Silero báo speech trễ ~250 ms): cuộc gọi 01/10, cùng câu trả lời
+        # 3 từ, nhánh ngắt lời đo 3,0 dB còn lượt thường đo 55 dB.
         utterance_tracker = UtteranceEvidenceTracker() if noise_tracker is not None else None
         latest_utterance_evidence = None
         # ASR tự chốt câu bằng khoảng lặng trong các frame NÓ nhận; mỗi khi _fanout ngừng
@@ -176,7 +176,7 @@ class STTPipeline:
                 asr_segment_open = False
 
         async def _fanout() -> None:
-            nonlocal was_candidate, latest_noise_evidence, latest_utterance_evidence
+            nonlocal was_candidate, latest_utterance_evidence
             try:
                 async for frame in frames:
                     detected: Optional[bool] = None
@@ -186,15 +186,20 @@ class STTPipeline:
                     if noise_tracker is not None:
                         is_speech_for_evidence = noise_classifier.is_speech(frame)
                         detected = is_speech_for_evidence if detected is None else detected
-                        latest_noise_evidence = noise_tracker.observe(frame, is_speech_for_evidence)
                         latest_utterance_evidence = utterance_tracker.observe(
-                            latest_noise_evidence, is_speech_for_evidence
+                            noise_tracker.observe(frame, is_speech_for_evidence),
+                            is_speech_for_evidence,
                         )
                     if diagnostics is not None:
                         diagnostics.observe_frame(
                             frame,
                             is_speech=bool(detected),
                             frame_ms=len(frame) / 2 / self._sample_rate * 1000,
+                            probability=(
+                                self._speech_detector.probability(frame)
+                                if self._speech_detector is not None
+                                else None
+                            ),
                         )
                     if controller.is_bot_speaking:
                         # Nhường lịch cho VAD drain để nó có thể xác nhận
@@ -279,7 +284,7 @@ class STTPipeline:
                     )
                     if interruption is not None:
                         interruption.on_evidence_updated(
-                            noise_evidence=latest_noise_evidence, stability=stability
+                            noise_evidence=latest_utterance_evidence, stability=stability
                         )
                 await controller.on_transcript_event(event)
                 if interruption is not None:

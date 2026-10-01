@@ -136,9 +136,10 @@ frame ─► (1) vad_queue.put(frame)                         luôn luôn, khôn
 
 ### B2. Bằng chứng SNR cho Turn Validator (chỉ khi `turn_validator_enabled`)
 - `noise_classifier` (Silero riêng) phân loại **mọi** frame, kể cả lúc bot nói.
-- `NoiseTracker.observe`: SNR theo frame, nền EMA (α = 0,05) cập nhật trên frame không-speech
-  → đưa cho **InterruptionController**.
-- `UtteranceEvidenceTracker` (sửa 26/09) → đưa cho **TurnController/Validator**: năng lượng cả
+- `NoiseTracker.observe`: SNR theo frame, nền EMA (α = 0,05) cập nhật trên frame không-speech;
+  chỉ là đầu vào của `UtteranceEvidenceTracker`.
+- `UtteranceEvidenceTracker` (sửa 26/09; nhánh ngắt lời dùng chung từ 01/10) → đưa cho
+  **TurnController/Validator** và **InterruptionController**: năng lượng cả
   đoạn nói (đoạn mới sau 600 ms im lặng, giữ kết quả 3 s); nền nhiễu riêng = **trung vị 3 s**
   frame không-speech; frame không-speech chỉ vào nền sau **300 ms** — nếu Silero báo speech
   trước đó thì là đầu câu bị nhận trễ, tính vào năng lượng câu.
@@ -214,7 +215,9 @@ Local: 4 bản Silero chạy trên mỗi frame. Prod: 2 bản WebRTC (#1, #2).
   1. `AsrSegmentEnd.FINALIZE` → decode buffer, phát final (nếu đủ `min_decode_ms`), xoá buffer;
      `DISCARD` → xoá buffer, không phát gì.
   2. Classifier #2 phân loại frame. Trước khi có speech: giữ **pre-speech 300 ms** (bù độ trễ
-     VAD); khi có speech thì gộp vào buffer.
+     VAD); khi có speech thì gộp vào buffer. `asr_voice_lookback_ms` > 0: nếu giọng liền mạch
+     (xác suất Silero thô ≥ 0,5, cho phép tụt ≤ 60 ms) đã bắt đầu trước cửa sổ đó thì lùi thêm
+     tối đa chừng ấy, cộng 90 ms đệm; không lùi qua im lặng/tiếng động.
   3. **Partial:** mỗi 300 ms audio (`min_emit_interval_ms`), nếu frame là speech và đã có
      ≥ 400 ms speech (`min_decode_ms`) → **decode lại toàn bộ buffer** → phát partial nếu khác
      lần trước.
@@ -251,7 +254,7 @@ Local: 4 bản Silero chạy trên mỗi frame. Prod: 2 bản WebRTC (#1, #2).
    - `CONVERGING`: text mới không ngắn hơn và `fuzz.ratio` ≥ 60 so với text trước.
    - còn lại `UNKNOWN`. Reset sau mỗi final.
 2. `controller.on_evidence_updated(SNR cả câu, stability)`;
-   `interruption.on_evidence_updated(SNR theo frame, stability)`.
+   `interruption.on_evidence_updated(SNR cả câu, stability)`.
 3. `controller.on_transcript_event(event)` — **ghi đè** `candidate.text` bằng text mới nhất.
 4. `interruption.on_partial_transcript(event)`.
 
@@ -293,7 +296,7 @@ Local: 4 bản Silero chạy trên mỗi frame. Prod: 2 bản WebRTC (#1, #2).
   2. `is_meaningful_text`;
   3. confidence ≥ ngưỡng (bỏ qua vì ZipFormer không có confidence);
   4. **không giống câu bot đang đọc** (`fuzz.partial_ratio` < 70) — chống bot nghe lại chính nó;
-  5. SNR theo frame ≥ `interruption_min_snr_db` (local 0 dB; prod tắt);
+  5. SNR cả câu ≥ `interruption_min_snr_db` (local 0 dB; prod tắt);
   6. Validator (nếu bật) phải trả **ACCEPT** (WAIT cũng bị từ chối).
 - Xác nhận → `CallBridge.cancel()`: huỷ TTS, xoá hàng đợi phát, huỷ task đang nói → bot dừng,
   candidate được giữ và chốt thành lượt.

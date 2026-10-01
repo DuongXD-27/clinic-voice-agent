@@ -11,6 +11,7 @@ from speech.asr.vad.base import VadEvent  # noqa: E402
 from speech.asr.vad.streaming import StreamingVAD  # noqa: E402
 from speech.audio.noise_tracker import NoiseTracker  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
+from speech.turn.interruption import InterruptionController  # noqa: E402
 from speech.turn.validator import TurnValidator  # noqa: E402
 from speech.types import Transcript, TranscriptEvent  # noqa: E402
 
@@ -238,3 +239,49 @@ async def test_stability_is_judged_per_utterance() -> None:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+async def test_barge_in_reads_snr_of_the_utterance_not_of_the_latest_frame() -> None:
+    """Hồi quy (cuộc gọi 01/10): câu trả lời 3 từ lúc bot đang nói, nhánh ngắt lời đo 3,0 dB còn
+    lượt thường đo 55 dB. Silero báo speech trễ nên phần đầu câu (to nhất) bị NoiseTracker
+    tính vào nền nhiễu; nhánh ngắt lời phải đọc cùng SNR cả câu như TurnController."""
+    quiet, onset, speech = b"\x01\x00" * 240, b"\x00\x30" * 240, b"\x00\x40" * 240
+    frames = [quiet] * 20 + [onset] * 8 + [speech] * 10
+
+    class _NoopTTS:
+        async def cancel(self) -> None:
+            pass
+
+    class _SpyInterruption(InterruptionController):
+        def __init__(self) -> None:
+            super().__init__(_NoopTTS())
+            self.snr_db: list[float] = []
+
+        def on_evidence_updated(self, *, noise_evidence=None, stability=None) -> None:
+            if noise_evidence is not None:
+                self.snr_db.append(noise_evidence.snr_db)
+            super().on_evidence_updated(noise_evidence=noise_evidence, stability=stability)
+
+    interruption = _SpyInterruption()
+    pipeline = STTPipeline(
+        asr=_FinalAfterFramesASR([(len(frames), "được em nhé")]),
+        vad=StreamingVAD(_NullEnergyClassifier()),
+        async_vad=_FakeAsyncVAD([]),
+    )
+
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _sequence(frames),
+                turn_controller=TurnController(min_speech_ms=0),
+                interruption=interruption,
+                evidence_tracker=TranscriptEvidenceTracker(),
+                noise_tracker=NoiseTracker(),
+                noise_classifier=_ByFrameClassifier(speech),
+            )
+        ),
+        timeout=2.0,
+    )
+
+    # SNR theo frame ở đây chỉ ~12 dB (nền bị 8 frame đầu câu kéo lên); cả câu so với nền im.
+    assert interruption.snr_db and interruption.snr_db[-1] > 40

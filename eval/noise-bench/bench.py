@@ -354,7 +354,11 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
     recognizer = _CapturingRecognizer(asr)
     bundle = build_streaming_bundle(settings, asr=recognizer, frame_ms=30)
     clock = VirtualTime()
-    diagnostics = SpeechDiagnostics(clock=clock.now, probe=_probe_factory(settings))
+    # Bộ phân loại dùng chung đã có probe (bundle); probe riêng chỉ khi không dùng chung.
+    diagnostics = SpeechDiagnostics(
+        clock=clock.now,
+        probe=None if settings.speech_shared_detector else _probe_factory(settings),
+    )
     controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
@@ -820,6 +824,8 @@ def main() -> None:
     if not args.label:
         parser.error("--label hoặc --compare là bắt buộc")
     overrides = dict(item.split("=", 1) for item in args.set)
+    if args.no_probe:
+        overrides.setdefault("speech_diagnostics_probe", "false")
     run(args.label, args.dataset, args.conditions.split(","), args.repeats, args.profile, overrides)
 
 

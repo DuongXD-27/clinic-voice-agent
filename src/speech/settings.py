@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 from appconfig import YamlSettings, yaml_config
 from inference.asr import ProviderName as ASRProviderName
@@ -103,7 +103,19 @@ class SpeechSettings(YamlSettings):
     # xác suất giọng của mỗi đoạn vào log. Chỉ quan sát — tắt thì vẫn có log kết cục từng đoạn,
     # chỉ thiếu xác suất (đỡ một lần suy luận Silero mỗi 32 ms).
     speech_diagnostics_probe: bool = True
+    # Pre-speech của ASR lùi thêm tối đa chừng này qua phần giọng mà bộ phân loại báo trễ, theo
+    # xác suất Silero thô (`_PreSpeech` trong inference/asr/providers/zipformer.py). 0 = tắt,
+    # giữ cửa sổ cố định 300 ms. Cần speech_shared_detector (probe chạy trong bộ phân loại chung).
+    asr_voice_lookback_ms: int = 0
 
     # URL công khai để dựng audio_url trả về cho harness
     public_base_url: str
     audio_dir: str
+
+    @model_validator(mode="after")
+    def _lookback_needs_shared_detector(self) -> "SpeechSettings":
+        if self.asr_voice_lookback_ms < 0:
+            raise ValueError("asr_voice_lookback_ms không được âm")
+        if self.asr_voice_lookback_ms and not self.speech_shared_detector:
+            raise ValueError("asr_voice_lookback_ms cần speech_shared_detector=true")
+        return self

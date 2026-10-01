@@ -78,10 +78,11 @@ async def entrypoint(ctx: JobContext) -> None:
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
     orchestrator = create_orchestrator(clinic, EngineSettings())
-    # Chỉ quan sát: log kết cục từng đoạn giọng (chỉ số) để biết cổng nào bỏ lượt.
+    # Chỉ quan sát: log kết cục từng đoạn giọng (chỉ số) để biết cổng nào bỏ lượt. Xác suất
+    # Silero lấy từ bộ phân loại dùng chung (bundle); probe riêng chỉ khi không dùng chung.
     diagnostics = build_call_diagnostics(
         build_probe(speech_settings.silero_vad_model_path, livekit_settings.input_sample_rate)
-        if speech_settings.speech_diagnostics_probe
+        if speech_settings.speech_diagnostics_probe and not speech_settings.speech_shared_detector
         else None
     )
     turn_controller = TurnController(

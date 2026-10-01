@@ -46,3 +46,24 @@ def test_first_frame_shorter_than_a_window_has_no_probability_yet() -> None:
 def test_missing_model_gives_no_probe() -> None:
     assert build_probe(None, 16_000) is None
     assert build_probe(str(_ROOT / "does-not-exist.onnx"), 16_000) is None
+
+
+def test_lookback_reads_the_shared_detector_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("sherpa_onnx", reason="cần extra [vad-silero]")
+    from speech import bundle as speech_bundle
+    from speech.settings import SpeechSettings
+
+    monkeypatch.setattr(speech_bundle, "create_tts_gateway", lambda *_a, **_k: object())
+
+    class _Recognizer:
+        name = "fake"
+
+    def options(**overrides) -> dict:
+        settings = SpeechSettings(_env_file=None, sample_rate=16_000, **overrides)
+        bundle = speech_bundle.build_streaming_bundle(settings, asr=_Recognizer())
+        return bundle.stt_pipeline._asr_stream_options
+
+    assert "voice_probability" not in options(asr_voice_lookback_ms=0)
+    enabled = options(asr_voice_lookback_ms=300)
+    assert enabled["voice_lookback_ms"] == 300
+    assert enabled["voice_probability"].__self__.has_probe
