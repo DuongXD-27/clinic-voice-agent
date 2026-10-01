@@ -11,6 +11,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from callbot.engine import (
+    BotAction,
     CallBusy,
     CallConflict,
     CallEnded,
@@ -24,7 +25,8 @@ from callbot.engine import (
 )
 from callbot.engine.diagnostics import TurnDiagnostics, summarize_extraction
 from callbot.engine.errors import CallStartBlocked, OutboundStartFailed
-from callbot.tracing import Tracer, null_tracer
+from callbot.engine.session.manager import TurnRun
+from callbot.tracing import Tracer, current_span, null_tracer
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -251,15 +253,20 @@ def _start_call_impl(
         max_turns=payload.max_turns,
     )
 
-    def _open() -> tuple:
+    def _open_unlocked() -> tuple:
+        call_mode.check_mode(payload.call_id, payload.mode)
         action = orchestrator.start_call(call)
+        call_mode.set_mode(payload.call_id, payload.mode)
         audio_url = None
         if payload.mode == "audio":
-            call_mode.set_audio(payload.call_id)
             audio_url = _synthesize(
                 _tracer(orchestrator), speech, payload.call_id, 0, action.utterance
             )
         return action, audio_url
+
+    def _open() -> tuple:
+        with call_mode.request_lock(payload.call_id):
+            return _open_unlocked()
 
     action, audio_url = _run_engine(payload.call_id, _open)
     return StartCallResponse(
@@ -307,12 +314,6 @@ def _call_turn_impl(
     speech: Speech,
     call_mode: CallMode,
 ) -> TurnResponse:
-    is_audio = call_mode.is_audio(call_id)
-    if is_audio and payload.text is not None:
-        raise _error(422, "TEXT_NOT_ALLOWED", "Cuộc gọi audio mode không nhận text")
-    if not is_audio and payload.audio_url is not None:
-        raise _error(422, "AUDIO_URL_NOT_ALLOWED", "Cuộc gọi text mode không nhận audio_url")
-
     def _resolve_input():
         text = payload.text
         confidence = None
@@ -329,25 +330,48 @@ def _call_turn_impl(
             confidence=confidence,
         )
 
-    def _turn() -> tuple:
-        caller = caller_input_from_transcript(
-            payload.turn,
-            payload.text,
-            silence_ms=payload.silence_ms,
-            audio_url=payload.audio_url,
-        )
-        run = orchestrator.handle_turn_with_details(
-            call_id,
-            caller,
-            **({"resolve_input": _resolve_input} if is_audio else {}),
-        )
+    def _turn_unlocked() -> tuple:
+        is_audio = call_mode.is_audio(call_id)
+        if is_audio and payload.text is not None:
+            raise _error(422, "TEXT_NOT_ALLOWED", "Cuộc gọi audio mode không nhận text")
+        if not is_audio and payload.audio_url is not None:
+            raise _error(422, "AUDIO_URL_NOT_ALLOWED", "Cuộc gọi text mode không nhận audio_url")
+        digest = call_mode.request_digest(payload.model_dump())
+        pending = call_mode.pending_output(call_id, payload.turn) if is_audio else None
+        if pending is not None:
+            if pending["request_digest"] != digest:
+                raise TurnConflict(call_id)
+            run = TurnRun(BotAction.from_dict(pending["action"]), replayed=True)
+            span = current_span()
+            if span is not None:
+                span.enrich(replayed=True)
+        else:
+            caller = caller_input_from_transcript(
+                payload.turn,
+                payload.text,
+                silence_ms=payload.silence_ms,
+                audio_url=payload.audio_url,
+            )
+            run = orchestrator.handle_turn_with_details(
+                call_id,
+                caller,
+                **({"resolve_input": _resolve_input} if is_audio else {}),
+            )
         action = run.action
+        if is_audio and action.ended and pending is None:
+            call_mode.save_pending_output(call_id, payload.turn, digest, action.to_dict())
         audio_url = (
             _synthesize(_tracer(orchestrator), speech, call_id, payload.turn, action.utterance)
             if is_audio
             else None
         )
+        if is_audio and action.ended:
+            call_mode.clear_pending_output(call_id, payload.turn)
         return action, audio_url, run
+
+    def _turn() -> tuple:
+        with call_mode.request_lock(call_id):
+            return _turn_unlocked()
 
     debug = request.headers.get("X-Demo-Debug") == "1"
     action, audio_url, run = _run_engine(call_id, _turn, debug=debug)
@@ -420,13 +444,19 @@ def _extraction_fields(extraction: Optional[dict[str, Any]]) -> Optional[str]:
 def _synthesize(
     tracer: Tracer, speech: SpeechBundle, call_id: str, turn: int, text: str
 ) -> Optional[str]:
-    # Lượt đã ghi vào session: TTS lỗi chỉ mất audio, vẫn trả utterance (audio_url=None).
-    # Trả 500 ở đây khiến client gửi lại một lượt đã được engine nhận.
+    # Chỉ nhận utterance từ action đã qua Guard. Retry output không chạy lại nghiệp vụ.
     with tracer.span(component="TTS", operation="speech.tts.synthesize") as span:
         span.enrich(
             provider=_safe_speech_label(speech.tts, "name"),
             model=_safe_speech_label(speech.tts, "model"),
         )
+        try:
+            cached = speech.audio_store.cached_url(call_id, turn, text)
+        except Exception as exc:
+            _set_speech_error(span, exc, stage="TTS_STORAGE")
+            raise _error(503, "AUDIO_OUTPUT_UNAVAILABLE", "Chưa thể đọc audio đầu ra") from exc
+        if cached is not None:
+            return cached
         started = perf_counter_ns()
         try:
             segment = speech.tts.synthesize(text)
@@ -434,13 +464,16 @@ def _synthesize(
             span.enrich(latency_ms=_elapsed_ms(started))
             _set_speech_error(span, exc, stage="TTS_PROVIDER")
             logger.warning("TTS lỗi khi xử lý %s lượt %s: %s", call_id, turn, type(exc).__name__)
-            return None
+            raise _error(503, "AUDIO_OUTPUT_UNAVAILABLE", "Chưa thể tạo audio đầu ra") from exc
         span.enrich(latency_ms=_elapsed_ms(started))
-        if segment is None:
-            return None
+        if segment is None or not segment.pcm:
+            span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
+            raise _error(503, "AUDIO_OUTPUT_UNAVAILABLE", "TTS chưa cung cấp audio đầu ra")
         _enrich_audio(span, segment, include_bytes=True)
         try:
-            return speech.audio_store.save(call_id, turn, segment)
+            url = speech.audio_store.save(call_id, turn, segment)
+            speech.audio_store.remember_utterance(call_id, turn, text)
+            return url
         except Exception as exc:
             _set_speech_error(span, exc, stage="TTS_STORAGE")
-            raise
+            raise _error(503, "AUDIO_OUTPUT_UNAVAILABLE", "Chưa thể lưu audio đầu ra") from exc

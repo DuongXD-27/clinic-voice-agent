@@ -154,9 +154,7 @@ def test_empty_transcript_is_successful_silence_not_technical_error(
     assert "error_code" not in stt.attributes
 
 
-def test_tts_none_is_successful_unavailable_output(
-    tmp_path, redis_store_factory, redis_server
-) -> None:
+def test_tts_none_reports_unavailable_output(tmp_path, redis_store_factory, redis_server) -> None:
     sink = MemorySink()
     app = _app(
         tmp_path,
@@ -167,12 +165,12 @@ def test_tts_none_is_successful_unavailable_output(
     )
     with TestClient(app) as client:
         response = _start(client, "tts-none", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     tts = next(span for span in sink.spans if span.component == "TTS")
-    assert tts.status == "OK"
-    assert "error_code" not in tts.attributes
+    assert tts.status == "ERROR"
+    assert tts.attributes["error_code"] == "TTS_PROVIDER_ERROR"
     assert "bytes" not in tts.attributes
 
 
@@ -228,7 +226,7 @@ def test_audio_load_failure_is_an_stt_stage_error(
     assert "private audio URL" not in json.dumps(stt.to_dict())
 
 
-def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_change(
+def test_tts_provider_and_storage_failures_are_distinguished_and_retryable(
     tmp_path, redis_store_factory, redis_server
 ) -> None:
     provider_sink = MemorySink()
@@ -241,8 +239,8 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
     )
     with TestClient(provider_app) as client:
         response = _start(client, "tts-provider-failure", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     provider_span = next(span for span in provider_sink.spans if span.component == "TTS")
     assert provider_span.status == "ERROR"
@@ -258,7 +256,7 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
         audio_store=BrokenAudioStore(str(tmp_path / "broken"), "http://test"),
     )
     with TestClient(storage_app) as client:
-        assert _start(client, "tts-storage-failure", mode="audio").status_code == 500
+        assert _start(client, "tts-storage-failure", mode="audio").status_code == 503
 
     storage_span = next(span for span in storage_sink.spans if span.component == "TTS")
     assert storage_span.status == "ERROR"
@@ -269,7 +267,7 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
     assert "private storage path" not in serialized
 
 
-def test_tts_timeout_is_recorded_without_changing_fallback(
+def test_tts_timeout_is_recorded_with_retryable_output_error(
     tmp_path, redis_store_factory, redis_server
 ) -> None:
     sink = MemorySink()
@@ -282,8 +280,8 @@ def test_tts_timeout_is_recorded_without_changing_fallback(
     )
     with TestClient(app) as client:
         response = _start(client, "tts-timeout", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     tts = next(span for span in sink.spans if span.component == "TTS")
     assert tts.status == "ERROR"
