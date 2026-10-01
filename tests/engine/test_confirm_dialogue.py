@@ -23,7 +23,7 @@ from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
-FACTS = "9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City"
+FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
 CONFIRMED_WRITE = ("apt_00417", "CONFIRMED", {})
 
 

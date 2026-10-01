@@ -19,6 +19,8 @@ from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
 )
 
 from callbot.engine.types import BotAction  # noqa: E402
+from callbot.tracing import Tracer  # noqa: E402
+from callbot.tracing.pseudonym import CallKeyFactory  # noqa: E402
 from callbot.transports.livekit.call_bridge import CallBridge  # noqa: E402
 from speech.turn.events import UserTurnCompleted  # noqa: E402
 
@@ -92,6 +94,48 @@ async def test_turn_controller_and_interruption_are_distinct_instances_per_bridg
     assert bridge_a._turn_controller is not bridge_b._turn_controller
     assert bridge_a._interruption is not bridge_b._interruption
     assert bridge_a._frame_queue is not bridge_b._frame_queue
+
+
+async def test_livekit_parallel_calls_keep_separate_trace_trees() -> None:
+    class Sink:
+        def __init__(self):
+            self.records = []
+
+        def emit(self, record):
+            self.records.append(record)
+
+    sink = Sink()
+    keys = CallKeyFactory("livekit-parallel-tracing-key-000000", version="v1", environment="test")
+
+    async def run(room_name: str) -> None:
+        opening = BotAction(utterance="chào", state="AWAITING_INTENT", ended=False)
+        closing = BotAction(utterance="tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+        orchestrator = _FakeOrchestrator(opening, [closing])
+        orchestrator.tracer = Tracer(sink, keys)
+        bridge = CallBridge(
+            _FakeRoom(room_name),
+            orchestrator,
+            _FakeSTTPipeline([UserTurnCompleted(text="xin chào", confidence=0.8)]),
+            _FakeTTS(),
+        )
+        bridge._audio_source = _FakeAudioSource()
+        bridge._publish_tts_track = _noop_publish
+        await bridge.run()
+
+    await asyncio.gather(run("room-a"), run("room-b"))
+    roots = [item for item in sink.records if item.component == "TURN"]
+    assert len(roots) == 4
+    assert len({item.call_key for item in roots}) == 2
+    for call_key in {item.call_key for item in roots}:
+        this_call = [item for item in sink.records if item.call_key == call_key]
+        assert {item.turn for item in this_call if item.component == "TURN"} == {0, 1}
+        for root in (item for item in this_call if item.component == "TURN"):
+            children = [item for item in this_call if item.parent_span_id == root.span_id]
+            assert {item.component for item in children} == (
+                {"TTS"} if root.turn == 0 else {"STT", "TTS"}
+            )
+            assert all(item.trace_id == root.trace_id for item in children)
+    assert all(item.status == "OK" for item in roots)  # TRANSFERRED is a business outcome.
 
 
 if __name__ == "__main__":

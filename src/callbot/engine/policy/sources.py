@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from callbot.engine.session.context import CallContext
@@ -87,8 +87,14 @@ class SourceRecorder:
             registry.record_appointment(appointment)
         return appointment
 
-    def list_open_slots(self, ctx: CallContext, now: datetime) -> list[dict[str, Any]]:
-        slots = self._gateway.list_open_slots(ctx, now)
+    def list_open_slots(
+        self,
+        ctx: CallContext,
+        now: datetime,
+        date_from: Optional[date] = None,
+        clinic_id: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
+        slots = self._gateway.list_open_slots(ctx, now, date_from=date_from, clinic_id=clinic_id)
         registry = _current.get()
         if registry is not None:
             # Gateway thay toàn bộ ctx.slots; chụp đúng tập đó trước khi Dialogue kịp dùng

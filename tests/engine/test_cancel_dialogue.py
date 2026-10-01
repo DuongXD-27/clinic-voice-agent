@@ -31,7 +31,7 @@ from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
 
 SILENCE = None
-FACTS = "9 giờ sáng ngày 14 tháng 10 tại Vinmec Times City"
+FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
 
 
 def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):

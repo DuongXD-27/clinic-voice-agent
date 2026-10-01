@@ -1,6 +1,6 @@
 """ClinicGateway trên FakeClinicAPI: đọc hết trang + chuẩn hóa, transfer theo hướng gọi, ba lớp kết quả ghi."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -232,6 +232,44 @@ def test_list_open_slots_sends_rfc3339_window_of_14_days() -> None:
     # Không seed slot: mọi cửa sổ policy đều phải hợp lệ (regex, ≤ 14 ngày).
     assert gateway.list_open_slots(_outbound(), datetime(2026, 10, 14, 9, 30, 15, 999)) == []
     assert fake.slot_reads == 5
+
+
+class _WindowSpy(FakeClinicAPI):
+    def __init__(self) -> None:
+        super().__init__(seed=False, strict_slot_window=True)
+        self.windows: list[tuple[str, str, str]] = []
+
+    def get_slots(self, clinic_id, from_, to, cursor=None, limit=100):  # type: ignore[override]
+        self.windows.append((clinic_id, from_, to))
+        return super().get_slots(clinic_id, from_, to, cursor=cursor, limit=limit)
+
+
+def test_list_open_slots_from_requested_date_searches_seven_days_first() -> None:
+    """R-29: đổi sang ngày X -> [X, X+7); trống thì tìm tiếp các cửa sổ 14 ngày (T-10 D-3)."""
+    fake = _WindowSpy()
+    fake.seed_slot(
+        {"slot_id": "slot_late", "clinic_id": "cl_other", "starts_at": "2026-10-20T09:00:00+07:00"}
+    )
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    now = datetime.fromisoformat("2026-09-29T10:00:00+07:00")
+
+    slots = gateway.list_open_slots(
+        _outbound(), now, date_from=date(2026, 10, 3), clinic_id="cl_other"
+    )
+
+    assert [slot["slot_id"] for slot in slots] == ["slot_late"]
+    assert fake.windows == [
+        ("cl_other", "2026-10-03T00:00:00+07:00", "2026-10-10T00:00:00+07:00"),
+        ("cl_other", "2026-10-10T00:00:00+07:00", "2026-10-24T00:00:00+07:00"),
+    ]
+
+
+def test_list_open_slots_never_searches_before_now() -> None:
+    fake = _WindowSpy()
+    gateway = ClinicGateway(fake, clinic_id="cl_vinmec")
+    now = datetime.fromisoformat("2026-09-29T10:00:00+07:00")
+    gateway.list_open_slots(_outbound(), now, date_from=date(2026, 9, 29))
+    assert fake.windows[0][:2] == ("cl_vinmec", "2026-09-29T10:00:00+07:00")
 
 
 def test_find_patients_by_phone_returns_canonical_candidates_from_all_pages() -> None:

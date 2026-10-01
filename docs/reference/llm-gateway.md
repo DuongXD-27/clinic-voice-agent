@@ -25,7 +25,7 @@ validate schema và nghiệp vụ. Slot filling họ tên vẫn kiểm tra tên/
 model của provider được chọn. Khi đổi provider, xóa giá trị cũ hoặc đặt model tương
 ứng. Không tự sửa `.env` của developer. Model tùy chọn phải hỗ trợ JSON Schema.
 
-`NAME_FALLBACK_TIMEOUT_S` mặc định 3 giây cho read/write/pool; connect 1 giây.
+`NAME_FALLBACK_TIMEOUT_S` mặc định 3 giây cho toàn bộ HTTP request tới khi nhận đủ body; cấu hình cao hơn vẫn bị chặn ở trần cứng 3 giây. HTTPX vẫn giới hạn từng pha và connect riêng 1 giây.
 `NAME_FALLBACK_MAX_TOKENS` để trống dùng 200, riêng Groq dùng 1024 vì GPT-OSS tính cả
 reasoning token trong budget. Đặt số nguyên dương để ghi đè. Không phải deadline
 tổng lượt; lỗi API, output bị cắt hoặc sai JSON đều khiến slot filling trả `NONE`.
@@ -49,7 +49,7 @@ Factory (`callbot.engine._semantic_extractor`) dựng `OpenAIConfig` với `mode
 |---|---|---|
 | `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu `OPENAI_API_KEY` → tự về chỉ-luật, không chặn khởi động |
 | `SEMANTIC_FALLBACK_MODEL` | `gpt-4o-mini` | Provider cố định OpenAI trong đợt này |
-| `SEMANTIC_FALLBACK_TIMEOUT_S` | `2.0` | Timeout **từng pha** của HTTPX, không phải deadline tổng lượt |
+| `SEMANTIC_FALLBACK_TIMEOUT_S` | `3.0` | Deadline tổng từ lúc gửi request tới khi nhận đủ body; HTTPX vẫn giới hạn từng pha. Parsing sau response không thuộc deadline model-call. |
 | `SEMANTIC_FALLBACK_MAX_TOKENS` | `400` | Không dùng ngầm mặc định 200 của slot filling họ tên |
 | `SEMANTIC_FALLBACK_MAX_INPUT_CHARS` | `1500` | Vượt giới hạn → hỏi ngắn lại, **không** âm thầm cắt (cắt có thể mất lời phủ định) |
 

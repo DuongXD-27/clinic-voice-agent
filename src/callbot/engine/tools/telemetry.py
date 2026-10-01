@@ -29,6 +29,7 @@ class ApiCallRecord:
     request_id: Optional[str]
     latency_ms: int
     outcome: ApiOutcome
+    if_match_used: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

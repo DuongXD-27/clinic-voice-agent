@@ -1,5 +1,7 @@
 # Plan T-08 — Silence và tín hiệu đường dây
 
+> Cập nhật 01-10-2026: phần suy ra `LINE_BUSY`/`NO_ANSWER` từ transcript bên dưới mô tả thiết kế cũ và được thay thế bởi [tài liệu tín hiệu trạng thái điện thoại](../reference/phone-status.md). Bộ trích xuất chỉ nhận diện hộp thư thoại từ lời nói; kết quả quay số được biểu diễn bằng `PhoneStatus` và xử lý qua Core/Policy/Gateway dùng chung.
+
 **Owner:** A (Hoàn) · **Trạng thái:** Đã triển khai (Q-1, Q-2 chốt với owner 21-09-2026; Q-3, Q-4 theo đề xuất) — evidence `docs/evidence/t08-silence-line-signal.md` · **Ngày:** 21-09-2026
 **Nguồn:** `docs/task-breakdown.md` §3 (T-08), §7 bất biến 1, 7, 8, 9; `docs/reference/ai-callbot-architecture.md` §3.2–§3.4, §4.2; `docs/reference/information-extraction-design.md` §4, §5.9, §6.1, §6.3, §6.4, §10 câu 9; `docs/reference/clinic-mock.md` (unreachable, chuyển trạng thái); `docs/evidence/t07-gateway-unreachable.md`; contract rev 1.1 §1.1.5, §1.1.7, §2.1, §4.2.5, Phụ lục A
 **Phụ thuộc:** F-04 (IE `silent`, `line_signal`), F-05/T-07 (Gateway `/unreachable`), T-02, T-04 — đều đã có trên `main` `bfcc529`

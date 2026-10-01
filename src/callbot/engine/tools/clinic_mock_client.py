@@ -213,6 +213,7 @@ class ClinicMockClient:
                     request_id=request_id,
                     latency_ms=int((perf_counter() - started) * 1000),
                     outcome=outcome,
+                    if_match_used=bool(headers and "If-Match" in headers),
                 )
             )
 

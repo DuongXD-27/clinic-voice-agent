@@ -15,3 +15,19 @@ langfuse:
   batch_size: 32               # LANGFUSE_BATCH_SIZE
   flush_interval_seconds: 1.0  # LANGFUSE_FLUSH_INTERVAL_SECONDS
   environment: development     # LANGFUSE_ENVIRONMENT
+
+# Optional approved prices. Empty/null means unknown, never zero.
+pricing:
+  llm_model: ""
+  llm_input_usd_per_million: null
+  llm_output_usd_per_million: null
+  llm_cached_input_usd_per_million: null
+  tts_provider: ""
+  tts_voice: ""
+  tts_usd_per_character: null
+  stt_model: ""
+  stt_usd_per_audio_minute: null
+
+scores:
+  enabled: false               # LANGFUSE_SCORE_PUBLISH_ENABLED
+  jsonl_dir: null              # LANGFUSE_SCORE_JSONL_DIR; use the dashboard trace directory

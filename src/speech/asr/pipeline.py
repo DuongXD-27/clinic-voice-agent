@@ -29,6 +29,14 @@ logger = logging.getLogger(__name__)
 
 
 class STTPipeline:
+    @property
+    def provider_name(self) -> str | None:
+        return getattr(self._asr, "name", None)
+
+    @property
+    def model(self) -> str | None:
+        return getattr(self._asr, "model", None)
+
     def __init__(
         self,
         asr: Recognizer,

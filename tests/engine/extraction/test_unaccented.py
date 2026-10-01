@@ -205,11 +205,9 @@ def test_line_signal_unaccented() -> None:
     )
     assert (
         extract_line_signal("thue bao quy khach vua goi tam thoi khong lien lac duoc").value
-        is LineSignal.NO_ANSWER
+        is LineSignal.NONE
     )
-    assert (
-        extract_line_signal("so may quy khach vua goi hien dang ban").value is LineSignal.LINE_BUSY
-    )
+    assert extract_line_signal("so may quy khach vua goi hien dang ban").value is LineSignal.NONE
     assert (
         extract_line_signal("toi dang ban").value is LineSignal.NONE
     )  # người thật; "ban" không có tổng đài

@@ -21,6 +21,13 @@ class StructuredReply:
     content: str | None = None
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    total_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    actual_model: str | None = None
+    provider_request_id: str | None = None
+    http_status: int | None = None
+    model_call_latency_ms: float | None = None
 
 
 class StructuredProvider(Protocol):

@@ -9,12 +9,16 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from dataclasses import dataclass
+from time import perf_counter
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
 from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
+from callbot.tracing import Tracer, null_tracer
+from callbot.tracing.pricing import tts_cost
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
     segment_to_livekit_frame,
@@ -171,6 +175,8 @@ class CallBridge:
     ) -> None:
         self._room = room
         self._orchestrator = orchestrator
+        candidate_tracer = getattr(orchestrator, "tracer", None)
+        self._tracer = candidate_tracer if isinstance(candidate_tracer, Tracer) else null_tracer()
         self._stt_pipeline = stt_pipeline
         self._tts = tts
         self._sample_rate = sample_rate
@@ -257,9 +263,25 @@ class CallBridge:
             )
             logger.info("call_bridge: start_call room=%s", self._room.name)
             try:
-                opening: BotAction = await asyncio.to_thread(
-                    self._orchestrator.start_call, call_start
-                )
+                with self._tracer.start_trace(
+                    call_id=self._room.name,
+                    turn=0,
+                    component="TURN",
+                    operation="livekit.start_call",
+                ) as root:
+                    root.enrich(direction=self._direction, mode="livekit")
+                    opening: BotAction = await asyncio.to_thread(
+                        self._orchestrator.start_call, call_start
+                    )
+                    await self._publish_tts_track()
+                    # Receive audio during the opening; the consumer has its own task context.
+                    self._pipeline_task = asyncio.create_task(self._consume_turns())
+                    await asyncio.sleep(0)
+                    await self._publish_transcript("bot", opening.utterance, action=opening)
+                    await self._speak(opening.utterance)
+                    root.enrich(
+                        state_after=opening.state, ended=opening.ended, outcome=opening.outcome
+                    )
             except OutboundStartFailed as exc:
                 # Core cố ý không tạo phiên/không phát lời chào khi lịch outbound không
                 # dùng được. Báo lỗi qua data channel để web demo không im lặng sau khi
@@ -289,14 +311,6 @@ class CallBridge:
                     )
                 return
 
-            await self._publish_tts_track()
-            # Bắt đầu VAD/ASR trước câu chào: barge-in hoạt động ngay từ lượt 0 và mic
-            # audio không bị tồn trong queue rồi decode nhầm sau khi bot nói xong.
-            self._pipeline_task = asyncio.create_task(self._consume_turns())
-            await asyncio.sleep(0)
-
-            await self._publish_transcript("bot", opening.utterance, action=opening)
-            await self._speak(opening.utterance)
             if opening.ended:
                 return
             self._start_silence_timer()
@@ -331,19 +345,46 @@ class CallBridge:
                 if not turn.silence_ms:
                     # Lượt im lặng không có lời để hiện; câu hỏi lại của bot đã đủ ngữ cảnh.
                     await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
-                caller = caller_input_from_turn(self._turn_number, turn)
-                action = await asyncio.to_thread(
-                    self._orchestrator.handle_turn, self._room.name, caller
-                )
-                logger.info(
-                    "call_bridge: turn %d action state=%s ended=%s outcome=%s",
-                    self._turn_number,
-                    action.state,
-                    action.ended,
-                    action.outcome,
-                )
-                await self._publish_transcript("bot", action.utterance, action=action)
-                await self._speak(action.utterance)
+                with self._tracer.start_trace(
+                    call_id=self._room.name,
+                    turn=self._turn_number,
+                    component="TURN",
+                    operation="livekit.call_turn",
+                ) as root:
+                    root.enrich(direction=self._direction, mode="livekit")
+                    if not turn.silence_ms:
+                        with self._tracer.span(
+                            component="STT", operation="speech.stt.transcribe"
+                        ) as stt:
+                            stt.enrich(
+                                provider=getattr(self._stt_pipeline, "provider_name", None),
+                                model=getattr(self._stt_pipeline, "model", None),
+                                confidence=turn.confidence,
+                                sample_rate_hz=self._sample_rate,
+                                input_mode="streaming",
+                                transcript_empty=not bool(turn.text.strip()),
+                                audio_duration_ms=turn.audio_duration_ms,
+                                first_partial_ms=turn.first_partial_ms,
+                                final_ms=turn.final_ms,
+                                partial_count=turn.partial_count,
+                                vad_end_reason=turn.vad_end_reason,
+                            )
+                    caller = caller_input_from_turn(self._turn_number, turn)
+                    action = await asyncio.to_thread(
+                        self._orchestrator.handle_turn, self._room.name, caller
+                    )
+                    logger.info(
+                        "call_bridge: turn %d action state=%s ended=%s outcome=%s",
+                        self._turn_number,
+                        action.state,
+                        action.ended,
+                        action.outcome,
+                    )
+                    await self._publish_transcript("bot", action.utterance, action=action)
+                    await self._speak(action.utterance)
+                    root.enrich(
+                        state_after=action.state, ended=action.ended, outcome=action.outcome
+                    )
                 if action.ended:
                     return
                 self._start_silence_timer()
@@ -624,8 +665,24 @@ class CallBridge:
         # Chunk TTS cắt theo byte HTTP tuỳ ý; gom lại rồi cắt đúng ranh giới frame PCM16.
         pending = bytearray()
         interrupted = False
+        total_bytes = 0
+        started = perf_counter()
+        first_audio_ms = None
+        scope = self._tracer.span(component="TTS", operation="speech.tts.synthesize")
+        tts_span = scope.__enter__()
+        tts_span.enrich(
+            provider_requested=getattr(self._tts, "name", None),
+            provider=getattr(self._tts, "name", None),
+            model=getattr(self._tts, "model", None),
+            character_count=len(text),
+            audio_format="pcm16",
+            sample_rate_hz=sample_rate,
+        )
         try:
             async for chunk in self._tts.synthesize_stream(text):
+                if chunk and first_audio_ms is None:
+                    first_audio_ms = (perf_counter() - started) * 1000
+                total_bytes += len(chunk)
                 if self._is_interrupted():
                     break
                 pending.extend(chunk)
@@ -668,6 +725,33 @@ class CallBridge:
                 raise
         finally:
             interrupted = interrupted or self._is_interrupted()
+            actual = getattr(self._tts, "last_stream_result", None)
+            actual_provider = getattr(actual, "provider_actual", None) or getattr(
+                self._tts, "name", None
+            )
+            voice = getattr(actual, "voice", None)
+            tts_span.enrich(
+                provider_actual=actual_provider,
+                voice=voice,
+                fallback_used=getattr(actual, "fallback_used", False),
+                ttfa_ms=getattr(actual, "ttfa_ms", None) or first_audio_ms,
+                latency_ms=(perf_counter() - started) * 1000,
+                audio_duration_ms=total_bytes / (2 * sample_rate) * 1000,
+                bytes=total_bytes,
+                interrupted=interrupted,
+                truncated=interrupted,
+                barge_in=interrupted,
+                result="ERROR"
+                if sys.exc_info()[0] is not None
+                else "CANCELLED"
+                if interrupted
+                else "OK",
+            )
+            if not interrupted and sys.exc_info()[0] is None:
+                cost = tts_cost(actual_provider, voice, len(text))
+                if cost is not None:
+                    tts_span.enrich(cost_usd=cost)
+            scope.__exit__(*sys.exc_info())
             self._turn_controller.on_bot_speaking_changed(False, preserve_candidate=interrupted)
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None

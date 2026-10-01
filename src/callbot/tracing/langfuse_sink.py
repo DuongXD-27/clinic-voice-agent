@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 import threading
@@ -88,7 +89,7 @@ def _span_attributes(span: CompletedSpan, environment: str) -> dict[str, str | b
         "langfuse.session.id": span.call_key,
         "langfuse.trace.name": "callbot.turn",
         "langfuse.environment": environment,
-        "langfuse.observation.type": "span",
+        "langfuse.observation.type": span.observation_type.lower(),
         "langfuse.trace.metadata.turn": str(span.turn),
         "langfuse.observation.metadata.turn": span.turn,
         "langfuse.observation.metadata.component": span.component,
@@ -98,6 +99,35 @@ def _span_attributes(span: CompletedSpan, environment: str) -> dict[str, str | b
     for key, value in span.attributes.items():
         if value is not None:
             values[f"langfuse.observation.metadata.{key}"] = value
+    if span.observation_type == "GENERATION":
+        model = span.attributes.get("actual_model") or span.attributes.get("configured_model")
+        if isinstance(model, str):
+            values["langfuse.observation.model.name"] = model
+        input_tokens = span.attributes.get("input_tokens")
+        output_tokens = span.attributes.get("output_tokens")
+        cached_tokens = span.attributes.get("cached_input_tokens")
+        reasoning_tokens = span.attributes.get("reasoning_tokens")
+        usage: dict[str, int] = {}
+        if isinstance(input_tokens, int):
+            usage["input"] = input_tokens
+            if isinstance(cached_tokens, int) and cached_tokens <= input_tokens:
+                usage["input"] -= cached_tokens
+                if cached_tokens:
+                    usage["input_cached_tokens"] = cached_tokens
+        if isinstance(output_tokens, int):
+            usage["output"] = output_tokens
+            if isinstance(reasoning_tokens, int) and reasoning_tokens <= output_tokens:
+                usage["output"] -= reasoning_tokens
+                if reasoning_tokens:
+                    usage["output_reasoning_tokens"] = reasoning_tokens
+        if isinstance(span.attributes.get("total_tokens"), int):
+            usage["total"] = span.attributes["total_tokens"]
+        if usage:
+            values["langfuse.observation.usage_details"] = json.dumps(usage, separators=(",", ":"))
+        if isinstance(span.attributes.get("cost_usd"), (int, float)):
+            values["langfuse.observation.cost_details"] = json.dumps(
+                {"total": span.attributes["cost_usd"]}, separators=(",", ":")
+            )
     if span.status == "ERROR" and isinstance(span.attributes.get("error_type"), str):
         values["error.type"] = span.attributes["error_type"]
     return values
@@ -167,6 +197,7 @@ def _validated_snapshot(span: CompletedSpan) -> CompletedSpan:
         events=tuple(
             TraceEvent(event.name, event.timestamp, dict(event.attributes)) for event in span.events
         ),
+        observation_type=span.observation_type,
     )
     validate_completed_span(snapshot)
     return snapshot

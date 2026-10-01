@@ -13,6 +13,7 @@ from callbot.engine.extraction.fallback import guard_fallback
 from callbot.engine.extraction.full_name import valid_name_span
 from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
+from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
 from inference.common.telemetry import InferenceTimer
 from inference.llm.gateway import LLMGateway
 from inference.llm.prompt.name_slot_filling import PROMPT_VERSION, build_messages
@@ -60,31 +61,47 @@ class NameSlotFiller:
             if not clean(transcript):
                 status = "empty"
                 return Field.nothing()
-            reply = self._gateway.generate_structured(
-                build_messages(
-                    transcript,
-                    question_id=question_id.value,
-                    # ASK_NAME thiếu nội dung câu hỏi: gửi null, không dựng lại lời bot chưa nói
-                    bot_question=(bot_question or "").strip() or None,
-                ),
-                schema=NameExtraction.model_json_schema(),
-                schema_name=PROMPT_VERSION,
+            messages = build_messages(
+                transcript,
+                question_id=question_id.value,
+                # ASK_NAME thiếu nội dung câu hỏi: gửi null, không dựng lại lời bot chưa nói
+                bot_question=(bot_question or "").strip() or None,
             )
-            if reply.status != "completed" or reply.content is None:
-                status = reply.status
-                return Field.nothing()
-            result = NameExtraction.model_validate_json(reply.content)
-            if result.full_name is None:
-                status = "no_name"
-                return Field.nothing()
+            schema = NameExtraction.model_json_schema()
+            status = "error"
+            with generation_scope("llm.name_slot_fill") as generation:
+                try:
+                    reply = self._gateway.generate_structured(
+                        messages,
+                        schema=schema,
+                        schema_name=PROMPT_VERSION,
+                    )
+                    if reply.status != "completed" or reply.content is None:
+                        status = reply.status
+                        return Field.nothing()
+                    status = "invalid_response"
+                    result = NameExtraction.model_validate_json(reply.content)
+                    if result.full_name is None:
+                        status = "no_name"
+                        return Field.nothing()
 
-            name, span = clean(result.full_name), clean(result.span or "")
-            if name != span or not valid_name_span(name):
-                status = "rejected"
-                return Field.nothing()
-            guarded = guard_fallback(Field(name, Provenance.FALLBACK, span), transcript, None)
-            status = "accepted" if guarded.found else "rejected"
-            return guarded
+                    name, span = clean(result.full_name), clean(result.span or "")
+                    if name != span or not valid_name_span(name):
+                        status = "rejected"
+                        return Field.nothing()
+                    guarded = guard_fallback(
+                        Field(name, Provenance.FALLBACK, span), transcript, None
+                    )
+                    status = "accepted" if guarded.found else "rejected"
+                    return guarded
+                finally:
+                    finish_generation(
+                        generation,
+                        self._gateway.provider_name,
+                        self._gateway.model,
+                        reply,
+                        normalized_result(status),
+                    )
         except ValidationError:
             status = "invalid_response"
         finally:
