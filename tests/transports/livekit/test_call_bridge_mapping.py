@@ -277,6 +277,14 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
             await asyncio.wait_for(bridge.run(), timeout=2)
     assert orchestrator.handled_turns == [] and source.closed
     assert "private caller transcript" not in caplog.text
+    (record,) = [r for r in caplog.records if "voice pipeline failed" in r.getMessage()]
+    assert "error=RuntimeError" in record.getMessage()
+    stream_code = BrokenPipeline.stream.__code__
+    assert f"{stream_code.co_filename}:{stream_code.co_firstlineno + 1}" in record.getMessage()
+    assert "call_bridge.py:" in record.getMessage()
+    assert " -> " in record.getMessage()
+    assert record.exc_info is None
+    assert record.stack_info is None
 
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:

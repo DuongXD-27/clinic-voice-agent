@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import os
+import traceback
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
@@ -373,10 +374,16 @@ class CallBridge:
             raise
         except BaseException as exc:
             self._pipeline_error = exc
+            # Chỉ log vị trí frame, không format traceback (message/source có thể chứa PII).
+            locations = " -> ".join(
+                f"{frame.filename}:{frame.lineno}"
+                for frame in traceback.extract_tb(exc.__traceback__)
+            )
             logger.error(
-                "call_bridge: voice pipeline failed room=%s error=%s",
+                "call_bridge: voice pipeline failed room=%s error=%s locations=%s",
                 self._room.name,
                 type(exc).__name__,
+                locations,
             )
         finally:
             await self._put_turn_done()
