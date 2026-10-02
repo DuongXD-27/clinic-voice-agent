@@ -154,9 +154,7 @@ def test_empty_transcript_is_successful_silence_not_technical_error(
     assert "error_code" not in stt.attributes
 
 
-def test_tts_none_is_successful_unavailable_output(
-    tmp_path, redis_store_factory, redis_server
-) -> None:
+def test_tts_none_reports_unavailable_output(tmp_path, redis_store_factory, redis_server) -> None:
     sink = MemorySink()
     app = _app(
         tmp_path,
@@ -167,23 +165,23 @@ def test_tts_none_is_successful_unavailable_output(
     )
     with TestClient(app) as client:
         response = _start(client, "tts-none", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     tts = next(span for span in sink.spans if span.component == "TTS")
-    assert tts.status == "OK"
-    assert "error_code" not in tts.attributes
+    assert tts.status == "ERROR"
+    assert tts.attributes["error_code"] == "TTS_PROVIDER_ERROR"
     assert "bytes" not in tts.attributes
 
 
 @pytest.mark.parametrize(
     ("failure", "http_status", "error_type", "error_code"),
     [
-        (RuntimeError("private STT provider response"), 500, "PROVIDER", "STT_PROVIDER_ERROR"),
-        (httpx.ReadTimeout("private STT timeout"), 504, "TIMEOUT", "STT_TIMEOUT"),
+        (RuntimeError("private STT provider response"), 503, "PROVIDER", "STT_PROVIDER_ERROR"),
+        (httpx.ReadTimeout("private STT timeout"), 503, "TIMEOUT", "STT_TIMEOUT"),
     ],
 )
-def test_stt_provider_failure_is_safe_and_preserves_http_behavior(
+def test_stt_provider_failure_is_safe_and_reports_upstream_unavailable(
     failure, http_status, error_type, error_code, tmp_path, redis_store_factory, redis_server
 ) -> None:
     sink = MemorySink()
@@ -219,7 +217,7 @@ def test_audio_load_failure_is_an_stt_stage_error(
     )
     with TestClient(app) as client:
         assert _start(client, "audio-load-failure", mode="audio").status_code == 200
-        assert _audio_turn(client, "audio-load-failure").status_code == 500
+        assert _audio_turn(client, "audio-load-failure").status_code == 503
 
     stt = next(span for span in sink.spans if span.component == "STT")
     assert stt.status == "ERROR"
@@ -228,7 +226,7 @@ def test_audio_load_failure_is_an_stt_stage_error(
     assert "private audio URL" not in json.dumps(stt.to_dict())
 
 
-def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_change(
+def test_tts_provider_and_storage_failures_are_distinguished_and_retryable(
     tmp_path, redis_store_factory, redis_server
 ) -> None:
     provider_sink = MemorySink()
@@ -241,8 +239,8 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
     )
     with TestClient(provider_app) as client:
         response = _start(client, "tts-provider-failure", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     provider_span = next(span for span in provider_sink.spans if span.component == "TTS")
     assert provider_span.status == "ERROR"
@@ -258,7 +256,7 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
         audio_store=BrokenAudioStore(str(tmp_path / "broken"), "http://test"),
     )
     with TestClient(storage_app) as client:
-        assert _start(client, "tts-storage-failure", mode="audio").status_code == 500
+        assert _start(client, "tts-storage-failure", mode="audio").status_code == 503
 
     storage_span = next(span for span in storage_sink.spans if span.component == "TTS")
     assert storage_span.status == "ERROR"
@@ -269,7 +267,7 @@ def test_tts_provider_and_storage_failures_are_distinguished_without_behavior_ch
     assert "private storage path" not in serialized
 
 
-def test_tts_timeout_is_recorded_without_changing_fallback(
+def test_tts_timeout_is_recorded_with_retryable_output_error(
     tmp_path, redis_store_factory, redis_server
 ) -> None:
     sink = MemorySink()
@@ -282,8 +280,8 @@ def test_tts_timeout_is_recorded_without_changing_fallback(
     )
     with TestClient(app) as client:
         response = _start(client, "tts-timeout", mode="audio")
-        assert response.status_code == 200
-        assert response.json()["audio_url"] is None
+        assert response.status_code == 503
+        assert response.json()["detail"]["code"] == "AUDIO_OUTPUT_UNAVAILABLE"
 
     tts = next(span for span in sink.spans if span.component == "TTS")
     assert tts.status == "ERROR"
@@ -411,11 +409,14 @@ def test_audio_spans_export_to_jsonl_and_langfuse_without_speech_content(
         for record in records
         if record["parent_span_id"] == root["span_id"]
     }
-    assert set(direct) == {"STT", "CORE", "TTS"}
+    assert set(direct) == {"CORE", "TTS"}
+    stt = next(record for record in records if record["component"] == "STT" and record["turn"] == 1)
+    assert stt["parent_span_id"] == direct["CORE"]["span_id"]
+    assert stt["trace_id"] == root["trace_id"] and stt["call_key"] == root["call_key"]
     assert all(record["trace_id"] == root["trace_id"] for record in direct.values())
     assert all(record["call_key"] == root["call_key"] for record in direct.values())
-    assert direct["STT"]["provider"] == "fake"
-    assert direct["STT"]["model"] == "fake-asr-v1"
+    assert stt["provider"] == "fake"
+    assert stt["model"] == "fake-asr-v1"
     assert direct["TTS"]["provider"] == "fake"
     assert direct["TTS"]["model"] == "fake-tts-v1"
 
@@ -431,7 +432,14 @@ def test_audio_spans_export_to_jsonl_and_langfuse_without_speech_content(
         for span in exported
         if span.get("parentSpanId") == exported_root["spanId"]
     }
-    assert set(exported_direct) == {"STT", "CORE", "TTS"}
+    assert set(exported_direct) == {"CORE", "TTS"}
+    exported_stt = next(
+        span
+        for span in exported
+        if _otlp_attributes(span)["langfuse.observation.metadata.component"] == "STT"
+        and _otlp_attributes(span)["langfuse.observation.metadata.turn"] == "1"
+    )
+    assert exported_stt["parentSpanId"] == exported_direct["CORE"]["spanId"]
     assert all(span["traceId"] == exported_root["traceId"] for span in exported_direct.values())
     assert all(
         _otlp_attributes(span)["langfuse.session.id"]

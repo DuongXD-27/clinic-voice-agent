@@ -210,9 +210,10 @@ def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
         for root in roots
     }
     assert direct_children[0] == {"CORE", "TTS"}
-    assert direct_children[1] == {"STT", "CORE", "TTS"}
+    assert direct_children[1] == {"CORE", "TTS"}
 
     stt = next(span for span in sink.spans if span.component == "STT")
+    assert stt.parent_span_id == next(core.span_id for core in cores if core.turn == 1)
     tts_turn = next(span for span in sink.spans if span.component == "TTS" and span.turn == 1)
     assert stt.status == "OK"
     assert stt.attributes == {

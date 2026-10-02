@@ -118,7 +118,14 @@ class SessionManager:
 
     # --- Một lượt ------------------------------------------------------------------
 
-    def run_turn(self, call_id: str, caller: CallerInput, process: TurnProcessor) -> TurnRun:
+    def run_turn(
+        self,
+        call_id: str,
+        caller: CallerInput,
+        process: TurnProcessor,
+        *,
+        resolve_input: Optional[Callable[[], CallerInput]] = None,
+    ) -> TurnRun:
         with self._store.call_lock(call_id, self._lock_timeout_s):
             self._store.expire_session(call_id)
             session = self._store.get_session(call_id)
@@ -126,16 +133,17 @@ class SessionManager:
                 raise SessionNotFound(call_id)
             self._check_retired(session)
 
-            received_at = self._admit(session, caller)
-            if isinstance(received_at, TurnRun):
+            admitted = self._admit(session, caller, resolve_input)
+            if isinstance(admitted, TurnRun):
                 trace_event(
                     "session.replayed",
                     replayed=True,
-                    terminal=received_at.action.ended,
+                    terminal=admitted.action.ended,
                     storage_status="COMPLETED",
                     turn_ordering="REPLAY",
                 )
-                return received_at
+                return admitted
+            received_at, caller = admitted
 
             trace_event(
                 "session.admitted",
@@ -191,13 +199,30 @@ class SessionManager:
         if session.purged_reason or session.ended:
             raise CallEnded(session.call_id)
 
-    def _admit(self, session: SessionRecord, caller: CallerInput) -> "datetime | TurnRun":
+    @staticmethod
+    def _request_input(value: dict[str, Any]) -> dict[str, Any]:
+        # URL nhận diện clip của request; transcript là kết quả ASR, không phải đầu vào HTTP.
+        if value.get("audio_url") is not None:
+            return {**value, "text": None}
+        return value
+
+    def _admit(
+        self,
+        session: SessionRecord,
+        caller: CallerInput,
+        resolve_input: Optional[Callable[[], CallerInput]] = None,
+    ) -> "tuple[datetime, CallerInput] | TurnRun":
         call_id, turn = session.call_id, caller.turn
         fingerprint = caller.fingerprint()
         existing = self._store.get_turn(call_id, turn)
 
         if existing is not None:
-            if existing.input != fingerprint:
+            same_input = (
+                self._request_input(existing.input) == self._request_input(fingerprint)
+                if resolve_input is not None
+                else existing.input == fingerprint
+            )
+            if not same_input:
                 raise TurnConflict(f"{call_id}: lượt {turn} đã nhận với đầu vào khác")
             if existing.status == "COMPLETED":
                 assert existing.result is not None
@@ -225,7 +250,10 @@ class SessionManager:
                 self._block(call_id, turn, detail)
                 raise ReconciliationRequired(call_id, turn, detail)
             # Dùng lại thời điểm tiếp nhận cũ: "ngày mai" không đổi nghĩa khi xử lý lại
-            return existing.received_at
+            # ASR đã thành công trước khi reserve: dùng transcript cũ khi worker bị ngắt.
+            if resolve_input is not None:
+                caller = CallerInput(turn=turn, **existing.input)
+            return existing.received_at, caller
 
         blocked = self._store.find_blocked_turn(call_id)
         if blocked is not None:
@@ -236,8 +264,16 @@ class SessionManager:
         if turn != expected:
             raise TurnOutOfOrder(call_id, turn, expected)
         received_at = self._clock()
+        if resolve_input is not None:
+            resolved = resolve_input()
+            if resolved.turn != turn or self._request_input(
+                resolved.fingerprint()
+            ) != self._request_input(fingerprint):
+                raise TurnConflict(f"{call_id}: resolver đã đổi đầu vào request")
+            caller = resolved
+            fingerprint = caller.fingerprint()
         self._store.reserve_turn(call_id, turn, fingerprint, received_at)
-        return received_at
+        return received_at, caller
 
     def _block(self, call_id: str, turn: int, detail: str) -> None:
         try:
