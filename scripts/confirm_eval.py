@@ -141,9 +141,9 @@ def _behaviour(action, ctx: Optional[CallContext], clinic: FakeClinicAPI) -> str
     if ctx is None or ctx.question is None:
         return "ENDED"
     asked = ctx.question.question_id
-    if action.utterance == t.ASK_CHANGE_OR_CANCEL:
+    if action.utterance in t.static_choices(t.ASK_CHANGE_OR_CANCEL):
         return "ASK_CHANGE_OR_CANCEL"
-    if action.utterance == t.NOT_UNDERSTOOD:
+    if action.utterance in t.static_choices(t.NOT_UNDERSTOOD):
         return "NOT_UNDERSTOOD"
     if asked is QuestionId.OFFER_SLOTS:
         return "RESCHEDULE"
