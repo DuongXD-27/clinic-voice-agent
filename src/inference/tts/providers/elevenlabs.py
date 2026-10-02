@@ -120,6 +120,10 @@ class ElevenLabsTTS:
         return self._model
 
     @property
+    def voice(self) -> str:
+        return self._voice_id
+
+    @property
     def sample_rate(self) -> int:
         return self._sample_rate
 

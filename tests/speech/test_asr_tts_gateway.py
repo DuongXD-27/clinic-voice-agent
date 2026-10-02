@@ -1,5 +1,6 @@
 import math
 
+import httpx
 import pytest
 
 from inference.asr import ASRGateway, ASRResult, create_asr_gateway
@@ -7,7 +8,8 @@ from inference.asr.config import GeminiASRConfig, ZipFormerConfig
 from inference.asr.providers.zipformer import ZipFormerASR
 from inference.common.errors import UnsupportedProviderError
 from inference.tts import TTSGateway, TTSResult, create_tts_gateway
-from inference.tts.config import ElevenLabsTTSConfig
+from inference.tts.config import ElevenLabsTTSConfig, VbeeTTSConfig
+from inference.tts.providers.vbee import VbeeTTS
 from speech.asr.recognizer import SpeechRecognizer
 from speech.bundle import SpeechSynthesizer
 from speech.types import WIDEBAND_RATE, AudioSegment
@@ -171,6 +173,103 @@ async def test_sync_tts_stream_uses_gateway_fallback_at_track_rate() -> None:
     assert [chunk async for chunk in synthesizer.synthesize_stream("xin chào")] == [
         b"\x01\x00" * 10
     ]
+
+
+@pytest.mark.asyncio
+async def test_vbee_stream_reaches_synthesizer_chunk_by_chunk_and_cancel_closes_it() -> None:
+    parts = [b"\x01\x00" * 100, b"\x02\x00" * 100, b"\x03\x00" * 100]
+    clients: list[httpx.AsyncClient] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        async def body():
+            for part in parts:
+                yield part
+
+        return httpx.Response(200, content=body(), headers={"content-type": "audio/pcm"})
+
+    def async_client() -> httpx.AsyncClient:
+        clients.append(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        return clients[-1]
+
+    vbee = VbeeTTS(
+        VbeeTTSConfig(api_token="t", app_id="a", _env_file=None),
+        client_factory=lambda: httpx.Client(transport=httpx.MockTransport(handler)),
+        async_client_factory=async_client,
+    )
+    synthesizer = SpeechSynthesizer(TTSGateway(vbee, provider_name="vbee"))
+
+    # Phát từng chunk ngay khi về, không gom cả câu thành một khối như đường fallback sync
+    assert synthesizer.stream_sample_rate == 8000
+    assert [chunk async for chunk in synthesizer.synthesize_stream("xin chào")] == parts
+
+    stream = synthesizer.synthesize_stream("xin chào")
+    assert await anext(stream) == parts[0]
+    await synthesizer.cancel()
+    assert [chunk async for chunk in stream] == []
+
+    await synthesizer.aclose()
+    assert clients[0].is_closed
+
+
+class _StreamTTS:
+    def __init__(self, model: str, chunks: list[bytes], rate: int = 8000, fail: bool = False):
+        self.model = model
+        self.voice = f"{model}-voice"
+        self.stream_sample_rate = rate
+        self._chunks = chunks
+        self._fail = fail
+
+    def synthesize(self, text: str) -> TTSResult:  # pragma: no cover - chỉ dùng stream
+        raise AssertionError
+
+    async def synthesize_stream(self, text: str):
+        if self._fail:
+            raise RuntimeError("provider unavailable")
+        for chunk in self._chunks:
+            yield chunk
+
+
+def _stream_synthesizer(primary: _StreamTTS, backup: _StreamTTS) -> SpeechSynthesizer:
+    return SpeechSynthesizer(
+        TTSGateway(
+            primary,
+            provider_name="vbee",
+            fallback=TTSGateway(backup, provider_name="elevenlabs"),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_falls_back_through_gateway_and_reports_actual_provider() -> None:
+    synthesizer = _stream_synthesizer(
+        _StreamTTS("vbee", [], fail=True), _StreamTTS("eleven", [b"\x01\x00" * 4] * 2)
+    )
+
+    assert [chunk async for chunk in synthesizer.synthesize_stream("xin chào")] == [
+        b"\x01\x00" * 4
+    ] * 2
+    # CallBridge đọc các trường này cho span speech.tts.synthesize (voice để tính cost)
+    info = synthesizer.last_stream_result
+    assert (info.provider_actual, info.voice, info.fallback_used) == (
+        "elevenlabs",
+        "eleven-voice",
+        True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_fallback_at_other_rate_is_resampled_once_to_track_rate() -> None:
+    pytest.importorskip("soxr")
+    backup_pcm = [b"\x10\x00" * 800, b"\x20\x00" * 800]  # 16 kHz, 0,1 s
+    synthesizer = _stream_synthesizer(
+        _StreamTTS("vbee", [], fail=True), _StreamTTS("eleven", backup_pcm, rate=16_000)
+    )
+
+    chunks = [chunk async for chunk in synthesizer.synthesize_stream("xin chào")]
+
+    assert synthesizer.stream_sample_rate == 8000
+    assert len(chunks) == 1
+    assert len(chunks[0]) == pytest.approx(len(b"".join(backup_pcm)) // 2, abs=4)
 
 
 def test_create_tts_gateway_rejects_unknown_provider() -> None:

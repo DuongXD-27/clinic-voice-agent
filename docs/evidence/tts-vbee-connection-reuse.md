@@ -24,8 +24,6 @@ Phụ: Vbee từ EC2 sinh xong câu ngắn trong ~210 ms. TTS không phải ph�
 
 ## Kết quả đo trên EC2 (2026-09-30)
 
-`scripts/tts_probe.py --kinds ngan --reps 8`, chạy trong container `bot` trên EC2 prod (image hiện tại, script tự dựng client). Giọng `hn_female_ngochuyen_full_48k-fhg`, câu ngắn 45 ký tự: "Dạ, anh chị cho em xin ngày tháng năm sinh ạ?". Cách nhau 2 s giữa hai request, đổi thứ tự cũ/mới mỗi vòng. Tốn 765 ký tự quota.
-
 | Cách | n | Kết nối mới | Bắt tay trung vị | first_byte trung vị | first_byte p95 | total trung vị | total p95 | > 3 s |
 |---|---|---|---|---|---|---|---|---|
 | Cũ: client mới mỗi câu | 8 | 8/8 | 9 ms | 207 ms | 257 ms | 212 ms | 288 ms | 0 |
@@ -71,6 +69,8 @@ Từng request (ms, connect / first_byte / total):
 - `scripts/tts_probe.py` (mới): so cách cũ và cách mới, đo thời gian server giữ kết nối rảnh.
 
 ## Quy trình xác minh
+
+> **02/10:** `scripts/tts_probe.py` đã xoá khỏi repo; đo độ trễ TTS giờ dùng bộ benchmark `scripts/bench/` ([latency-benchmark.md](../reference/latency-benchmark.md)). Muốn chạy lại đúng các lệnh dưới đây thì lấy lại script: `git show 5af8fa3:scripts/tts_probe.py > scripts/tts_probe.py`.
 
 ```powershell
 $env:PYTHONUTF8 = "1"; $env:PYTHONIOENCODING = "utf-8"

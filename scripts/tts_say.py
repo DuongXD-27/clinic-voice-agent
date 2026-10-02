@@ -5,13 +5,20 @@
 
 `--provider` / `--voice` ghi đè TTS_PROVIDER và mã giọng của provider đó, không sửa .env. Chỉ
 `elevenlabs` có `synthesize_timed`/`stream` (đo TTFA); `openai`/`vbee` chỉ đo tổng thời gian.
+
+`--stream` chạy `synthesize_stream` (đường LiveKit) và in thời điểm từng chunk về, để thấy chunk
+đầu tới trước khi provider sinh xong cả câu:
+
+    python scripts/tts_say.py "Dạ em xin chào anh chị." --stream
 """
 
 import argparse
+import asyncio
 import sys
 import time
 from pathlib import Path
 
+from inference.tts.base import TTSResult
 from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig, VbeeTTSConfig
 from inference.tts.providers.elevenlabs import ElevenLabsTTS
 from inference.tts.providers.openai import OpenAITTS
@@ -32,6 +39,33 @@ def _timing_trace(chars: int, total_ms: int) -> dict:
     return {"chars": chars, "total_ms": total_ms}
 
 
+async def _stream(provider_obj, text: str) -> tuple[TTSResult, dict]:
+    """Đọc `synthesize_stream`, in thời điểm (ms từ lúc gửi) và cỡ từng chunk khi nó về."""
+    started = time.perf_counter()
+    pcm = bytearray()
+    first_ms = None
+    chunks = 0
+    try:
+        async for chunk in provider_obj.synthesize_stream(text):
+            elapsed = int((time.perf_counter() - started) * 1000)
+            first_ms = elapsed if first_ms is None else first_ms
+            chunks += 1
+            pcm.extend(chunk)
+            print(f"  chunk {chunks:>3}: {elapsed:>5} ms  {len(chunk):>6} B")
+    finally:
+        aclose = getattr(provider_obj, "aclose", None)
+        if aclose is not None:
+            await aclose()
+    total_ms = int((time.perf_counter() - started) * 1000)
+    timing = {
+        "chars": len(text),
+        "chunks": chunks,
+        "first_chunk_ms": first_ms,
+        "total_ms": total_ms,
+    }
+    return TTSResult(pcm=bytes(pcm), sample_rate=provider_obj.stream_sample_rate), timing
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -40,6 +74,9 @@ def main() -> int:
     parser.add_argument("--out", default="temp/tts/say.wav")
     parser.add_argument("--provider", choices=sorted(_VOICE_FIELD), default=None)
     parser.add_argument("--voice", default=None, help="ghi đè mã giọng của provider")
+    parser.add_argument(
+        "--stream", action="store_true", help="chạy synthesize_stream, in thời điểm từng chunk"
+    )
     args = parser.parse_args()
 
     provider = args.provider or SpeechSettings().tts_provider
@@ -52,7 +89,12 @@ def main() -> int:
 
     try:
         provider_obj = provider_type(config)
-        if hasattr(provider_obj, "synthesize_timed"):
+        if args.stream:
+            if not hasattr(provider_obj, "synthesize_stream"):
+                print(f"provider {provider!r} không có synthesize_stream", file=sys.stderr)
+                return 2
+            result, timing = asyncio.run(_stream(provider_obj, args.text))
+        elif hasattr(provider_obj, "synthesize_timed"):
             result, timing_obj = provider_obj.synthesize_timed(args.text)
             timing = timing_obj.to_trace()
         else:

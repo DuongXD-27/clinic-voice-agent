@@ -1,6 +1,6 @@
 # Task TTS tuần 3 → tuần 6 (28/09 – 24/10)
 
-**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 29/09/2026
+**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 01/10/2026
 **Nguồn:** `tailieu/callbot-contract-vi.md` (AIHR-PC-001 rev 1.1) là căn cứ chính. PRD v1.6 và Master plan được ghi rõ ở cột *Căn cứ* khi dùng tới.
 
 **Quy ước cột *Căn cứ*:** `MUST` = contract bắt buộc · `§5` = ảnh hưởng điểm · `Phụ lục B` = contract khuyến nghị · `MP` = Master plan · `SP` = mục tiêu sản phẩm (luồng streaming hoàn chỉnh).
@@ -35,10 +35,10 @@
 | Phần | Đã có | Chưa có |
 |---|---|---|
 | TTS trên HTTP | Vbee chính + ElevenLabs dự phòng trong gateway; WAV 8 kHz ghi xong trước response; đọc nguyên `utterance`; **audio mode trên prod đã verify 28/09 (PASS, tổng lớn nhất 3,79 s / 8 s)** | ~~Dùng chung kết nối Vbee~~ (xong 29/09; trên EC2 bắt tay chỉ ~9 ms, không phải ~300–400 ms như ước tính từ mạng VN); số chi phí/phiên |
-| TTS trên LiveKit | `CallBridge` phát TTS theo chunk và gọi `cancel()` khi bị ngắt; xoá hàng đợi phát | **Vbee chưa có `synthesize_stream` / `cancel()`**: chưa nối được vào LiveKit. Đường stream đi thẳng vào provider, **không qua gateway nên không có fallback** |
+| TTS trên LiveKit | `CallBridge` phát TTS theo chunk và gọi `cancel()` khi bị ngắt; xoá hàng đợi phát; **Vbee có `synthesize_stream` / `cancel()`, stream đi qua gateway có fallback ElevenLabs (xong)** | Báo Engine phần câu đã phát khi bị ngắt / lỗi giữa câu (07/10) |
 | STT (Việt) | STT stream + VAD, `InterruptionController`, chống bot tự nghe mình (SNR) | — |
 | Engine (Hoàn) | Core dùng chung cho HTTP và LiveKit | Giữ partial turn theo phần bot đã nói (P-03) |
-| Vbee | Stream thật theo vế câu, byte đầu 230–700 ms (đo 26/09) | — |
+| Vbee | Trên EC2 (trace 02/10): ~51 ký tự byte đầu 260 ms / xong 302 ms; ~110 ký tự byte đầu ~530 ms / xong ~760 ms (~6–8 ms/ký tự). Gửi dần, byte đầu khi đã sinh ~70% thời gian câu | Chưa có số câu > 150 ký tự và p95 (lấy từ trace tuần 4) |
 
 ---
 
@@ -58,7 +58,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 |---|---|---|
 | `feature/tts-w3-vbee-streaming` | 29/09 dùng chung kết nối Vbee · 30/09 Vbee stream + `cancel()` · 01/10 fallback trên stream | 01/10 |
 | `feature/tts-w3-grading-path` | 29/09 kiểm audio đọc đúng lời bot · 01/10 chi phí/phiên · 02/10 Gate W3 | 02/10 |
-| `feature/p01-livekit-sip` | P-01: cấu hình LiveKit SIP + softphone (chỉ tạo khi bắt đầu có code/config) | 03/10 |
+| `feature/p01-livekit-sip` | 05/10 P-01: cấu hình LiveKit SIP + softphone (dời từ 29/09) | 06/10 |
 | `feature/tts-w4-livekit-vbee` | 05/10 chốt phối hợp STT / Engine / TTS · 06/10 cuộc gọi LiveKit chạy Vbee | 06/10 |
 | `feature/tts-w4-playback-control` | 07/10 bot im khi khách nói chen · 08/10 chuyển máy và cúp máy | 08/10 |
 | `docs/tts-w4-gate` | 05/10 kiểm câu Reschedule · 09/10 diễn tập #1 · 10/10 Gate W4 | 10/10 |
@@ -113,7 +113,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T3 29/09 · Đường A+B — Giảm độ trễ TTS ✅ Đã xong
 
-> Kết quả: đã dùng chung kết nối, test pass. Trên EC2 gần như không giảm độ trễ: bắt tay TCP + TLS tới Vbee chỉ ~9 ms, first_byte trung vị 207 → 194 ms (trong mức dao động), p95 không đổi. Vẫn giữ thay đổi (rủi ro thấp, nền cho stream 30/09), nhưng không báo là cải thiện latency. `AsyncClient` dùng chung chuyển sang task 30/09. Evidence: `docs/evidence/tts-vbee-connection-reuse.md`, script `scripts/tts_probe.py`.
+> Kết quả: đã dùng chung kết nối, test pass. Trên EC2 gần như không giảm độ trễ: bắt tay TCP + TLS tới Vbee chỉ ~9 ms, first_byte trung vị 207 → 194 ms (trong mức dao động), p95 không đổi. Vẫn giữ thay đổi (rủi ro thấp, nền cho stream 30/09), nhưng không báo là cải thiện latency. `AsyncClient` dùng chung chuyển sang task 30/09. Evidence: `docs/evidence/tts-vbee-connection-reuse.md`, script `scripts/tts_probe.py` (đã xoá 02/10, thay bằng bộ benchmark `scripts/bench/`).
 
 **Gửi PM:** Tối ưu latency TTS bằng cách reuse connection tới Vbee thay vì mở connection mới cho mỗi câu, bỏ được phần handshake lặp lại ở mỗi turn. Benchmark trước/sau trên EC2 để có số đo cho tiêu chí latency.
 
@@ -129,22 +129,17 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 **Xong khi:** test pass; số đo trên EC2 cho thấy giảm thời gian tới byte đầu so với trước.
 **Căn cứ:** §5 (p95), §6.5 · **Đầu ra:** bảng số trước/sau · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
-#### T3 29/09 · Đường B — P-01 Chuẩn bị telephony
+#### T3 29/09 · Đường B — P-01 Chuẩn bị telephony ➜ dời sang T2 05/10
 
-**Gửi PM:** P-01 Chuẩn bị telephony cho live call tuần 6: chọn carrier/SIP trunk, đăng ký số điện thoại và xin duyệt chi phí. Song song setup LiveKit SIP và softphone làm phương án dự phòng, mục tiêu test call được từ điện thoại thật trước 03/10 để kịp phone integration ngày 05/10.
+> **Dời ngày (01/10).** Phần tìm hiểu nhà cung cấp đã xong 29/09 ([telephony-provider-research-2026-09-29.md](../reference/telephony-provider-research-2026-09-29.md)). Phần còn lại đang chờ PM: pháp nhân, ngân sách, và **tự host LiveKit SIP hay dùng LiveKit Cloud** (§9 của file research). Dời phần setup sang 05/10, xem task cùng tên ở tuần 4. Các task TTS tuần 3–4 chạy trên web demo LiveKit nên không bị chặn.
+>
+> Vẫn làm trong tuần 3 (việc nhỏ, không phụ thuộc lựa chọn hạ tầng):
+> - Gửi bộ câu hỏi chung cho nhà cung cấp (mục 8.4 file research), vì thời gian chờ trả lời là phần chậm nhất.
+> - Nhờ PM chốt các câu ở §9 file research trước 05/10, nhất là câu 4 (tự host hay Cloud).
 
-**Nội dung:**
-1. **Chọn carrier.** So sánh Stringee / SIP trunk Viettel, VNPT, FPT: có cấp số nội địa không, có SIP trunk không, chi phí, thời gian duyệt (KYC). Gửi PM duyệt chi phí.
-2. **Đăng ký** tài khoản, xin số. Phần này chủ yếu là chờ duyệt nên làm song song với task TTS trong ngày.
-3. **Trong lúc chờ:** cấu hình LiveKit SIP phía mình (inbound trunk + quy tắc đưa cuộc gọi vào room để worker nhận), dựng softphone SIP gọi thẳng vào trunk để test.
-4. **Khi carrier xong (mục tiêu trước 03/10):** gọi thử từ điện thoại thật, kiểm audio hai chiều.
-5. **Trước 05/10:** kiểm tra transfer trên SIP (LiveKit SIP có chức năng chuyển cuộc gọi, cần hỏi carrier có hỗ trợ không); ghi lại cách chuyển sang phương án dự phòng.
-6. **Ưu tiên demo inbound** (khách gọi vào đặt lịch): chỉ cần một số nhận cuộc gọi, tránh hạn chế khi gọi ra số di động +84 (Phụ lục B.2).
+#### T4 30/09 · Đường B — Vbee phát giọng theo luồng ✅ Đã xong 
 
-**Xong khi:** gọi được từ điện thoại thật vào bot qua LiveKit; có softphone dự phòng; đã ghi khả năng transfer.
-**Căn cứ:** Task gốc P-01 (B), §1.3.1, §1.3.4, Phụ lục B.2 · **Đầu ra:** carrier + số điện thoại, cấu hình LiveKit SIP, ghi chú test call · **Nhánh:** `feature/p01-livekit-sip` (tạo khi bắt đầu cấu hình SIP)
-
-#### T4 30/09 · Đường B — Vbee phát giọng theo luồng
+> **Kết quả** ([evidence](../evidence/tts-vbee-streaming.md)): `synthesize_stream` + `cancel()` + `AsyncClient` chung + `aclose()` khi job kết thúc; 26 test mới, cả suite pass. Trần 3 s chỉ tính thời gian chờ Vbee (không tính lúc đang phát, nếu không câu dài > 3 s audio bị cắt). Trace EC2 (02/10, bản main) xác nhận Vbee gửi audio dần, byte đầu về trước khi sinh xong câu. Chưa có số TTFA của code stream: đo bằng benchmark "sau" khi merge + deploy. Kèm `cancel()` đóng request khi nói chen. (Số đo local hôm trước bị mạng VN che, không dùng.) Fallback trên stream đã bổ sung ở task 01/10.
 
 **Gửi PM:** Implement streaming cho Vbee: phát audio theo từng chunk ngay khi provider sinh ra thay vì chờ đọc xong cả câu, giúp giảm thời gian tới âm thanh đầu tiên trên cuộc gọi realtime. Hỗ trợ cancel request để dừng ngay khi user barge-in.
 
@@ -165,7 +160,9 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 **Xong khi:** test pass; chạy thật thấy chunk đầu về trước khi sinh xong cả câu.
 **Căn cứ:** SP, §6.5 · **Đầu ra:** code + test · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
-#### T5 01/10 · Đường B — Dự phòng khi Vbee lỗi trên cuộc gọi thời gian thực
+#### T5 01/10 · Đường B — Dự phòng khi Vbee lỗi trên cuộc gọi thời gian thực ✅ Đã xong (02/10)
+
+> **Kết quả** ([evidence](../evidence/tts-stream-fallback.md)): `TTSGateway.synthesize_stream` + `cancel()`; `SpeechSynthesizer` đi qua gateway. Vbee lỗi trước chunk đầu → ElevenLabs đọc đúng câu đó; lỗi giữa câu → dừng êm (không ném lỗi để không cắt cả cuộc gọi), ghi `error_code`; cả hai lỗi → ném lỗi như cũ. Span LiveKit có lại `voice` / `fallback_used`. 16 test mới, cả suite pass; kiểm thêm với httpx thật + server giả (503, rớt giữa câu). Còn lại: báo Engine phần câu đã phát và cho `CallBridge` đọc `error_code` → làm cùng 07/10.
 
 **Gửi PM:** Bổ sung fallback cho streaming path: khi Vbee lỗi hoặc timeout, hệ thống tự failover sang ElevenLabs cho đúng câu đang đọc, user không bị im lặng hay nghe sai câu. Nếu lỗi xảy ra khi đã phát được một phần thì dừng lại, không đọc lặp từ đầu.
 
@@ -177,6 +174,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
    - Thêm `TTSGateway.cancel()` → gọi `cancel()` của provider đang chạy.
 3. **Bundle.** Sửa `SpeechSynthesizer.synthesize_stream` và `cancel` để đi qua gateway.
 4. **Sample rate.** Hai provider phải cùng sample rate trên stream (Vbee 8000, ElevenLabs `pcm_8000` = 8000). Khác nhau thì resample trước khi `yield`.
+   - **Observability:** stream qua gateway phải điền `last_stream_result` (`provider_actual`, `voice`, `fallback_used`) để span `speech.tts.synthesize` của LiveKit có `voice` và tính được `tts_cost` (từ 02/10 đang thiếu, xem evidence stream).
 5. **Unit test:** Vbee lỗi trước chunk đầu → nhận audio ElevenLabs; Vbee lỗi giữa chừng → dừng, không có audio ElevenLabs; cả hai lỗi → ném lỗi, `CallBridge` xử lý như hiện nay.
 
 **Xong khi:** test fallback trên stream pass; test cũ của gateway (HTTP) vẫn pass.
@@ -197,7 +195,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T6 02/10 · Đường A — Gate W3
 
-**Gửi PM:** Tổng hợp Gate W3 evidence cho TTS trên HTTP scoring path: latency, cost per session, kết quả kiểm utterance fidelity và cách hệ thống xử lý khi provider lỗi (timeout, rate limit, server error). Kèm tiến độ streaming Vbee chuẩn bị cho tuần 4.
+**Gửi PM:** C
 
 **Nội dung:** viết `docs/evidence/tts-gate-w3.md` theo `TEMPLATE.md`, gồm:
 - config đang chạy trên prod (kiểm trong container, xem evidence 28/09);
@@ -244,6 +242,23 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 **Xong khi:** 100% câu Reschedule đã nghe và ghi kết quả; câu đọc sai đã báo Hoàn.
 **Căn cứ:** §4.1.3, Bảng 1 (tuần 4) · **Đầu ra:** bảng câu đã nghe · **Nhánh:** `docs/tts-w4-gate`
+
+#### T2 05/10 · Đường B — P-01 Chuẩn bị telephony (dời từ 29/09)
+
+**Gửi PM:** P-01 Chuẩn bị telephony cho live call tuần 6: setup LiveKit SIP (inbound trunk + dispatch rule) và softphone làm phương án dự phòng, test call vào bot qua SIP. Song song chốt carrier/SIP trunk, đăng ký số và duyệt chi phí, mục tiêu gọi được từ điện thoại thật trước 13/10.
+
+**Nội dung:**
+1. **Đầu vào.** PM đã chốt (hoặc đang chờ) các câu ở §9 [file research](../reference/telephony-provider-research-2026-09-29.md): pháp nhân, carrier đường nhanh, tự host hay LiveKit Cloud, ngân sách COST-005. Chưa chốt tự host hay Cloud thì vẫn setup trên LiveKit Cloud: nếu sau chuyển sang tự host chỉ phải chạy lại cùng file JSON.
+2. **Cấu hình LiveKit SIP phía mình.** Lưu toàn bộ JSON và lệnh `lk` vào repo để chạy lại được trên server LiveKit khác:
+   - Dispatch rule **chung cho mọi trunk** (không gắn `trunk_ids`): mỗi cuộc gọi một room riêng, đưa worker vào theo `agent_name`. Trunk carrier thêm sau tự đi theo rule này.
+   - Inbound trunk riêng cho softphone (username/password), giữ lâu dài làm phương án dự phòng.
+3. **Softphone gọi thử.** Ép codec G.711 cho giống audio carrier. Kiểm: worker nhận cuộc gọi, audio hai chiều, ASR nghe được audio 8 kHz (ghi transcript cho Việt đánh giá), bot cúp máy đúng.
+4. **Khi carrier xong (mục tiêu trước 13/10):** thêm inbound trunk của carrier (số + IP hoặc digest), gọi thử từ điện thoại thật.
+5. **Trước 08/10** (task chuyển máy): hỏi carrier có hỗ trợ REFER không; ghi lại cách chuyển sang phương án dự phòng.
+6. **Ưu tiên demo inbound** (khách gọi vào đặt lịch): chỉ cần một số nhận cuộc gọi, tránh hạn chế khi gọi ra số di động +84 (Phụ lục B.2, NĐ 330/2026 Điều 38).
+
+**Xong khi:** softphone gọi được vào bot qua LiveKit SIP, audio hai chiều; cấu hình SIP đã lưu trong repo; đã ghi tình trạng carrier và khả năng transfer. Gọi từ điện thoại thật chuyển sang tiêu chí của task 13/10.
+**Căn cứ:** Task gốc P-01 (B), §1.3.1, §1.3.4, Phụ lục B.2 · **Đầu ra:** cấu hình LiveKit SIP, ghi chú test call softphone, tình trạng carrier · **Nhánh:** `feature/p01-livekit-sip`
 
 #### T3 06/10 · Đường B — Cuộc gọi thời gian thực chạy giọng Vbee
 
@@ -337,7 +352,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 **Gửi PM:** Chạy TTS trên đường điện thoại thật qua LiveKit SIP với carrier đã chuẩn bị ở P-01: audio nghe rõ qua điện thoại, barge-in hoạt động. Đây là bước chuẩn bị trực tiếp cho live call bắt buộc ở tuần 6, chỉ gọi tới người đã đồng ý.
 
 **Nội dung:**
-1. **Cách nối** theo carrier / SIP đã chuẩn bị ở task P-01 (29/09). Đi qua LiveKit SIP thì cuộc gọi vào phòng LiveKit, worker xử lý như cuộc gọi web; TTS không phải sửa gì thêm.
+1. **Cách nối** theo carrier / SIP đã chuẩn bị ở task P-01 (05/10). Đi qua LiveKit SIP thì cuộc gọi vào phòng LiveKit, worker xử lý như cuộc gọi web; TTS không phải sửa gì thêm.
 2. **Chọn kịch bản demo.** Phụ lục B.2 gợi ý demo kịch bản **khách gọi vào** (Booking) sẽ dễ hơn gọi đi số +84.
 3. **Gọi thử** 2–3 cuộc: giọng nghe rõ qua điện thoại, không rè hay vỡ tiếng, ngắt lời hoạt động.
 4. **Chỉ gọi** thành viên team hoặc người của chương trình đã đồng ý (§1.3.3).
@@ -425,7 +440,8 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 | Output Guard chạy trước TTS (TTS chỉ đọc câu đã qua guard) | Hoàn | 01/10 |
 | Interface sự kiện STT ↔ TTS (bot đang nói, khách nói chen) | Việt | 05/10 |
 | Ngắt sinh của model + giữ partial turn (thao tác 2, 3 barge-in) | Hoàn | 07/10 |
-| Duyệt chi phí carrier / số điện thoại (P-01) | PM | 30/09 |
+| Chốt §9 file research telephony: pháp nhân, carrier, tự host hay LiveKit Cloud (P-01) | PM | 05/10 |
+| Duyệt chi phí carrier / số điện thoại (P-01); Telnyx cần ~72 giờ kích hoạt nên trễ nhất 08/10 để kịp 13/10 | PM | 05/10 |
 
 ## 6. Không làm (trái hoặc không có căn cứ)
 
@@ -441,4 +457,4 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 |---|---|---|
 | Format báo cáo chi phí mỗi phiên đã công bố chưa? | §5.4 | Kênh chương trình |
 | Cả hai provider TTS lỗi thì `audio_url = null` ở `mode=audio` được chấm thế nào? | Contract không nói; §8.3 khuyến khích nêu điểm mơ hồ | Kênh chương trình |
-| P-01 chưa có trên sheet: xác nhận Hưng làm owner và thêm dòng từ 29/09 | Task gốc giao P-01 cho B; §1.3.1 là cổng đạt/không đạt | PM |
+| P-01 chưa có trên sheet: xác nhận Hưng làm owner và thêm dòng 05/10 (dời từ 29/09) | Task gốc giao P-01 cho B; §1.3.1 là cổng đạt/không đạt | PM |

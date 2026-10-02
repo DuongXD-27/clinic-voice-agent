@@ -112,6 +112,33 @@ def test_close_skips_provider_without_close() -> None:
     assert closed == ["eleven"]
 
 
+class _AsyncClosable(_Provider):
+    def __init__(self, model: str, closed: list[str]) -> None:
+        super().__init__(model)
+        self._closed = closed
+
+    def close(self) -> None:
+        self._closed.append(f"{self.model}:sync")
+
+    async def aclose(self) -> None:
+        self._closed.append(f"{self.model}:async")
+
+
+async def test_aclose_prefers_async_close_and_reaches_fallback() -> None:
+    closed: list[str] = []
+    await _gateway(_AsyncClosable("vbee", closed), _Closable("eleven", closed)).aclose()
+    # Provider có aclose (Vbee: client stream) thì dùng aclose; không có thì lùi về close
+    assert closed == ["vbee:async", "eleven"]
+
+
+async def test_aclose_still_closes_fallback_when_primary_fails() -> None:
+    closed: list[str] = []
+    gateway = _gateway(_Closable("vbee", closed, RuntimeError("x")), _Closable("eleven", closed))
+    with pytest.raises(RuntimeError):
+        await gateway.aclose()
+    assert closed == ["vbee", "eleven"]
+
+
 def test_create_tts_gateway_builds_vbee_with_elevenlabs_fallback(monkeypatch) -> None:
     monkeypatch.setenv("ELEVENLABS_API_KEY", "sk_x")
     monkeypatch.setenv("ELEVENLABS_VOICE_ID", "v1")
