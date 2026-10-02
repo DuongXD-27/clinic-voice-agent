@@ -1,7 +1,7 @@
 # Plan TTS tuần 1 — MVP thô bằng API (TTS-1.1 → TTS-1.7)
 
 **Owner:** B (Hưng) · **Trạng thái:** Duyệt 18-09-2026 (owner chọn WebSocket theo kế hoạch §2.1), đang thực thi · **Hạn:** hết ngày 18-09-2026 (thứ 6); thứ 7 19/9 dự phòng
-**Nguồn:** `docs/plans/Ke_hoach_TTS_6_tuan_AI_Callbot.md` §1, §2, §4, §10; contract AIHR-PC-001 rev 1.1 §4.1.2, §4.1.3, §5.3 (Listing 1–2); ADR-002 §2 (6 tiêu chí), §3.2 (ElevenLabs Flash v2.5); `docs/task-breakdown.md` S-02
+**Nguồn:** `docs/plans/Ke_hoach_TTS_6_tuan_AI_Callbot.md` (đã xoá 02/10, thay bằng `tts-w3-w6.md`) §1, §2, §4, §10; contract AIHR-PC-001 rev 1.1 §4.1.2, §4.1.3, §5.3 (Listing 1–2); ADR-002 §2 (6 tiêu chí), §3.2 (ElevenLabs Flash v2.5); `docs/task-breakdown.md` S-02
 **Phụ thuộc:** A — điểm gọi TTS trong `transports/http/calls.py`, `main.py` và `CallStart` (kế hoạch 6 tuần §10: cần trước 18/9)
 
 ## 1. Mục tiêu hôm nay
