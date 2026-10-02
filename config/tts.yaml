@@ -13,7 +13,8 @@ vbee:
   bitrate: 128 # VBEE_BITRATE
   # PCM 8 kHz khớp băng hẹp, không phải resample
   sample_rate: 8000 # VBEE_SAMPLE_RATE
-  # Trần tổng một câu; giữ thấp để còn thời gian cho provider dự phòng trong 8 giây/lượt
+  # Trần tổng thời gian chờ Vbee cho một câu (kết nối, byte đầu, các chunk sau; không tính lúc
+  # đang phát). Giữ thấp: 3 s Vbee + 4 s ElevenLabs dự phòng vẫn dưới 8 giây/lượt
   timeout_s: 3.0 # VBEE_TIMEOUT_S
   connect_timeout_s: 1.5 # VBEE_CONNECT_TIMEOUT_S
   # Giữ kết nối rảnh để lượt sau khỏi bắt tay TCP + TLS lại; dưới thời gian server Vbee tự đóng
@@ -23,8 +24,10 @@ elevenlabs: # ELEVENLABS_API_KEY
   # Bắt buộc khi dùng ElevenLabs; voice thuộc tài khoản thì đặt qua env.
   voice_id: "" # ELEVENLABS_VOICE_ID
   model: eleven_flash_v2_5 # ELEVENLABS_MODEL
+  # Trần tổng thời gian chờ ElevenLabs cho một câu, không tính lúc đang phát
   timeout_s: 4.0 # ELEVENLABS_TIMEOUT_S
-  # pcm_8000 khớp băng hẹp, không phải resample; điện thoại có thể dùng ulaw_8000
+  # Chỉ nhận pcm_<rate>: track LiveKit là PCM16, ulaw_8000 bị từ chối lúc khởi động.
+  # pcm_8000 khớp băng hẹp, không phải resample
   output_format: pcm_8000 # ELEVENLABS_OUTPUT_FORMAT
   # Ép đọc tiếng Việt kể cả câu ngắn dễ đoán nhầm ngôn ngữ; null = để model tự đoán
   language_code: vi # ELEVENLABS_LANGUAGE_CODE

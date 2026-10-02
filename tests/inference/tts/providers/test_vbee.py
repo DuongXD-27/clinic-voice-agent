@@ -331,6 +331,48 @@ async def test_stream_deadline_counts_time_waiting_for_vbee() -> None:
     assert err.value.code == "timeout"
 
 
+@pytest.mark.parametrize("stage", ["headers", "first_byte"])
+async def test_stream_deadline_bounds_wait_before_first_byte(stage: str) -> None:
+    # Trước đây trần chỉ kiểm sau khi có chunk: Vbee treo trước byte đầu thì chỉ còn timeout
+    # từng pha của httpx (connect + read > trần), cộng ElevenLabs là vượt 8 s/lượt
+    async def slow_body():
+        await asyncio.sleep(5)
+        yield PCM
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if stage == "headers":
+            await asyncio.sleep(5)
+        return httpx.Response(200, content=slow_body(), headers={"content-type": "audio/pcm"})
+
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(TTSUnavailable) as err:
+        await _collect(_stream_tts(handler, timeout_s=0.1))
+    assert err.value.code == "timeout"
+    assert asyncio.get_running_loop().time() - started < 1.0
+
+
+async def test_late_close_of_old_stream_does_not_break_cancel_of_current_one() -> None:
+    # CallBridge bỏ generator câu cũ mà không aclose: finally của nó chạy muộn, lúc câu mới đã
+    # phát. Trước đây finally đó xoá response đang mở của câu mới, barge-in không đóng được.
+    old, current = _HeldStream(PCM), _HeldStream(PCM)
+    streams = iter([old, current])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=next(streams), headers={"content-type": "audio/pcm"})
+
+    tts = _stream_tts(handler)
+    old_chunks = tts.synthesize_stream(TEXT)
+    assert await anext(old_chunks) == PCM
+    current_chunks = tts.synthesize_stream(TEXT)
+    assert await anext(current_chunks) == PCM
+
+    await old_chunks.aclose()
+    await tts.cancel()
+
+    assert current.closed
+    assert [chunk async for chunk in current_chunks] == []
+
+
 async def test_cancel_between_chunks_stops_stream_and_closes_request() -> None:
     stream = _HeldStream(PCM, PCM, PCM)
     tts = _stream_tts(_held(stream))

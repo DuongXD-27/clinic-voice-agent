@@ -41,7 +41,8 @@ class VbeeTTSConfig(TTSConfig):
     bitrate: int = Field(validation_alias="VBEE_BITRATE")
     # Xin PCM 8 kHz: khớp băng hẹp, không phải resample (benchmark 23/9)
     sample_rate: int = Field(validation_alias="VBEE_SAMPLE_RATE")
-    # Trần tổng cho một câu. Giữ thấp: lỗi thì còn thời gian cho ElevenLabs dự phòng trong 8 s/lượt
+    # Trần tổng thời gian chờ Vbee cho một câu (không tính lúc đang phát). Giữ thấp: lỗi thì còn
+    # thời gian cho ElevenLabs dự phòng trong 8 s/lượt
     timeout_s: float = Field(validation_alias="VBEE_TIMEOUT_S")
     connect_timeout_s: float = Field(validation_alias="VBEE_CONNECT_TIMEOUT_S")
     # Giữ kết nối rảnh bao lâu để lượt sau dùng lại; phải ngắn hơn thời gian server Vbee tự đóng
@@ -56,7 +57,8 @@ class ElevenLabsTTSConfig(TTSConfig):
     voice_id: str = Field(validation_alias="ELEVENLABS_VOICE_ID")
     model: str = Field(validation_alias="ELEVENLABS_MODEL")
     timeout_s: float = Field(validation_alias="ELEVENLABS_TIMEOUT_S")
-    # pcm_8000 khớp băng hẹp, không phải resample; tuần 5 điện thoại có thể dùng ulaw_8000
+    # Chỉ pcm_<rate> (track LiveKit là PCM16; ulaw_* bị từ chối lúc khởi tạo provider).
+    # pcm_8000 khớp băng hẹp, không phải resample
     output_format: str = Field(validation_alias="ELEVENLABS_OUTPUT_FORMAT")
     # Ép model đọc tiếng Việt kể cả câu ngắn dễ đoán nhầm ngôn ngữ; None = để model tự đoán.
     # Env rỗng ("") bị bỏ qua nên vẫn ra giá trị trong tts.yaml, không phải auto-detect — muốn

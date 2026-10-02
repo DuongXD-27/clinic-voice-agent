@@ -9,19 +9,22 @@ Không log text: utterance có thể chứa tên / ngày sinh bệnh nhân (ADR-
 chunk ngay khi về và đóng hẳn request khi khách nói chen.
 """
 
+import asyncio
 import time
-from typing import Any, AsyncIterator, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Optional, TypeVar
 
 import httpx
 
 from inference.common.transport import HttpClientFactory, build_http_timeout
-from inference.tts.base import TTSResult
+from inference.tts.base import StreamHandle, TTSResult
 from inference.tts.config import VbeeTTSConfig
 from inference.tts.errors import TTSError, TTSRejected, TTSUnavailable
 
 MAX_TEXT_CHARS = 300
 
 AsyncHttpClientFactory = Callable[[], httpx.AsyncClient]
+
+T = TypeVar("T")
 
 
 class VbeeTTS:
@@ -53,8 +56,8 @@ class VbeeTTS:
         # synthesize) không mở thêm gì. Cùng keepalive với client sync.
         self._async_client_factory = async_client_factory or self._default_async_client
         self._async_client: Optional[httpx.AsyncClient] = None
-        self._cancelled = False
-        self._active_response: Optional[httpx.Response] = None
+        # Câu đang stream; state từng câu nằm trên handle (xem StreamHandle)
+        self._stream: Optional[StreamHandle] = None
 
     def _limits(self) -> httpx.Limits:
         # keepalive_expiry mặc định của httpx là 5 s — ngắn hơn khoảng cách giữa hai lượt
@@ -148,62 +151,78 @@ class VbeeTTS:
         if not text:
             raise TTSRejected("text rỗng", code="empty_text")
         _check_length(text)
-        self._cancelled = False
+        stream = StreamHandle()
+        self._stream = stream
         if self._async_client is None:
             self._async_client = self._async_client_factory()
-        # Trần tổng chỉ tính thời gian chờ Vbee, không tính lúc bên phát giữ generator: CallBridge
-        # kéo chunk theo nhịp phát audio thật, đo đồng hồ treo tường thì câu nào dài hơn
-        # timeout_s giây audio cũng bị cắt giữa chừng.
+        # Trần tổng chỉ tính thời gian chờ Vbee (kết nối, header, byte đầu, các chunk sau), không
+        # tính lúc bên phát giữ generator: CallBridge kéo chunk theo nhịp phát audio thật, đo
+        # đồng hồ treo tường thì câu nào dài hơn timeout_s giây audio cũng bị cắt giữa chừng.
+        # Mỗi lần chờ bị chặn bởi phần trần còn lại, nên chưa có byte đầu thì cũng không chờ
+        # quá timeout_s (timeout từng pha của httpx cộng lại dài hơn).
         waited = 0.0
-        mark = time.perf_counter()
+
+        async def wait(step: Awaitable[T]) -> T:
+            nonlocal waited
+            mark = time.perf_counter()
+            try:
+                # Hết trần (<= 0) thì hủy ngay ở lần chờ đầu tiên của bước này
+                async with asyncio.timeout(self._config.timeout_s - waited):
+                    return await step
+            except TimeoutError as exc:
+                raise _timeout(self._config.timeout_s) from exc
+            finally:
+                waited += time.perf_counter() - mark
+
         carry = b""
         sent = 0
+        response: Optional[httpx.Response] = None
         try:
-            async with self._async_client.stream(
+            request = self._async_client.build_request(
                 "POST",
                 self._config.endpoint,
                 headers=self._headers,
                 json=self._payload(text),
                 timeout=self._timeout,
-            ) as response:
-                self._active_response = response
-                _check_response(response)
-                async for chunk in response.aiter_bytes():
-                    waited += time.perf_counter() - mark
-                    if self._cancelled:
-                        break
-                    if waited > self._config.timeout_s:
-                        raise _timeout(self._config.timeout_s)
-                    # Chunk HTTP cắt tuỳ ý (vd. 4090 B rồi 6 B): giữ byte lẻ ghép vào chunk sau
-                    data = carry + chunk
-                    even = len(data) - len(data) % 2
-                    carry = data[even:]
-                    if even:
-                        sent += even
-                        yield data[:even]
-                    if self._cancelled:
-                        break
-                    mark = time.perf_counter()
+            )
+            response = await wait(self._async_client.send(request, stream=True))
+            stream.close = response.aclose
+            _check_response(response)
+            chunks = response.aiter_bytes()
+            while not stream.cancelled:
+                try:
+                    chunk = await wait(anext(chunks))
+                except StopAsyncIteration:
+                    break
+                if stream.cancelled:
+                    break
+                # Chunk HTTP cắt tuỳ ý (vd. 4090 B rồi 6 B): giữ byte lẻ ghép vào chunk sau
+                data = carry + chunk
+                even = len(data) - len(data) % 2
+                carry = data[even:]
+                if even:
+                    sent += even
+                    yield data[:even]
         except TTSError:
             raise
         except (httpx.HTTPError, httpx.StreamError) as exc:
             # cancel() đóng response khi task khác đang đọc: lỗi đọc đó là dừng chủ động
-            if self._cancelled:
+            if stream.cancelled:
                 return
             if isinstance(exc, httpx.TimeoutException):
                 raise _timeout(self._config.timeout_s) from exc
             raise _connection_failed(exc) from exc
         finally:
-            self._active_response = None
-        if not sent and not self._cancelled:
+            stream.close = None
+            if response is not None:
+                await response.aclose()
+        if not sent and not stream.cancelled:
             raise _no_audio()
 
     async def cancel(self) -> None:
         """Dừng stream đang chạy và đóng hẳn request tới Vbee (khách nói chen)."""
-        self._cancelled = True
-        response = self._active_response
-        if response is not None:
-            await response.aclose()
+        if self._stream is not None:
+            await self._stream.cancel()
 
 
 def _check_length(text: str) -> None:

@@ -9,14 +9,28 @@ import asyncio
 import logging
 import time
 from contextlib import aclosing
-from dataclasses import replace
-from typing import Any, AsyncIterator, Optional
+from dataclasses import dataclass, replace
+from typing import AsyncIterator, Optional
 
 from inference.common.errors import UnsupportedProviderError
-from inference.tts.base import ProviderName, TTSProvider, TTSResult, TTSStreamInfo
+from inference.tts.base import (
+    ProviderName,
+    StreamHandle,
+    TTSProvider,
+    TTSResult,
+    TTSStreamInfo,
+)
 from inference.tts.config import ElevenLabsTTSConfig, OpenAITTSConfig, TTSConfig, VbeeTTSConfig
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _GatewayStream(StreamHandle):
+    """Một câu đang/vừa stream: `close` trỏ tới `cancel` của provider đang phát (chính hoặc dự
+    phòng), `info` là thứ `last_stream` trả về."""
+
+    info: Optional[TTSStreamInfo] = None
 
 
 class TTSGateway:
@@ -30,15 +44,18 @@ class TTSGateway:
         self._provider = provider
         self.provider_name = provider_name
         self.fallback = fallback
-        # State của stream đang chạy: một gateway stream chỉ thuộc một cuộc gọi (worker
-        # LiveKit dựng bundle riêng mỗi job), như `_cancelled` của các provider.
-        self.last_stream: Optional[TTSStreamInfo] = None
-        self._active: Any = None
-        self._cancelled = False
+        # Câu stream gần nhất. Một gateway stream chỉ thuộc một cuộc gọi (worker LiveKit dựng
+        # bundle riêng mỗi job); state từng câu nằm trên handle, không trên gateway.
+        self._stream: Optional[_GatewayStream] = None
 
     @property
     def model(self) -> str:
         return self._provider.model
+
+    @property
+    def last_stream(self) -> Optional[TTSStreamInfo]:
+        """Câu stream gần nhất; None nếu chưa phát được chunk nào."""
+        return self._stream.info if self._stream is not None else None
 
     @property
     def provider(self) -> TTSProvider:
@@ -73,8 +90,8 @@ class TTSGateway:
         """Phát một câu theo chunk. Provider chính lỗi trước chunk đầu → dự phòng đọc đúng
         câu đó; lỗi khi đã phát → dừng, không đọc lại; cả hai lỗi trước chunk đầu → ném lỗi.
         Sau `cancel()` thì dừng êm, không chuyển dự phòng."""
-        self.last_stream = None
-        self._cancelled = False
+        stream = _GatewayStream()
+        self._stream = stream
         text = text.strip()
         if not text:
             return
@@ -85,20 +102,20 @@ class TTSGateway:
             sample_rate=getattr(self._provider, "stream_sample_rate", 0),
         )
         sent = False
-        self._active = self._provider
+        stream.close = getattr(self._provider, "cancel", None)
         try:
             async with aclosing(self._provider_stream(text, info)) as chunks:
                 async for chunk in chunks:
-                    if self._cancelled:
+                    if stream.cancelled:
                         return
                     if not sent:
                         sent = True
                         info.ttfa_ms = (time.perf_counter() - started) * 1000
-                        self.last_stream = info
+                        stream.info = info
                     yield chunk
             return
         except Exception as exc:
-            if self._cancelled:
+            if stream.cancelled:
                 return
             code = getattr(exc, "code", None) or type(exc).__name__
             if sent:
@@ -121,26 +138,27 @@ class TTSGateway:
                 self.fallback.provider_name,
             )
         finally:
-            self._active = None
+            stream.close = None
 
-        self._active = self.fallback
+        stream.close = self.fallback.cancel
         try:
             async with aclosing(self.fallback.synthesize_stream(text)) as chunks:
                 async for chunk in chunks:
-                    if self._cancelled:
+                    if stream.cancelled:
                         return
-                    if self.last_stream is None and self.fallback.last_stream is not None:
-                        self.last_stream = replace(
-                            self.fallback.last_stream,
+                    backup = self.fallback.last_stream
+                    if stream.info is None and backup is not None:
+                        stream.info = replace(
+                            backup,
                             fallback_used=True,
                             ttfa_ms=(time.perf_counter() - started) * 1000,
                         )
                     yield chunk
         finally:
-            self._active = None
+            stream.close = None
             backup = self.fallback.last_stream
-            if self.last_stream is not None and backup is not None:
-                self.last_stream.error_code = backup.error_code
+            if stream.info is not None and backup is not None:
+                stream.info.error_code = backup.error_code
 
     async def _provider_stream(self, text: str, info: TTSStreamInfo) -> AsyncIterator[bytes]:
         stream = getattr(self._provider, "synthesize_stream", None)
@@ -159,10 +177,8 @@ class TTSGateway:
 
     async def cancel(self) -> None:
         """Khách nói chen: dừng stream đang chạy (provider chính hoặc dự phòng) và đóng request."""
-        self._cancelled = True
-        cancel = getattr(self._active, "cancel", None)
-        if cancel is not None:
-            await cancel()
+        if self._stream is not None:
+            await self._stream.cancel()
 
     def close(self) -> None:
         """Đóng kết nối giữ sẵn của provider chính và dự phòng (gọi khi app/worker tắt)."""

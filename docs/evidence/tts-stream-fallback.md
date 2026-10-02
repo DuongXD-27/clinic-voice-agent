@@ -96,6 +96,24 @@ python -m ruff format --check src tests/inference/tts tests/speech/test_asr_tts_
 | `python -m ruff format --check` (các file trong task) | Pass |
 | `python -m pytest -q` (với `PYTHONUTF8=1`) | Pass (3758 passed, 19 skipped) |
 
+## Sửa theo review PR (2026-10-02)
+
+| Review | Sửa | Test chặn hồi quy |
+| --- | --- | --- |
+| ElevenLabs stream tính trần 4 s theo đồng hồ treo tường → fallback cắt mọi câu dài hơn ~4 s audio | Trần chỉ tính thời gian chờ ElevenLabs (kết nối + `recv`), trừ thời gian bên phát giữ generator, như Vbee | `test_async_stream_deadline_ignores_time_spent_playing`, `..._counts_time_waiting_for_elevenlabs` |
+| Câu bị cắt giữa chừng vẫn ghi span `result=OK`, `truncated=False`, tính `tts_cost` cả câu | `CallBridge._speak` đọc `last_stream_result.error_code`: span `result=ERROR`, `truncated=True`, `provider_error_code=<mã>`, `error_code=TTS_PROVIDER_ERROR` (hoặc `TTS_TIMEOUT`), không tính tiền | `test_sentence_cut_by_provider_error_is_traced_as_truncated_error`, `test_complete_sentence_is_traced_ok_and_priced` |
+| State từng stream (`_active`, `_cancelled`, `_active_response`, `_active_ws`) nằm trên object sống cả cuộc gọi; generator cũ đóng muộn xoá state của câu mới → barge-in không đóng request Vbee | Thêm `StreamHandle` (`inference/tts/base.py`): mỗi câu một handle giữ cờ hủy + cách đóng kết nối; gateway, Vbee, ElevenLabs đều dùng. `CallBridge` bọc stream bằng `aclosing` nên thoát vòng lặp là đóng ngay | `test_late_close_of_old_stream_does_not_break_cancel_of_current_one` (gateway + Vbee), `test_barge_in_closes_tts_stream_before_speak_returns` |
+| `ELEVENLABS_OUTPUT_FORMAT=ulaw_8000` (comment trong `tts.yaml` gợi ý) → μ-law vào track PCM16 | Thực tế không ra nhiễu: `sample_rate_of` đã từ chối mọi format không phải `pcm_*`, worker hỏng ngay lúc dựng provider. Sửa comment gây hiểu nhầm ở `tts.yaml`/`config.py`/`bundle.py` | `test_ulaw_output_format_fails_at_startup_not_as_noise` |
+| Vbee stream: trần chỉ kiểm sau khi có chunk, trước byte đầu chỉ bị chặn bởi timeout httpx (1,5 + 3 s) | Mọi lần chờ (gửi request, header, byte đầu, từng chunk) bọc `asyncio.timeout(phần trần còn lại)`. Trường hợp xấu: 3 s Vbee + 4 s ElevenLabs = 7 s < 8 s/lượt | `test_stream_deadline_bounds_wait_before_first_byte[headers / first_byte]` |
+
+8 test hành vi mới đều **fail trên code cũ** và pass sau khi sửa (đã chạy `git stash -- src` để kiểm).
+
+| Command | Kết quả |
+| --- | --- |
+| `uv run --frozen --extra livekit --extra dev python -m pytest tests/inference/tts tests/transports/livekit/test_call_bridge_mapping.py -q` | Pass (137 passed) |
+| `PYTHONUTF8=1 REQUIRE_LIVEKIT_TESTS=1 uv run --frozen --extra livekit --extra dev python -m pytest tests -q` | 3770 passed; 18 fail do venv thiếu `soxr`/`rapidfuzz` (extra khác), không liên quan |
+| `ruff check` + `ruff format --check` (file đã sửa) | Pass |
+
 ## Ghi chú
 
 - **Sau khi merge và deploy** (CD deploy từ main): chạy benchmark "sau" ([benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md)). Lần chạy này vừa là kiểm hồi quy, vừa là số đo:
@@ -104,5 +122,5 @@ python -m ruff format --check src tests/inference/tts tests/speech/test_asr_tts_
 - **Dự phòng chỉ bật khi cấu hình:** repo mặc định `tts_fallback_provider: null` (`config/speech.yaml`). Prod đã đặt `TTS_FALLBACK_PROVIDER=elevenlabs` trong `/opt/callbot/.env` từ 28/09 ([tts-audio-mode-prod.md](tts-audio-mode-prod.md)), nên deploy xong là có, không cần sửa `.env`.
 - **Chưa thử dự phòng với ElevenLabs thật trên stream**, vì tốn quota ElevenLabs. Adapter ElevenLabs stream đã có test riêng (`tests/inference/tts/providers/test_elevenlabs*.py`) và đã chạy trên LiveKit thật khi còn là provider chính (trước khi prod chuyển sang Vbee ngày 28/09). Muốn kiểm thật thì dùng `bash bench/run.sh <nhãn> --profile full --parts tts`. Lệnh này cho Vbee trỏ vào cổng đóng, chỉ trong process benchmark, rồi đo TTFA khi ElevenLabs đọc thay (~226 ký tự ElevenLabs).
 - **Lỗi giữa câu chỉ ghi log và `error_code`, chưa báo Engine.** Engine chưa biết khách chỉ nghe được nửa câu. Việc này cùng loại với "phần text đã phát" khi bị ngắt lời (task 07/10, thao tác 3 của barge-in), nên làm chung ở đó.
-- **`CallBridge` chưa đọc `error_code`:** span vẫn ghi `result=OK` cho câu bị dừng giữa chừng. Muốn trace phân biệt được thì `CallBridge` cần đọc thêm trường này. Đây là sửa nhỏ ở transport, nên làm cùng task 07/10.
-- **Ngân sách thời gian trường hợp xấu:** Vbee thường được chờ khoảng 3 s (`VBEE_TIMEOUT_S`; không nối được thì 1,5 s, `VBEE_CONNECT_TIMEOUT_S`) rồi mới chuyển ElevenLabs (3 s trên prod, `ELEVENLABS_TIMEOUT_S=3` trong `.env`; mặc định repo là 4 s), như đường HTTP. Đây không phải trần cứng: timeout của httpx tính cho từng lần đọc, còn trần tổng chỉ được kiểm khi có chunk về. Nếu Vbee trả header gần hết 3 s rồi chunk đầu cũng chậm gần 3 s nữa, khách có thể chờ lâu hơn 3 s. Đường HTTP trên main cũng vậy, không phải hồi quy. Trên Đường B, khách có thể im lặng chờ ~3 s, hoặc hơn trong trường hợp trên, trước khi nghe giọng dự phòng. Muốn ngắn hơn cho cuộc gọi realtime thì có thể đặt một trần riêng, thấp hơn, cho TTFA của stream. Chưa làm, cần chốt với PM.
+- ~~**`CallBridge` chưa đọc `error_code`**~~: đã sửa theo review PR, xem mục trên.
+- **Ngân sách thời gian trường hợp xấu (Đường B):** sau review PR, trần Vbee stream là trần cứng: tổng thời gian chờ Vbee (kể cả trước byte đầu) không quá `VBEE_TIMEOUT_S` = 3 s, rồi ElevenLabs tối đa `ELEVENLABS_TIMEOUT_S` (4 s repo, 3 s prod) → tối đa ~7 s im lặng trước khi có giọng dự phòng. **Đường HTTP (`VbeeTTS.synthesize`, sync) chưa sửa**: vẫn chỉ kiểm trần khi có chunk về; review không nêu, để task sau nếu cần. Muốn TTFA dự phòng ngắn hơn cho realtime thì đặt trần riêng thấp hơn, cần chốt với PM.

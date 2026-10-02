@@ -77,6 +77,8 @@ class SpeechSynthesizer:
         self._last_stream_result = None
         self._cancelled = False
         track_rate = self.stream_sample_rate
+        # Chunk luôn là PCM16 (Vbee xin `pcm`, ElevenLabs từ chối mọi format không phải
+        # `pcm_*` lúc khởi tạo), nên chỉ còn tần số có thể lệch.
         # Provider thực tế (vd. dự phòng) khác tần số track: gom rồi resample một lần ở cuối.
         # Resample từng chunk rời sẽ có tiếng tách ở chỗ nối. Cấu hình hiện tại Vbee và
         # ElevenLabs cùng 8 kHz nên nhánh này không chạy.

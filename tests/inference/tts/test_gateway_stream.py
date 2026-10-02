@@ -223,3 +223,22 @@ async def test_sync_only_provider_streams_one_block_at_its_rate() -> None:
     gateway = _gateway(SyncOnly())
     assert await _collect(gateway) == [A + B]
     assert (gateway.last_stream.sample_rate, gateway.last_stream.voice) == (24_000, "alloy")
+
+
+async def test_late_close_of_old_stream_does_not_break_cancel_of_current_one() -> None:
+    # Generator câu cũ đóng muộn (CallBridge bỏ vòng lặp, GC dọn sau) khi câu mới đang phát:
+    # trước đây finally của nó đặt provider đang chạy về None, barge-in không tới provider
+    primary = _Streamer("vbee", hold=True)
+    gateway = _gateway(primary, _Streamer("eleven"))
+    old = gateway.synthesize_stream(TEXT)
+    assert await anext(old) == A
+    current = gateway.synthesize_stream(TEXT)
+    assert await anext(current) == A
+
+    await old.aclose()
+    pending = asyncio.create_task(anext(current, None))
+    await asyncio.sleep(0.01)
+    await gateway.cancel()
+
+    assert await asyncio.wait_for(pending, 1.0) is None
+    assert primary.cancelled == 1
