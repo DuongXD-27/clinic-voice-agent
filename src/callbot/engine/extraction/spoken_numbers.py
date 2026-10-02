@@ -153,7 +153,25 @@ def parse_spoken_number(tokens: Sequence[str]) -> Optional[int]:
     ):
         digits = spoken_digits(["không" if t in _ZERO_TENS else t for t in tokens])
         return int(digits) if digits is not None else None
-    return None
+    return _paired_year(tokens)
+
+
+_CENTURIES = frozenset({19, 20})
+
+
+def _paired_year(tokens: list[str]) -> Optional[int]:
+    """Năm đọc thành hai cặp: "một chín | chín mươi" = 1990, "hai không | hai mươi" = 2020.
+
+    Cặp đầu phải là 19 hoặc 20, cặp sau ít nhất hai từ ("mười" đứng cuối có thể là "mười X"
+    bị cắt), và chỉ nhận khi đúng một cách tách cho ra năm — có hai cách thì không chọn hộ.
+    """
+    years = set()
+    for split in range(1, len(tokens) - 1):
+        century = parse_number(tokens[:split])
+        rest = parse_number(tokens[split:])
+        if century in _CENTURIES and rest is not None and rest < 100:
+            years.add(century * 100 + rest)
+    return years.pop() if len(years) == 1 else None
 
 
 def _parse_structured(tokens: list[str]) -> Optional[int]:

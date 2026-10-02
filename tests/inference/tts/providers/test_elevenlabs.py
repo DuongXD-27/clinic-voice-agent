@@ -1,5 +1,6 @@
 """ElevenLabsTTS qua fake WebSocket: giao thức stream-input, gom chunk, timing, phân loại lỗi (AC-2, AC-3)."""
 
+import asyncio
 import json
 from urllib.parse import parse_qs, urlparse
 
@@ -146,6 +147,43 @@ async def test_async_stream_yields_chunks_for_livekit() -> None:
     assert provider.stream_sample_rate == 8000
     assert connect.calls[0]["additional_headers"] == {"xi-api-key": KEY}
     assert connect.socket.sent[1] == {"text": TEXT + " ", "flush": True}
+
+
+class _SlowAsyncFakeWebSocket(_AsyncFakeWebSocket):
+    def __init__(self, script, delay_s: float) -> None:
+        super().__init__(script)
+        self.delay_s = delay_s
+
+    async def recv(self) -> str:
+        await asyncio.sleep(self.delay_s)
+        return await super().recv()
+
+
+async def test_async_stream_deadline_ignores_time_spent_playing() -> None:
+    # Fallback trên LiveKit: CallBridge kéo chunk theo nhịp phát, giữ generator lâu hơn
+    # timeout_s. Đo đồng hồ treo tường thì câu dài hơn ~4 s audio bị cắt giữa chừng.
+    connect = _AsyncFakeConnect([audio_message(c) for c in CHUNKS] + [final_message()])
+    provider = ElevenLabsTTS(
+        _config(timeout_s=0.05), connect=FakeConnect([]), async_connect=connect
+    )
+
+    chunks = []
+    async for chunk in provider.synthesize_stream(TEXT):
+        chunks.append(chunk)
+        await asyncio.sleep(0.08)
+    assert chunks == CHUNKS
+
+
+async def test_async_stream_deadline_counts_time_waiting_for_elevenlabs() -> None:
+    connect = _AsyncFakeConnect([])
+    connect.socket = _SlowAsyncFakeWebSocket(
+        [audio_message(c) for c in CHUNKS] + [final_message()], delay_s=0.04
+    )
+    provider = ElevenLabsTTS(_config(timeout_s=0.1), connect=FakeConnect([]), async_connect=connect)
+
+    with pytest.raises(TTSUnavailable) as err:
+        _ = [chunk async for chunk in provider.synthesize_stream(TEXT)]
+    assert err.value.code == "timeout"
 
 
 # --- timing (TTS-1.6) --------------------------------------------------------------------------
@@ -298,6 +336,13 @@ def test_sample_rate_of_pcm(fmt: str, rate: int) -> None:
 def test_non_pcm_format_rejected(fmt: str) -> None:
     with pytest.raises(ValueError):
         sample_rate_of(fmt)
+
+
+def test_ulaw_output_format_fails_at_startup_not_as_noise() -> None:
+    # ulaw_8000 cùng 8 kHz với track: nếu lọt qua, đường stream (chỉ so tần số) sẽ đẩy byte
+    # μ-law vào track PCM16 thành tiếng nhiễu. Phải hỏng ngay lúc dựng provider.
+    with pytest.raises(ValueError, match="không phải PCM"):
+        ElevenLabsTTS(_config(output_format="ulaw_8000"), connect=FakeConnect([]))
 
 
 @pytest.mark.parametrize(

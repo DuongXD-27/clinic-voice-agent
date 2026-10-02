@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 
@@ -76,6 +77,20 @@ def test_caller_input_from_turn_carries_text_and_confidence() -> None:
     )
     assert caller.is_silence is False
     assert caller.transcript == "tôi muốn đổi lịch"
+
+
+@pytest.mark.parametrize("is_final", [False, True])
+def test_mapping_rejects_raw_asr_events(is_final):
+    from speech.types import TranscriptEvent
+
+    with pytest.raises(TypeError):
+        caller_input_from_turn(1, TranscriptEvent(text="vâng", is_final=is_final))
+
+
+def test_mapping_empty_completed_turn_is_not_silence():
+    caller = caller_input_from_turn(1, UserTurnCompleted(text="", confidence=0.1))
+    assert caller.transcript == "" and not caller.is_silence
+    assert caller.asr_confidence == 0.1
 
 
 class _FakeOrchestrator:
@@ -242,6 +257,35 @@ async def test_outbound_start_failure_notifies_browser_without_crashing_job() ->
     assert "APPOINTMENT_NOT_ACTIONABLE" not in payload
     assert reliable is True
     assert topic == "callbot.status"
+
+
+async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(monkeypatch, caplog):
+    class BrokenPipeline:
+        async def stream(self, frames, **kwargs):
+            raise RuntimeError("private caller transcript")
+            yield
+
+    orchestrator = _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), [])
+    bridge = CallBridge(_FakeRoom("web-stt-failure"), orchestrator, BrokenPipeline(), _FakeTTS())
+    source = _FakeAudioSource()
+
+    async def publish():
+        bridge._audio_source = source
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish)
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError, match="private caller transcript"):
+            await asyncio.wait_for(bridge.run(), timeout=2)
+    assert orchestrator.handled_turns == [] and source.closed
+    assert "private caller transcript" not in caplog.text
+    (record,) = [r for r in caplog.records if "voice pipeline failed" in r.getMessage()]
+    assert "error=RuntimeError" in record.getMessage()
+    stream_code = BrokenPipeline.stream.__code__
+    assert f"{stream_code.co_filename}:{stream_code.co_firstlineno + 1}" in record.getMessage()
+    assert "call_bridge.py:" in record.getMessage()
+    assert " -> " in record.getMessage()
+    assert record.exc_info is None
+    assert record.stack_info is None
 
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
@@ -453,6 +497,119 @@ async def test_early_barge_in_stops_sentence_and_next_sentence_still_plays() -> 
     await bridge._speak("câu tiếp theo")
 
     assert len(source.captured_frames) == 10 + 150
+
+
+class _RecordingSpan:
+    def __init__(self) -> None:
+        self.attributes: dict[str, object] = {}
+        self.error: tuple[str, str] | None = None
+
+    def enrich(self, **attributes: object) -> None:
+        self.attributes.update(attributes)
+
+    def set_error_code(self, error_type: str, error_code: str) -> None:
+        self.error = (error_type, error_code)
+
+
+class _RecordingTracer:
+    def __init__(self) -> None:
+        self.spans: list[_RecordingSpan] = []
+
+    def span(self, **_kwargs):
+        span = _RecordingSpan()
+        self.spans.append(span)
+        return contextlib.nullcontext(span)
+
+
+class _StreamInfo:
+    def __init__(self, error_code: str | None) -> None:
+        self.provider_actual = "vbee"
+        self.voice = "vbee-voice"
+        self.fallback_used = False
+        self.ttfa_ms = 1.0
+        self.error_code = error_code
+
+
+class _CutMidSentenceTTS(_WholeSentenceTTS):
+    """Như gateway khi provider rớt sau khi đã phát một phần: kết thúc êm, chỉ ghi mã lỗi."""
+
+    def __init__(self, error_code: str | None) -> None:
+        super().__init__()
+        self.last_stream_result = _StreamInfo(error_code)
+
+
+@pytest.mark.parametrize(
+    "code, error",
+    [
+        ("connection_failed", ("PROVIDER", "TTS_PROVIDER_ERROR")),
+        ("timeout", ("TIMEOUT", "TTS_TIMEOUT")),
+    ],
+)
+async def test_sentence_cut_by_provider_error_is_traced_as_truncated_error(
+    monkeypatch, code: str, error: tuple[str, str]
+) -> None:
+    # Review PR: câu bị cắt giữa chừng từng ghi result=OK, truncated=False và tính tiền cả câu
+    tracer = _RecordingTracer()
+    bridge, _source = _speaking_bridge(_CutMidSentenceTTS(code))
+    bridge._tracer = tracer
+    priced: list[str] = []
+    monkeypatch.setattr(
+        "callbot.transports.livekit.call_bridge.tts_cost",
+        lambda *args: priced.append("tts") or 0.01,
+    )
+
+    await bridge._speak("một câu bị rớt giữa chừng")
+
+    (span,) = tracer.spans
+    assert span.attributes["result"] == "ERROR"
+    assert span.attributes["truncated"] is True
+    assert span.attributes["interrupted"] is False
+    assert span.attributes["provider_error_code"] == code
+    assert span.error == error
+    assert "cost_usd" not in span.attributes and priced == []
+
+
+async def test_complete_sentence_is_traced_ok_and_priced(monkeypatch) -> None:
+    tracer = _RecordingTracer()
+    bridge, _source = _speaking_bridge(_CutMidSentenceTTS(None))
+    bridge._tracer = tracer
+    monkeypatch.setattr("callbot.transports.livekit.call_bridge.tts_cost", lambda *args: 0.01)
+
+    await bridge._speak("một câu đủ")
+
+    (span,) = tracer.spans
+    assert (span.attributes["result"], span.attributes["truncated"]) == ("OK", False)
+    assert span.attributes["cost_usd"] == 0.01 and span.error is None
+
+
+async def test_barge_in_closes_tts_stream_before_speak_returns() -> None:
+    # Bỏ vòng lặp mà không aclose thì finally của stream cũ chạy muộn (lúc GC), có thể khi câu
+    # mới đã phát và xoá state hủy của câu mới -> barge-in không đóng được request tới Vbee.
+    class _TrackedTTS(_WholeSentenceTTS):
+        closed = False
+
+        async def synthesize_stream(self, text: str):
+            try:
+                async for chunk in super().synthesize_stream(text):
+                    yield chunk
+                    await asyncio.sleep(0)
+                yield b"\x00\x10" * self.stream_sample_rate
+            finally:
+                self.closed = True
+
+    tts = _TrackedTTS()
+    bridge, source = _speaking_bridge(tts)
+    play = source.capture_frame
+
+    async def play_then_barge_in(frame) -> None:
+        await play(frame)
+        if len(source.captured_frames) == 10:
+            await bridge._interruption._confirm()
+
+    source.capture_frame = play_then_barge_in
+    await bridge._speak("câu bị ngắt")
+
+    assert tts.closed
 
 
 async def test_speak_times_out_instead_of_hanging_forever_on_wait_for_playout(monkeypatch) -> None:

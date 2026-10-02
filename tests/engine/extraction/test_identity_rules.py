@@ -17,6 +17,7 @@ from callbot.engine.extraction import (
     Intent,
     Provenance,
     QuestionId,
+    SlotFillingResult,
     TurnContext,
 )
 from callbot.engine.extraction.dob import extract_dob
@@ -31,6 +32,7 @@ from callbot.engine.verification.identity import (
     VerificationResult,
     VerificationStatus,
 )
+from tests.engine.extraction.test_extractor import slot_result
 
 TODAY = date(2026, 9, 21)
 NOW = datetime(2026, 9, 21, 9, 0, tzinfo=VN_TZ)
@@ -59,11 +61,11 @@ class FakeSlotFiller:
         *,
         question_id: QuestionId = QuestionId.ASK_NAME,
         bot_question: Optional[str] = None,
-    ) -> Optional[Field[str]]:
+    ) -> Optional[SlotFillingResult]:
         self.calls += 1
         if self._name is None:
             return None
-        return Field(self._name, Provenance.FALLBACK, span=self._name)
+        return slot_result(Field(self._name, Provenance.FALLBACK, span=self._name))
 
     def intent(self, transcript: str, allowed) -> None:
         return None

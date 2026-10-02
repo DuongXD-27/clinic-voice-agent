@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 import pytest
 
+from callbot.engine.extraction.fallback import SlotFillingStatus
 from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.schema import Intent, QuestionId
 from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticContext
@@ -239,13 +240,54 @@ def test_name_slot_has_distinct_private_generation():
         call_id="call-private", turn=1, component="TURN", operation="http.call_turn"
     ):
         with tracer.span(component="EXTRACTION", operation="core.extract"):
-            filler.full_name(private_name, question_id=QuestionId.ASK_NAME)
+            result = filler.full_name(private_name, question_id=QuestionId.ASK_NAME)
+    assert result.status is SlotFillingStatus.ACCEPTED
+    assert result.field.value == private_name.lower()
     generation = next(item for item in sink.records if item.observation_type == "GENERATION")
     assert generation.operation == "llm.name_slot_fill"
+    assert generation.attributes["result"] == "OK"
     serialized = json.dumps([item.to_dict() for item in sink.records], ensure_ascii=False)
     exported = json.dumps(_otlp_request(sink.records, "test"), ensure_ascii=False)
     for secret in (private_name, "call-private"):
         assert secret not in serialized + exported
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected_slot", "expected_generation"),
+    [
+        (
+            StructuredReply("completed", '{"full_name":null,"span":null}'),
+            SlotFillingStatus.NO_NAME,
+            "OK",
+        ),
+        (
+            StructuredReply("completed", '{"full_name":"Trần Văn B","span":"Trần Văn B"}'),
+            SlotFillingStatus.REJECTED,
+            "INVALID",
+        ),
+        (StructuredReply("completed", "{"), SlotFillingStatus.UNAVAILABLE, "INVALID"),
+        (StructuredReply("timeout"), SlotFillingStatus.UNAVAILABLE, "TIMEOUT"),
+        (StructuredReply("http_error"), SlotFillingStatus.UNAVAILABLE, "ERROR"),
+    ],
+)
+def test_name_slot_outcome_preserves_generation_result(reply, expected_slot, expected_generation):
+    sink = MemorySink()
+    tracer = _tracer(sink)
+    provider = Provider(reply)
+    filler = NameSlotFiller(LLMGateway(provider, provider_name="openai"))
+    with tracer.start_trace(call_id="call-A", turn=1, component="TURN", operation="http.call_turn"):
+        with tracer.span(component="EXTRACTION", operation="core.extract"):
+            result = filler.full_name("Nguyễn Văn A", question_id=QuestionId.ASK_NAME)
+    assert result.status is expected_slot
+    assert not result.field.found
+    assert result.elapsed_ms is not None and result.elapsed_ms >= 0
+    generations = [item for item in sink.records if item.observation_type == "GENERATION"]
+    assert len(generations) == provider.calls == 1
+    generation = generations[0]
+    extraction = next(item for item in sink.records if item.operation == "core.extract")
+    assert generation.parent_span_id == extraction.span_id
+    assert generation.attributes["result"] == expected_generation
+    assert generation.status == ("OK" if expected_generation == "OK" else "ERROR")
 
 
 def test_cost_unknown_is_distinct_from_zero(monkeypatch):

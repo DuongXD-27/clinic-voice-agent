@@ -4,7 +4,11 @@ Một file cho mỗi trường ở §1 của thiết kế; `extractor.Informatio
 """
 
 from callbot.engine.extraction.extractor import IDENTITY_SAFE_INTENTS, InformationExtractor
-from callbot.engine.extraction.fallback import FallbackExtractor
+from callbot.engine.extraction.fallback import (
+    FallbackExtractor,
+    SlotFillingResult,
+    SlotFillingStatus,
+)
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -36,6 +40,8 @@ __all__ = [
     "QuestionId",
     "SlotChoice",
     "SlotCriteria",
+    "SlotFillingResult",
+    "SlotFillingStatus",
     "TurnContext",
     "filter_slots",
     "parse_slot_criteria",

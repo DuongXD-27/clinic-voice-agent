@@ -20,16 +20,39 @@ _LOUD = b"\x00\x10" * 240  # 30 ms @ 8 kHz
 _SILENT = b"\x00\x00" * 240
 
 
+class _ManualTimer:
+    """Tiến thời gian khi test mở barrier, không phụ thuộc độ chính xác sleep của OS."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.waits: asyncio.Queue[tuple[float, asyncio.Event]] = asyncio.Queue()
+
+    def clock(self) -> float:
+        return self.now
+
+    async def sleep(self, delay: float) -> None:
+        release = asyncio.Event()
+        self.waits.put_nowait((delay, release))
+        await release.wait()
+        self.now += delay
+
+    async def next_wait(self, expected_delay: float) -> asyncio.Event:
+        delay, release = await asyncio.wait_for(self.waits.get(), timeout=2.0)
+        assert delay == expected_delay
+        return release
+
+
 class _SlowFinalASR:
-    """Giữ backlog sau partial đến VAD speech_end, rồi mới xử lý hết câu."""
+    """Giữ decode ở barrier; final chỉ tới khi test cho xử lý hết câu."""
 
     name = "fake"
     input_sample_rate = 8000
 
-    def __init__(self, log: list[str], final_at_frame: int, release: asyncio.Event) -> None:
+    def __init__(self, log: list[str], final_at_frame: int) -> None:
         self._log = log
         self._final_at = final_at_frame
-        self._release = release
+        self.decode_started = asyncio.Event()
+        self.release_decode = asyncio.Event()
 
     def transcribe(self, segment) -> Transcript:
         raise NotImplementedError
@@ -43,47 +66,78 @@ class _SlowFinalASR:
             if count == 3:
                 yield TranscriptEvent(text="tôi muốn", is_final=False)
             if count == 6:
-                await self._release.wait()
+                self.decode_started.set()
+                await self.release_decode.wait()
             if count == self._final_at:
                 self._log.append("asr final")
                 yield TranscriptEvent(text="tôi muốn đặt lịch", is_final=True)
 
 
 class _LoggingController(TurnController):
-    def __init__(self, log: list[str], *, release: asyncio.Event, **kwargs) -> None:
+    def __init__(self, log: list[str], **kwargs) -> None:
         super().__init__(**kwargs)
         self._log = log
-        self._release = release
+        self.speech_ended = asyncio.Event()
 
     async def on_vad_event(self, event: VadEvent) -> None:
         if event.kind != "speech":
             self._log.append(f"vad {event.kind}")
         await super().on_vad_event(event)
         if event.kind == "speech_end":
-            self._release.set()
+            self.speech_ended.set()
 
 
-async def _realtime(frames: list[bytes]) -> AsyncIterator[bytes]:
-    for frame in frames:
+async def _frames_with_decode_barrier(
+    frames: list[bytes], asr: _SlowFinalASR
+) -> AsyncIterator[bytes]:
+    for index, frame in enumerate(frames, start=1):
         yield frame
-        await asyncio.sleep(0.01)
+        if index == 6:
+            await asr.decode_started.wait()
 
 
 async def test_slow_asr_does_not_stall_vad_and_turn_waits_for_final() -> None:
     log: list[str] = []
-    release = asyncio.Event()
     frames = [_LOUD] * 10 + [_SILENT] * 30
+    asr = _SlowFinalASR(log, final_at_frame=len(frames))
+    timer = _ManualTimer()
     pipeline = STTPipeline(
-        asr=_SlowFinalASR(log, final_at_frame=len(frames), release=release),
+        asr=asr,
         vad=StreamingVAD(EnergyFrameClassifier(100.0)),
-        async_vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=900),
+        async_vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=600),
         queue_max_frames=5,  # trước đây cũng là trần hàng đợi ASR: ASR ngủ là VAD đứng
     )
     controller = _LoggingController(
-        log, release=release, min_speech_ms=0, max_wait_after_vad_end_ms=50
+        log,
+        min_speech_ms=0,
+        max_wait_after_vad_end_ms=50,
+        clock=timer.clock,
+        sleep=timer.sleep,
     )
 
-    turns = [turn async for turn in pipeline.stream(_realtime(frames), turn_controller=controller)]
+    async def collect():
+        return [
+            turn
+            async for turn in pipeline.stream(
+                _frames_with_decode_barrier(frames, asr), turn_controller=controller
+            )
+        ]
+
+    collecting = asyncio.create_task(collect())
+    try:
+        # VAD phải kết thúc dù ASR vẫn bị giữ và hàng đợi VAD chỉ có 5 frame.
+        await asyncio.wait_for(controller.speech_ended.wait(), timeout=2.0)
+        assert not asr.release_decode.is_set()
+        (await timer.next_wait(0.05)).set()
+        # Đã hết timeout thông thường nhưng còn backlog: không được chốt partial.
+        await timer.next_wait(0.05)
+        assert not controller.has_pending_turn()
+        assert not collecting.done()
+        asr.release_decode.set()
+        turns = await asyncio.wait_for(collecting, timeout=2.0)
+    finally:
+        collecting.cancel()
+        await asyncio.gather(collecting, return_exceptions=True)
 
     assert log.index("vad speech_end") < log.index("asr final")
     assert [t.text for t in turns] == ["tôi muốn đặt lịch"]
@@ -96,11 +150,18 @@ async def _speak_then_end(controller: TurnController) -> None:
 
 
 async def test_turn_waits_while_asr_has_backlog_then_uses_final() -> None:
-    controller = TurnController(min_speech_ms=0, max_wait_after_vad_end_ms=20)
+    timer = _ManualTimer()
+    controller = TurnController(
+        min_speech_ms=0,
+        max_wait_after_vad_end_ms=20,
+        clock=timer.clock,
+        sleep=timer.sleep,
+    )
     controller.set_asr_pending_probe(lambda: True)
 
     await _speak_then_end(controller)
-    await asyncio.sleep(0.15)
+    (await timer.next_wait(0.02)).set()
+    await timer.next_wait(0.05)
     assert not controller.has_pending_turn()
 
     await controller.on_transcript_event(TranscriptEvent(text="tôi muốn đặt lịch", is_final=True))
@@ -109,22 +170,46 @@ async def test_turn_waits_while_asr_has_backlog_then_uses_final() -> None:
 
 
 async def test_turn_falls_back_to_partial_after_asr_wait_cap() -> None:
+    timer = _ManualTimer()
     controller = TurnController(
-        min_speech_ms=0, max_wait_after_vad_end_ms=20, max_wait_for_asr_ms=100
+        min_speech_ms=0,
+        max_wait_after_vad_end_ms=20,
+        max_wait_for_asr_ms=100,
+        clock=timer.clock,
+        sleep=timer.sleep,
     )
     controller.set_asr_pending_probe(lambda: True)
 
     await _speak_then_end(controller)
+
+    (await timer.next_wait(0.02)).set()
+    first_poll = await timer.next_wait(0.05)
+    assert not controller.has_pending_turn()
+    first_poll.set()
+    second_poll = await timer.next_wait(0.05)
+    assert not controller.has_pending_turn()
+    second_poll.set()
 
     turn = await asyncio.wait_for(controller.get_turn(), timeout=1.0)
     assert turn.text == "tôi muốn"
 
 
 async def test_idle_asr_keeps_old_timeout_behavior() -> None:
-    controller = TurnController(min_speech_ms=0, max_wait_after_vad_end_ms=20)
+    timer = _ManualTimer()
+    controller = TurnController(
+        min_speech_ms=0,
+        max_wait_after_vad_end_ms=20,
+        clock=timer.clock,
+        sleep=timer.sleep,
+    )
     controller.set_asr_pending_probe(lambda: False)
 
     await _speak_then_end(controller)
 
-    turn = await asyncio.wait_for(controller.get_turn(), timeout=0.2)
+    timeout = await timer.next_wait(0.02)
+    assert not controller.has_pending_turn()
+    timeout.set()
+
+    turn = await asyncio.wait_for(controller.get_turn(), timeout=2.0)
     assert turn.text == "tôi muốn"
+    assert timer.waits.empty()

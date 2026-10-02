@@ -4,8 +4,8 @@ Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết
 Tầng transport của callbot chỉ nối bundle này vào request.
 """
 
-import asyncio
 import logging
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import AsyncIterator, Callable, Optional, Protocol
 
@@ -42,6 +42,7 @@ class SpeechSynthesizer:
     def __init__(self, gateway: TTSGateway) -> None:
         self._gateway = gateway
         self._last_stream_result = None
+        self._cancelled = False
 
     @property
     def last_stream_result(self):
@@ -73,30 +74,41 @@ class SpeechSynthesizer:
         )
 
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
-        """Stream when supported; use the gateway's fallback for sync-only providers."""
+        """Phát qua gateway (có dự phòng), ở tần số của track LiveKit (`stream_sample_rate`)."""
         self._last_stream_result = None
-        provider = self._gateway.provider
-        stream = getattr(provider, "synthesize_stream", None)
-        if stream is not None:
-            async for chunk in stream(text):
+        self._cancelled = False
+        track_rate = self.stream_sample_rate
+        # Chunk luôn là PCM16 (Vbee xin `pcm`, ElevenLabs từ chối mọi format không phải
+        # `pcm_*` lúc khởi tạo), nên chỉ còn tần số có thể lệch.
+        # Provider thực tế (vd. dự phòng) khác tần số track: gom rồi resample một lần ở cuối.
+        # Resample từng chunk rời sẽ có tiếng tách ở chỗ nối. Cấu hình hiện tại Vbee và
+        # ElevenLabs cùng 8 kHz nên nhánh này không chạy.
+        held = bytearray()
+        held_rate = track_rate
+        async with aclosing(self._gateway.synthesize_stream(text)) as chunks:
+            async for chunk in chunks:
+                info = self._gateway.last_stream
+                self._last_stream_result = info
+                if info is not None and info.sample_rate != track_rate:
+                    held.extend(chunk)
+                    held_rate = info.sample_rate
+                    continue
                 yield chunk
-            return
-
-        result = await asyncio.to_thread(self._gateway.synthesize, text)
-        self._last_stream_result = result
-        if result is None:
-            return
-        pcm = result.pcm
-        if result.sample_rate != self.stream_sample_rate:
+        self._last_stream_result = self._gateway.last_stream
+        if held and not self._cancelled:
             from speech.audio.codec import resample
 
-            pcm = resample(pcm, result.sample_rate, self.stream_sample_rate)
-        yield pcm
+            yield resample(bytes(held), held_rate, track_rate)
 
     async def cancel(self) -> None:
-        cancel = getattr(self._gateway.provider, "cancel", None)
-        if cancel is not None:
-            await cancel()
+        self._cancelled = True
+        await self._gateway.cancel()
+
+    def close(self) -> None:
+        self._gateway.close()
+
+    async def aclose(self) -> None:
+        await self._gateway.aclose()
 
 
 @dataclass

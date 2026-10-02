@@ -49,6 +49,17 @@ TODAY = date(2026, 9, 15)
         ("mười bốn tháng 3 năm 2 không 1 5", date(2015, 3, 14)),
         ("mười 4 tháng ba năm 2004", date(2004, 3, 14)),
         ("ngày mùng 5 tháng 6 năm 2 không linh 5", date(2005, 6, 5)),
+        # Năm đọc bằng chữ nhưng thiếu từ "năm"
+        ("Mười bảy tháng tám một chín sáu tám", date(1968, 8, 17)),
+        ("17 tháng 8 một chín sáu tám", date(1968, 8, 17)),
+        ("mười bảy tháng tám một nghìn chín trăm sáu mươi tám", date(1968, 8, 17)),
+        ("hai mốt tháng mười một một chín bảy tám", date(1978, 11, 21)),
+        ("hai mốt tháng mười hai một chín bảy tám", date(1978, 12, 21)),
+        # Năm đọc thành hai cặp: 19 | 90
+        ("mười bảy tháng 8 1 chín chín mươi", date(1990, 8, 17)),
+        ("mười bảy tháng tám năm một chín chín mươi", date(1990, 8, 17)),
+        ("mười bảy tháng tám mười chín chín mươi lăm", date(1995, 8, 17)),
+        ("mười bảy tháng tám hai không mười lăm", date(2015, 8, 17)),
     ],
 )
 def test_valid_dates(text: str, expected: date) -> None:
@@ -61,6 +72,8 @@ def test_valid_dates(text: str, expected: date) -> None:
         "31/02/1980",  # ngày không tồn tại — không tự sửa
         "ngày 31 tháng 2 năm 1980",
         "14 tháng 3",  # thiếu năm — không điền năm hiện tại
+        "14 tháng mười một",  # không được đọc thành tháng 10 năm "một"
+        "14 tháng ba bảy tám",  # thiếu "năm": chỉ nhận năm đủ 4 chữ số
         "14/3",
         "sinh năm 1978",  # chỉ có năm
         "tôi 48 tuổi",  # nói tuổi thay năm sinh
