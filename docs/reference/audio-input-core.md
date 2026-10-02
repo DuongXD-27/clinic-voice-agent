@@ -10,11 +10,12 @@ cùng Extraction → Policy → Dialogue → Output Guard → FSM → Session.
 1. Kiểm tra đầu vào khớp mode đã mở: audio không nhận text, text không nhận audio URL.
 2. Khi `silence_ms > 0`, bỏ qua tải clip và ASR dù request có `audio_url`.
    Tạo lượt im lặng với `text=None`, không có confidence; giữ URL để nhận diện request.
-3. Khi không có im lặng tường minh, tải clip và nhận transcript đã hoàn tất từ ASR.
+3. Core kiểm tra phiên, thứ tự lượt và request trùng trong khóa session trước khi gọi
+   resolver của transport. Chỉ lượt chưa có transcript mới tải clip và chạy ASR.
    `Transcript.is_silence` không quyết định im lặng của Core. Transcript rỗng là đầu vào
    không hiểu, không tăng bộ đếm im lặng.
 4. Nếu tải/giải mã hoặc ASR lỗi, trả `503 UPSTREAM` với thông báo an toàn.
-   Core chưa nhận lượt, session/counters và Clinic giữ nguyên; có thể gửi lại cùng số lượt.
+   Chưa đặt chỗ lượt, session/counters và Clinic giữ nguyên; có thể gửi lại cùng số lượt.
 5. Gửi `CallerInput` vào orchestrator dùng chung. TTS đọc utterance đã qua Output Guard.
 
 ## Quy trình LiveKit
@@ -28,6 +29,9 @@ cùng Extraction → Policy → Dialogue → Output Guard → FSM → Session.
 5. Lỗi task ASR/VAD/nguồn frame được truyền lên bridge và dọn tài nguyên.
    Không tạo lượt rỗng, lượt im lặng hay phone status để thay thế lỗi; không ghi thêm Clinic.
    Bridge chỉ log tên lớp lỗi, tránh ghi transcript hoặc URL trong exception.
+6. Khi pipeline kết thúc bình thường, sentinel EOF đứng sau toàn bộ lượt đã chốt;
+   hàng đợi đầy không được làm mất một lượt. Chỉ lỗi/cleanup mới ưu tiên sentinel
+   để giải phóng bridge.
 
 ## Kiểm chứng và phạm vi
 
@@ -36,7 +40,45 @@ cùng Extraction → Policy → Dialogue → Output Guard → FSM → Session.
 - Regression streaming kiểm tra lỗi ASR, VAD và nguồn frame được truyền về nơi gọi.
 - Regression LiveKit kiểm tra mapping metadata, từ chối sự kiện ASR thô và cleanup khi lỗi.
 
-Đây là kiểm chứng mapping bằng ASR/TTS giả lập và Core thật, chưa phải đánh giá chất lượng
-provider hoặc full Audio E2E 7/7. Retry HTTP hiện vẫn chạy ASR lại trước khi Core kiểm tra
-replay; ổn định transcript/fingerprint và phục hồi output sau commit thuộc task retry tiếp theo.
+## Retry đầu vào và phục hồi output
+
+- Request audio được nhận diện bằng số lượt, `audio_url` và `silence_ms`; transcript là
+  kết quả ASR, không phải trường do HTTP client gửi. URL clip phải bất biến trong cửa sổ
+  retry. Không thay nội dung clip tại cùng URL để gửi một đầu vào khác.
+- Transcript thành công được lưu cùng bản ghi PROCESSING trước khi chạy IE/Policy.
+  Khi worker bị ngắt trước commit, resolver dùng lại transcript đã lưu. Lượt COMPLETED
+  dùng action cũ và không gọi ASR; đổi URL hoặc độ dài im lặng vẫn là `TURN_CONFLICT`.
+  Text mode tiếp tục so sánh nguyên văn text, không chuẩn hóa request.
+- Khóa Redis riêng của HTTP bao trọn Core và xuất audio, chờ tối đa 1 giây rồi trả
+  `CALL_BUSY`. Khóa session vẫn là chốt thứ tự/state/API action dùng chung với phone/LiveKit.
+  Mode được giữ cố định khi mở lại cùng `call_id`.
+- TTS chỉ nhận `action.utterance` đã qua Output Guard. HTTP audio mode trả `200` khi
+  đã lưu WAV hoàn chỉnh; thiếu audio, TTS lỗi/timeout hoặc storage lỗi trả
+  `503 AUDIO_OUTPUT_UNAVAILABLE`. Không chuyển máy hay chạy lệnh Clinic bù vì lỗi phát âm.
+- WAV được ghi vào file tạm rồi thay thế nguyên tử. SHA-256 nhận diện utterance đi kèm
+  giúp retry dùng lại audio, không tổng hợp lần nữa. Nếu artifact đã bị dọn, lượt active
+  có thể tổng hợp lại từ action đã commit mà không chạy lại nghiệp vụ.
+- Lượt active phục hồi bằng action trong session. Với lượt terminal, session vẫn bị purge
+  ngay; chỉ biên nhận output đang chờ được giữ riêng tối đa **120 giây**, gồm hash request
+  và action đã Guard. Nó không chứa transcript, extraction, hồ sơ hay command payload;
+  utterance có thể chứa thời gian lịch đã được phép công bố. Retry không kéo dài TTL.
+  Biên nhận bị xóa ngay khi audio hoàn tất và không dùng để tiếp tục hội thoại.
+- Retry đúng request terminal có biên nhận chỉ phát lại output. Sau khi biên nhận đã xóa
+  hoặc hết TTL, các lượt tiếp tục trả `CALL_ENDED` như text mode. Nếu worker chết/Redis lỗi
+  giữa commit terminal và lưu biên nhận, không thể phục hồi câu cũ; vẫn chặn gọi lại Core
+  và không ghi Clinic lần hai. Kết quả ghi chưa xác định vẫn yêu cầu đối soát, không có
+  biên nhận output để che lỗi đó.
+
+## Mức kiểm chứng
+
+Regression đối chiếu 7/7 flow và ca biên trên Core thật: utterance, state, counters,
+outcome, chuỗi API và bản ghi Clinic của text/audio phải bằng nhau. ASR/TTS giả lập chỉ
+điều khiển transcript và lỗi trong các ca này. LiveKit Bridge thật cũng được đối chiếu
+7/7 flow với Core thật, dùng pipeline phát lượt đã chốt và media/TTS giả.
+Test ASR local opt-in dùng clip 8 kHz
+có sẵn cho identity, confirm và voicemail; không gọi Luna hay TTS thật.
+
+Đây chưa phải full Audio E2E 7/7 với provider: bộ clip có nhãn hiện chưa phủ cancel,
+reschedule và inbound booking, và TTS thật chưa được nối. WAV của TTS giả trong test
+chỉ kiểm tra việc giao đúng utterance và xuất artifact, không chứng minh phát âm trung thực.
 Không thay đổi điều kiện identity, xác nhận hủy, nguồn slot hay cơ chế ghi Clinic.

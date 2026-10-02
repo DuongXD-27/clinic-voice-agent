@@ -1,5 +1,8 @@
+import hashlib
+import os
 import re
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -25,8 +28,37 @@ class AudioArtifactStore:
     def save(self, call_id: str, turn: int, segment: AudioSegment) -> str:
         path = self.path_for(call_id, turn)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(encode_wav(to_sample_rate(segment, self._sample_rate)))
+        path.with_suffix(".sha256").unlink(missing_ok=True)
+        self._atomic_write(path, encode_wav(to_sample_rate(segment, self._sample_rate)))
         return f"{self._base_url}/audio/{call_id}/{turn}.wav"
+
+    @staticmethod
+    def _atomic_write(path: Path, data: bytes) -> None:
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def remember_utterance(self, call_id: str, turn: int, text: str) -> None:
+        path = self.path_for(call_id, turn).with_suffix(".sha256")
+        self._atomic_write(path, hashlib.sha256(text.encode("utf-8")).hexdigest().encode("ascii"))
+
+    def cached_url(self, call_id: str, turn: int, text: str) -> str | None:
+        path = self.path_for(call_id, turn)
+        try:
+            digest = path.with_suffix(".sha256").read_text(encoding="ascii")
+            if path.is_file() and digest == hashlib.sha256(text.encode("utf-8")).hexdigest():
+                return f"{self._base_url}/audio/{call_id}/{turn}.wav"
+        except FileNotFoundError:
+            pass
+        return None
 
     def path_for(self, call_id: str, turn: int) -> Path:
         if not _SAFE_ID.match(call_id):

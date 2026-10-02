@@ -34,16 +34,26 @@ Mỗi `call_id` có một JSON key chứa context, các lượt và journal lệ
 
 - Session mới luôn có TTL; TTL bị chặn bởi cả idle timeout và maximum age.
 - Lượt kết thúc không ghi Clinic: xóa ngay cấu hình cuộc gọi, transcript, kết quả và extraction.
-- Clinic trả thành công: xóa ngay toàn bộ nội dung khách hàng sau acknowledgement, trước khi trả HTTP.
+- Clinic trả thành công: xóa ngay nội dung khách hàng trong session sau acknowledgement, trước khi trả HTTP.
 - Kết quả ghi Clinic không xác định: xóa nội dung và giữ tombstone `RECONCILIATION_REQUIRED` để chặn ghi trùng.
 - Hết hạn: cleanup làm sạch nội dung; Redis TTL vẫn là lớp bảo vệ cuối cùng nếu cleanup dừng.
 - Tombstone chỉ giữ mã trạng thái, số lượt, trạng thái lệnh, attempts, idempotency key và thời điểm kỹ thuật. Endpoint, payload, result và error đều bị xóa.
 
 Bot không sao chép hồ sơ bệnh nhân sang nơi lưu bền. Trong lúc hội thoại, các trường cần thiết chỉ tồn tại tạm trong key Redis; sau khi ghi Clinic thành công hoặc cuộc gọi kết thúc, chúng bị xóa.
 
+HTTP audio có biên nhận giao output riêng khi lượt terminal đã commit nhưng audio chưa
+hoàn tất. Biên nhận chứa hash request và action đã qua Output Guard, tối đa 32 KiB,
+TTL 120 giây không gia hạn; xóa ngay khi xuất audio thành công. Nó có thể chứa thời gian
+lịch trong utterance đã được phép công bố, nhưng không chứa transcript, extraction,
+hồ sơ bệnh nhân hay payload lệnh Clinic. Đây là dữ liệu tạm phục hồi phát âm, không phải
+session mới hay bản sao Clinic. Sau khi hết cửa sổ phục hồi, request trả `CALL_ENDED`.
+Xem [retry audio và giới hạn khi worker chết](audio-input-core.md).
+
 ## Đồng thời và lỗi
 
 - Khóa Redis `SET NX PX` theo `call_id`; chờ quá 5 giây trả `409 CALL_BUSY`.
+- HTTP có khóa transport riêng bao trọn nhận dạng, Core và xuất audio, chờ tối đa 1 giây.
+  Hai khóa dùng namespace riêng để không lồng khóa cùng tên; phone/LiveKit vẫn dùng khóa session.
 - Các `call_id` khác nhau không chặn nhau, nên có thể chạy nhiều worker/replica.
 - Nếu khóa hết hạn hoặc đổi chủ trong khi xử lý, request trả `503`; không coi lượt là hoàn thành an toàn.
 - Lượt `PROCESSING` không có lệnh, hoặc chỉ có lệnh `FAILED`, có thể xử lý tiếp.
