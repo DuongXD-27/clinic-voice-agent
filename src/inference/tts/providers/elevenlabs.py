@@ -33,7 +33,7 @@ from websockets.exceptions import (
 )
 from websockets.sync.client import connect as ws_connect
 
-from inference.tts.base import TTSResult
+from inference.tts.base import StreamHandle, TTSResult
 from inference.tts.config import ElevenLabsTTSConfig
 from inference.tts.errors import TTSError, TTSRejected, TTSUnavailable
 
@@ -80,7 +80,8 @@ class TTSTiming:
 
 
 def sample_rate_of(output_format: str) -> int:
-    """`pcm_8000` -> 8000. Chỉ nhận PCM: μ-law cho điện thoại là việc tuần 5, decode ở Phone Adapter."""
+    """`pcm_8000` -> 8000. Chỉ nhận PCM: đường stream đẩy thẳng chunk vào track PCM16, nên
+    `ulaw_8000` (cùng 8 kHz) mà lọt qua sẽ thành tiếng nhiễu — từ chối ngay lúc khởi tạo."""
     prefix, _, rate = output_format.partition("_")
     if prefix != "pcm" or not rate.isdigit():
         raise ValueError(f"output_format không phải PCM: {output_format!r}")
@@ -112,12 +113,16 @@ class ElevenLabsTTS:
         # Điểm thay thế trong unit test: cùng chữ ký `websockets.sync.client.connect`
         self._connect: Connect = connect or ws_connect
         self._async_connect: Connect = async_connect or async_ws_connect
-        self._cancelled = asyncio.Event()
-        self._active_ws: Any = None
+        # Câu đang stream; state từng câu nằm trên handle (xem StreamHandle)
+        self._stream: Optional[StreamHandle] = None
 
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def voice(self) -> str:
+        return self._voice_id
 
     @property
     def sample_rate(self) -> int:
@@ -227,12 +232,17 @@ class ElevenLabsTTS:
         """Async WebSocket stream cho LiveKit; không chạy sync `stream()` trên event loop."""
         if not text or not text.strip():
             raise TTSRejected("text rỗng", code="empty_text")
-        self._cancelled.clear()
+        stream = StreamHandle()
+        self._stream = stream
         loop = asyncio.get_running_loop()
-        deadline = loop.time() + self._timeout_s
+        started = loop.time()
+        # Trần tổng chỉ tính thời gian chờ ElevenLabs, như Vbee: lúc bên phát giữ generator
+        # (CallBridge kéo chunk theo nhịp phát) không tính, nếu không câu nào dài hơn timeout_s
+        # giây audio cũng bị cắt giữa chừng khi chạy dự phòng.
+        playing = 0.0
 
         def remaining() -> float:
-            left = deadline - loop.time()
+            left = self._timeout_s - (loop.time() - started - playing)
             if left <= 0:
                 raise TTSUnavailable(f"TTS quá {self._timeout_s:.1f}s", code="timeout")
             return left
@@ -244,12 +254,12 @@ class ElevenLabsTTS:
                 open_timeout=remaining(),
                 close_timeout=1,
             ) as ws:
-                self._active_ws = ws
+                stream.close = ws.close
                 await ws.send(json.dumps({"text": " "}))
                 await ws.send(json.dumps({"text": text + " ", "flush": True}))
                 await ws.send(json.dumps({"text": ""}))
 
-                while not self._cancelled.is_set():
+                while not stream.cancelled:
                     try:
                         raw = await asyncio.wait_for(ws.recv(), timeout=remaining())
                     except ConnectionClosedOK:
@@ -260,7 +270,9 @@ class ElevenLabsTTS:
                     if audio:
                         chunk = base64.b64decode(audio)
                         if chunk:
+                            paused = loop.time()
                             yield chunk
+                            playing += loop.time() - paused
                     if message.get("isFinal"):
                         break
         except TTSError:
@@ -272,7 +284,7 @@ class ElevenLabsTTS:
         except ConnectionClosedOK:
             return
         except ConnectionClosed as exc:
-            if self._cancelled.is_set():
+            if stream.cancelled:
                 return
             raise TTSUnavailable(
                 f"kết nối TTS đóng bất thường (code={exc.rcvd.code if exc.rcvd else None})",
@@ -283,14 +295,12 @@ class ElevenLabsTTS:
                 f"không nối được tới TTS: {type(exc).__name__}", code="connection_failed"
             ) from exc
         finally:
-            self._active_ws = None
+            stream.close = None
 
     async def cancel(self) -> None:
         """Dừng nhận audio và đóng WebSocket đang sinh để barge-in có hiệu lực ngay."""
-        self._cancelled.set()
-        ws = self._active_ws
-        if ws is not None:
-            await ws.close()
+        if self._stream is not None:
+            await self._stream.cancel()
 
     @staticmethod
     def _parse(raw: Any) -> dict[str, Any]:

@@ -10,12 +10,31 @@ Slot filling họ tên nhận thêm câu hỏi bot đang chờ làm ngữ cảnh
 câu trả lời của khách, không bao giờ lấy từ câu hỏi của bot.
 """
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional, Protocol, TypeVar
 
 from callbot.engine.extraction.schema import Agreement, Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
 
 T = TypeVar("T")
+
+
+class SlotFillingStatus(str, Enum):
+    """Kết cục slot filling họ tên, gộp từ trạng thái chi tiết trong log cho người gọi."""
+
+    ACCEPTED = "accepted"  # mô hình trả tên, qua được guard
+    NO_NAME = "no_name"  # mô hình khẳng định không có tên (`full_name: null`)
+    REJECTED = "rejected"  # mô hình trả tên nhưng không qua guard
+    # timeout, lỗi transport, refusal, incomplete, invalid_response, hoặc không gọi được mô hình
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class SlotFillingResult:
+    status: SlotFillingStatus
+    field: Field[str]
+    elapsed_ms: Optional[float] = None
 
 
 class FallbackExtractor(Protocol):
@@ -27,7 +46,7 @@ class FallbackExtractor(Protocol):
         *,
         question_id: QuestionId = QuestionId.ASK_NAME,
         bot_question: Optional[str] = None,
-    ) -> Optional[Field[str]]:
+    ) -> Optional[SlotFillingResult]:
         """`bot_question`: nội dung câu hỏi nghiệp vụ đang chờ; `None` khi phiên không có nội dung."""
         ...
 

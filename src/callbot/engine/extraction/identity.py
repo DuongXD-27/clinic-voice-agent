@@ -38,6 +38,7 @@ class Reason(str, Enum):
     AMBIGUOUS = "AMBIGUOUS"  # nhiều cách hiểu cùng hợp lệ — không chọn hộ
     OTHER_PERSON = "OTHER_PERSON"  # thông tin của người khác, không phải người gọi
     NOT_A_NAME = "NOT_A_NAME"  # câu nghiệp vụ hoặc lời đệm, không phải câu khai tên
+    UNANCHORED = "UNANCHORED"  # có hình dạng tên nhưng thiếu dấu hiệu họ tên — tuyến sau quyết định
     OUT_OF_RANGE = "OUT_OF_RANGE"  # có cấu trúc ngày nhưng giá trị không dùng được
 
 

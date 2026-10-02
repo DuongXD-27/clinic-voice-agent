@@ -31,6 +31,10 @@ class OpenAITTS:
     def model(self) -> str:
         return self._config.model
 
+    @property
+    def voice(self) -> str:
+        return self._config.voice
+
     def _get_client(self):
         if self._client is None:
             from openai import OpenAI  # pip install -e ".[speech-zipformer]"

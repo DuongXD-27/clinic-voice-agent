@@ -315,7 +315,7 @@ def test_name_slot_filling_and_orchestrator_route_through_gateway(provider):
         provider, lambda _: httpx.Response(200, json=response_body(provider))
     )
     adapter = NameSlotFiller(gateway)
-    assert adapter.full_name(TEXT).value == "nguyễn văn a"
+    assert adapter.full_name(TEXT).field.value == "nguyễn văn a"
     with patch("callbot.engine.create_gateway", return_value=gateway) as factory:
         bot = create_orchestrator(
             FakeClinicAPI(),

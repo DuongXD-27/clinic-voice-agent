@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import traceback
+from contextlib import aclosing
 from dataclasses import dataclass
 from time import perf_counter
 from typing import TYPE_CHECKING, AsyncIterator, Optional
@@ -576,18 +577,21 @@ class CallBridge:
             sample_rate_hz=sample_rate,
         )
         try:
-            async for chunk in self._tts.synthesize_stream(text):
-                if chunk and first_audio_ms is None:
-                    first_audio_ms = (perf_counter() - started) * 1000
-                total_bytes += len(chunk)
-                if self._is_interrupted():
-                    break
-                pending.extend(chunk)
-                while len(pending) >= frame_bytes and not self._is_interrupted():
-                    await self._capture(bytes(pending[:frame_bytes]), sample_rate)
-                    del pending[:frame_bytes]
-                if self._is_interrupted():
-                    break
+            # aclosing: thoát vòng lặp (barge-in) thì đóng stream TTS ngay tại đây. Để GC đóng
+            # muộn thì phần dọn dẹp của câu cũ có thể chạy khi câu mới đã phát.
+            async with aclosing(self._tts.synthesize_stream(text)) as chunks:
+                async for chunk in chunks:
+                    if chunk and first_audio_ms is None:
+                        first_audio_ms = (perf_counter() - started) * 1000
+                    total_bytes += len(chunk)
+                    if self._is_interrupted():
+                        break
+                    pending.extend(chunk)
+                    while len(pending) >= frame_bytes and not self._is_interrupted():
+                        await self._capture(bytes(pending[:frame_bytes]), sample_rate)
+                        del pending[:frame_bytes]
+                    if self._is_interrupted():
+                        break
             # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
             tail = len(pending) - len(pending) % 2
             if tail and not self._is_interrupted():
@@ -627,6 +631,10 @@ class CallBridge:
                 self._tts, "name", None
             )
             voice = getattr(actual, "voice", None)
+            # Provider lỗi giữa câu: gateway dừng êm (không đọc lại) và chỉ ghi mã lỗi — người
+            # gọi nghe thiếu câu, nên span phải là ERROR + truncated, không tính tiền (§4.1.3).
+            stream_error = None if interrupted else getattr(actual, "error_code", None)
+            failed = sys.exc_info()[0] is not None or stream_error is not None
             tts_span.enrich(
                 provider_actual=actual_provider,
                 voice=voice,
@@ -636,15 +644,17 @@ class CallBridge:
                 audio_duration_ms=total_bytes / (2 * sample_rate) * 1000,
                 bytes=total_bytes,
                 interrupted=interrupted,
-                truncated=interrupted,
+                truncated=interrupted or stream_error is not None,
                 barge_in=interrupted,
-                result="ERROR"
-                if sys.exc_info()[0] is not None
-                else "CANCELLED"
-                if interrupted
-                else "OK",
+                result="ERROR" if failed else "CANCELLED" if interrupted else "OK",
             )
-            if not interrupted and sys.exc_info()[0] is None:
+            if stream_error is not None:
+                tts_span.enrich(provider_error_code=stream_error)
+                if stream_error == "timeout":
+                    tts_span.set_error_code("TIMEOUT", "TTS_TIMEOUT")
+                else:
+                    tts_span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
+            if not interrupted and not failed:
                 cost = tts_cost(actual_provider, voice, len(text))
                 if cost is not None:
                     tts_span.enrich(cost_usd=cost)

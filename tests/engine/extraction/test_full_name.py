@@ -1,6 +1,10 @@
 import pytest
 
-from callbot.engine.extraction.full_name import extract_full_name, read_full_name
+from callbot.engine.extraction.full_name import (
+    extract_full_name,
+    read_full_name,
+    valid_name_span,
+)
 from callbot.engine.extraction.identity import Reason
 from callbot.engine.extraction.schema import Provenance
 
@@ -26,7 +30,7 @@ from callbot.engine.extraction.schema import Provenance
         ("tôi là Nguyễn Văn A", "nguyễn văn a"),
         ("dạ vâng tên tôi là Trần Thị Bích Ngọc ạ", "trần thị bích ngọc"),
         ("Em tên là Phạm Minh Hoàng", "phạm minh hoàng"),
-        ("alo, tôi là Lê Hoa", "lê hoa"),
+        ("alo, tôi là Nguyễn Hoa", "nguyễn hoa"),
         ("Dạ tôi tên là Nguyễn Văn A, còn chị tôi là Nguyễn Thị B", "nguyễn văn a"),
         ("Toi la Nguyen Van A con em toi la Nguyen Van B", "nguyen van a"),
         ("Nguyen Van Ma", "nguyen van ma"),
@@ -98,7 +102,7 @@ def test_caller_identity_questions_do_not_enter_name_fallback(text: str) -> None
         # Còn dưới 3 từ sau danh xưng: có thể là họ thật (Chu, Ông) -> giữ, Verifier so cả hai dạng
         ("Chu Văn An", "chu văn an"),
         ("tôi là ông Văn Tùng", "ông văn tùng"),
-        ("tôi là bà Lê Na", "bà lê na"),
+        ("tôi là bà Nguyễn Lan", "bà nguyễn lan"),
     ],
 )
 def test_fillers_and_honorifics_before_the_name(text: str, expected: str) -> None:
@@ -142,3 +146,96 @@ def test_self_claim_at_the_end_with_an_honorific(text: str, expected: str) -> No
 def test_a_possessive_makes_it_a_relative_not_the_caller(text: str) -> None:
     reading = read_full_name(text)
     assert not reading.field.found and reading.reason is Reason.OTHER_PERSON
+
+
+# --- Dấu hiệu họ tên: câu nói thường đúng hình dạng không được thành tên -----------------------
+
+UNANCHORED_SPEECH = [
+    "trời hôm nay đẹp quá",
+    "hôm qua ăn phở",
+    "mạng lag quá",
+    "đang lái xe",
+    # Từ đầu trùng họ
+    "trần nhà",
+    "hồ sơ bệnh án",
+    "lương tháng",
+    "lưu tin nhắn",
+    "dương tính",
+    "đồng ý nhé",
+    "mai anh bận",
+    "văn phòng",
+    "hà nội",
+    "phạm vi",
+    "huỳnh quang",
+    # Họ + tên đệm ghép thành từ thông dụng
+    "trịnh trọng quá",
+    "đồng minh thân thiết",
+    "trần thế gian",
+    # Tên đệm + từ thứ ba ghép thành từ thông dụng
+    "hồ thu hoạch",
+    "từ thị trấn lên",
+    "lại thanh toán à",
+    # Không dấu
+    "troi hom nay dep qua",
+    "dang lai xe",
+    "tu van giup",
+    "do thi lon",
+    "ho thi biet",
+    "phan van qua",
+    "lai van the",
+]
+
+
+@pytest.mark.parametrize("text", UNANCHORED_SPEECH)
+def test_ordinary_speech_is_left_to_slot_filling(text: str) -> None:
+    reading = read_full_name(text)
+    assert not reading.field.found
+    assert reading.reason is Reason.UNANCHORED
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Nguyễn Lan", "nguyễn lan"),
+        ("Huỳnh Mai", "huỳnh mai"),
+        ("Phan Văn An", "phan văn an"),
+        ("Hà Thị Hoa", "hà thị hoa"),
+        ("Đồng Văn Minh", "đồng văn minh"),
+        ("Mai Thanh Hà", "mai thanh hà"),
+        ("Hồ Thu Hà", "hồ thu hà"),
+        ("Nguyễn Thanh Toàn", "nguyễn thanh toàn"),
+        ("tôi là bà Nguyễn Lan", "bà nguyễn lan"),
+        ("tran thi mai", "tran thi mai"),
+        ("huynh minh tuan", "huynh minh tuan"),
+    ],
+)
+def test_anchored_names_stay_with_the_rule(text: str, expected: str) -> None:
+    reading = read_full_name(text)
+    assert reading.reason is Reason.OK
+    assert reading.field.value == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "model_name"),
+    [
+        ("Lê Na", "lê na"),
+        ("Phan An", "phan an"),
+        ("Hà Hà", "hà hà"),
+        ("Hà Anh Tuấn", "hà anh tuấn"),
+        ("Âu Dương Phong", "âu dương phong"),
+        ("Lại Văn Sâm", "lại văn sâm"),
+        ("tôi là bà Lê Na", "lê na"),
+        ("le minh tuan", "le minh tuan"),
+        ("ho van nam", "ho van nam"),
+        # Trùng câu nói thường sau chuẩn hoá: tên hay không là việc của slot filling
+        ("đồng minh thân", "đồng minh thân"),
+        ("tôi tên Trịnh Trọng Nam", "trịnh trọng nam"),
+        ("tôi là Lê Thanh Toán", "lê thanh toán"),
+    ],
+)
+def test_unanchored_real_names_are_deferred_not_rejected(text: str, model_name: str) -> None:
+    """Bảng dấu hiệu chỉ chặn luật; tên mô hình trả về không bị các bảng đó loại."""
+    reading = read_full_name(text)
+    assert not reading.field.found
+    assert reading.reason is Reason.UNANCHORED
+    assert valid_name_span(model_name)
