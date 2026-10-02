@@ -241,8 +241,12 @@ class STTPipeline:
                     was_candidate = False
                     await _send_to_asr(frame)
             finally:
-                await vad_queue.put(_QUEUE_DONE)
-                await asr_queue.put(_QUEUE_DONE)
+                # During cancellation the consumers are stopping too. Waiting to put
+                # sentinels into a full queue would deadlock error cleanup.
+                task = asyncio.current_task()
+                if task is None or not task.cancelling():
+                    await vad_queue.put(_QUEUE_DONE)
+                    await asr_queue.put(_QUEUE_DONE)
 
         async def _drain_vad() -> None:
             async for event in self._async_vad.process(_dequeue(vad_queue)):
@@ -288,25 +292,42 @@ class STTPipeline:
         fanout_task = asyncio.ensure_future(_fanout())
         vad_task = asyncio.ensure_future(_drain_vad())
         asr_task = asyncio.ensure_future(_drain_asr())
+        next_turn = None
+        workers = (fanout_task, vad_task, asr_task)
         try:
             while True:
+                # Surface transport/ASR/VAD errors before emitting any pending turn.
+                for task in workers:
+                    if task.done():
+                        task.result()
+                if vad_task.done() and asr_task.done() and not controller.has_pending_turn():
+                    return
                 next_turn = asyncio.ensure_future(controller.get_turn())
                 done, _ = await asyncio.wait(
-                    {next_turn, vad_task, asr_task}, return_when=asyncio.FIRST_COMPLETED
+                    {next_turn, *(task for task in workers if not task.done())},
+                    return_when=asyncio.FIRST_COMPLETED,
                 )
+                for task in workers:
+                    if task.done():
+                        task.result()
                 if next_turn in done:
                     yield next_turn.result()
                     continue
                 # VAD và ASR đã đọc hết `frames` (call kết thúc) và không còn turn nào
                 # đang chờ trong queue — dừng generator thay vì treo vô hạn.
                 next_turn.cancel()
+                await asyncio.gather(next_turn, return_exceptions=True)
                 if vad_task.done() and asr_task.done() and not controller.has_pending_turn():
                     return
         finally:
             controller.set_asr_pending_probe(None)
-            for task in (fanout_task, vad_task, asr_task):
+            if next_turn is not None:
+                next_turn.cancel()
+            for task in workers:
                 task.cancel()
-            await asyncio.gather(fanout_task, vad_task, asr_task, return_exceptions=True)
+            await asyncio.gather(
+                *workers, *([next_turn] if next_turn else []), return_exceptions=True
+            )
 
 
 async def _dequeue(queue: "asyncio.Queue[object]") -> AsyncIterator[bytes]:

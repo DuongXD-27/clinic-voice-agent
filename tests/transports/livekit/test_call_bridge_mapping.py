@@ -79,6 +79,20 @@ def test_caller_input_from_turn_carries_text_and_confidence() -> None:
     assert caller.transcript == "tôi muốn đổi lịch"
 
 
+@pytest.mark.parametrize("is_final", [False, True])
+def test_mapping_rejects_raw_asr_events(is_final):
+    from speech.types import TranscriptEvent
+
+    with pytest.raises(TypeError):
+        caller_input_from_turn(1, TranscriptEvent(text="vâng", is_final=is_final))
+
+
+def test_mapping_empty_completed_turn_is_not_silence():
+    caller = caller_input_from_turn(1, UserTurnCompleted(text="", confidence=0.1))
+    assert caller.transcript == "" and not caller.is_silence
+    assert caller.asr_confidence == 0.1
+
+
 class _FakeOrchestrator:
     def __init__(self, opening: BotAction, turn_actions: list[BotAction]) -> None:
         self._opening = opening
@@ -243,6 +257,35 @@ async def test_outbound_start_failure_notifies_browser_without_crashing_job() ->
     assert "APPOINTMENT_NOT_ACTIONABLE" not in payload
     assert reliable is True
     assert topic == "callbot.status"
+
+
+async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(monkeypatch, caplog):
+    class BrokenPipeline:
+        async def stream(self, frames, **kwargs):
+            raise RuntimeError("private caller transcript")
+            yield
+
+    orchestrator = _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), [])
+    bridge = CallBridge(_FakeRoom("web-stt-failure"), orchestrator, BrokenPipeline(), _FakeTTS())
+    source = _FakeAudioSource()
+
+    async def publish():
+        bridge._audio_source = source
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish)
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError, match="private caller transcript"):
+            await asyncio.wait_for(bridge.run(), timeout=2)
+    assert orchestrator.handled_turns == [] and source.closed
+    assert "private caller transcript" not in caplog.text
+    (record,) = [r for r in caplog.records if "voice pipeline failed" in r.getMessage()]
+    assert "error=RuntimeError" in record.getMessage()
+    stream_code = BrokenPipeline.stream.__code__
+    assert f"{stream_code.co_filename}:{stream_code.co_firstlineno + 1}" in record.getMessage()
+    assert "call_bridge.py:" in record.getMessage()
+    assert " -> " in record.getMessage()
+    assert record.exc_info is None
+    assert record.stack_info is None
 
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:

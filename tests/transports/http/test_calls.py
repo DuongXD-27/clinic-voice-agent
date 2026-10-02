@@ -313,10 +313,10 @@ def test_start_call_audio_mode_returns_audio_url(
         assert tts.spoken == [body["utterance"]]
 
 
-def test_tts_failure_still_replies_without_audio(
+def test_tts_failure_requires_output_retry_without_repeating_core(
     clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
 ) -> None:
-    """TTS lỗi (vd. key không có quyền model TTS) không chặn cuộc gọi audio — vẫn test được STT."""
+    """Audio mode không trả thành công khi chưa có audio; retry chỉ phục hồi output."""
     asr = FakeASR(transcript="Nguyễn Văn A")
     tts = FakeTTS(error=RuntimeError("403 model_not_found"))
     app = create_app(
@@ -328,13 +328,20 @@ def test_tts_failure_still_replies_without_audio(
     )
     with TestClient(app) as audio_client:
         start = _start(audio_client, "c_audio_tts_down", mode="audio")
-        assert start.status_code == 200
-        assert start.json()["audio_url"] is None and start.json()["utterance"]
+        assert start.status_code == 503
+        tts.error = None
+        assert _start(audio_client, "c_audio_tts_down", mode="audio").status_code == 200
+        tts.error = RuntimeError("403 model_not_found")
         turn = _turn(
             audio_client, "c_audio_tts_down", 1, None, audio_url="https://harness/clips/1.wav"
         )
-        assert turn.status_code == 200
-        assert turn.json()["utterance"] == t.ASK_DOB and turn.json()["audio_url"] is None
+        assert turn.status_code == 503
+        tts.error = None
+        retry = _turn(
+            audio_client, "c_audio_tts_down", 1, None, audio_url="https://harness/clips/1.wav"
+        )
+        assert retry.status_code == 200
+        assert retry.json()["utterance"] == t.ASK_DOB and retry.json()["audio_url"]
 
 
 def test_turn_with_audio_url_transcribes_and_replies_with_audio(

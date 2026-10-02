@@ -199,10 +199,18 @@ class CallOrchestrator:
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
         return self.handle_turn_with_details(call_id, caller).action
 
-    def handle_turn_with_details(self, call_id: str, caller: CallerInput) -> TurnRun:
+    def handle_turn_with_details(
+        self,
+        call_id: str,
+        caller: CallerInput,
+        *,
+        resolve_input: Optional[Callable[[], CallerInput]] = None,
+    ) -> TurnRun:
         """Run a turn and retain its extraction trace for transport-level diagnostics."""
         with self._span_tracer.span(component="CORE", operation="core.handle_turn") as core:
-            run = self._sessions.run_turn(call_id, caller, self._process)
+            run = self._sessions.run_turn(
+                call_id, caller, self._process, resolve_input=resolve_input
+            )
             core.enrich(
                 state_after=run.action.state,
                 outcome=run.action.outcome,
