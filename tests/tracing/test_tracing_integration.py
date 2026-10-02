@@ -8,6 +8,7 @@ from tests.transports.http.fakes import make_speech_bundle
 from callbot.engine import CallerInput, CallStart, EngineSettings, create_orchestrator
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.tracing import Tracer
+from callbot.tracing.langfuse_sink import _otlp_span
 from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
 from callbot.transports.http.call_mode import CallModeStore
@@ -65,6 +66,9 @@ def test_full_hierarchy_policy_fsm_session_and_privacy(redis_store_factory) -> N
     action = _turn(bot, tracer, call_id, 1, "cho tôi gặp nhân viên")
 
     assert action.ended and action.outcome == "TRANSFERRED"
+    transfer_turn = next(span for span in sink.spans if span.operation == "http.call_turn")
+    assert transfer_turn.status == "OK"
+    assert _otlp_span(transfer_turn, "test")["status"] == {"code": 1}
     records = _records(sink)
     turn = next(record for record in records if record["operation"] == "http.call_turn")
     core = next(
@@ -293,8 +297,16 @@ def test_version_conflict_is_one_logical_span_with_two_attempts(redis_store_fact
     ]
     assert len(spans) == 1
     assert spans[0]["attempt_count"] == 2
+    assert spans[0]["retry_count"] == 1
+    assert spans[0]["if_match_used"] is True
+    assert spans[0]["idempotency_used"] is True
     assert spans[0]["version_conflict"] is True
+    assert spans[0]["status"] == "OK"
     assert [event["attributes"]["attempt"] for event in spans[0]["events"]] == [1, 2]
+    assert [event["attributes"]["version_conflict"] for event in spans[0]["events"]] == [
+        True,
+        False,
+    ]
     serialized = json.dumps(_records(sink), ensure_ascii=False)
     assert "14/03/1978" not in serialized
     assert "1978-03-14" not in serialized

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ _BASE_FIELDS = frozenset(
         "duration_ms",
         "status",
         "events",
+        "observation_type",
     }
 )
 
@@ -93,7 +95,10 @@ class JsonlSpanSource:
                                 raw = json.loads(line)
                                 if not isinstance(raw, dict):
                                     raise ValueError("trace record must be an object")
-                                if raw.get("schema_version") != "trace.v1":
+                                if raw.get("schema_version") not in {"trace.v1", "trace.v2"} or (
+                                    raw.get("schema_version") == "trace.v2"
+                                    and raw.get("record_type") != "generation"
+                                ):
                                     counters["unsupported_records"] += 1
                                     continue
                                 span = _parse_span(raw)
@@ -108,6 +113,69 @@ class JsonlSpanSource:
                     counters["files_skipped"] += 1
         finally:
             self._diagnostics = SourceDiagnostics(**counters)
+
+    def query_scores(self, start_time: datetime, end_time: datetime) -> Iterator[dict[str, Any]]:
+        start, end = require_utc_range(start_time, end_time)
+        for path in self._directory.glob("score-????????.jsonl"):
+            try:
+                with path.open("r", encoding="utf-8") as stream:
+                    for line in stream:
+                        try:
+                            item = json.loads(line)
+                            if not isinstance(item, dict):
+                                continue
+                            if set(item) - {
+                                "schema_version",
+                                "record_type",
+                                "timestamp",
+                                "name",
+                                "value",
+                                "trace_id",
+                                "session_id",
+                                "langfuse_published",
+                            }:
+                                continue
+                            if (
+                                item.get("schema_version") != "score.v1"
+                                or item.get("record_type") != "score"
+                            ):
+                                continue
+                            if item.get("name") not in {
+                                "task_success",
+                                "contract_pass",
+                                "severe_failure",
+                                "latency_pass",
+                                "privacy_pass",
+                            }:
+                                continue
+                            trace_id = item.get("trace_id")
+                            session_id = item.get("session_id")
+                            if (trace_id is None) == (session_id is None):
+                                continue
+                            identity = trace_id or session_id
+                            pattern = (
+                                r"[0-9a-f]{32}"
+                                if trace_id is not None
+                                else r"ck_[A-Za-z0-9_-]+_[A-Za-z0-9_-]{22}"
+                            )
+                            if (
+                                not isinstance(identity, str)
+                                or re.fullmatch(pattern, identity) is None
+                            ):
+                                continue
+                            value = item.get("value")
+                            if not isinstance(value, (bool, int, float)) or not 0 <= value <= 1:
+                                continue
+                            if "langfuse_published" in item and not isinstance(
+                                item["langfuse_published"], bool
+                            ):
+                                continue
+                            if start <= parse_timestamp(item["timestamp"]) < end:
+                                yield item
+                        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+                            continue
+            except OSError:
+                continue
 
     def _paths(self, counters: dict[str, int]) -> Iterator[Path]:
         if not self._directory.is_dir():
@@ -128,7 +196,7 @@ class JsonlSpanSource:
 
 
 def _parse_span(raw: dict[str, Any]) -> CompletedSpan:
-    if raw.get("record_type") != "span":
+    if raw.get("record_type") not in {"span", "generation"}:
         raise ValueError("unsupported trace record type")
     unknown = set(raw) - _BASE_FIELDS - SPAN_FIELDS
     if unknown:
@@ -167,6 +235,7 @@ def _parse_span(raw: dict[str, Any]) -> CompletedSpan:
         status=raw["status"],
         attributes=attributes,
         events=tuple(events),
+        observation_type="GENERATION" if raw.get("record_type") == "generation" else "SPAN",
     )
     validate_completed_span(span)
     return span

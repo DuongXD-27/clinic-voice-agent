@@ -40,6 +40,11 @@ class SpeechSynthesizer:
 
     def __init__(self, gateway: TTSGateway) -> None:
         self._gateway = gateway
+        self._last_stream_result = None
+
+    @property
+    def last_stream_result(self):
+        return self._last_stream_result
 
     @property
     def name(self) -> str:
@@ -57,10 +62,18 @@ class SpeechSynthesizer:
         result = self._gateway.synthesize(text)
         if result is None:
             return None
-        return AudioSegment(pcm=result.pcm, sample_rate=result.sample_rate)
+        return AudioSegment(
+            pcm=result.pcm,
+            sample_rate=result.sample_rate,
+            provider_actual=result.provider_actual,
+            voice=result.voice,
+            ttfa_ms=result.ttfa_ms,
+            fallback_used=result.fallback_used,
+        )
 
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         """Stream when supported; use the gateway's fallback for sync-only providers."""
+        self._last_stream_result = None
         provider = self._gateway.provider
         stream = getattr(provider, "synthesize_stream", None)
         if stream is not None:
@@ -69,6 +82,7 @@ class SpeechSynthesizer:
             return
 
         result = await asyncio.to_thread(self._gateway.synthesize, text)
+        self._last_stream_result = result
         if result is None:
             return
         pcm = result.pcm

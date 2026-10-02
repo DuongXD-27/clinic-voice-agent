@@ -4,8 +4,10 @@ Lời người gọi chỉ được biến thành TIÊU CHÍ LỌC trên tập s
 Không bao giờ dựng mốc thời gian mới từ lời nói, nên SF-02 không xảy ra được về mặt cấu trúc.
 
 - MATCH(slot_id)      đúng 1 slot thoả mọi tiêu chí
-- AMBIGUOUS(slot_ids) nhiều slot -> bot đọc tối đa 3 slot trong số đó, hỏi lại (không tự chọn slot đầu)
+- AMBIGUOUS(slot_ids) nhiều slot -> bot đọc tối đa 2 slot trong số đó, hỏi lại (không tự chọn slot đầu)
 - NO_MATCH            không slot nào, hoặc không rút ra được tiêu chí nào
+- MORE                không có tiêu chí, xin nghe khung khác ("khung khác", "còn khung nào")
+- ANY                 không có tiêu chí, khung nào cũng được ("nào cũng được", "sớm nhất", "tùy em")
 
 Ngày tương đối ("mai", "thứ năm tuần sau") tính theo ngày cuộc gọi, múi giờ +07:00.
 
@@ -15,6 +17,7 @@ Khôi phục sai chỉ làm lệch tiêu chí lọc (NO_MATCH / AMBIGUOUS); slot
 """
 
 import re
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Optional, Sequence
 
@@ -31,7 +34,14 @@ from callbot.engine.extraction.spoken_numbers import (
     parse_number,
     restore_number_words,
 )
-from callbot.engine.extraction.text import clean, is_unaccented, normalize
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    normalize,
+    strip_diacritics,
+)
 
 _PERIOD_HOURS: dict[DayPeriod, range] = {
     "MORNING": range(0, 12),
@@ -51,15 +61,35 @@ _ORDINAL = re.compile(
     r"(?<!\w)(?:khung|cái|lựa chọn|phương án|slot|số)\s+(?:thứ\s+|số\s+)?(nhất|một|hai|ba|tư|bốn|năm|[1-9])"
     r"(?!\w)(?!\s+(?:giờ|rưỡi|kém|h)(?!\w))"
 )
-_FIRST = re.compile(r"(?<!\w)(?:đầu tiên|cái đầu|khung đầu|slot đầu)(?!\w)")
-_LAST = re.compile(r"(?<!\w)(?:cái cuối|khung cuối|slot cuối|sau cùng|cuối cùng)(?!\w)")
+# Trang đọc theo thứ tự thời gian: khung sớm nhất / gần nhất là khung 1 (T-10 §3.8.1)
+_FIRST = re.compile(
+    r"(?<!\w)(?:đầu tiên|cái đầu|khung đầu|slot đầu|cái gần nhất|khung gần nhất|cái sớm nhất"
+    r"|khung sớm nhất|cái trước|khung trước)(?!\w)"
+)
+# "cái sau", "cái kia", "cái còn lại": khung còn lại của trang 2 khung. "khung sau" là xin nghe tiếp
+_LAST = re.compile(
+    r"(?<!\w)(?:cái cuối|khung cuối|slot cuối|sau cùng|cuối cùng|cái sau|cái kia|cái còn lại"
+    r"|giờ còn lại|khung còn lại)(?!\w)"
+)
+# R008: "chọn giờ thứ 2" là thứ tự; "10 giờ thứ Hai" (có số trước "giờ") là giờ + thứ
+_HOUR_ORDINAL = re.compile(r"(?<!\w)giờ\s+thứ\s+(nhất|một|hai|ba|[1-3])(?!\w)")
 
 _RELATIVE_DAYS = [
     (re.compile(r"(?<!\w)hôm nay(?!\w)"), 0),
-    (re.compile(r"(?<!\w)(?:ngày kia|ngày mốt|ngày mai kia)(?!\w)"), 2),
+    (re.compile(r"(?<!\w)hôm qua(?!\w)"), -1),
+    # "mốt" đứng riêng chỉ nhận bản có dấu: "mot" không dấu là "một"
+    (re.compile(r"(?<!\w)(?:ngày kia|ngày mốt|ngày mai kia|mốt)(?!\w)"), 2),
     (re.compile(r"(?<!\w)(?:ngày mai|mai)(?!\w)"), 1),
 ]
+# R-30: xét trước `_WEEK`, vì "cuối tuần này" / "tuần sau nữa" chứa "tuần này" / "tuần sau"
+_WEEK_AFTER_NEXT = re.compile(r"(?<!\w)tuần (?:sau|tới) nữa(?!\w)")
+_WEEK_PART = re.compile(r"(?<!\w)(đầu|cuối) tuần(?: (sau|tới|này))?(?!\w)")
 _WEEK = re.compile(r"(?<!\w)tuần (sau|tới|này)(?!\w)")
+# Quá rộng để tra (R-30): hỏi lại ngày cụ thể. "mùng 5 tháng sau" có ngày -> quy về tháng sau
+_MONTH_RELATIVE = re.compile(r"(?<!\w)tháng (sau|tới|này)(?!\w)")
+_MONTH_PART = re.compile(r"(?<!\w)(?:đầu|giữa|cuối) tháng(?!\w)")
+# Ngày đã qua trong khoảng này là "đã qua" (hỏi lại); xa hơn thì hiểu là năm sau
+PAST_DATE_WINDOW = timedelta(days=180)
 _WEEKDAY = re.compile(r"(?<!\w)(?:thứ\s+(hai|ba|tư|năm|sáu|bảy|[2-7])|(chủ nhật))(?!\w)")
 _WEEKDAY_INDEX = {"hai": 0, "ba": 1, "tư": 2, "năm": 3, "sáu": 4, "bảy": 5}
 
@@ -69,6 +99,17 @@ _NUMERIC_DAY = re.compile(r"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)(?!\d)")
 
 _UNACCENTED_PHRASES = {
     "hom nay": "hôm nay",
+    "hom qua": "hôm qua",
+    "tuan sau nua": "tuần sau nữa",
+    "tuan toi nua": "tuần tới nữa",
+    "cuoi tuan": "cuối tuần",
+    "dau tuan": "đầu tuần",
+    "thang sau": "tháng sau",
+    "thang toi": "tháng tới",
+    "thang nay": "tháng này",
+    "dau thang": "đầu tháng",
+    "giua thang": "giữa tháng",
+    "cuoi thang": "cuối tháng",
     "ngay mai kia": "ngày mai kia",
     "ngay mai": "ngày mai",
     "ngay kia": "ngày kia",
@@ -82,6 +123,14 @@ _UNACCENTED_PHRASES = {
     "khung dau": "khung đầu",
     "slot dau": "slot đầu",
     "cai cuoi": "cái cuối",
+    "cai gan nhat": "cái gần nhất",
+    "cai som nhat": "cái sớm nhất",
+    "cai truoc": "cái trước",
+    "cai kia": "cái kia",
+    "cai con lai": "cái còn lại",
+    "cai sau": "cái sau",
+    "gio con lai": "giờ còn lại",
+    "khung con lai": "khung còn lại",
     "khung cuoi": "khung cuối",
     "slot cuoi": "slot cuối",
     "sau cung": "sau cùng",
@@ -123,6 +172,93 @@ _UNACCENTED_WORDS = {
 }
 _PERIOD_AFTER = frozenset({"giờ", "rưỡi", "phút", "buổi"})
 
+# Xin nghe khung khác mà không nêu tiêu chí mới (T-10). Câu có tiêu chí ("khung khác, buổi sáng ấy")
+# thì tiêu chí thắng. "sớm hơn / muộn hơn" chỉ là xin khung khác, không dựng mốc giờ tương đối.
+_MORE = compile_phrases(
+    [
+        "khung khác",
+        "giờ khác",
+        "cái khác",
+        "lịch khác",
+        "ngày khác",
+        "hôm khác",
+        "buổi khác",
+        "còn khung nào",
+        "còn giờ nào",
+        "khung nào khác",
+        "giờ nào khác",
+        "nghe tiếp",
+        "đọc tiếp",
+        "sớm hơn",
+        "muộn hơn",
+        "trễ hơn",
+        "còn lại",
+        "còn gì nữa",
+        "còn gì khác",
+        "còn nữa không",
+        "còn cái nào",
+        "còn khung không",
+        "còn giờ không",
+        "xem nốt",
+        "nghe nốt",
+        "đọc nốt",
+        "khung tiếp",
+        "khung sau",
+    ]
+)
+# Khung nào cũng được, không nêu tiêu chí (T-10 D-1). "Sáng nào cũng được" có tiêu chí buổi -> tiêu chí thắng
+_ANY = compile_phrases(
+    [
+        "nào cũng được",
+        "lúc nào cũng được",
+        "khi nào cũng được",
+        "hôm nào cũng được",
+        "ngày nào cũng được",
+        "giờ nào cũng được",
+        "khung nào cũng được",
+        "tùy em",
+        "tuỳ em",
+        "em chọn giúp",
+        "sớm nhất",
+        "sớm nhất có thể",
+        "càng sớm càng tốt",
+    ]
+)
+# Số lượng khung ("2 khung cuối", "mấy khung còn lại", "4 khung khác"): xin nghe tiếp, không phải chọn
+# khung cuối của trang, không phải giờ hay thứ. Khớp trên bản bỏ dấu (độ dài giữ nguyên) để cắt đúng chỗ.
+_SLOT_COUNT = re.compile(
+    r"(?<!\w)(\d+|mot|hai|ba|bon|nam|sau|may|cac|nhung) (?:khung|cai|slot)(?: gio)? "
+    r"(?:cuoi|con lai|nua|tiep|sau|khac|kia)(?!\w)"
+)
+_COUNT_WORDS = {"mot": 1, "hai": 2, "ba": 3, "bon": 4, "nam": 5, "sau": 6}
+
+
+# Hỏi lại câu bot vừa đọc ("sao lại là thứ Sáu", "thứ Sáu à"): không phải chọn khung (T-10 §3.8.1)
+_ASKS_BACK = compile_phrases(
+    ["sao lại", "tại sao", "vì sao", "thật à", "thật hả", "thế à", "vậy à"]
+)
+_ASKS_BACK_FINALS = frozenset({"à", "hả", "hở", "a", "ha", "ho"})
+
+
+def asks_back(transcript: str) -> bool:
+    """Câu hỏi lại, không phải chọn: "sao lại…", hoặc kết thúc bằng "à" / "hả" / "hở"."""
+    text = clean(transcript)
+    if not text:
+        return False
+    if find_phrase(text, _ASKS_BACK) is not None:
+        return True
+    last = text.split()[-1]
+    return last in _ASKS_BACK_FINALS if is_unaccented(text) else last in {"à", "hả", "hở"}
+
+
+def requested_slot_count(transcript: str) -> Optional[int]:
+    """Số khung người gọi xin nghe một lượt ("cho tôi xem 4 khung khác" -> 4); None nếu không nêu số."""
+    match = _SLOT_COUNT.search(strip_diacritics(clean(normalize(transcript))))
+    if match is None:
+        return None
+    token = match.group(1)
+    return int(token) if token.isdigit() else _COUNT_WORDS.get(token)
+
 
 def extract_slot_choice(
     transcript: str,
@@ -132,6 +268,17 @@ def extract_slot_choice(
 ) -> Field[SlotChoice]:
     criteria = parse_slot_criteria(transcript, now)
     if criteria.empty:
+        text = clean(transcript)
+        any_time = find_phrase(text, _ANY)
+        if any_time is not None:
+            return Field(SlotChoice("ANY"), Provenance.NORMALIZED, span=any_time.group(0))
+        more = find_phrase(text, _MORE)
+        if more is not None:
+            return Field(SlotChoice("MORE"), Provenance.NORMALIZED, span=more.group(0))
+        count = _SLOT_COUNT.search(strip_diacritics(text))
+        if count is not None:
+            span = text[count.start() : count.end()]
+            return Field(SlotChoice("MORE"), Provenance.NORMALIZED, span=span)
         return Field.nothing(SlotChoice("NO_MATCH"))
 
     matched = tuple(s["slot_id"] for s in filter_slots(slots, criteria, presented_slot_ids))
@@ -161,6 +308,9 @@ def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
     text = _NUMERIC_TIME.sub(lambda m: f" {m.group(1)} giờ {m.group(2) or ''} ", text)
     text = _NUMERIC_DAY.sub(lambda m: f" ngày {m.group(1)} tháng {m.group(2)} ", text)
     text = clean(text)
+    count = _SLOT_COUNT.search(strip_diacritics(text))
+    if count is not None:
+        text = _cut(text, count)
     today = to_local(now).date()
     found: dict[str, Any] = {}
 
@@ -168,9 +318,27 @@ def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
     text = _take_relative_dates(text, today, found)
     text = _take_weekday(text, found)
     text = _take_day_of_month(text, found)
+    text = _take_month(text, today, found)
     text = _take_period(text, found)
     _take_time(text, found)
+    _check_dates(today, found)
     return SlotCriteria(**found)
+
+
+def resolve_request(criteria: SlotCriteria, now: datetime) -> SlotCriteria:
+    """Quy đổi thứ trần của MỘT YÊU CẦU MỚI theo R-30: "thứ Sáu", "thứ Sáu này" = thứ Sáu tuần này.
+
+    Đã qua -> PAST; trùng hôm nay -> TODAY (hỏi hôm nay hay tuần sau). Không áp dụng khi người gọi
+    chọn trong các khung vừa đọc ("cái thứ Sáu ấy" khớp thứ Sáu trong danh sách).
+    """
+    if criteria.weekday is None or criteria.day is not None or criteria.date_from is not None:
+        return criteria
+    if criteria.date_issue is not None:
+        return criteria
+    today = to_local(now).date()
+    target = today + timedelta(days=criteria.weekday - today.weekday())
+    issue = "PAST" if target < today else "TODAY" if target == today else None
+    return replace(criteria, date_from=target, date_to=target, date_issue=issue)
 
 
 def _restore_unaccented(text: str) -> str:
@@ -205,6 +373,12 @@ def _take_ordinal(text: str, found: dict[str, Any]) -> str:
         token = match.group(1)
         found["ordinal"] = int(token) if token.isdigit() else _ORDINAL_WORDS[token]
         return _cut(text, match)
+    match = _HOUR_ORDINAL.search(text)
+    before = text[: match.start()].split() if match else []
+    if match and not (before and is_number_token(before[-1])):
+        token = match.group(1)
+        found["ordinal"] = int(token) if token.isdigit() else _ORDINAL_WORDS[token]
+        return _cut(text, match)
     for pattern, value in ((_FIRST, 1), (_LAST, -1)):
         match = pattern.search(text)
         if match:
@@ -219,14 +393,83 @@ def _take_relative_dates(text: str, today: date, found: dict[str, Any]) -> str:
         if match:
             found["date_from"] = found["date_to"] = today + timedelta(days=offset)
             return _cut(text, match)
+    monday = today - timedelta(days=today.weekday())
+    match = _WEEK_AFTER_NEXT.search(text)
+    if match:
+        found["date_from"], found["date_to"] = _week(monday + timedelta(days=14))
+        return _cut(text, match)
+    match = _WEEK_PART.search(text)
+    if match:
+        start = monday + timedelta(days=7 if match.group(2) in ("sau", "tới") else 0)
+        if match.group(1) == "đầu":
+            found["date_from"], found["date_to"] = start, start + timedelta(days=2)
+        else:
+            found["date_from"], found["date_to"] = (
+                start + timedelta(days=5),
+                start + timedelta(days=6),
+            )
+        return _cut(text, match)
     match = _WEEK.search(text)
     if match:
-        monday = today - timedelta(days=today.weekday())
-        if match.group(1) in ("sau", "tới"):
-            monday += timedelta(days=7)
-        found["date_from"], found["date_to"] = monday, monday + timedelta(days=6)
+        start = monday + timedelta(days=7 if match.group(1) in ("sau", "tới") else 0)
+        found["date_from"], found["date_to"] = _week(start)
         return _cut(text, match)
     return text
+
+
+def _week(monday: date) -> tuple[date, date]:
+    return monday, monday + timedelta(days=6)
+
+
+def _take_month(text: str, today: date, found: dict[str, Any]) -> str:
+    """ "mùng 5 tháng sau" -> tháng sau; "tháng sau" / "cuối tháng" / "tháng 11" trần -> quá rộng."""
+    match = _MONTH_RELATIVE.search(text)
+    if match:
+        if "day" in found and "month" not in found:
+            found["month"] = today.month if match.group(1) == "này" else today.month % 12 + 1
+        else:
+            found["date_issue"] = "TOO_BROAD"
+        return _cut(text, match)
+    match = _MONTH_PART.search(text)
+    if match:
+        found["date_issue"] = "TOO_BROAD"
+        return _cut(text, match)
+    if "day" not in found and "tháng" in text.split():
+        found["date_issue"] = "TOO_BROAD"
+    return text
+
+
+def _check_dates(today: date, found: dict[str, Any]) -> None:
+    """R-30: ngày không tồn tại / đã qua -> hỏi lại. Khoảng ngày cắt phần đã qua, không bỏ cả khoảng."""
+    if found.get("date_issue") is not None:
+        return
+    day, month = found.get("day"), found.get("month")
+    if day is not None and month is not None:
+        try:
+            spoken = date(today.year, month, day)
+        except ValueError:
+            # 31/9, hoặc 29/2 khi cả năm nay lẫn năm sau không nhuận
+            if not _valid(today.year + 1, month, day):
+                found["date_issue"] = "INVALID"
+            return
+        if today - PAST_DATE_WINDOW <= spoken < today:
+            found["date_issue"] = "PAST"
+            found["date_from"] = found["date_to"] = spoken
+        return
+    date_to = found.get("date_to")
+    if date_to is not None and date_to < today:
+        found["date_issue"] = "PAST"
+        found["date_from"] = date_to
+    elif found.get("date_from") is not None and found["date_from"] < today:
+        found["date_from"] = today
+
+
+def _valid(year: int, month: int, day: int) -> bool:
+    try:
+        date(year, month, day)
+    except ValueError:
+        return False
+    return True
 
 
 def _take_weekday(text: str, found: dict[str, Any]) -> str:
@@ -242,22 +485,36 @@ def _take_weekday(text: str, found: dict[str, Any]) -> str:
 
 
 def _take_day_of_month(text: str, found: dict[str, Any]) -> str:
+    """Ưu tiên "ngày D tháng M" hơn "ngày D" trần; "ngày 2 giờ chiều" là giờ, không phải mùng 2."""
     tokens = text.split()
+    best: tuple[int, int, int, int | None] | None = None
     for i, token in enumerate(tokens):
-        if token not in ("ngày", "mùng", "mồng"):
-            continue
-        day, used = _longest_prefix_number(tokens[i + 1 :], 1, 31)
+        prefixed = token in ("ngày", "mùng", "mồng")
+        # "16 tháng 10" không có chữ "ngày": chỉ nhận khi ngay sau số là "tháng"
+        first = i + 1 if prefixed else i
+        day, used = _longest_prefix_number(tokens[first:], 1, 31)
         if day is None:
             continue
-        found["day"] = day
-        end = i + 1 + used
+        end = first + used
+        if not prefixed and (end >= len(tokens) or tokens[end] != "tháng"):
+            continue
+        if end < len(tokens) and tokens[end] in ("giờ", "rưỡi"):
+            continue
+        month = None
         if end < len(tokens) and tokens[end] == "tháng":
             month, month_used = _longest_prefix_number(tokens[end + 1 :], 1, 12)
             if month is not None:
-                found["month"] = month
                 end += 1 + month_used
-        return " ".join(tokens[:i] + tokens[end:])
-    return text
+        if best is None or month is not None:
+            best = (i, end, day, month)
+        if month is not None:
+            break
+    if best is None:
+        return text
+    start, end, found["day"], month = best
+    if month is not None:
+        found["month"] = month
+    return " ".join(tokens[:start] + tokens[end:])
 
 
 def _take_period(text: str, found: dict[str, Any]) -> str:
@@ -310,7 +567,43 @@ def _candidate_hours(hour: int, period: Optional[DayPeriod]) -> frozenset[int]:
 # --- So khớp slot ----------------------------------------------------------------
 
 
+def requested_date(criteria: SlotCriteria, now: datetime) -> Optional[date]:
+    """Ngày người gọi xin đổi sang (mốc R-29), hoặc None khi câu không nêu một ngày cụ thể.
+
+    - "ngày 16 tháng 10" -> 16/10; đã qua thì năm sau. "ngày 16" -> ngày 16 gần nhất sắp tới.
+    - "mai", "thứ Sáu tuần sau" -> ngày đầu của khoảng có đúng thứ đó.
+    - Chỉ "thứ Sáu" hay chỉ buổi / giờ -> None (bước 6, R-30, mới quy đổi thứ trần).
+    Ngày không tồn tại ("31 tháng 9") -> None.
+    """
+    today = to_local(now).date()
+    if criteria.date_issue is not None:
+        return None
+    if criteria.day is not None:
+        if criteria.month is not None:
+            candidates = [(today.year, criteria.month), (today.year + 1, criteria.month)]
+        else:
+            next_month = (today.year + today.month // 12, today.month % 12 + 1)
+            candidates = [(today.year, today.month), next_month]
+        for year, month in candidates:
+            try:
+                day = date(year, month, criteria.day)
+            except ValueError:
+                continue
+            if day >= today:
+                return day
+        return None
+    if criteria.date_from is not None:
+        day = criteria.date_from
+        end = criteria.date_to or day
+        while criteria.weekday is not None and day.weekday() != criteria.weekday and day < end:
+            day += timedelta(days=1)
+        return day
+    return None
+
+
 def _matches(slot: dict[str, Any], c: SlotCriteria, ordinal_id: Optional[str]) -> bool:
+    if c.date_issue is not None:
+        return False
     if ordinal_id is not None and slot["slot_id"] != ordinal_id:
         return False
     starts = to_local(datetime.fromisoformat(slot["starts_at"]))

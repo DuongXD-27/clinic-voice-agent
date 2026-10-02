@@ -241,10 +241,10 @@ def test_silent_turn_is_not_a_failed_understanding() -> None:
     )
 
 
-def test_line_signal_uses_unreachable_reason_names() -> None:
+def test_operator_transcript_is_not_a_dial_result() -> None:
     result = extractor.extract(ctx(QuestionId.ASK_NAME), "Số máy quý khách vừa gọi hiện đang bận")
-    assert result.line_signal.value is LineSignal.LINE_BUSY
-    assert result.full_name.found is False and result.silent is False
+    assert result.line_signal.value is LineSignal.NONE
+    assert result.silent is False
     # Người thật nói "đang bận" ở bước hỏi tên không kết thúc cuộc gọi
     assert (
         extractor.extract(ctx(QuestionId.ASK_NAME), "tôi đang bận").line_signal.value

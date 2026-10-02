@@ -17,6 +17,7 @@ from callbot.engine.extraction.fallback import (
 from callbot.engine.extraction.full_name import valid_name_span
 from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
+from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
 from inference.common.telemetry import InferenceTimer
 from inference.llm.gateway import LLMGateway
 from inference.llm.prompt.name_slot_filling import PROMPT_VERSION, build_messages
@@ -65,17 +66,31 @@ class NameSlotFiller:
             elif not clean(transcript):
                 status = "empty"
             else:
-                reply = self._gateway.generate_structured(
-                    build_messages(
-                        transcript,
-                        question_id=question_id.value,
-                        # ASK_NAME thiếu nội dung câu hỏi: gửi null, không dựng lại lời bot chưa nói
-                        bot_question=(bot_question or "").strip() or None,
-                    ),
-                    schema=NameExtraction.model_json_schema(),
-                    schema_name=PROMPT_VERSION,
+                messages = build_messages(
+                    transcript,
+                    question_id=question_id.value,
+                    # ASK_NAME thiếu nội dung câu hỏi: gửi null, không dựng lại lời bot chưa nói
+                    bot_question=(bot_question or "").strip() or None,
                 )
-                status, field = _ground(reply, transcript)
+                schema = NameExtraction.model_json_schema()
+                status = "error"
+                with generation_scope("llm.name_slot_fill") as generation:
+                    try:
+                        reply = self._gateway.generate_structured(
+                            messages,
+                            schema=schema,
+                            schema_name=PROMPT_VERSION,
+                        )
+                        status = "invalid_response"
+                        status, field = _ground(reply, transcript)
+                    finally:
+                        finish_generation(
+                            generation,
+                            self._gateway.provider_name,
+                            self._gateway.model,
+                            reply,
+                            normalized_result(status),
+                        )
         except ValidationError:
             status = "invalid_response"
         finally:

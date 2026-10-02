@@ -93,7 +93,7 @@ describe("Observability", () => {
     await userEvent.click(screen.getByRole("button", { name: /^STT/ }));
 
     expect(router.state.location.search).toContain("metric=stt");
-    expect(screen.getByRole("heading", { name: "Latency STT" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Thời lượng observation STT" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Biểu đồ p95/ })).toBeInTheDocument();
     expect(
       screen.getByRole("table", { name: "Hiệu năng theo provider và model" }),

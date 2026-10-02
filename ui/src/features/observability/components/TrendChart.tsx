@@ -17,7 +17,11 @@ const SERIES: Record<
     value: (bucket) => bucket.turn_p95_ms,
     color: "var(--chart-turn)",
   },
-  STT: { label: "STT", value: (bucket) => bucket.stt_p95_ms, color: "var(--chart-stt)" },
+  STT: {
+    label: "STT observation",
+    value: (bucket) => bucket.stt_p95_ms,
+    color: "var(--chart-stt)",
+  },
   CORE: {
     label: "Core",
     value: (bucket) => bucket.core_p95_ms,

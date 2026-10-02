@@ -1,6 +1,7 @@
 """Single entry point for configured TTS calls; no retries, optional one-step failover."""
 
 import logging
+from dataclasses import replace
 from typing import Optional
 
 from inference.common.errors import UnsupportedProviderError
@@ -40,9 +41,11 @@ class TTSGateway:
         if not text:
             return None
         if self.fallback is None:
-            return self._provider.synthesize(text)
+            result = self._provider.synthesize(text)
+            return replace(result, provider_actual=self.provider_name)
         try:
-            return self._provider.synthesize(text)
+            result = self._provider.synthesize(text)
+            return replace(result, provider_actual=self.provider_name)
         except Exception as exc:
             # Mọi lỗi của provider chính đều chuyển sang dự phòng; chỉ log loại lỗi/mã, không log text
             logger.warning(
@@ -52,7 +55,8 @@ class TTSGateway:
                 getattr(exc, "code", "-"),
                 self.fallback.provider_name,
             )
-            return self.fallback.synthesize(text)
+            result = self.fallback.synthesize(text)
+            return replace(result, fallback_used=True) if result is not None else None
 
 
 def _provider_types() -> dict[str, tuple[type[TTSConfig], type]]:

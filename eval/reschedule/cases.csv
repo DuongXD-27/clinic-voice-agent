@@ -1,0 +1,152 @@
+id,split,group,direction,question_id,page_size,transcript,expect,needs_inference,note
+R001,prompt,pick_ordinal,outbound,OFFER_SLOTS,2,khung 1,PICK:1,no,Chọn theo số thứ tự
+R002,prompt,pick_ordinal,outbound,OFFER_SLOTS,2,khung hai,PICK:2,no,Chọn theo số thứ tự
+R003,prompt,pick_ordinal,outbound,OFFER_SLOTS,2,cái đầu,PICK:1,no,Đồng nghĩa khung đầu
+R004,prompt,pick_ordinal,outbound,OFFER_SLOTS,2,cái còn lại,PICK:2,no,Đồng nghĩa khung thứ hai
+R005,prompt,pick_ordinal,outbound,OFFER_SLOTS,2,lấy khung số 1,PICK:1,no,Chọn theo số
+R006,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,cho tôi khung thứ hai,PICK:2,no,Chọn theo số
+R007,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,tôi lấy cái đầu tiên,PICK:1,no,Chọn theo thứ tự
+R008,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,chọn giờ thứ 2,PICK:2,no,"Chọn theo thứ tự; ""thứ 2"" không phải thứ Hai"
+R009,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,khung đầu tiên đi,PICK:1,no,Chọn theo thứ tự
+R010,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,cho em giờ còn lại,PICK:2,yes,Đại từ ngữ cảnh (thống nhất với R036)
+R011,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,lấy phương án một,PICK:1,no,Chọn theo thứ tự
+R012,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,tôi chọn phương án hai,PICK:2,no,Chọn theo thứ tự
+R013,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,khung số một nhé,PICK:1,no,Chọn theo số
+R014,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,khung số hai nhé,PICK:2,no,Chọn theo số
+R015,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,lấy cái gần nhất,PICK:1,yes,Ý gần nhất cần dựa vào thứ tự trang
+R016,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,lấy cái sau đi,PICK:2,yes,Ý cái sau cần dựa vào trang
+R017,holdout,pick_ordinal,outbound,SLOT_READBACK,2,thôi lấy khung 2,PICK:2,no,Đổi sang slot đã đọc
+R018,holdout,pick_ordinal,outbound,SLOT_READBACK,2,đổi sang khung sau,PICK:2|MORE,no,"Đang chốt khung 1; ""khung sau"" là xin nghe tiếp -> MORE cũng chấp nhận"
+R019,holdout,pick_ordinal,outbound,SLOT_READBACK,2,chọn giờ còn lại,PICK:2,yes,Đổi sang slot đã đọc
+R020,holdout,pick_ordinal,outbound,OFFER_SLOTS,2,khung 3,REREAD_PAGE,no,Không đoán thứ tự ngoài trang: nói rõ rồi đọc lại trang
+R021,prompt,more,outbound,OFFER_SLOTS,2,khung khác,MORE,no,Đọc trang kế
+R022,prompt,more,outbound,OFFER_SLOTS,2,nghe tiếp,MORE,no,Đọc trang kế
+R023,prompt,more,outbound,OFFER_SLOTS,2,còn khung nào không,MORE,no,Đọc trang kế
+R024,prompt,more,outbound,OFFER_SLOTS,2,giờ khác,MORE,no,Đọc trang kế
+R025,holdout,more,outbound,OFFER_SLOTS,2,còn giờ nào nữa không,MORE,no,Đọc trang kế
+R026,holdout,more,outbound,OFFER_SLOTS,2,xem nốt 2 khung cuối,MORE,no,Số lượng không vượt quá hai mỗi lượt
+R027,holdout,more,outbound,OFFER_SLOTS,2,cho tôi xem 4 khung khác,MORE,no,Vẫn chỉ đọc hai mỗi lượt
+R028,holdout,more,outbound,OFFER_SLOTS,2,đọc tiếp đi em,MORE,no,Đọc trang kế
+R029,holdout,more,outbound,SLOT_READBACK,2,"không, khung khác",MORE,no,Từ chối slot hiện tại rồi đọc slot khác
+R030,holdout,more,outbound,SLOT_READBACK,2,"không được, giờ khác",MORE,no,Từ chối slot hiện tại rồi đọc slot khác
+R031,holdout,more,outbound,SLOT_REFUSE_CHOICE,2,nghe khung khác,MORE,no,Tiếp tục sau câu A/B
+R032,holdout,more,outbound,SLOT_REFUSE_CHOICE,2,còn khung nào khác không,MORE,no,Tiếp tục sau câu A/B
+R033,holdout,more,outbound,OFFER_SLOTS,2,sớm hơn,MORE,no,Không lọc giờ tương đối ở T-10
+R034,holdout,more,outbound,OFFER_SLOTS,2,muộn hơn,MORE,no,Không lọc giờ tương đối ở T-10
+R035,holdout,more,outbound,OFFER_SLOTS,2,khung sau,MORE,no,Đọc trang kế
+R036,holdout,more,outbound,OFFER_SLOTS,2,lấy khung còn lại,PICK:2,yes,Đại từ ngữ cảnh (thống nhất với R010)
+R037,holdout,more,outbound,SLOT_READBACK,2,đổi khung khác đi,MORE,no,Từ chối và tiếp tục
+R038,holdout,more,outbound,SLOT_READBACK,2,"không lấy giờ này, nghe tiếp",MORE,no,Từ chối và tiếp tục
+R039,holdout,more,outbound,OFFER_SLOTS,2,ngày khác,MORE,no,Không có ngày cụ thể nên chỉ là MORE
+R040,holdout,more,outbound,OFFER_SLOTS,2,hôm khác,MORE,no,Không có ngày cụ thể nên chỉ là MORE
+R041,prompt,new_time,outbound,OFFER_SLOTS,2,ngày 19 thì sao,NEW_TIME:19/10,no,Ngày mới trong vòng
+R042,prompt,new_time,outbound,OFFER_SLOTS,2,chiều ngày 20,NEW_TIME:20/10 chiều,no,Ngày và buổi mới
+R043,prompt,new_time,outbound,OFFER_SLOTS,2,thứ sáu tuần sau,NEW_TIME:09/10,no,R-30: hôm nay 29/09 -> tuần sau 05-11/10; 09/10 kín -> báo kín
+R044,prompt,new_time,outbound,SLOT_READBACK,2,"không, ngày 19 thì sao",NEW_TIME:19/10,no,Ngày mới ở câu chốt
+R045,holdout,new_time,outbound,OFFER_SLOTS,2,sáng ngày 16 tháng 10,NEW_TIME:16/10 sáng,no,Ngày và buổi mới
+R046,holdout,new_time,outbound,OFFER_SLOTS,2,đổi sang thứ ba ngày 20,NEW_TIME:20/10,no,Ngày mới
+R047,holdout,new_time,outbound,SLOT_READBACK,2,"không lấy giờ này, ngày 21 đi",NEW_TIME:21/10,no,Ngày mới ở câu chốt
+R048,holdout,new_time,outbound,SLOT_REFUSE_CHOICE,2,cho tôi ngày 19,NEW_TIME:19/10,no,Ngày mới sau câu A/B
+R049,holdout,new_time,outbound,ASK_SLOT_PREFERENCE,1,đổi sang ngày 20,NEW_TIME:20/10,no,Ngày mới sau hết slot
+R050,holdout,new_time,outbound,ASK_SLOT_PREFERENCE,1,buổi chiều ngày 21,NEW_TIME:21/10 chiều,no,Ngày và buổi mới
+R051,prompt,any,outbound,ASK_SLOT_PREFERENCE,1,nào cũng được,ANY,no,Không giới hạn ngày
+R052,prompt,any,outbound,ASK_SLOT_PREFERENCE,1,tùy em,ANY,no,Không giới hạn ngày
+R053,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,sớm nhất,ANY,no,Chọn hai slot sớm nhất
+R054,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,càng sớm càng tốt,ANY,yes,Ý định ưu tiên sớm nhất
+R055,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,khi nào cũng được,ANY,no,Không giới hạn ngày
+R056,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,lúc nào thuận tiện cũng được,ANY,yes,Ý định không có tiêu chí cụ thể
+R057,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,em chọn giúp tôi giờ sớm nhất,ANY,yes,Ý định ưu tiên sớm nhất
+R058,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,ngày nào cũng được,ANY,no,Không giới hạn ngày
+R059,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,buổi sáng nào cũng được,NEW_TIME:sáng,no,Có tiêu chí buổi sáng -> tiêu chí thắng ANY
+R060,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,không biết nữa,ASK_DAY,yes,Chưa có ngày: hỏi lại ngày nào
+R061,prompt,refuse,outbound,OFFER_SLOTS,2,không,REFUSE_CHOICE,no,Không được đoán bỏ đổi lịch
+R062,prompt,refuse,outbound,SLOT_READBACK,1,không,REFUSE_CHOICE,no,Không được đoán bỏ đổi lịch
+R063,holdout,refuse,outbound,OFFER_SLOTS,2,không được,REFUSE_CHOICE,no,Không nêu ngày mới
+R064,holdout,refuse,outbound,SLOT_READBACK,1,giờ này không tiện,REFUSE_CHOICE,yes,Từ chối gián tiếp
+R065,holdout,refuse,outbound,OFFER_SLOTS,2,hôm đó tôi bận mất rồi,REFUSE_CHOICE,yes,Từ chối gián tiếp
+R066,holdout,refuse,outbound,SLOT_READBACK,1,tôi không đi được giờ này,REFUSE_CHOICE,yes,Từ chối gián tiếp
+R067,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,không,REFUSE_CHOICE,no,Câu A/B cần hỏi lại rõ
+R068,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,"không, nghe khung khác",MORE,no,Từ chối kèm yêu cầu tiếp tục
+R069,holdout,refuse,outbound,OFFER_SLOTS,2,không lấy khung nào cả,REFUSE_CHOICE,yes,Q-4: từ chối các khung chưa phải bỏ đổi lịch -> hỏi A/B
+R070,holdout,refuse,outbound,SLOT_READBACK,1,không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
+R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
+R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
+R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,KEEP_OLD,no,Bỏ đổi lịch sau câu A/B
+R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,KEEP_OLD,no,Bỏ đổi lịch sau hết slot
+R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,KEEP_OLD,yes,Không tiếp tục reschedule
+R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,KEEP_OLD,no,Giữ lịch cũ
+R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,KEEP_OLD,no,Giữ lịch cũ
+R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,KEEP_OLD,no,Giữ lịch cũ
+R079,prompt,agreement,outbound,SLOT_READBACK,1,được,WRITE,no,Đồng ý rõ ràng
+R080,prompt,agreement,outbound,SLOT_READBACK,1,đồng ý,WRITE,no,Đồng ý rõ ràng
+R081,prompt,agreement,outbound,SLOT_READBACK,1,ok,WRITE,no,Đồng ý rõ ràng
+R082,holdout,agreement,outbound,SLOT_READBACK,1,vâng,WRITE,no,D-2
+R083,holdout,agreement,outbound,SLOT_READBACK,1,ừ,WRITE,no,D-2
+R084,holdout,agreement,outbound,SLOT_READBACK,1,đổi giúp tôi,WRITE,no,Đồng ý kèm hành động
+R085,holdout,agreement,outbound,SLOT_READBACK,1,đổi luôn đi,WRITE,no,Đồng ý kèm hành động
+R086,holdout,agreement,outbound,SLOT_READBACK,1,đổi sang giờ đó,WRITE,no,Đồng ý kèm hành động
+R087,holdout,agreement,outbound,SLOT_READBACK,1,dạ,REREAD_YESNO,no,Dạ một mình không phải đồng ý
+R088,holdout,agreement,outbound,SLOT_READBACK,1,dạ ạ,REREAD_YESNO,no,Dạ một mình không phải đồng ý
+R089,holdout,agreement,outbound,SLOT_READBACK,1,vâng ạ,WRITE,no,Đồng ý theo D-2
+R090,holdout,agreement,outbound,SLOT_READBACK,1,ừ ừ,WRITE,no,Đồng ý theo D-2
+R091,prompt,unclear,outbound,SLOT_READBACK,1,chắc là được,REREAD_YESNO,no,Ngập ngừng không ghi
+R092,prompt,unclear,outbound,SLOT_READBACK,1,được không em,REREAD_YESNO,no,Câu hỏi đuôi không ghi
+R093,holdout,unclear,outbound,SLOT_READBACK,1,vâng nhưng để tôi hỏi vợ đã,REREAD_YESNO,yes,Có tín hiệu đồng ý nhưng còn do dự
+R094,holdout,unclear,outbound,SLOT_READBACK,1,sao lại là thứ Sáu,REREAD_YESNO,yes,Câu hỏi lại không được chọn nhầm
+R095,holdout,unclear,outbound,SLOT_READBACK,1,để tôi xem đã,REREAD_YESNO,yes,Ngập ngừng không ghi
+R096,prompt,relative_date,outbound,OFFER_SLOTS,2,ngày mốt,NEW_TIME:01/10,no,Ngày tương đối
+R097,prompt,relative_date,outbound,OFFER_SLOTS,2,thứ bảy này,NEW_TIME:03/10,no,Thứ trong tuần hiện tại
+R098,holdout,relative_date,outbound,OFFER_SLOTS,2,chủ nhật,NEW_TIME:04/10,no,Chủ nhật sắp tới
+R099,holdout,relative_date,outbound,OFFER_SLOTS,2,hôm qua,ASK_DATE,no,Ngày đã qua phải hỏi lại
+R100,holdout,relative_date,outbound,OFFER_SLOTS,2,31 tháng 9,ASK_DATE,no,Ngày không tồn tại phải hỏi lại
+R101,holdout,relative_date,outbound,OFFER_SLOTS,2,tháng sau,ASK_DATE,no,Khoảng quá rộng phải hỏi ngày cụ thể
+R102,holdout,relative_date,outbound,OFFER_SLOTS,2,đầu tháng sau,ASK_DATE,no,Khoảng quá rộng phải hỏi ngày cụ thể
+R103,holdout,relative_date,outbound,OFFER_SLOTS,2,tuần sau nữa,NEW_TIME:12-18/10,no,Khoảng tuần mới
+R104,holdout,relative_date,outbound,OFFER_SLOTS,2,sau ngày 20,NEW_TIME:20-27/10,no,P2 (bước 10): chưa làm; hiện hiểu thành đúng ngày 20
+R105,holdout,relative_date,outbound,OFFER_SLOTS,2,thứ 5 hoặc thứ 6,NEW_TIME:01/10|02/10,no,P2 (bước 10): thứ trần là tuần này; chưa làm tập nhiều thứ
+R106,holdout,relative_date,outbound,OFFER_SLOTS,2,sáng mai,NEW_TIME:30/09 sáng,no,Ngày và buổi tương đối
+R107,holdout,relative_date,outbound,OFFER_SLOTS,2,chiều thứ 5 tuần sau,NEW_TIME:08/10 chiều,no,Ngày và buổi tương đối
+R108,holdout,relative_date,outbound,ASK_SLOT_PREFERENCE,1,ngày 31 tháng 9,ASK_DATE,no,Ngày không tồn tại sau hết vòng
+R109,holdout,relative_date,outbound,SLOT_READBACK,1,"không, tháng sau đi",ASK_DATE,no,Không được đoán ngày quá rộng
+R111,holdout,safety_transfer,outbound,SLOT_READBACK,1,tôi muốn gặp nhân viên,TRANSFER:PATIENT_REQUEST,no,Xin nhân viên
+R112,holdout,safety_transfer,outbound,OFFER_SLOTS,2,tôi có câu hỏi về bệnh,TRANSFER:CLINICAL_QUESTION,no,Câu hỏi lâm sàng
+R113,holdout,safety_transfer,outbound,SLOT_READBACK,1,tôi không nhớ là đã đặt lịch này,TRANSFER:OUT_OF_SCOPE,yes,Phản bác lịch không chuyển thành đổi lịch
+R114,holdout,safety_transfer,outbound,SLOT_READBACK,1,đổi giúp tôi nhưng để tôi hỏi vợ đã,REREAD_YESNO,yes,Không ghi khi còn điều kiện
+R115,holdout,safety_transfer,outbound,SLOT_READBACK,1,đồng ý nhưng giờ đó tôi bận,REFUSE_CHOICE,yes,Phủ định sau đồng ý thắng: không ghi và bỏ khung này
+R116,holdout,safety_transfer,outbound,OFFER_SLOTS,2,tôi muốn hủy lịch,SWITCH:CANCEL,no,Outbound có hủy lịch: chuyển sang nhánh hủy (chưa ghi)
+R117,holdout,safety_transfer,outbound,SLOT_READBACK,1,hủy giúp tôi,SWITCH:CANCEL,no,Ý định khác phải rời nhánh đổi lịch
+R118,holdout,safety_transfer,outbound,OFFER_SLOTS,2,tôi cần tư vấn bác sĩ,TRANSFER:CLINICAL_QUESTION,no,Câu hỏi lâm sàng
+R119,holdout,safety_transfer,outbound,SLOT_READBACK,1,không phải giờ này,REFUSE_CHOICE,no,"""không phải"" là từ chối khung đang chốt"
+R120,holdout,safety_transfer,outbound,SLOT_READBACK,1,tôi đang lái xe,REREAD_YESNO,yes,Kể hoàn cảnh không phải OUT_OF_SCOPE (prompt semantic_v5)
+R121,prompt,unaccented,outbound,OFFER_SLOTS,2,khung khac,MORE,no,ASR không dấu
+R122,holdout,unaccented,outbound,OFFER_SLOTS,2,lay cai dau,PICK:1,no,ASR không dấu
+R123,holdout,unaccented,outbound,OFFER_SLOTS,2,doi sang ngay 19,NEW_TIME:19/10,no,ASR không dấu
+R124,holdout,unaccented,outbound,OFFER_SLOTS,2,thoi khong doi nua,KEEP_OLD,no,ASR không dấu
+R125,holdout,unaccented,outbound,SLOT_READBACK,1,dong y,WRITE,no,ASR không dấu
+R126,holdout,unaccented,outbound,SLOT_READBACK,1,vang,WRITE,no,ASR không dấu (D-2)
+R127,holdout,unaccented,outbound,SLOT_READBACK,1,da,REREAD_YESNO,no,"ASR không dấu: ""da"" = dạ, không phải đồng ý"
+R128,holdout,unaccented,outbound,ASK_SLOT_PREFERENCE,1,ngay nao cung duoc,ANY,no,ASR không dấu
+R129,holdout,unaccented,outbound,OFFER_SLOTS,2,cuoi tuan sau,NEW_TIME:10-11/10,no,ASR không dấu
+R130,holdout,unaccented,outbound,SLOT_READBACK,2,"khong, khung khac",MORE,no,ASR không dấu
+R131,prompt,pick_time,outbound,OFFER_SLOTS,2,cái 3 giờ,AMBIGUOUS|PICK:1,no,IE §5.7: khớp 14/10 và 21/10 lúc 15:00 -> đọc các khung khớp rồi hỏi lại; không tự chọn
+R132,holdout,pick_time,outbound,OFFER_SLOTS,2,lấy 10 rưỡi,PICK:2,no,Chọn theo giờ trong trang
+R133,holdout,pick_time,outbound,OFFER_SLOTS,2,cái thứ Tư,PICK:1|REREAD_PAGE,no,"Mơ hồ thật: ""cái thứ tư"" cũng là khung thứ 4 (IE §5.7 trap ""khung thứ năm"")"
+R134,holdout,pick_time,outbound,OFFER_SLOTS,2,cái thứ năm ấy,PICK:2|REREAD_PAGE,no,"Mơ hồ thật: ""cái thứ năm"" cũng là khung thứ 5"
+R135,holdout,pick_time,outbound,OFFER_SLOTS,2,3 giờ chiều thứ Tư,AMBIGUOUS|PICK:1,no,Khớp 14/10 và 21/10 -> đọc các khung khớp; KHÔNG được thành thứ Tư 30/9 đã kín
+R136,holdout,pick_time,outbound,OFFER_SLOTS,2,buổi sáng,AMBIGUOUS|PICK:2,no,Nhiều khung sáng -> đọc tối đa 2 khung sáng rồi hỏi lại
+R137,holdout,pick_time,outbound,OFFER_SLOTS,2,khung 10 giờ 30,PICK:2,no,"""khung"" + giờ không phải thứ tự"
+R138,holdout,pick_time,outbound,OFFER_SLOTS,2,15h,AMBIGUOUS|PICK:1,no,Dạng số; khớp 14/10 và 21/10
+R139,prompt,numeric,outbound,OFFER_SLOTS,2,20/10,NEW_TIME:20/10,no,Dạng số ngày/tháng
+R140,holdout,numeric,outbound,OFFER_SLOTS,2,đổi sang 19/10 buổi sáng,NEW_TIME:19/10 sáng,no,Dạng số + buổi
+R141,holdout,numeric,outbound,OFFER_SLOTS,2,2 rưỡi chiều ngày 16,NEW_TIME:16/10,no,"16/10 không có 14:30: ""chưa thấy khung giờ đó"" + khung của ngày 16"
+R142,holdout,today,outbound,OFFER_SLOTS,2,thứ ba,ASK_DATE,no,R-30: thứ trần trùng hôm nay -> hỏi hôm nay hay tuần sau
+R143,holdout,today,outbound,OFFER_SLOTS,2,hôm nay,NEW_TIME:29/09,no,Hôm nay không còn khung -> báo kín + gần nhất
+R144,holdout,today,outbound,ASK_SLOT_PREFERENCE,1,ngày 30 tháng 2,ASK_DATE,no,Ngày không tồn tại
+R145,prompt,book,inbound,OFFER_SLOTS,2,khung 1,PICK:1,no,BOOK dùng chung luồng chọn khung
+R146,holdout,book,inbound,OFFER_SLOTS,2,khung khác,MORE,no,BOOK
+R147,holdout,book,inbound,OFFER_SLOTS,2,ngày 19 thì sao,NEW_TIME:19/10,no,BOOK: không có cửa sổ R-29 nhưng vẫn lọc theo ngày
+R148,holdout,book,inbound,SLOT_READBACK,2,đồng ý,WRITE,no,BOOK: xác nhận rõ ràng (§1.1.10)
+R149,holdout,book,inbound,SLOT_READBACK,2,dạ,REREAD_YESNO,no,BOOK: dạ không phải đồng ý
+R150,holdout,book,inbound,OFFER_SLOTS,2,thôi không đặt nữa,KEEP_OLD,no,BOOK: bỏ đặt lịch
+R151,holdout,book,inbound,SLOT_READBACK,2,vâng,WRITE,no,BOOK theo D-2; cần PM chốt §1.1.10 có nhận vâng không
+R152,holdout,book,inbound,SLOT_READBACK,2,"không, khung khác",MORE,no,BOOK

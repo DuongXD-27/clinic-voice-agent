@@ -17,6 +17,8 @@ from scripts.no_answer_eval import (
     parse_turns,
 )
 
+from callbot.engine import PhoneStatus
+
 UNREACHABLE_REASONS = {"NO_ANSWER", "VOICEMAIL", "LINE_BUSY", "SILENCE"}
 TRANSFER_REASONS = {
     "IDENTITY_FAILED",
@@ -62,6 +64,58 @@ def test_parse_turns_marks_silence():
     assert parse_turns("<silence> | Nguyễn Văn A|  <silence>") == [None, "Nguyễn Văn A", None]
 
 
+def test_parse_turns_distinguishes_phone_status_from_transcript():
+    assert parse_turns("<phone_status:LINE_BUSY> | <phone_status:NO_ANSWER>") == [
+        PhoneStatus.LINE_BUSY,
+        PhoneStatus.NO_ANSWER,
+    ]
+    assert type(parse_turns("LINE_BUSY")[0]) is str
+
+
+@pytest.mark.parametrize("token", ["<phone_status:VOICEMAIL>", "<phone_status:LINE_BUSY"])
+def test_invalid_phone_status_token_is_rejected(token):
+    with pytest.raises(ValueError):
+        parse_turns(token)
+
+
+@pytest.mark.parametrize("status", list(PhoneStatus))
+def test_evaluator_plays_explicit_phone_status_through_adapter(status):
+    result = _run_case(
+        _row(scope="telephony", turns=f"<phone_status:{status.value}>", expect_reason=status.value),
+        f"na_phone_{status.value}",
+        None,
+        1,
+    )
+    assert result["passed"] and result["observed_reason"] == status.value
+    assert result["attempt_count"] == 1
+
+
+@pytest.mark.parametrize("scope,direction", [("http", "outbound"), ("telephony", "inbound")])
+def test_phone_status_cannot_be_used_as_scored_http_or_inbound_input(scope, direction):
+    with pytest.raises(ValueError):
+        _run_case(
+            _row(scope=scope, direction=direction, turns="<phone_status:LINE_BUSY>"),
+            "na_invalid_scope",
+            None,
+            1,
+        )
+
+
+@pytest.mark.parametrize(
+    "case_id,line",
+    [("busy", "Thuê bao đang bận"), ("no_answer", "The number you have dialed cannot be reached")],
+)
+def test_operator_transcript_is_not_a_phone_status_even_in_telephony_scope(case_id, line):
+    result = _run_case(
+        _row(scope="telephony", turns=line, expect_outcome="NOT_UNREACHABLE", expect_reason=""),
+        f"na_operator_transcript_{case_id}",
+        None,
+        1,
+    )
+    assert result["passed"] and result["observed_outcome"] != "UNREACHABLE"
+    assert result["attempt_count"] == 0
+
+
 def test_cases_match_contract_enums_and_setup():
     with CASES.open(encoding="utf-8", newline="") as source:
         rows = list(csv.DictReader(source))
@@ -77,6 +131,11 @@ def test_cases_match_contract_enums_and_setup():
             assert row["scope"] == "telephony", row
         assert row["question_id"] in SETUP[row["direction"]], row
         assert all(line is None or line for line in parse_turns(row["turns"])), row
+        for line in parse_turns(row["turns"]):
+            if isinstance(line, PhoneStatus):
+                assert row["scope"] == "telephony" and row["direction"] == "outbound", row
+        if row["expect_reason"] in {"NO_ANSWER", "LINE_BUSY"}:
+            assert any(isinstance(line, PhoneStatus) for line in parse_turns(row["turns"])), row
         if row["expect_outcome"] == "UNREACHABLE":
             assert row["direction"] == "outbound", row  # §1.1.7: inbound không bao giờ UNREACHABLE
             assert row["expect_reason"] in UNREACHABLE_REASONS, row

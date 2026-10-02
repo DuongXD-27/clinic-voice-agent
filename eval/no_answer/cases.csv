@@ -48,14 +48,14 @@ NA046,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"Số thuê bao nà
 NA047,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"sóng yếu quá, tôi không nghe rõ",NOT_UNREACHABLE,,,,
 NA048,regression,http,CONFIRMED,human_trap,outbound,ASK_NAME,"I'm driving, I can't talk long",NOT_UNREACHABLE,,,,
 NA049,regression,http,CONFIRMED,human_trap,outbound,ASK_DOB,"tôi đang bận chút, đợi tôi một lát",NOT_UNREACHABLE,,,,
-NA050,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,"Số máy quý khách vừa gọi hiện đang bận, xin vui lòng gọi lại sau",UNREACHABLE,LINE_BUSY,,,Chỉ gặp ở cuộc gọi thật tuần 6 (§4.2.5)
-NA051,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Thuê bao quý khách vừa gọi tạm thời không liên lạc được,UNREACHABLE,NO_ANSWER,,,
-NA052,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Số máy quý khách vừa gọi hiện đang ngoài vùng phủ sóng,UNREACHABLE,NO_ANSWER,,,
-NA053,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,The number you are calling is busy,UNREACHABLE,LINE_BUSY,,,
-NA054,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,"Thuê bao quý khách vừa gọi hiện không liên lạc được, xin quý khách vui lòng gọi lại sau",UNREACHABLE,NO_ANSWER,,,
-NA055,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,Thuê bao quý khách vừa gọi hiện đang có cuộc gọi khác,UNREACHABLE,LINE_BUSY,,,"Bận nhưng không nói ""bận"""
-NA056,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,The subscriber you have dialed is not available at the moment,UNREACHABLE,NO_ANSWER,,,
-NA057,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,thue bao quy khach vua goi tam thoi khong lien lac duoc,UNREACHABLE,NO_ANSWER,,,
+NA050,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:LINE_BUSY>,UNREACHABLE,LINE_BUSY,,,Trạng thái điện thoại giả lập; chỉ gặp ở cuộc gọi thật tuần 6 (§4.2.5)
+NA051,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:NO_ANSWER>,UNREACHABLE,NO_ANSWER,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA052,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:NO_ANSWER>,UNREACHABLE,NO_ANSWER,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA053,dev,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:LINE_BUSY>,UNREACHABLE,LINE_BUSY,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA054,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:NO_ANSWER>,UNREACHABLE,NO_ANSWER,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA055,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:LINE_BUSY>,UNREACHABLE,LINE_BUSY,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA056,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:NO_ANSWER>,UNREACHABLE,NO_ANSWER,,,Trạng thái điện thoại giả lập; không suy từ transcript
+NA057,regression,telephony,CONFIRMED,operator_live,outbound,ASK_NAME,<phone_status:NO_ANSWER>,UNREACHABLE,NO_ANSWER,,,Trạng thái điện thoại giả lập; không suy từ transcript
 NA058,dev,http,CONFIRMED,silence_outbound,outbound,ASK_NAME,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,Không ai nói gì từ đầu: không đọc lịch
 NA059,dev,http,CONFIRMED,silence_outbound,outbound,ASK_DOB,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,
 NA060,dev,http,CONFIRMED,silence_outbound,outbound,CONFIRM_READBACK,<silence> | <silence> | <silence>,UNREACHABLE,SILENCE,,,

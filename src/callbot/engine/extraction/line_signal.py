@@ -7,9 +7,7 @@ Dialogue KHÔNG để lại chi tiết lịch hẹn trên hộp thư thoại.
 
 - VOICEMAIL xét trước: "thuê bao không liên lạc được, vui lòng để lại lời nhắn" là đã vào hộp thư.
   Lời chào cá nhân ("bạn đã gọi đến số của Lan, hiện không thể nghe máy") cũng là VOICEMAIL (T-08).
-- LINE_BUSY / NO_ANSWER chỉ nhận khi có dấu hiệu TỔNG ĐÀI ("thuê bao", "số máy quý khách", "ngoài vùng
-  phủ sóng"...). Người nghe máy nói "tôi đang bận" hay "không liên lạc được với anh ấy" là người thật —
-  kết thúc UNREACHABLE với họ là case fail.
+- NO_ANSWER / LINE_BUSY come only from PhoneStatus, never from transcripts.
 """
 
 from callbot.engine.extraction.schema import Field, LineSignal, Provenance
@@ -87,43 +85,6 @@ _RECORDED_GREETING = compile_phrases(["cảm ơn bạn đã gọi"])
 _RECORDED_UNAVAILABLE = compile_phrases(
     ["hiện không thể trả lời cuộc gọi", "hiện chúng tôi không thể trả lời"]
 )
-# Chỉ tổng đài mới nói những câu này
-_OPERATOR = compile_phrases(
-    [
-        "thuê bao",
-        "số máy quý khách vừa gọi",
-        "quý khách vui lòng gọi lại sau",
-        "ngoài vùng phủ sóng",
-        "không có thực",
-        "tạm thời không liên lạc được",
-        "the number you have dialed",
-        "the number you are calling",
-        "the subscriber",
-        "the person you are calling",
-        "cannot be reached",
-        "is not reachable",
-        "does not exist",
-        "line is busy",
-        "please try again later",
-    ]
-)
-_BUSY = compile_phrases(
-    ["bận", "đang bận", "máy bận", "busy", "đang có cuộc gọi khác"],
-    unaccented_exclude=["bận"],
-)  # "ban" = bạn
-_NO_ANSWER = compile_phrases(
-    [
-        "không liên lạc được",
-        "tạm thời không liên lạc được",
-        "ngoài vùng phủ sóng",
-        "không có thực",
-        "không trả lời",
-        "cannot be reached",
-        "is not reachable",
-        "not available",
-        "does not exist",
-    ]
-)
 
 
 def extract_line_signal(transcript: str) -> Field[LineSignal]:
@@ -143,12 +104,4 @@ def extract_line_signal(transcript: str) -> Field[LineSignal]:
     if voicemail is not None:
         return Field(LineSignal.VOICEMAIL, provenance, span=voicemail.group(0))
 
-    operator = find(_OPERATOR)
-    if operator is None:
-        return Field.nothing(LineSignal.NONE)
-    busy = find(_BUSY)
-    if busy is not None:
-        return Field(LineSignal.LINE_BUSY, provenance, span=busy.group(0))
-    # Tổng đài không nói bận -> cuộc gọi không tới được người nghe
-    no_answer = find(_NO_ANSWER)
-    return Field(LineSignal.NO_ANSWER, provenance, span=(no_answer or operator).group(0))
+    return Field.nothing(LineSignal.NONE)

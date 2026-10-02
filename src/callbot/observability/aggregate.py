@@ -194,6 +194,7 @@ class MetricsAggregator:
         end_time: datetime,
         slow_turn_threshold_ms: float,
         diagnostics: SourceDiagnostics | None = None,
+        scores: Sequence[dict] = (),
     ) -> OverviewResult:
         if slow_turn_threshold_ms < 0:
             raise ValueError("slow_turn_threshold_ms must be non-negative")
@@ -210,6 +211,8 @@ class MetricsAggregator:
             self._component_metrics(component, by_component[component]) for component in _COMPONENTS
         )
         provider_metrics = self._provider_metrics(records)
+        from callbot.observability.extended import extended_metrics
+
         return OverviewResult(
             start_time=_iso_utc(start_time),
             end_time=_iso_utc(end_time),
@@ -227,6 +230,7 @@ class MetricsAggregator:
             provider_model_metrics=provider_metrics,
             hourly=self._hourly(records, slow_turn_threshold_ms),
             diagnostics=diagnostics or SourceDiagnostics(),
+            extended=extended_metrics(records, scores=scores),
         )
 
     def top_errors(
@@ -379,8 +383,31 @@ class MetricsAggregator:
             )
             for code, label, _severity in _QUALITY_DEFINITIONS[normalized_component]
         )
+        coverage_fields = {
+            "Confidence below threshold": "confidence",
+            "STT first partial": "first_partial_ms",
+            "VAD end reason": "vad_end_reason",
+            "429 breakdown": "provider_http_status",
+            "Retry": "retry_count",
+            "Barge-in": "barge_in",
+            "TTS TTFA": "ttfa_ms",
+        }
+        stages = [stage for _root, stage, _issues in units]
         coverage = tuple(
-            QualityCoverage(metric=metric, instrumentation_status="NOT_INSTRUMENTED", detail=detail)
+            QualityCoverage(
+                metric=metric,
+                instrumentation_status=(
+                    "INSTRUMENTED"
+                    if (field := coverage_fields.get(metric)) is not None
+                    and any(field in stage.attributes for stage in stages)
+                    else "NOT_INSTRUMENTED"
+                ),
+                detail=(
+                    "Available in current trace window."
+                    if field is not None and any(field in stage.attributes for stage in stages)
+                    else detail
+                ),
+            )
             for metric, detail in _QUALITY_COVERAGE[normalized_component]
         )
         return QualityResult(

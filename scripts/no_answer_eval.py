@@ -7,7 +7,10 @@
 Chạy tay, không nằm trong `pytest`. Khác confirm / cancel (chấm MỘT lượt), No answer là kịch bản
 NHIỀU lượt: mỗi case chạy **Orchestrator thật + FakeClinicAPI** tới câu hỏi `question_id` (lời dựng
 sẵn giống `tests/engine/test_silence_line_signal.py`), rồi phát lần lượt các lượt trong cột `turns`
-(phân tách ` | `; `<silence>` là lượt `silence_ms > 0`, Phụ lục A). Dừng ngay khi bot kết thúc cuộc gọi,
+(phân tách ` | `; `<silence>` là lượt `silence_ms > 0`, Phụ lục A;
+`<phone_status:NO_ANSWER>` / `<phone_status:LINE_BUSY>` là sự kiện trạng thái giả lập,
+chỉ dùng trong scope `telephony` outbound và gửi qua PhoneStatusAdapter).
+Dừng ngay khi bot kết thúc cuộc gọi,
 như harness. Chấm theo record và writelog (§2.1), không theo câu nói.
 
 Căn cứ contract rev 1.1:
@@ -76,12 +79,14 @@ from callbot.engine import (  # noqa: E402
     CallerInput,
     CallStart,
     EngineSettings,
+    PhoneStatus,
     ReconciliationRequired,
     _semantic_extractor,
     create_orchestrator,
 )
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
 from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS  # noqa: E402
+from callbot.transports.phone import PhoneStatusAdapter  # noqa: E402
 from clinic_mock_sim import FakeClinicAPI, clinic_error  # noqa: E402
 from inference.llm.prompt.semantic import PROMPT_VERSION  # noqa: E402
 
@@ -145,11 +150,20 @@ def _store() -> RedisSessionStore:
     )
 
 
-def parse_turns(cell: str) -> list[Optional[str]]:
-    """`"<silence> | Nguyễn Văn A"` -> `[None, "Nguyễn Văn A"]`; None là lượt im lặng."""
-    return [
-        None if part == SILENCE_TOKEN else part for part in (p.strip() for p in cell.split("|"))
-    ]
+def parse_turns(cell: str) -> list[Optional[str | PhoneStatus]]:
+    """Phân biệt lời nói, im lặng và trạng thái điện thoại tường minh; không suy từ nhãn."""
+    turns: list[Optional[str | PhoneStatus]] = []
+    prefix = "<phone_status:"
+    for part in (p.strip() for p in cell.split("|")):
+        if part == SILENCE_TOKEN:
+            turns.append(None)
+        elif part.startswith(prefix):
+            if not part.endswith(">"):
+                raise ValueError("Phone status token must end with >")
+            turns.append(PhoneStatus(part[len(prefix) : -1]))
+        else:
+            turns.append(part)
+    return turns
 
 
 def _caller(turn: int, line: Optional[str]) -> CallerInput:
@@ -305,12 +319,16 @@ def _reconciliation_errors(bot, clinic, call_id: str, turn: int) -> list[str]:
 
 
 def _run_case(row: dict[str, str], call_id: str, semantic: Any, repeat: int) -> dict[str, Any]:
+    turns = parse_turns(row["turns"])
+    if any(isinstance(line, PhoneStatus) for line in turns):
+        if row.get("scope") != "telephony" or row["direction"] != "outbound":
+            raise ValueError("Phone status requires an outbound telephony case")
     bot, clinic, opening, done = _start(row, call_id, semantic)
+    phone = PhoneStatusAdapter(bot)
     attempts_before = clinic.appointments.get(TARGET_APPOINTMENT, {}).get("attempt_count", 0)
     spoken = [(opening.utterance, False)]
     ctx = _context(bot, call_id)
     verified = bool(ctx and ctx.identity_verified)
-    turns = parse_turns(row["turns"])
     action, reconcile, end_turn = None, False, None
     elapsed: list[float] = []
     if semantic is not None:
@@ -320,7 +338,11 @@ def _run_case(row: dict[str, str], call_id: str, semantic: Any, repeat: int) -> 
             semantic.active = True
         started = time.perf_counter()
         try:
-            action = bot.handle_turn(call_id, _caller(done + index, line))
+            action = (
+                phone.handle_status(call_id, turn=done + index, status=line)
+                if isinstance(line, PhoneStatus)
+                else bot.handle_turn(call_id, _caller(done + index, line))
+            )
         except ReconciliationRequired:
             reconcile, end_turn = True, index
             break

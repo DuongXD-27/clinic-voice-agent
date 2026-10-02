@@ -70,7 +70,11 @@ describe("overview", () => {
       "slow_turn",
       "empty_transcript",
     ]);
-    expect(cards[1]).toMatchObject({ label: "STT", value: "800 ms", context: "p95 · 10 mẫu" });
+    expect(cards[1]).toMatchObject({
+      label: "STT observation",
+      value: "800 ms",
+      context: "p95 · 10 mẫu",
+    });
     expect(cards[4]).toMatchObject({ value: "4,8%", context: "2 / 42 lượt" });
   });
 

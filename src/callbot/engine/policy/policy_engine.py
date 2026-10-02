@@ -9,7 +9,7 @@ from typing import Literal, Optional
 from callbot.engine.extraction.schema import ClinicalLevel, ExtractionResult, Intent, LineSignal
 from callbot.engine.session.context import CallContext
 from callbot.engine.settings import EngineSettings
-from callbot.engine.types import TransferReason, UnreachableReason
+from callbot.engine.types import PhoneStatus, TransferReason, UnreachableReason
 
 DecisionKind = Literal["CONTINUE", "REPROMPT", "TRANSFER", "UNREACHABLE"]
 
@@ -55,8 +55,11 @@ LOOKUP_TRANSFER_REASON: dict[str, TransferReason] = {
 
 _UNREACHABLE_REASON: dict[Optional[LineSignal], UnreachableReason] = {
     LineSignal.VOICEMAIL: "VOICEMAIL",
-    LineSignal.LINE_BUSY: "LINE_BUSY",
-    LineSignal.NO_ANSWER: "NO_ANSWER",
+}
+
+_PHONE_REASON: dict[PhoneStatus, UnreachableReason] = {
+    PhoneStatus.NO_ANSWER: "NO_ANSWER",
+    PhoneStatus.LINE_BUSY: "LINE_BUSY",
 }
 
 # §1.2, thiết kế §6.3: các intent luôn chuyển máy, bất kể đang ở bước nào
@@ -71,6 +74,12 @@ _ALWAYS_TRANSFER: dict[Intent, TransferReason] = {
 class PolicyEngine:
     def __init__(self, settings: EngineSettings) -> None:
         self._settings = settings
+
+    def check_phone_status(self, ctx: CallContext, status: PhoneStatus) -> PolicyDecision:
+        """Invalid inbound dial result transfers safely without an appointment write."""
+        if ctx.call.direction != "outbound":
+            return PolicyDecision.transfer("SYSTEM_ERROR")
+        return PolicyDecision.unreachable(_PHONE_REASON[status])
 
     def check_preconditions(self, ctx: CallContext) -> PolicyDecision:
         call = ctx.call

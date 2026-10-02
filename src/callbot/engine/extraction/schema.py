@@ -40,6 +40,10 @@ class QuestionId(str, Enum):
     CONFIRM_READBACK = "CONFIRM_READBACK"  # §1.1.3
     OFFER_SLOTS = "OFFER_SLOTS"
     SLOT_READBACK = "SLOT_READBACK"  # §1.1.6, §1.1.10
+    # "không" trần ở bước chọn slot: hỏi A/B nghe khung khác hay giữ lịch, không đoán (T-10 Q-4)
+    SLOT_REFUSE_CHOICE = "SLOT_REFUSE_CHOICE"
+    # Đã đọc / từ chối hết khung của yêu cầu hiện tại: hỏi ngày khác hay giữ lịch (T-10 §3.2)
+    ASK_SLOT_PREFERENCE = "ASK_SLOT_PREFERENCE"
     CANCEL_RECONFIRM = "CANCEL_RECONFIRM"  # §1.1.4
     ASK_CANCEL_REASON = "ASK_CANCEL_REASON"
 
@@ -84,17 +88,18 @@ class Agreement(str, Enum):
 
 
 class LineSignal(str, Enum):
-    """Trùng tên với `unreachable_reason` ở Phụ lục A (rev 1.1). `SILENCE` không có ở đây:
-    im lặng đến từ `silence_ms` của harness, không phải từ lời nói (xem `ExtractionResult.silent`)."""
+    """Speech can identify voicemail only. Silence uses silence_ms; dial results use PhoneStatus."""
 
     VOICEMAIL = "VOICEMAIL"  # lời chào hộp thư thoại
-    LINE_BUSY = "LINE_BUSY"  # thông báo tổng đài: thuê bao đang bận
-    NO_ANSWER = "NO_ANSWER"  # thông báo tổng đài: không liên lạc được, ngoài vùng phủ sóng, số không có thực
     NONE = "NONE"
 
 
-SlotChoiceKind = Literal["MATCH", "AMBIGUOUS", "NO_MATCH"]
+# MORE: xin nghe khung khác ("khung khác", "còn khung nào") — không có tiêu chí lọc (T-10)
+SlotChoiceKind = Literal["MATCH", "AMBIGUOUS", "NO_MATCH", "MORE", "ANY"]
 DayPeriod = Literal["MORNING", "NOON", "AFTERNOON", "EVENING"]
+# Ngày người gọi nói nhưng không dùng được để tra (PRD R-30): đã qua, không tồn tại, quá rộng
+# ("tháng sau"), hoặc thứ trần trùng hôm nay (hôm nay hay tuần sau?) -> hỏi lại, không đoán
+DateIssue = Literal["PAST", "INVALID", "TOO_BROAD", "TODAY"]
 
 
 @dataclass(frozen=True)
@@ -110,6 +115,8 @@ class SlotCriteria:
     month: Optional[int] = None
     date_from: Optional[date] = None  # khoảng ngày, bao gồm hai đầu
     date_to: Optional[date] = None
+    # Có giá trị thì không khung nào khớp; PAST / TODAY kèm ngày đó ở date_from = date_to
+    date_issue: Optional[DateIssue] = None
 
     @property
     def empty(self) -> bool:

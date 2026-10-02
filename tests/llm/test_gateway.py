@@ -1,3 +1,4 @@
+import gzip
 import json
 from unittest.mock import patch
 
@@ -158,6 +159,24 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
             assert payload["max_tokens"] == CONFIGS["openrouter"][2]
             assert "max_completion_tokens" not in payload
             assert payload["provider"] == {"require_parameters": True, "allow_fallbacks": False}
+
+
+@pytest.mark.parametrize("provider", CONFIGS)
+def test_gateway_accepts_gzip_response_and_preserves_usage(provider):
+    body = gzip.compress(json.dumps(response_body(provider)).encode())
+
+    def handle(request):
+        return httpx.Response(
+            200,
+            headers={"Content-Encoding": "gzip", "Content-Length": str(len(body))},
+            stream=httpx.ByteStream(body),
+        )
+
+    gateway, _ = mocked_gateway(provider, handle)
+    reply = generate(gateway)
+    assert reply.status == "completed" and reply.content == OUTPUT
+    assert reply.prompt_tokens == 100 and reply.completion_tokens == 15
+    assert reply.model_call_latency_ms is not None
 
 
 @pytest.mark.parametrize("provider", CONFIGS)

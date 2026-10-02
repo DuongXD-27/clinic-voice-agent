@@ -18,7 +18,8 @@ import logging
 import time
 from collections.abc import Callable
 from contextvars import ContextVar
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from datetime import time as day_start
 from functools import wraps
 from typing import Any, Optional
 
@@ -53,6 +54,9 @@ SLOT_WINDOW_DAYS = 14
 # Policy kỹ thuật nội bộ: tìm tuần tự tối đa 5 cửa sổ (khoảng 70 ngày), không phải yêu cầu
 # của Product Contract. Giới hạn hữu hạn này tránh quét Clinic API vô hạn trong một lượt.
 SLOT_SEARCH_MAX_WINDOWS = 5
+# PRD R-29: đổi lịch sang một ngày -> tìm từ ngày đó đến 7 ngày sau. Trống cả khoảng thì tìm tiếp các
+# cửa sổ sau để gợi ý khung sớm nhất sau ngày xin (T-10 D-3)
+REQUESTED_WINDOW_DAYS = 7
 # Trần số trang một lần đọc: 20 × 100 bản ghi — vượt là mock trả cursor hỏng, không phải dữ liệu thật
 MAX_PAGES = 20
 ACTIONABLE_APPOINTMENT_STATUSES = frozenset({"SCHEDULED", "BOOKED", "CONFIRMED"})
@@ -142,9 +146,12 @@ def traced_clinic(
                                 http_status=last.status if last else None,
                                 latency_ms=sum(record.latency_ms for record in records),
                                 attempt_count=len(attempts),
+                                retry_count=max(0, len(attempts) - 1),
+                                if_match_used=any(record.if_match_used for record in attempts),
                                 version_conflict=version_conflict,
                                 idempotency_used=idempotency_used and bool(attempts),
                                 result_code=_clinic_result_code(last) if last else None,
+                                outcome=last.outcome if last else None,
                             )
                             for number, record in enumerate(attempts, start=1):
                                 span.event(
@@ -153,6 +160,7 @@ def traced_clinic(
                                     http_status=record.status,
                                     latency_ms=record.latency_ms,
                                     error_code=_clinic_error_code(record),
+                                    version_conflict=record.code == "VERSION_CONFLICT",
                                 )
                         except Exception:
                             logger.warning("TRACE_CLINIC_METADATA_REJECTED")
@@ -212,18 +220,31 @@ class ClinicGateway:
         return [normalize_patient_candidate(row) for row in rows]
 
     @traced_clinic("clinic.get_slots", "/slots", "GET")
-    def list_open_slots(self, ctx: CallContext, now: datetime) -> list[dict[str, Any]]:
+    def list_open_slots(
+        self,
+        ctx: CallContext,
+        now: datetime,
+        date_from: Optional[date] = None,
+        clinic_id: Optional[str] = None,
+    ) -> list[dict[str, Any]]:
         """Nguồn slot hợp lệ duy nhất để đề xuất; thay toàn bộ `ctx.slots` (SF-02).
 
         `now` là thời điểm tiếp nhận lượt, để xử lý lại lượt đọc đúng cửa sổ thời gian cũ.
+        `date_from`: ngày người gọi xin đổi sang (R-29) — cửa sổ đầu là [ngày đó, +7 ngày), không
+        sớm hơn `now`. `clinic_id`: cơ sở của lịch hẹn đang đổi; `None` dùng cơ sở cấu hình.
+        Booking không truyền hai tham số này, giữ hành vi cũ.
         """
-        start = now
+        start, days = now, SLOT_WINDOW_DAYS
+        if date_from is not None:
+            start = max(now, datetime.combine(date_from, day_start(), tzinfo=now.tzinfo))
+            days = REQUESTED_WINDOW_DAYS
+        clinic = clinic_id or self._clinic_id
         for _ in range(SLOT_SEARCH_MAX_WINDOWS):
-            end = start + timedelta(days=SLOT_WINDOW_DAYS)
+            end = start + timedelta(days=days)
             from_, to = iso_local(start), iso_local(end)
             rows = self._all_pages(
                 lambda cursor, from_=from_, to=to: self._api.get_slots(
-                    self._clinic_id, from_, to, cursor=cursor, limit=PAGE_LIMIT
+                    clinic, from_, to, cursor=cursor, limit=PAGE_LIMIT
                 )
             )
             if rows:
@@ -232,7 +253,7 @@ class ClinicGateway:
                 normalized = [normalize_slot(row) for row in rows]
                 ctx.slots = list({slot["slot_id"]: slot for slot in normalized}.values())
                 return list(ctx.slots)
-            start = end
+            start, days = end, SLOT_WINDOW_DAYS
 
         ctx.slots = []
         return []
