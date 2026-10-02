@@ -21,6 +21,7 @@ from speech.asr.recognizer import Recognizer
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import read_wav, to_sample_rate
 from speech.audio.preprocess import (
+    LevelStats,
     detect_speech_frames,
     estimate_snr_db,
     measure_level,
@@ -40,6 +41,12 @@ _FRAME_MS = 30
 _CLIPPING_WARN_RATIO = 0.001
 _LOW_LEVEL_DBFS = -35.0
 _LOW_SNR_DB = 10.0
+# Cổng im lặng của /v1/stt/turn: lượt im lặng khi Silero gắn cờ giọng ít hơn chừng này ms VÀ
+# mức âm thấp hơn _SILENT_BELOW_DBFS (docs/evidence/pm-preprocess-2026-10-02.md). Chỉ dựa vào Silero thì sai: tiếng đường phố SNR 6 dB làm xác suất giọng
+# của Silero không quá 0,31 (8 kHz) nên câu thật bị bỏ (bộ PM 02/10: 17/19 file ồn mạnh). Giọng
+# nhỏ nhất của bộ PM (nói xa) ở −48,8 dBFS; tiếng phòng B-SIL-01 ở −66,8 dBFS.
+_MIN_TURN_SPEECH_MS = 200
+_SILENT_BELOW_DBFS = -55.0
 
 VadFactory = Callable[[int], FrameClassifier]
 
@@ -120,6 +127,8 @@ class TurnTranscription:
     confidence: Optional[float]
     production: Optional[ComparisonResult]
     audio: SourceReport
+    # Đúng audio đã đưa vào ASR (None khi cổng VAD chặn) — cho bộ đo nghe lại, không trả qua API
+    model_audio: Optional[AudioSegment]
     steps: list[str]
     gain_db: float
     telephone_band: bool
@@ -137,6 +146,8 @@ class _Prepared:
     # Đã bỏ DC, ở tần số model, đã khuếch đại nếu cần
     pcm: bytes
     model_rate: int
+    # Cổng im lặng chặn: không gọi ASR
+    no_speech: bool
     steps: list[str]
     gain_db: float
     warnings: list[str]
@@ -149,7 +160,12 @@ def _ms_since(start_ns: int) -> float:
 
 
 def _prepare(
-    data: bytes, model_rate: int, *, telephone_band: bool, max_duration_ms: int
+    data: bytes,
+    model_rate: int,
+    *,
+    telephone_band: bool,
+    max_duration_ms: int,
+    vad_factory: Optional[VadFactory] = None,
 ) -> _Prepared:
     started = perf_counter_ns()
     try:
@@ -175,7 +191,16 @@ def _prepare(
     steps.append("DC_REMOVAL")
     if base.sample_rate != model_rate:
         steps.append("RESAMPLE")
-    pcm, gain_db = normalize_gain(processed.pcm, measure_level(processed.pcm, model_rate))
+    pcm = processed.pcm
+    level = measure_level(pcm, model_rate)
+    no_speech = vad_factory is not None and is_silent_turn(
+        detect_speech_frames(pcm, model_rate, vad_factory(model_rate), frame_ms=_FRAME_MS), level
+    )
+    gain_db = 0.0
+    if no_speech:
+        steps.append("VAD_NO_SPEECH")
+    else:
+        pcm, gain_db = normalize_gain(pcm, level)
     if gain_db:
         steps.append("GAIN_NORMALIZE")
 
@@ -201,12 +226,22 @@ def _prepare(
         base=base,
         pcm=pcm,
         model_rate=model_rate,
+        no_speech=no_speech,
         steps=steps,
         gain_db=gain_db,
         warnings=warnings,
         decode_ms=decode_ms,
         preprocess_ms=_ms_since(step),
     )
+
+
+def is_silent_turn(flags: list[bool], level: LevelStats) -> bool:
+    """Cổng im lặng: Silero gần như không gắn cờ giọng VÀ cả file nhỏ hơn _SILENT_BELOW_DBFS.
+
+    Cần cả hai điều kiện: tiếng phòng (−67 dBFS) thì khuếch đại tĩnh kéo lên +20 dB rồi ASR bịa
+    chữ; nhưng chỉ tin Silero thì câu thật trong tiếng đường phố cũng bị bỏ."""
+    quiet = level.speech_rms_dbfs is None or level.speech_rms_dbfs < _SILENT_BELOW_DBFS
+    return quiet and sum(flags) * _FRAME_MS < _MIN_TURN_SPEECH_MS
 
 
 def _decode(
@@ -246,11 +281,13 @@ def transcribe_turn(
     recognizer: Recognizer,
     telephone_band: bool = False,
     compare: bool = False,
+    vad_factory: Optional[VadFactory] = None,
 ) -> TurnTranscription:
     """Một lượt nói: tiền xử lý nhẹ rồi decode nguyên clip một lần, không cắt đoạn.
 
-    `production` (khi `compare`) dùng đúng chuỗi hàm của /v1/calls turn: `load_from_url` giữ tần
-    số gốc (`read_wav`), rồi `SpeechRecognizer.transcribe` resample một lần về tần số model.
+    `vad_factory`: bật cổng im lặng (`is_silent_turn`) — lượt chỉ có tiếng phòng trả rỗng, không
+    gọi ASR. `production` (khi `compare`) dùng đúng chuỗi hàm của /v1/calls turn: `load_from_url`
+    giữ tần số gốc (`read_wav`), rồi `SpeechRecognizer.transcribe` resample một lần về tần số model.
     """
     started = perf_counter_ns()
     prepared = _prepare(
@@ -258,12 +295,16 @@ def transcribe_turn(
         recognizer.input_sample_rate,
         telephone_band=telephone_band,
         max_duration_ms=MAX_TURN_MS,
+        vad_factory=vad_factory,
     )
 
     step = perf_counter_ns()
-    transcript = recognizer.transcribe(
-        AudioSegment(pcm=prepared.pcm, sample_rate=prepared.model_rate)
-    )
+    model_audio = None
+    text, confidence = "", None
+    if not prepared.no_speech:
+        model_audio = AudioSegment(pcm=prepared.pcm, sample_rate=prepared.model_rate)
+        transcript = recognizer.transcribe(model_audio)
+        text, confidence = transcript.text, transcript.confidence
     asr_ms = _ms_since(step)
 
     production = None
@@ -278,10 +319,11 @@ def transcribe_turn(
         "stt_eval turn duration_ms=%d asr_ms=%.1f total_ms=%.1f", duration_ms, asr_ms, total_ms
     )
     return TurnTranscription(
-        text=transcript.text,
-        confidence=transcript.confidence if transcript.text else None,
+        text=text,
+        confidence=confidence if text else None,
         production=production,
         audio=prepared.source,
+        model_audio=model_audio,
         steps=prepared.steps,
         gain_db=prepared.gain_db,
         telephone_band=telephone_band,

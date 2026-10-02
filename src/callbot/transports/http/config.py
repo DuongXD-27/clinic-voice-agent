@@ -29,6 +29,10 @@ class Settings(YamlSettings):
     # Mount /v1/stt/* (stt_eval.py) cho PM thử chất lượng STT trên file WAV. Chỉ đặt qua env;
     # mặc định tắt vì route tải URL tùy ý và tốn CPU ASR dùng chung với cuộc gọi thật.
     stt_eval_enabled: bool = False
+    # /v1/stt/turn: lượt chỉ có tiếng phòng (Silero không thấy giọng và cả file dưới −55 dBFS)
+    # trả rỗng thay vì đưa vào ASR — trước đó gain +20 dB làm model bịa chữ. Số đo trên bộ PM:
+    # docs/evidence/pm-preprocess-2026-10-02.md. Tắt bằng STT_EVAL_SILENCE_GATE=false.
+    stt_eval_silence_gate: bool = True
 
     # Secret: bearer key cho /v1/calls, /v1/stt và /demo-api (auth.py), dạng sk_..., nhiều key
     # cách nhau dấu phẩy. Để trống = tắt auth.

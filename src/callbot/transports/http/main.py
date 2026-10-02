@@ -243,6 +243,7 @@ def create_app(
     app.include_router(livekit_router)
     if settings.stt_eval_enabled if stt_eval_enabled is None else stt_eval_enabled:
         app.state.stt_vad_factory = stt_vad_factory or _default_stt_vad_factory()
+        app.state.stt_silence_gate = settings.stt_eval_silence_gate
         app.include_router(stt_eval_router, dependencies=[Depends(require_api_key)])
     _configure_observability(app, observability_settings)
     add_legacy_redirects(app)

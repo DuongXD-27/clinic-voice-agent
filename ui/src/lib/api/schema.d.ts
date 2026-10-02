@@ -1096,7 +1096,7 @@ export interface components {
              * Steps
              * @description Các bước đã thực sự áp dụng, theo thứ tự
              */
-            steps: ("DOWNMIX_MONO" | "TELEPHONE_BAND" | "DC_REMOVAL" | "RESAMPLE" | "GAIN_NORMALIZE")[];
+            steps: ("DOWNMIX_MONO" | "TELEPHONE_BAND" | "DC_REMOVAL" | "RESAMPLE" | "VAD_NO_SPEECH" | "GAIN_NORMALIZE")[];
             /** Telephone Band */
             telephone_band: boolean;
         };
