@@ -1,8 +1,17 @@
 """Residual speech must not become a NORMALIZED name or survive failed slot filling."""
 
+from datetime import date
+
 import pytest
 
-from callbot.engine.extraction import Field, InformationExtractor, Provenance, QuestionId
+from callbot.engine.extraction import (
+    Field,
+    InformationExtractor,
+    Provenance,
+    QuestionId,
+    SlotFillingResult,
+    SlotFillingStatus,
+)
 from callbot.engine.extraction.full_name import read_full_name
 from callbot.engine.extraction.identity import Reason
 from tests.engine.extraction.test_extractor import FakeFallback, ctx
@@ -80,7 +89,7 @@ def test_known_contact_signals_never_spend_a_name_request(text):
         ("Nguyễn Văn Em nhé anh", "nguyễn văn em"),
         ("Nguyen Van Chu", "nguyen van chu"),
         ("Nguyễn Văn Hữu", "nguyễn văn hữu"),
-        ("Hà Hà", "hà hà"),
+        ("Nguyễn Văn An", "nguyễn văn an"),
         ("alo em, tôi là Nguyễn Văn A", "nguyễn văn a"),
         ("hello em, tôi là Nguyễn Văn A", "nguyễn văn a"),
     ],
@@ -167,3 +176,151 @@ def test_a_model_rejection_keeps_an_ambiguous_suffix_unresolved():
     )
     assert fallback.calls == ["full_name"]
     assert not result.full_name.found
+
+
+# --- UNANCHORED: câu thiếu dấu hiệu họ tên do slot filling quyết định -------------------------
+# Chỉ câu trả lời khẳng định "không có tên" của mô hình mới lật được tên của luật. Mô hình không
+# trả lời được, trả lời không dùng được hoặc không được cấu hình thì giữ hành vi luật cũ.
+
+
+def slot(status: SlotFillingStatus, name: str | None = None) -> SlotFillingResult:
+    field = Field(name, Provenance.FALLBACK, span=name) if name else Field.nothing()
+    return SlotFillingResult(status, field, elapsed_ms=1.0)
+
+
+def name_with(fallback, text: str):
+    return (
+        InformationExtractor(fallback=fallback, name_fallback=True)
+        .extract(ctx(QuestionId.ASK_NAME), text)
+        .full_name
+    )
+
+
+# Tên luật cũ (không xét dấu hiệu họ tên) đọc được ở các câu này
+RULE_NAMES = [
+    ("Lê Na", "lê na"),
+    ("dạ Lê Na ạ", "lê na"),
+    ("dạ tôi tên Lê Na ạ", "lê na"),
+    ("tôi tên Lê Na", "lê na"),
+    ("Hà Hà", "hà hà"),
+    ("trần thế gian", "trần thế gian"),
+    ("trời hôm nay đẹp quá", "trời hôm nay đẹp quá"),
+]
+
+
+@pytest.mark.parametrize("text, rule_name", RULE_NAMES)
+def test_unanchored_answer_is_left_to_the_model(text, rule_name):
+    reading = read_full_name(text)
+    assert not reading.field.found and reading.reason is Reason.UNANCHORED
+    assert read_full_name(text, require_anchor=False).field.value == rule_name
+
+
+@pytest.mark.parametrize("text, rule_name", RULE_NAMES)
+def test_without_a_model_unanchored_answers_keep_the_rule_name(text, rule_name):
+    # Kể cả khi mô hình (nếu được hỏi) sẽ nói "không có tên": tắt slot filling thì không hỏi
+    disabled = FakeFallback(full_name=slot(SlotFillingStatus.NO_NAME))
+    for extractor in (
+        InformationExtractor(),
+        InformationExtractor(fallback=disabled, name_fallback=False),
+    ):
+        result = extractor.extract(ctx(QuestionId.ASK_NAME), text).full_name
+        assert result.value == rule_name
+        assert result.provenance is Provenance.NORMALIZED
+    assert disabled.calls == []
+
+
+@pytest.mark.parametrize("text, rule_name", RULE_NAMES)
+def test_model_no_name_overrules_the_unanchored_rule_name(text, rule_name):
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.NO_NAME))
+    assert not name_with(fallback, text).found
+    assert fallback.calls == ["full_name"]
+
+
+@pytest.mark.parametrize("text, rule_name", RULE_NAMES)
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        slot(SlotFillingStatus.UNAVAILABLE),
+        slot(SlotFillingStatus.REJECTED),
+        None,  # cài đặt không xử lý trường tên
+    ],
+)
+def test_unusable_model_answer_keeps_the_unanchored_rule_name(text, rule_name, outcome):
+    fallback = FakeFallback(full_name=outcome)
+    result = name_with(fallback, text)
+    assert fallback.calls == ["full_name"]
+    assert result.value == rule_name
+    assert result.provenance is Provenance.NORMALIZED
+
+
+@pytest.mark.parametrize("text, rule_name", RULE_NAMES)
+def test_provider_exception_keeps_the_unanchored_rule_name(text, rule_name):
+    class BrokenFallback(FakeFallback):
+        def full_name(self, transcript, **context):
+            raise TimeoutError("synthetic provider timeout")
+
+    assert name_with(BrokenFallback(), text).value == rule_name
+
+
+def test_accepted_name_that_fails_the_extractor_guard_counts_as_rejected():
+    # Mô hình báo ACCEPTED nhưng tên không nằm trong câu: không dùng, giữ tên của luật
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "nguyễn văn b"))
+    assert name_with(fallback, "dạ Lê Na ạ").value == "lê na"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Lê Na", "lê na"),
+        ("dạ Lê Na ạ", "lê na"),
+        ("tôi tên Lê Na", "lê na"),
+        ("Hà Hà", "hà hà"),
+        ("alo, tôi là Lê Hoa", "lê hoa"),
+        ("tôi tên Trịnh Trọng Nam", "trịnh trọng nam"),
+        ("tôi là Lê Thanh Toán", "lê thanh toán"),
+        ("le minh tuan", "le minh tuan"),
+    ],
+)
+def test_unanchored_real_name_is_taken_from_slot_filling(text, expected):
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, expected))
+    result = name_with(fallback, text)
+    assert fallback.calls == ["full_name"]
+    assert result.value == expected
+    assert result.provenance is Provenance.FALLBACK
+
+
+def test_unanchored_name_before_a_dob_comes_from_the_name_zone_only():
+    text = "Tôi là Lê Na, 14/03/1978"
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "lê na"))
+    result = InformationExtractor(fallback=fallback, name_fallback=True).extract(
+        ctx(QuestionId.ASK_NAME), text
+    )
+    assert fallback.calls == ["full_name"]
+    assert result.full_name.value == "lê na"
+    assert result.dob.value == date(1978, 3, 14)
+
+    # Chữ lấy từ phần ngày sinh không được thành tên; tên của luật vẫn đứng
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "14/03/1978"))
+    assert name_with(fallback, text).value == "lê na"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        slot(SlotFillingStatus.NO_NAME),
+        slot(SlotFillingStatus.REJECTED),
+        slot(SlotFillingStatus.UNAVAILABLE),
+    ],
+)
+def test_no_signal_has_no_rule_name_to_fall_back_on(outcome):
+    text = "à ừ thì là nguyễn văn a nhé em"
+    assert read_full_name(text).reason is Reason.NO_SIGNAL
+    fallback = FakeFallback(full_name=outcome)
+    assert not name_with(fallback, text).found
+    assert fallback.calls == ["full_name"]
+
+
+def test_a_negated_name_is_settled_by_the_rule():
+    fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "lê na"))
+    assert not name_with(fallback, "không phải Lê Na").found
+    assert fallback.calls == []

@@ -17,6 +17,7 @@ from callbot.engine.extraction import (
     Intent,
     Provenance,
     QuestionId,
+    SlotFillingStatus,
 )
 from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.orchestrator import build_turn_context
@@ -70,8 +71,10 @@ def test_request_contract_and_private_telemetry(caplog):
         result = adapter.full_name(
             TRANSCRIPT, question_id=QuestionId.ASK_NAME, bot_question=QUESTION
         )
-    assert result.value == result.span == "nguyễn văn a"
-    assert result.provenance is Provenance.FALLBACK
+    assert result.status is SlotFillingStatus.ACCEPTED
+    assert result.field.value == result.field.span == "nguyễn văn a"
+    assert result.field.provenance is Provenance.FALLBACK
+    assert result.elapsed_ms is not None and result.elapsed_ms >= 0
     assert len(requests) == 1 and clients[0].is_closed
     request = requests[0]
     endpoint = OpenAIConfig(api_key=KEY, _env_file=None).endpoint
@@ -101,7 +104,7 @@ def test_request_contract_and_private_telemetry(caplog):
     assert record.slot_filling_prompt_tokens == 120
     assert record.slot_filling_completion_tokens == 20
     assert record.slot_filling_elapsed_ms >= 0
-    assert record.slot_filling_prompt_version == PROMPT_VERSION == "name_slot_filling_v2"
+    assert record.slot_filling_prompt_version == PROMPT_VERSION == "name_slot_filling_v3"
     assert record.slot_filling_question_id == "ASK_NAME"
     assert record.slot_filling_has_bot_question is True
     assert not any(hasattr(r, "ner_status") for r in caplog.records)
@@ -122,36 +125,48 @@ def test_request_contract_and_private_telemetry(caplog):
 )
 def test_normalizes_only_existing_name(transcript, name, expected):
     adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion(name, name)))
-    assert adapter.full_name(transcript).value == expected
+    result = adapter.full_name(transcript)
+    assert result.status is SlotFillingStatus.ACCEPTED
+    assert result.field.value == expected
+
+
+REJECTED, UNAVAILABLE = SlotFillingStatus.REJECTED, SlotFillingStatus.UNAVAILABLE
 
 
 @pytest.mark.parametrize(
-    "name,span,transcript",
+    "name,span,transcript,status",
     [
-        ("Trần Văn B", "Trần Văn B", TRANSCRIPT),
-        ("Nguyễn Văn A", "Trần Văn B", TRANSCRIPT),
-        ("Nguyễn Văn A", "Nguyễn Văn A", "toi ten la nguyen van a"),
-        ("Nguyễn Văn A", "Nguyễn Văn A", "tôi là Nguyễn Văn An"),
-        ("tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A"),
-        ("Nguyễn 123", "Nguyễn 123", "tôi là Nguyễn 123"),
-        ("Hoa", "Hoa", "tôi là Hoa"),
-        ("Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em"),
-        ("", "", TRANSCRIPT),
-        (None, "Nguyễn Văn A", TRANSCRIPT),
-        ("Nguyễn Văn A", None, TRANSCRIPT),
-        (123, 123, TRANSCRIPT),
+        ("Trần Văn B", "Trần Văn B", TRANSCRIPT, REJECTED),
+        ("Nguyễn Văn A", "Trần Văn B", TRANSCRIPT, REJECTED),
+        ("Nguyễn Văn A", "Nguyễn Văn A", "toi ten la nguyen van a", REJECTED),
+        ("Nguyễn Văn A", "Nguyễn Văn A", "tôi là Nguyễn Văn An", REJECTED),
+        ("tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A", "tôi là Nguyễn Văn A", REJECTED),
+        ("Nguyễn 123", "Nguyễn 123", "tôi là Nguyễn 123", REJECTED),
+        ("Hoa", "Hoa", "tôi là Hoa", REJECTED),
+        ("Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em", "Nguyễn Văn A nhé em", REJECTED),
+        ("", "", TRANSCRIPT, REJECTED),
+        # Sai schema: mô hình không trả lời dùng được, khác với trả một tên sai
+        (None, "Nguyễn Văn A", TRANSCRIPT, UNAVAILABLE),
+        ("Nguyễn Văn A", None, TRANSCRIPT, UNAVAILABLE),
+        (123, 123, TRANSCRIPT, UNAVAILABLE),
     ],
 )
-def test_rejects_ungrounded_or_invalid_name(name, span, transcript):
+def test_rejects_ungrounded_or_invalid_name(name, span, transcript, status):
     adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion(name, span)))
     result = adapter.full_name(transcript)
-    assert result.value is None and result.provenance is Provenance.NONE
+    assert result.status is status
+    assert result.field.value is None and result.field.provenance is Provenance.NONE
+
+
+def test_model_null_is_a_positive_no_name():
+    adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion(None, None)))
+    result = adapter.full_name(TRANSCRIPT)
+    assert result.status is SlotFillingStatus.NO_NAME and not result.field.found
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        completion(None, None),
         completion(finish_reason="length"),
         completion(finish_reason="content_filter"),
         completion(message={"refusal": "Cannot comply", "content": None}),
@@ -166,7 +181,8 @@ def test_rejects_ungrounded_or_invalid_name(name, span, transcript):
 )
 def test_unusable_responses_return_none(body):
     adapter, clients = adapter_for(lambda _: httpx.Response(200, json=body))
-    assert not adapter.full_name(TRANSCRIPT).found
+    result = adapter.full_name(TRANSCRIPT)
+    assert result.status is SlotFillingStatus.UNAVAILABLE and not result.field.found
     assert len(clients) == 1 and clients[0].is_closed
 
 
@@ -186,7 +202,8 @@ def test_api_failures_do_not_retry_or_leak_details(error, caplog):
 
     adapter, clients = adapter_for(handle)
     with caplog.at_level(logging.INFO):
-        assert not adapter.full_name(TRANSCRIPT).found
+        result = adapter.full_name(TRANSCRIPT)
+    assert result.status is SlotFillingStatus.UNAVAILABLE and not result.field.found
     assert len(attempts) == 1 and clients[0].is_closed
     assert KEY not in caplog.text and TRANSCRIPT not in caplog.text
 
@@ -232,7 +249,8 @@ def test_direct_slot_filler_skips_other_questions_without_http(question, caplog)
     adapter, clients = adapter_for(unexpected_request)
     with caplog.at_level(logging.INFO, logger="callbot.engine.extraction.name_slot_filling"):
         result = adapter.full_name(TRANSCRIPT, question_id=question, bot_question=QUESTION)
-    assert result == Field.skipped()
+    assert result.field == Field.skipped()
+    assert result.status is SlotFillingStatus.UNAVAILABLE
     assert clients == []
     assert caplog.records[-1].slot_filling_status == "skipped_question"
 
@@ -244,7 +262,7 @@ def test_few_shot_outputs_satisfy_the_real_span_validator():
             lambda _, name=name: httpx.Response(200, json=completion(name, name))
         )
         result = adapter.full_name(answer, bot_question=question)
-        assert result.found is (name is not None), answer
+        assert result.field.found is (name is not None), answer
 
 
 def test_prompt_builds_independent_requests_and_keeps_the_actual_question():
@@ -433,7 +451,7 @@ def test_missing_question_text_is_sent_as_null(caplog):
     adapter, _ = adapter_for(handle)
     with caplog.at_level(logging.INFO, logger="callbot.engine.extraction.name_slot_filling"):
         for question in (None, "", "   "):
-            assert adapter.full_name(TRANSCRIPT, bot_question=question).found
+            assert adapter.full_name(TRANSCRIPT, bot_question=question).field.found
     assert [sent_turn(p) for p in payloads] == [
         {"question_id": "ASK_NAME", "bot_question": None, "customer_answer": TRANSCRIPT}
     ] * 3
@@ -445,7 +463,7 @@ def test_missing_question_text_is_sent_as_null(caplog):
 def test_name_found_only_in_bot_question_is_rejected(answer):
     question = "Dạ em đang nói chuyện với anh Nguyễn Văn A phải không ạ?"
     adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion()))
-    assert not adapter.full_name(answer, bot_question=question).found
+    assert not adapter.full_name(answer, bot_question=question).field.found
 
     fallback = FakeFallback(
         full_name=Field("nguyễn văn a", Provenance.FALLBACK, span="nguyễn văn a")

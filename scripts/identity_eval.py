@@ -12,7 +12,9 @@ NONE; '*' marks a name boundary needing human review. Exit 1 reports known misma
 Dialogue state transitions are covered separately by test_identity_dialogue.py.
 Results default to result/<dd-mm-yyyy>/identity/<baseline|slot_filling>/results.csv (Vietnam
 time). A summary.json is written beside the CSV, including counts, failures and transport status.
-Report columns keep their ner_* names so older result files stay comparable.
+Report columns keep their ner_* names so older result files stay comparable. `elapsed_ms` is the
+whole `extract` call; `slot_filling_status` / `slot_filling_elapsed_ms` come from the slot filling
+result itself (accepted / no_name / rejected / unavailable, or not_called).
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import time
 from collections import Counter, defaultdict
 from datetime import datetime
@@ -28,6 +31,7 @@ from typing import Any
 
 from callbot.engine.dialogue import templates
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
+from callbot.engine.extraction.fallback import SlotFillingResult
 from callbot.engine.extraction.greeting import is_greeting, is_identity_question
 from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.schema import VN_TZ
@@ -61,14 +65,28 @@ class RecordingGateway:
         return reply
 
 
+class RecordingSlotFiller:
+    """Keep the last slot filling result so each row reports its outcome and model latency."""
+
+    def __init__(self, inner: NameSlotFiller) -> None:
+        self.inner = inner
+        self.last: SlotFillingResult | None = None
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+    def full_name(self, *args: Any, **kwargs: Any) -> SlotFillingResult:
+        self.last = self.inner.full_name(*args, **kwargs)
+        return self.last
+
+
 def evaluate(
     path: Path,
     gateway: RecordingGateway | None = None,
     groups: frozenset[str] | None = None,
 ) -> list[dict[str, str]]:
-    extractor = InformationExtractor(
-        fallback=NameSlotFiller(gateway) if gateway else None, name_fallback=gateway is not None
-    )
+    filler = RecordingSlotFiller(NameSlotFiller(gateway)) if gateway else None
+    extractor = InformationExtractor(fallback=filler, name_fallback=gateway is not None)
     with path.open(encoding="utf-8-sig", newline="") as source:
         cases = list(csv.DictReader(source))
     results = []
@@ -86,10 +104,13 @@ def evaluate(
         )
         transcript = case["transcript"]
         calls_before = gateway.calls if gateway else 0
+        if filler:
+            filler.last = None
         started = time.perf_counter()
         extraction = extractor.extract(context, transcript)
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         called = gateway is not None and gateway.calls > calls_before
+        slot = filler.last if filler else None
         actual = {
             "name": extraction.full_name.value or "",
             "greeting": str(int(is_greeting(transcript))),
@@ -112,6 +133,10 @@ def evaluate(
                 "ner_called": str(int(called)),
                 "ner_transport_status": gateway.status if called else "not_called",
                 "elapsed_ms": str(elapsed_ms),
+                "slot_filling_status": slot.status.value if slot else "not_called",
+                "slot_filling_elapsed_ms": (
+                    str(round(slot.elapsed_ms)) if slot and slot.elapsed_ms is not None else ""
+                ),
                 "mode": MODE if gateway else "rules",
                 "fallback_method": MODE if gateway else "",
                 "model": gateway.model if gateway else "",
@@ -138,6 +163,12 @@ def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
     for row in results:
         groups[row["group"]][row["status"]] += 1
     called = [row for row in results if row["ner_called"] == "1"]
+    slot_rows = [
+        row for row in results if row.get("slot_filling_status", "not_called") != "not_called"
+    ]
+    named: dict[str, Counter] = defaultdict(Counter)
+    for row in results:
+        named[row["group"]]["named" if row["actual_name"] else "not_named"] += 1
     return {
         "evaluation_scope": "identity_extraction",
         "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
@@ -159,6 +190,20 @@ def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
         ),
         "ner_called_cases": len(called),
         "ner_transport_statuses": dict(Counter(row["ner_transport_status"] for row in called)),
+        # Share of rows that produced a name: false-accept for garbage*, distribution only for
+        # ambiguous_bare
+        "name_rate_by_group": {
+            group: round(c["named"] / (c["named"] + c["not_named"]), 4)
+            for group, c in sorted(named.items())
+        },
+        "slot_filling_statuses": dict(Counter(row["slot_filling_status"] for row in slot_rows)),
+        "slot_filling_elapsed_ms": latency_stats(
+            [
+                float(row["slot_filling_elapsed_ms"])
+                for row in slot_rows
+                if row.get("slot_filling_elapsed_ms")
+            ]
+        ),
         "failures": [
             {
                 key: row[key]
@@ -168,6 +213,22 @@ def summarise(results: list[dict[str, str]]) -> dict[str, Any]:
             if row["status"] == "FAIL"
         ],
         "review_ids": [row["id"] for row in results if row["status"] == "REVIEW"],
+    }
+
+
+def latency_stats(values: list[float]) -> dict[str, float | int | None]:
+    """n, p50 / p95 / p99 (nearest rank) and max; None when there is no sample."""
+    ordered = sorted(values)
+
+    def rank(q: float) -> float | None:
+        return ordered[max(math.ceil(q * len(ordered)) - 1, 0)] if ordered else None
+
+    return {
+        "n": len(ordered),
+        "p50": rank(0.50),
+        "p95": rank(0.95),
+        "p99": rank(0.99),
+        "max": ordered[-1] if ordered else None,
     }
 
 

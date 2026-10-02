@@ -15,6 +15,8 @@ from callbot.engine.extraction import (
     LineSignal,
     Provenance,
     QuestionId,
+    SlotFillingResult,
+    SlotFillingStatus,
     TurnContext,
 )
 from callbot.engine.extraction.schema import INVALID, VN_TZ
@@ -26,7 +28,17 @@ def ctx(question: Optional[QuestionId], direction="outbound", **kwargs) -> TurnC
     return TurnContext(turn=2, question_id=question, direction=direction, now=NOW, **kwargs)
 
 
+def slot_result(name: Optional[Field[str]]) -> Optional[SlotFillingResult]:
+    """Fake gọn: tên -> ACCEPTED (extractor vẫn tự guard), Field rỗng -> NO_NAME."""
+    if name is None:
+        return None
+    status = SlotFillingStatus.ACCEPTED if name.found else SlotFillingStatus.NO_NAME
+    return SlotFillingResult(status, name)
+
+
 class FakeFallback:
+    """`full_name`: một `Field` (bọc thành kết quả slot filling), một `SlotFillingResult`, hoặc None."""
+
     def __init__(self, intent=None, agreement=None, full_name=None) -> None:
         self._intent, self._agreement, self._full_name = intent, agreement, full_name
         self.calls: list[str] = []
@@ -46,9 +58,11 @@ class FakeFallback:
         *,
         question_id: QuestionId = QuestionId.ASK_NAME,
         bot_question: Optional[str] = None,
-    ) -> Optional[Field[str]]:
+    ) -> Optional[SlotFillingResult]:
         self.calls.append("full_name")
         self.name_contexts.append((question_id, bot_question))
+        if isinstance(self._full_name, Field):
+            return slot_result(self._full_name)
         return self._full_name
 
 

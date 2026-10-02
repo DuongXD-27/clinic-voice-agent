@@ -14,13 +14,16 @@ không dấu được trả nguyên dạng ("nguyen van a"); Verifier so theo ch
 Kết quả đầy đủ nằm ở `read_full_name`: ngoài giá trị còn có *lý do*, để tuyến sau chỉ được
 gọi khi luật chưa hiểu câu, chứ không phải khi luật đã xác định là phủ định / phân vân /
 câu nghiệp vụ.
+
+Luật chỉ tự nhận tên khi có dấu hiệu họ tên (họ + tên đệm, hoặc họ Nguyễn / Huỳnh). Câu đúng
+hình dạng nhưng thiếu dấu hiệu ("hôm qua ăn phở", "Lê Na") trả UNANCHORED cho slot filling.
 """
 
 import re
 from typing import Optional
 
 from callbot.engine.extraction.greeting import is_greeting
-from callbot.engine.extraction.honorific import strip_honorific
+from callbot.engine.extraction.honorific import is_honorific, strip_honorific
 from callbot.engine.extraction.identity import (
     AFFIRMATIONS,
     ALTERNATIVES,
@@ -272,6 +275,60 @@ _DOB_ASIDE_SUFFIXES = (
     re.compile(strip_diacritics(_DOB_ASIDE_PATTERN)),
 )
 
+# --- Dấu hiệu tích cực của một họ tên ---------------------------------------------------------
+# Loại câu nói thường bằng danh sách từ cấm không bao giờ đủ ("trời hôm nay đẹp quá", "trần nhà").
+# Luật chỉ tự nhận tên khi có dấu hiệu họ tên; thiếu dấu hiệu thì trả UNANCHORED để slot filling
+# quyết định. Các bảng dưới đây chỉ chặn luật, không chặn tên do slot filling trả về
+# (`valid_name_span`): tên thật bị chặn nhầm không bị luật loại vĩnh viễn, nhưng có được nhận
+# hay không vẫn tùy mô hình.
+
+
+def _word_pairs(listing: str) -> frozenset[str]:
+    return frozenset(" ".join(pair.split()) for pair in listing.split("|"))
+
+
+# Họ không trùng từ thông dụng nào: đủ làm dấu hiệu, kể cả tên hai từ ("Nguyễn Lan").
+_UNIQUE_SURNAMES = frozenset({"nguyễn", "huỳnh"})
+# Không có "Lại": quá hay đứng đầu câu ("lại thu tiền à").
+_SURNAMES = frozenset(
+    """nguyễn trần lê phạm hoàng huỳnh phan vũ võ đặng bùi đỗ hồ ngô dương lý lưu trương đinh
+    đoàn lâm mai trịnh cao hà tô tạ châu chu quách thái tăng lương kiều đào tống lạc mạc khúc
+    kim la lục lữ mã nghiêm ninh phí phùng quan tôn thân thạch triệu từ văn viên vương vi âu
+    ông bạch bế cù diệp doãn giang giáp hàn hầu hứa khổng khương lò mẫn nông ôn phó quản sầm
+    sơn tiêu trình ứng đàm đồng đường nhan lăng lã hoa cung công bành biện cấn chế chử đậu kha
+    khiếu khuất lỗ ngụy nhâm phương quang thiều tiết trà vưu lường cầm điêu mùa giàng thào vàng
+    sùng lầu tráng ma lành quàng""".split()
+)
+# Tên đệm đặc trưng. Không có "Anh": "mai anh bận" không được thành tên.
+_MIDDLE_NAMES = frozenset(
+    """văn thị hữu đức công quốc ngọc thanh xuân hồng bảo gia quang đình trọng thế minh kim
+    thu hoàng mạnh việt hải khánh phúc nhật duy thùy mỹ diệu""".split()
+)
+# Họ + tên đệm ghép thành từ thông dụng: "trịnh trọng quá", "đồng minh thân thiết".
+_HEAD_COMPOUNDS = _word_pairs(
+    """công văn|hoa văn|thân hữu|công hữu|công đức|vũ công|thủ công|ông công|nông công|hàn quốc|
+    vương quốc|châu ngọc|bạch ngọc|mùa xuân|hoa hồng|hoàng gia|tăng gia|hồ quang|huỳnh quang|
+    trịnh trọng|tôn trọng|quan trọng|nghiêm trọng|trần thế|thân thế|đồng minh|văn minh|
+    quang minh|cao minh|hoàng kim|bạch kim|mùa thu|lê minh"""
+)
+# Tên đệm + từ thứ ba ghép thành từ thông dụng: "từ thị trấn lên", "hồ thu hoạch".
+_TAIL_COMPOUNDS = _word_pairs(
+    """thị trấn|thị xã|thị trường|thị lực|văn phòng|văn bản|văn hóa|công việc|công ty|công an|
+    quốc tế|thanh toán|thanh tra|bảo hiểm|bảo vệ|bảo hành|gia đình|gia hạn|quang cảnh|đình chỉ|
+    trọng tâm|trọng lượng|thế giới|thế nào|kim tiêm|hải quan|nhật ký|duy trì|mạnh khỏe|việt nam|
+    hữu ích|mỹ phẩm|thu hoạch|thu tiền|thu nhập|minh họa|hoàng hôn|xuân hè|khánh thành|
+    phúc lợi|hồng cầu|đức tin|ngọc trai"""
+)
+# Không dấu thì "X van" / "X thi" trùng câu nói thường ở các họ này: "tu van" (tư vấn),
+# "do thi" (đô thị), "ho thi" (họ thì), "lai van" (lại vẫn), "phan van" (phân vân).
+_UNACCENTED_AMBIGUOUS = frozenset(
+    "lai ma tu do vi cung phan hoa cong la ho ong mai ha dong quan than chu".split()
+)
+_UNACCENTED_UNIQUE = frozenset({"nguyen", "huynh"})
+_UNACCENTED_SURNAMES = frozenset(strip_diacritics(s) for s in _SURNAMES) - _UNACCENTED_AMBIGUOUS
+# Không dấu chỉ tin "văn" / "thị": tên đệm khác mất dấu trùng quá nhiều từ ("the", "minh").
+_UNACCENTED_MIDDLE_NAMES = frozenset({"van", "thi"})
+
 
 def extract_full_name(transcript: str) -> Field[str]:
     return read_full_name(transcript).field
@@ -282,15 +339,19 @@ def valid_name_span(name: str) -> bool:
 
     Selecting the boundary is the model's job here. The rule extractor must remain
     conservative when it sees an entire utterance ending in an ambiguous particle.
+    Name-anchor tables do not apply: they only decide when the rule defers to the model.
     """
     normalized = clean(name)
     return (
         bool(normalized)
-        and read_full_name(normalized, preserve_final_nha=True).field.value == normalized
+        and read_full_name(normalized, preserve_final_nha=True, require_anchor=False).field.value
+        == normalized
     )
 
 
-def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Reading[str]:
+def read_full_name(
+    transcript: str, *, preserve_final_nha: bool = False, require_anchor: bool = True
+) -> Reading[str]:
     clauses = [clause for clause in (clean(c) for c in normalize(transcript).split(",")) if clause]
     text = " ".join(clauses)
     if not text:
@@ -352,7 +413,30 @@ def read_full_name(transcript: str, *, preserve_final_nha: bool = False) -> Read
         or all(len(w) == 1 for w in words)
     ):
         return Reading(Field.nothing(), Reason.NO_SIGNAL, segment)
+    if require_anchor and not _has_name_anchor(words):
+        # "trời hôm nay đẹp quá", "trần nhà": đúng hình dạng nhưng không có dấu hiệu họ tên
+        return Reading(Field.nothing(), Reason.UNANCHORED, segment)
     return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)
+
+
+def _has_name_anchor(words: list[str]) -> bool:
+    """Có dấu hiệu họ tên; danh xưng còn giữ ("bà Nguyễn Lan") được bỏ qua khi xét."""
+    return _anchored(words) or (is_honorific(words[0]) and _anchored(words[1:]))
+
+
+def _anchored(words: list[str]) -> bool:
+    if len(words) < 2:
+        return False
+    if is_unaccented(" ".join(words)):
+        return len(words) >= 3 and (
+            words[0] in _UNACCENTED_UNIQUE
+            or (words[0] in _UNACCENTED_SURNAMES and words[1] in _UNACCENTED_MIDDLE_NAMES)
+        )
+    if " ".join(words[:2]) in _HEAD_COMPOUNDS or " ".join(words[1:3]) in _TAIL_COMPOUNDS:
+        return False
+    if words[0] in _UNIQUE_SURNAMES:
+        return True
+    return len(words) >= 3 and words[0] in _SURNAMES and words[1] in _MIDDLE_NAMES
 
 
 def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool:

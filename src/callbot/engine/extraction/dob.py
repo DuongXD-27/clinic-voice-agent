@@ -337,6 +337,10 @@ def _parse_with_month_anchor(tokens: list[str], at: int, today: date) -> tuple[D
             year_tokens = rest[1:]
         elif len(rest) == 1 and rest[0].isdigit():
             year_tokens = rest  # "14 tháng 3 1978"
+        elif rest and _is_full_year(rest):
+            # "mười bảy tháng tám một chín sáu tám": thiếu "năm" thì chỉ nhận năm đủ 4 chữ số,
+            # để "tháng mười một" không bị tách thành tháng 10 năm "một"
+            year_tokens = rest
         if year_tokens is None:
             continue  # thiếu năm: không điền năm hiện tại
         resolved = _resolve_date(day, month, year_tokens, today)
@@ -390,6 +394,18 @@ def _resolve_date(day: int, month: int, year_tokens: list[str], today: date) -> 
     if year < 1000:
         return INVALID
     return _checked(day, month, year, today)
+
+
+def _is_full_year(tokens: list[str]) -> bool:
+    """Năm đủ 4 chữ số khi không có từ khoá "năm" đứng trước.
+
+    "năm" đứng trước một số là từ khoá năm của một cách tách khác ("tháng mười | hai năm tám
+    lăm") — không được đọc nó thành chữ số 5; "năm" ở cuối ("một chín tám năm") vẫn là số.
+    """
+    if any(t == "năm" and is_number_token(n) for t, n in zip(tokens, tokens[1:], strict=False)):
+        return False
+    year = parse_spoken_number(tokens)
+    return year is not None and 1000 <= year <= 9999
 
 
 def _resolve_two_digit_year(day: int, month: int, yy: int, today: date) -> DobValue:
