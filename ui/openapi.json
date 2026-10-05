@@ -1935,7 +1935,6 @@
                 "TELEPHONE_BAND",
                 "DC_REMOVAL",
                 "RESAMPLE",
-                "VAD_NO_SPEECH",
                 "GAIN_NORMALIZE"
               ],
               "type": "string"
