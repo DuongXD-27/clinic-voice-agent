@@ -35,6 +35,9 @@ class TranscriptEvent:
     confidence: Optional[float] = None
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
+    # Cloud callbacks có thể đến sau discard hoặc speech_start của lượt tiếp theo.
+    generation: Optional[int] = field(default=None, compare=False)
+    segment_id: Optional[int] = field(default=None, compare=False)
 
 
 class AsrSegmentEnd(Enum):

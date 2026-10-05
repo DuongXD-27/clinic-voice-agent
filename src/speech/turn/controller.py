@@ -104,6 +104,7 @@ class TurnController:
         self._validator = validator
         self._max_wait_for_asr_s = max_wait_for_asr_ms / 1000
         self._asr_pending: Optional[Callable[[], bool]] = None
+        self._asr_final_required = False
         self._queue: "asyncio.Queue[UserTurnCompleted]" = asyncio.Queue()
         self._candidate = _Candidate()
         self._bot_speaking = False
@@ -140,6 +141,10 @@ class TurnController:
     def set_asr_pending_probe(self, probe: Optional[Callable[[], bool]]) -> None:
         """STTPipeline.stream() gắn hàm cho biết ASR còn audio chưa xử lý (None = không biết)."""
         self._asr_pending = probe
+
+    def set_asr_final_required(self, required: bool) -> None:
+        """Cloud STT phải có final; timeout không được đưa partial thiếu phủ định tới engine."""
+        self._asr_final_required = required
 
     def silence_elapsed_s(self) -> Optional[float]:
         """Số giây người dùng im lặng, tính từ lúc bot dứt lời hoặc lần cuối VAD còn thấy tiếng
@@ -209,6 +214,8 @@ class TurnController:
         timeout) — validator WAIT khi đó coi như ACCEPT.
         """
         candidate = self._candidate
+        if self._asr_final_required and not candidate.has_final_transcript:
+            return False
         if candidate.finalized or self._bot_speaking:
             return False
         if not candidate.has_final_transcript:
@@ -328,6 +335,14 @@ class TurnController:
         if self._timeout_task is not None and not self._timeout_task.done():
             self._timeout_task.cancel()
         self._timeout_task = None
+
+    async def aclose(self) -> None:
+        """Stop a remote ASR turn timer before its pipeline/session is torn down."""
+        task = self._timeout_task
+        self._cancel_timeout()
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)
+        self._candidate = _Candidate()
 
     def _reset_candidate(self) -> None:
         self._cancel_timeout()

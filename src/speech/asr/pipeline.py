@@ -14,9 +14,11 @@ import asyncio
 import logging
 from collections import deque
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import AsyncIterator, Optional
 
 from speech.asr.recognizer import Recognizer
+from speech.asr.stream_context import ASRStreamContext, StreamingFrame
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
 from speech.turn.controller import TurnController
@@ -30,6 +32,12 @@ _QUEUE_DONE = object()
 _ASR_LAG_WARN_MS = 1_000.0
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _QueuedVadFrame:
+    pcm: bytes
+    processed: asyncio.Event
 
 
 class STTPipeline:
@@ -115,10 +123,15 @@ class _CallStream:
         # Audio lúc bot đang nói, phát lại vào ASR khi nghi người gọi ngắt lời.
         self._pre_roll: deque[bytes] = deque(maxlen=pipeline.barge_in_preroll_frames)
         self._replayed_pre_roll = False
+        self._context = (
+            ASRStreamContext() if getattr(pipeline.asr, "supports_stream_context", False) else None
+        )
 
     async def turns(self, frames: AsyncIterator[bytes]) -> AsyncIterator[UserTurnCompleted]:
         controller = self._controller
         controller.set_asr_pending_probe(self._asr_has_backlog)
+        if self._context is not None:
+            controller.set_asr_final_required(True)
         fanout_task = asyncio.ensure_future(self._fanout(frames))
         vad_task = asyncio.ensure_future(self._drain_vad())
         asr_task = asyncio.ensure_future(self._drain_asr())
@@ -160,6 +173,9 @@ class _CallStream:
             await asyncio.gather(
                 *workers, *([next_turn] if next_turn else []), return_exceptions=True
             )
+            if self._context is not None:
+                await controller.aclose()
+                controller.set_asr_final_required(False)
 
     # --- Bước 1: phân phối từng frame -------------------------------------------------
 
@@ -169,7 +185,13 @@ class _CallStream:
             async for frame in frames:
                 if pipeline.detector is not None:
                     pipeline.detector.classify(frame)
-                await self._vad_queue.put(frame)
+                if self._context is None:
+                    await self._vad_queue.put(frame)
+                else:
+                    processed = asyncio.Event()
+                    await self._vad_queue.put(_QueuedVadFrame(frame, processed))
+                    # Assign the VAD segment before stamping frames sent to remote ASR.
+                    await processed.wait()
                 if pipeline.evidence is not None:
                     pipeline.evidence.observe_frame(frame)
                 if self._controller.is_bot_speaking:
@@ -214,7 +236,12 @@ class _CallStream:
     # --- Hàng đợi ASR -----------------------------------------------------------------
 
     async def _send_to_asr(self, frame: bytes) -> None:
-        await self._asr_queue.put(frame)
+        item = (
+            StreamingFrame(frame, self._context.generation, self._context.segment_id)
+            if self._context is not None
+            else frame
+        )
+        await self._asr_queue.put(item)
         self._asr_segment_open = True
         lag_ms = self._asr_queue.qsize() * len(frame) / 2 / self._pipeline.sample_rate * 1000
         if lag_ms >= _ASR_LAG_WARN_MS and not self._asr_lag_warned:
@@ -228,11 +255,17 @@ class _CallStream:
         """ASR chỉ tự chốt câu khi thấy đủ khoảng lặng; ngừng đưa frame thì phải báo bỏ câu
         dở, nếu không nó nằm lại buffer (xem AsrSegmentEnd)."""
         if self._asr_segment_open:
+            if self._context is not None:
+                self._context.invalidate()
             await self._asr_queue.put(AsrSegmentEnd.DISCARD)
             self._asr_segment_open = False
 
     def _asr_has_backlog(self) -> bool:
-        return not self._asr_idle or not self._asr_queue.empty()
+        return (
+            not self._asr_idle
+            or not self._asr_queue.empty()
+            or bool(self._context is not None and self._context.pending)
+        )
 
     async def _asr_frames(self) -> AsyncIterator[object]:
         while True:
@@ -247,6 +280,8 @@ class _CallStream:
 
     async def _drain_vad(self) -> None:
         async for event in self._pipeline.vad.process(_dequeue(self._vad_queue)):
+            if event.kind == "speech_start" and self._context is not None:
+                self._context.start_utterance()
             if event.kind != "speech":
                 logger.debug("main_vad: %s", event.kind)
             await self._controller.on_vad_event(event)
@@ -258,7 +293,12 @@ class _CallStream:
 
     async def _drain_asr(self) -> None:
         pipeline = self._pipeline
-        async for event in pipeline.asr.stream(self._asr_frames(), **pipeline.asr_stream_options):
+        options = dict(pipeline.asr_stream_options)
+        if self._context is not None:
+            options["stream_context"] = self._context
+        async for event in pipeline.asr.stream(self._asr_frames(), **options):
+            if self._context is not None and not self._context.accepts(event):
+                continue
             evidence = pipeline.evidence
             if evidence is not None:
                 stability = evidence.observe_transcript(event)
@@ -279,4 +319,10 @@ async def _dequeue(queue: "asyncio.Queue[object]") -> AsyncIterator[bytes]:
         item = await queue.get()
         if item is _QUEUE_DONE:
             return
-        yield item  # type: ignore[misc]
+        if isinstance(item, _QueuedVadFrame):
+            try:
+                yield item.pcm
+            finally:
+                item.processed.set()
+        else:
+            yield item  # type: ignore[misc]

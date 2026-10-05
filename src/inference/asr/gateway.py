@@ -5,6 +5,7 @@ from inference.asr.config import (
     ASRConfig,
     ElevenLabsRealtimeConfig,
     GeminiASRConfig,
+    GeminiLiveASRConfig,
     PhoWhisperConfig,
     ZipFormerConfig,
 )
@@ -47,11 +48,13 @@ def _provider_types() -> dict[str, tuple[type[ASRConfig], type]]:
     # Import trễ: mỗi provider kéo theo SDK nặng (sherpa-onnx, transformers, google-genai).
     from inference.asr.providers.elevenlabs_realtime import ElevenLabsRealtimeASR
     from inference.asr.providers.gemini import GeminiASR
+    from inference.asr.providers.gemini_live import GeminiLiveASR
     from inference.asr.providers.phowhisper import PhoWhisperASR
     from inference.asr.providers.zipformer import ZipFormerASR
 
     return {
         "gemini": (GeminiASRConfig, GeminiASR),
+        "gemini_live": (GeminiLiveASRConfig, GeminiLiveASR),
         "phowhisper": (PhoWhisperConfig, PhoWhisperASR),
         "zipformer": (ZipFormerConfig, ZipFormerASR),
         "elevenlabs_realtime": (ElevenLabsRealtimeConfig, ElevenLabsRealtimeASR),

@@ -32,6 +32,18 @@ class PhoWhisperConfig(ASRConfig):
     model: str = Field(validation_alias="PHOWHISPER_MODEL")
 
 
+class GeminiLiveASRConfig(ASRConfig):
+    model_config = yaml_config("asr.yaml", "gemini_live")
+
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GEMINI_API_KEY")
+    model: str = Field(validation_alias="GEMINI_LIVE_ASR_MODEL")
+    language_code: str = Field(validation_alias="GEMINI_LIVE_LANGUAGE_CODE")
+    connect_timeout_s: float = Field(gt=0, validation_alias="GEMINI_LIVE_CONNECT_TIMEOUT_S")
+    final_timeout_s: float = Field(gt=0, validation_alias="GEMINI_LIVE_FINAL_TIMEOUT_S")
+    chunk_ms: int = Field(ge=20, le=200, validation_alias="GEMINI_LIVE_CHUNK_MS")
+    max_turn_speech_ms: int = Field(gt=0, validation_alias="GEMINI_LIVE_MAX_TURN_SPEECH_MS")
+
+
 class ElevenLabsRealtimeConfig(ASRConfig):
     model_config = yaml_config("asr.yaml", "elevenlabs_realtime")
 

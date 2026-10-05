@@ -4,6 +4,15 @@
 gemini: # GEMINI_API_KEY
   model: gemini-2.5-flash # GEMINI_ASR_MODEL
 
+# ASR streaming qua Live API; endpoint local, transcript VERBATIM, không sinh lời bot.
+gemini_live: # GEMINI_API_KEY
+  model: gemini-3.5-transcribe-live # GEMINI_LIVE_ASR_MODEL
+  language_code: vi-VN # GEMINI_LIVE_LANGUAGE_CODE
+  connect_timeout_s: 10.0 # GEMINI_LIVE_CONNECT_TIMEOUT_S
+  final_timeout_s: 3.0 # GEMINI_LIVE_FINAL_TIMEOUT_S
+  chunk_ms: 100 # GEMINI_LIVE_CHUNK_MS
+  max_turn_speech_ms: 15000 # GEMINI_LIVE_MAX_TURN_SPEECH_MS
+
 phowhisper:
   model: vinai/PhoWhisper-large # PHOWHISPER_MODEL
 

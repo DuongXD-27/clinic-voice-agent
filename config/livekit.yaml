@@ -2,6 +2,9 @@
 # Ghi đè bằng LIVEKIT_<KHÓA VIẾT HOA>, vd. LIVEKIT_FRAME_MS=20.
 # LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET chỉ đặt qua env / .env.
 
+# null = dùng ASR_PROVIDER trong speech.yaml/env; override riêng: LIVEKIT_ASR_PROVIDER.
+asr_provider: null
+
 # Tiền tố room cho web call — CallBridge dùng room.name làm call_id
 room_name_prefix: web-
 # Hạn token cho browser (giây)

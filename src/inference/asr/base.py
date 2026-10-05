@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-ProviderName = Literal["gemini", "phowhisper", "zipformer", "elevenlabs_realtime"]
+ProviderName = Literal["gemini", "gemini_live", "phowhisper", "zipformer", "elevenlabs_realtime"]
 
 
 @dataclass(frozen=True)

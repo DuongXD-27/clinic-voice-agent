@@ -34,8 +34,12 @@ _PREWARMED_ASR = "zipformer_asr"
 def prewarm(proc: "JobProcess") -> None:
     """Load model ASR local (vd. ZipFormer) một lần mỗi LiveKit job process, trước khi
     process đó nhận call."""
-    asr = SpeechRecognizer(create_asr_gateway(SpeechSettings().asr_provider))
-    warm_up(asr)
+    provider = LiveKitSettings().asr_provider or SpeechSettings().asr_provider
+    asr = SpeechRecognizer(create_asr_gateway(provider))
+    try:
+        warm_up(asr)
+    except NotImplementedError:
+        logger.info("ASR %s uses streaming only; skipping batch warm-up", asr.name)
     proc.userdata[_PREWARMED_ASR] = asr
 
 
@@ -52,6 +56,10 @@ async def entrypoint(ctx: JobContext) -> None:
 
     livekit_settings = LiveKitSettings()
     speech_settings = SpeechSettings()
+    if livekit_settings.asr_provider:
+        speech_settings = speech_settings.model_copy(
+            update={"asr_provider": livekit_settings.asr_provider}
+        )
     prewarmed_asr: Any = ctx.proc.userdata.get(_PREWARMED_ASR)
     bundle = build_streaming_bundle(
         speech_settings,
