@@ -73,8 +73,8 @@ def test_name_extraction(transcript: str, expected: str | None) -> None:
         ("  Nguyễn Văn A  ", True),
         ("Nguyễn   Văn    A", True),
         ("Nguyễn Văn A.", True),
-        ("Nguyen Van A", True),
-        ("NGUYEN van a", True),
+        ("Nguyen Van A", False),
+        ("NGUYEN van a", False),
         ("Nguyễn Văn B", False),
     ],
     ids=[f"TC_IEN_{number:02d}" for number in range(9, 17)],
@@ -221,6 +221,15 @@ class _RecordingVerifier:
 
     def prepare(self, ctx: CallContext) -> PrepareResult:
         return PrepareResult(LookupStatus.LOADED)
+
+    def compare_name(self, ctx, value):
+        # Boundary spy accepts a PRESENT name; real matching is tested separately.
+        from callbot.engine.verification.names import NameMatch
+
+        return NameMatch.MATCH
+
+    def compare_dob(self, ctx, value):
+        return True
 
     def verify(self, ctx: CallContext) -> VerificationResult:
         assert ctx.claimed_name is not None and ctx.claimed_dob is not None

@@ -5,20 +5,15 @@ import pytest
 
 pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 
+from tests.speech.pipeline_factory import make_stt_pipeline  # noqa: E402
+
 from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
-from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
-from speech.asr.vad.streaming import StreamingVAD  # noqa: E402
 from speech.audio.noise_tracker import NoiseTracker  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
-from speech.turn.interruption import InterruptionController  # noqa: E402
+from speech.turn.evidence import TurnEvidence  # noqa: E402
 from speech.turn.validator import TurnValidator  # noqa: E402
 from speech.types import Transcript, TranscriptEvent  # noqa: E402
-
-
-class _NullEnergyClassifier:
-    def is_speech(self, frame: bytes) -> bool:
-        return False
 
 
 class _AlwaysSpeechClassifier:
@@ -91,21 +86,18 @@ async def test_hallucination_pattern_from_real_noise_is_dropped_end_to_end() -> 
     noise_tracker = NoiseTracker(initial_floor=50.0)
     validator = TurnValidator()
     turn_controller = TurnController(min_speech_ms=0, validator=validator)
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+    # Classifier giả luôn báo có tiếng nói (đúng tình huống thật: VAD nhận nhầm nhiễu).
+    evidence = TurnEvidence(
+        _AlwaysSpeechClassifier(), frame_ms=30, transcript=evidence_tracker, noise=noise_tracker
+    )
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, evidence=evidence)
 
-    # Frame silence-like (biên độ thấp, gần noise_floor mặc định) — is_speech=True theo
-    # classifier giả (đúng tình huống thật: VAD sai nhận noise thành speech).
+    # Frame gần như im lặng (biên độ thấp, gần noise_floor mặc định).
     silence_like_frame = b"\x00\x05" * 240
 
     turns = await asyncio.wait_for(
         _collect(
-            pipeline.stream(
-                _frames(4, frame=silence_like_frame),
-                turn_controller=turn_controller,
-                evidence_tracker=evidence_tracker,
-                noise_tracker=noise_tracker,
-                noise_classifier=_AlwaysSpeechClassifier(),
-            )
+            pipeline.stream(_frames(4, frame=silence_like_frame), turn_controller=turn_controller)
         ),
         timeout=2.0,
     )
@@ -117,7 +109,7 @@ async def test_validator_none_by_default_keeps_old_behavior() -> None:
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
     asr = _FakeASR([TranscriptEvent(text="tôi muốn đổi lịch", is_final=True)])
     turn_controller = TurnController(min_speech_ms=0)
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     turns = await asyncio.wait_for(
         _collect(pipeline.stream(_frames(4), turn_controller=turn_controller)), timeout=2.0
@@ -125,18 +117,6 @@ async def test_validator_none_by_default_keeps_old_behavior() -> None:
 
     assert len(turns) == 1
     assert turns[0].text == "tôi muốn đổi lịch"
-
-
-async def test_noise_tracker_requires_classifier() -> None:
-    asr = _FakeASR([])
-    pipeline = STTPipeline(
-        asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=_FakeAsyncVAD([])
-    )
-
-    with pytest.raises(ValueError):
-        await asyncio.wait_for(
-            _collect(pipeline.stream(_frames(1), noise_tracker=NoiseTracker())), timeout=2.0
-        )
 
 
 class _ByFrameClassifier:
@@ -184,18 +164,11 @@ async def test_short_answer_final_after_silence_is_not_dropped() -> None:
     asr = _FinalAfterFramesASR([(len(frames), "dạ không")])
     vad = _FakeAsyncVAD([VadEvent("speech")] * 10 + [VadEvent("speech_start")])
     controller = TurnController(min_speech_ms=0, validator=TurnValidator(min_snr_db=3.0))
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+    evidence = TurnEvidence(_ByFrameClassifier(loud), frame_ms=30)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, evidence=evidence)
 
     turns = await asyncio.wait_for(
-        _collect(
-            pipeline.stream(
-                _sequence(frames),
-                turn_controller=controller,
-                evidence_tracker=TranscriptEvidenceTracker(),
-                noise_tracker=NoiseTracker(),
-                noise_classifier=_ByFrameClassifier(loud),
-            )
-        ),
+        _collect(pipeline.stream(_sequence(frames), turn_controller=controller)),
         timeout=2.0,
     )
 
@@ -219,8 +192,10 @@ async def test_stability_is_judged_per_utterance() -> None:
 
     tracker = _SpyTracker()
     asr = _FinalAfterFramesASR([(5, "vâng"), (10, "có"), (15, "vâng")])
-    pipeline = STTPipeline(
-        asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=_FakeAsyncVAD([])
+    pipeline = make_stt_pipeline(
+        asr=asr,
+        vad=_FakeAsyncVAD([]),
+        evidence=TurnEvidence(_AlwaysSpeechClassifier(), frame_ms=30, transcript=tracker),
     )
 
     await asyncio.wait_for(
@@ -228,7 +203,6 @@ async def test_stability_is_judged_per_utterance() -> None:
             pipeline.stream(
                 _sequence([b"\x00\x40" * 240] * 20),
                 turn_controller=TurnController(min_speech_ms=0),
-                evidence_tracker=tracker,
             )
         ),
         timeout=2.0,
@@ -239,49 +213,3 @@ async def test_stability_is_judged_per_utterance() -> None:
 
 if __name__ == "__main__":
     pytest.main([__file__])
-
-
-async def test_barge_in_reads_snr_of_the_utterance_not_of_the_latest_frame() -> None:
-    """Hồi quy (cuộc gọi 01/10): câu trả lời 3 từ lúc bot đang nói, nhánh ngắt lời đo 3,0 dB còn
-    lượt thường đo 55 dB. Silero báo speech trễ nên phần đầu câu (to nhất) bị NoiseTracker
-    tính vào nền nhiễu; nhánh ngắt lời phải đọc cùng SNR cả câu như TurnController."""
-    quiet, onset, speech = b"\x01\x00" * 240, b"\x00\x30" * 240, b"\x00\x40" * 240
-    frames = [quiet] * 20 + [onset] * 8 + [speech] * 10
-
-    class _NoopTTS:
-        async def cancel(self) -> None:
-            pass
-
-    class _SpyInterruption(InterruptionController):
-        def __init__(self) -> None:
-            super().__init__(_NoopTTS())
-            self.snr_db: list[float] = []
-
-        def on_evidence_updated(self, *, noise_evidence=None, stability=None) -> None:
-            if noise_evidence is not None:
-                self.snr_db.append(noise_evidence.snr_db)
-            super().on_evidence_updated(noise_evidence=noise_evidence, stability=stability)
-
-    interruption = _SpyInterruption()
-    pipeline = STTPipeline(
-        asr=_FinalAfterFramesASR([(len(frames), "được em nhé")]),
-        vad=StreamingVAD(_NullEnergyClassifier()),
-        async_vad=_FakeAsyncVAD([]),
-    )
-
-    await asyncio.wait_for(
-        _collect(
-            pipeline.stream(
-                _sequence(frames),
-                turn_controller=TurnController(min_speech_ms=0),
-                interruption=interruption,
-                evidence_tracker=TranscriptEvidenceTracker(),
-                noise_tracker=NoiseTracker(),
-                noise_classifier=_ByFrameClassifier(speech),
-            )
-        ),
-        timeout=2.0,
-    )
-
-    # SNR theo frame ở đây chỉ ~12 dB (nền bị 8 frame đầu câu kéo lên); cả câu so với nền im.
-    assert interruption.snr_db and interruption.snr_db[-1] > 40

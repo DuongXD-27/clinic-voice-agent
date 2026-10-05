@@ -1,38 +1,12 @@
-"""Silero VAD qua sherpa-onnx — dùng để benchmark so với `WebRtcVadClassifier` trên audio
-noise thật (xem docs/reference/livekit-architecture.md §5.4). Model Silero CHỈ hỗ trợ
-16000Hz nội bộ (khác WebRTC VAD hỗ trợ trực tiếp 8/16/32/48kHz) — đã xác nhận thực nghiệm
-(`sherpa_onnx.VoiceActivityDetector` raise lỗi cứng khi cấu hình sample_rate=8000).
-`SileroVadClassifier` resample MỌI frame nhận được về 16kHz trước khi feed vào model, để
-vẫn cắm được vào `FrameClassifier` Protocol (`is_speech(frame) -> bool`) mà không đổi
-`StreamingVAD`/`AsyncStreamingVAD` (chúng gọi frame ở sample_rate/frame_ms của pipeline).
+"""Silero VAD qua sherpa-onnx, theo Protocol `FrameClassifier`.
 
-Khác WebRTC VAD (phân loại tức thời 1 frame độc lập), `VoiceActivityDetector` của
-sherpa-onnx là STATEFUL: giữ buffer nội bộ, `is_speech_detected()` đọc trạng thái tích luỹ
-sau `accept_waveform()`, không phải quyết định riêng cho từng frame. `is_speech()` ở đây vẫn
-tuân thủ đúng chữ ký Protocol (nhận 1 frame, trả 1 bool), nhưng giá trị trả về phụ thuộc
-lịch sử các lần gọi trước — không an toàn dùng nhiều instance chia sẻ cùng 1 `sherpa_onnx.
-VoiceActivityDetector`, mỗi call cần 1 `SileroVadClassifier` riêng (giống quy ước hiện có
-của `WebRtcVadClassifier`, xem StreamingVAD/AsyncStreamingVAD docstring "không được cho hai
-consumer đồng thời dùng chung một instance").
-
-2 bug thật đã gặp lúc viết, cả hai đều khiến `is_speech_detected()` trả `False` cố định dù
-audio là giọng nói người thật rõ ràng (xác nhận qua thực nghiệm trên file có câu "Nguyễn Văn
-A" — cả 2 lỗi độc lập đều tái hiện y hệt 0/102 frame):
-
-1. `accept_waveform()` chỉ cập nhật đúng trạng thái nội bộ khi được feed CHÍNH XÁC bội số
-   `window_size` (512 samples, đọc từ `SileroVadModelConfig`) mỗi lần gọi — feed 480
-   samples/lần (khớp 30ms @16kHz, tưởng hợp lý vì đúng `FRAME_MS` của pipeline) khiến model
-   "lệch pha" với window nội bộ. Sửa: tự đệm sample vào 1 buffer nội bộ, chỉ gọi
-   `accept_waveform()` theo đúng bội số `window_size`.
-2. Dùng `speech.audio.codec.resample()` (soxr, stateless) để resample TỪNG FRAME 30ms riêng
-   lẻ — dù đã sửa lỗi 1, kết quả vẫn 0/102. Nguyên nhân: `soxr.resample()` là bộ lọc FIR có
-   edge effect phụ thuộc ngữ cảnh; gọi độc lập trên từng đoạn 480-sample ngắn tạo méo phổ tần
-   ở biên mỗi frame đủ lớn để Silero (nhạy với đặc trưng phổ tinh vi hơn WebRTC nhiều) không
-   còn nhận ra giọng nói — resample cả file 1 lần cho kết quả đúng (42/96), resample từng
-   frame cho 0/102 trên CÙNG audio. Sửa: dùng `soxr.ResampleStream` (streaming, giữ trạng thái
-   bộ lọc giữa các lần gọi `resample_chunk()`) thay vì `resample()` stateless — đây là lý do
-   module này KHÔNG dùng chung `speech.audio.codec.resample()` như mọi nơi khác trong
-   codebase, dù cùng dựa trên soxr.
+- Model chỉ chạy ở 16 kHz: frame ở tần số khác được resample bằng `soxr.ResampleStream`
+  (giữ trạng thái bộ lọc giữa các frame). Resample từng frame 30 ms rời bằng
+  `codec.resample()` làm méo biên frame và Silero không nhận ra giọng nói (0/102 frame).
+- `accept_waveform()` phải nhận đúng bội số `window_size` (512 mẫu): sample được đệm lại,
+  nếu không model lệch pha và luôn báo im lặng.
+- Có trạng thái (kết quả phụ thuộc các frame trước): mỗi luồng audio một instance; muốn
+  nhiều nơi dùng chung thì qua `SharedSpeechDetector`.
 """
 
 from typing import Optional
@@ -63,7 +37,7 @@ class SileroVadClassifier:
         config.silero_vad.model = model_path
         config.silero_vad.threshold = threshold
         # Silero giữ trạng thái "đang nói" thêm chừng này sau khi hết tiếng (hangover) — cộng
-        # thẳng vào độ trễ chốt lượt, trước cả vad_end_silence_ms của StreamingVAD.
+        # thẳng vào độ trễ chốt lượt, trước cả vad_end_silence_ms của AsyncStreamingVAD.
         config.silero_vad.min_silence_duration = min_silence_ms / 1000
         config.sample_rate = _SILERO_SAMPLE_RATE
         self._vad = sherpa_onnx.VoiceActivityDetector(config, buffer_size_in_seconds=30)
@@ -76,7 +50,6 @@ class SileroVadClassifier:
                 sample_rate, _SILERO_SAMPLE_RATE, 1, dtype="int16", quality="HQ"
             )
         self._pending = np.empty(0, dtype=np.float32)
-        self._last_probability = 0.0
 
     def is_speech(self, frame: bytes) -> bool:
         if not frame:
@@ -89,14 +62,4 @@ class SileroVadClassifier:
             window = self._pending[: self._window_size]
             self._pending = self._pending[self._window_size :]
             self._vad.accept_waveform(window)
-        speech = self._vad.is_speech_detected()
-        self._last_probability = 1.0 if speech else 0.0
-        return speech
-
-    @property
-    def last_probability(self) -> float:
-        """Xấp xỉ nhị phân (0.0/1.0) — sherpa-onnx không expose xác suất thô liên tục qua
-        `VoiceActivityDetector`, chỉ `is_speech_detected() -> bool`. Giữ property này để
-        khớp interface dự kiến cho Turn Validator (bước 6); nếu cần xác suất liên tục thật,
-        cần đổi sang gọi trực tiếp model Silero qua onnxruntime thay vì API bậc cao này."""
-        return self._last_probability
+        return self._vad.is_speech_detected()

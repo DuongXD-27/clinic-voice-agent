@@ -3,10 +3,10 @@
 import asyncio
 from typing import AsyncIterator
 
-from speech.asr.pipeline import STTPipeline
+from tests.speech.pipeline_factory import make_stt_pipeline
+
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
-from speech.asr.vad.streaming import StreamingVAD
 from speech.turn.controller import TurnController
 from speech.types import Transcript, TranscriptEvent
 
@@ -58,14 +58,13 @@ async def _aiter(frames: list[bytes]) -> AsyncIterator[bytes]:
 
 async def test_each_frame_is_classified_once_for_all_consumers() -> None:
     classifier = _CountingClassifier()
-    detector = SharedSpeechDetector(classifier)
+    detector = SharedSpeechDetector(classifier, capacity=64)
     frames = _frames("..SSSSS" + "." * 25)
     asr = _ViewCheckingASR(detector.view())
-    pipeline = STTPipeline(
+    pipeline = make_stt_pipeline(
         asr=asr,
-        vad=StreamingVAD(classifier),
-        async_vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600),
-        speech_detector=detector,
+        vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600),
+        detector=detector,
     )
 
     await asyncio.wait_for(
@@ -95,37 +94,3 @@ def test_view_returns_cached_result_for_replayed_frame_and_false_for_unknown() -
     assert view.is_speech(first) is False  # đã quá cũ (capacity=3): không đoán
     assert view.is_speech(b"\x10" * 480) is False  # chưa từng qua classify()
     assert classifier.calls == 4
-
-
-def test_probe_runs_once_per_classified_frame_and_is_read_back() -> None:
-    class _Probe:
-        def __init__(self) -> None:
-            self.seen: list[bytes] = []
-
-        def probability(self, frame: bytes) -> float:
-            self.seen.append(frame)
-            return 0.9 if frame[0] == 0x10 else 0.1
-
-    probe = _Probe()
-    detector = SharedSpeechDetector(_CountingClassifier(), probe=probe)
-    speech, silence = _frames("S.")
-    detector.classify(speech)
-    detector.classify(silence)
-
-    assert (detector.probability(speech), detector.probability(silence)) == (0.9, 0.1)
-    assert detector.probability(b"\x10" * 480) is None  # chưa từng qua classify()
-    assert probe.seen == [speech, silence]  # có trạng thái: đúng một lần, đúng thứ tự
-
-
-def test_broken_probe_is_disabled_without_affecting_classification() -> None:
-    class _Broken:
-        def probability(self, frame: bytes) -> float:
-            raise RuntimeError("onnx")
-
-    detector = SharedSpeechDetector(_CountingClassifier(), probe=_Broken())
-    speech, other = _frames("SS")
-
-    assert detector.classify(speech) is True
-    assert detector.classify(other) is True
-    assert detector.probability(speech) is None
-    assert detector.has_probe is False

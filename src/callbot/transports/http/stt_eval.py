@@ -45,9 +45,7 @@ T = TypeVar("T")
 Source = Literal["url", "upload"]
 SttTurnWarning = Literal["NARROWBAND_SOURCE", "CLIPPING", "LOW_LEVEL"]
 SttWarning = Literal["NARROWBAND_SOURCE", "CLIPPING", "LOW_LEVEL", "LOW_SNR", "NO_SPEECH_DETECTED"]
-SttTurnStep = Literal[
-    "DOWNMIX_MONO", "TELEPHONE_BAND", "DC_REMOVAL", "RESAMPLE", "VAD_NO_SPEECH", "GAIN_NORMALIZE"
-]
+SttTurnStep = Literal["DOWNMIX_MONO", "TELEPHONE_BAND", "DC_REMOVAL", "RESAMPLE", "GAIN_NORMALIZE"]
 SttStep = Literal[
     "DOWNMIX_MONO", "TELEPHONE_BAND", "DC_REMOVAL", "RESAMPLE", "GAIN_NORMALIZE", "VAD_SEGMENT"
 ]
@@ -371,13 +369,7 @@ def _turn(
     recognizer: Recognizer = request.app.state.speech.asr
     result: TurnTranscription = _run(
         lambda: transcribe_turn(
-            data,
-            recognizer=recognizer,
-            telephone_band=telephone_band,
-            compare=compare,
-            vad_factory=(
-                request.app.state.stt_vad_factory if request.app.state.stt_silence_gate else None
-            ),
+            data, recognizer=recognizer, telephone_band=telephone_band, compare=compare
         )
     )
     return SttTurnResponse(

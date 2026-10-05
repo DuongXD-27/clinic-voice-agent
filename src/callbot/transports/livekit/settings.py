@@ -27,6 +27,8 @@ class LiveKitSettings(YamlSettings):
     # Backpressure: không để audio chậm tích luỹ vô hạn. 1,5 s đủ hấp thụ jitter ngắn,
     # nhưng vẫn buộc producer chậm lại nếu inference không theo kịp realtime.
     input_queue_ms: int
+    # Hàng đợi riêng của ASR: decode chậm tích luỹ ở đây thay vì chặn VAD và barge-in.
+    asr_queue_ms: int
     # Giữ phần đầu câu nói chen trong lúc bot đang phát; chỉ replay vào ASR sau khi
     # InterruptionController xác nhận đây là barge-in thật.
     barge_in_preroll_ms: int
@@ -65,6 +67,7 @@ class LiveKitSettings(YamlSettings):
     @field_validator(
         "token_ttl_s",
         "input_queue_ms",
+        "asr_queue_ms",
         "barge_in_preroll_ms",
         "output_queue_ms",
     )

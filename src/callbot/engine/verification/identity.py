@@ -24,7 +24,7 @@ from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.tools.normalize import parse_iso_date
 from callbot.engine.types import TransferReason
-from callbot.engine.verification.names import normalize_name
+from callbot.engine.verification.names import NameMatch, compare_names
 from callbot.engine.verification.phone import normalize_phone
 
 logger = logging.getLogger(__name__)
@@ -77,6 +77,7 @@ class MatchDetail(str, Enum):
     RECORD_UNVERIFIABLE = "RECORD_UNVERIFIABLE"  # verify null / dob sai định dạng
     AMBIGUOUS = "AMBIGUOUS"  # inbound: >= 2 hồ sơ khớp cả hai
     NO_REFERENCE = "NO_REFERENCE"  # không có hồ sơ nào để đối chiếu
+    NAME_SUSPICIOUS = "NAME_SUSPICIOUS"
 
 
 # Sai một yếu tố "gần" hơn sai cả hai — chỉ để chọn detail đại diện khi 0 khớp
@@ -120,21 +121,32 @@ def match_record(claimed_name: str, claimed_dob: date, ref: dict[str, Any]) -> M
     record_dob = parse_iso_date(ref.get("dob"))
     if record_dob is None:
         return MatchDetail.RECORD_UNVERIFIABLE
-    record_name = normalize_name(ref["full_name"])
     # Danh xưng đứng trước tên ("bà Lê Na") không thuộc hồ sơ; vẫn so cả dạng nguyên văn vì từ
     # đầu có thể là họ thật (Chu, Ông). Chỉ bỏ một từ, và ngày sinh vẫn phải khớp.
-    name_ok = record_name in {
-        normalize_name(claimed_name),
-        normalize_name(strip_honorific(claimed_name, 2)),
-    }
+    name_match = match_name(claimed_name, ref["full_name"])
+    name_ok = name_match is NameMatch.MATCH
     dob_ok = claimed_dob == record_dob
     if name_ok and dob_ok:
         return MatchDetail.NAME_AND_DOB_MATCH
     if name_ok:
         return MatchDetail.DOB_MISMATCH
+    if dob_ok and name_match is NameMatch.SUSPICIOUS:
+        return MatchDetail.NAME_SUSPICIOUS
     if dob_ok:
         return MatchDetail.NAME_MISMATCH
     return MatchDetail.BOTH_MISMATCH
+
+
+def match_name(claimed: str, reference: str) -> NameMatch:
+    results = (
+        compare_names(claimed, reference),
+        compare_names(strip_honorific(claimed, 2), reference),
+    )
+    if NameMatch.MATCH in results:
+        return NameMatch.MATCH
+    if NameMatch.SUSPICIOUS in results:
+        return NameMatch.SUSPICIOUS
+    return NameMatch.MISMATCH
 
 
 def matches(claimed_name: str, claimed_dob: date, verify: dict[str, Any]) -> bool:
@@ -164,6 +176,31 @@ def _reference_from_appointment(appointment: dict[str, Any]) -> dict[str, Any]:
 class IdentityVerifier:
     def __init__(self, gateway: ClinicGateway) -> None:
         self._gateway = gateway
+
+    def compare_name(self, ctx: CallContext, value: str) -> NameMatch:
+        candidates = [
+            match_name(value, ref["full_name"])
+            for ref in ctx.identity_reference
+            if ref.get("verifiable") and ref.get("full_name")
+        ]
+        if NameMatch.MATCH in candidates:
+            return NameMatch.MATCH
+        if NameMatch.SUSPICIOUS in candidates:
+            return NameMatch.SUSPICIOUS
+        return NameMatch.MISMATCH
+
+    def compare_dob(self, ctx: CallContext, value: date) -> bool:
+        candidates = ctx.identity_reference
+        if ctx.claimed_name is not None:
+            candidates = [
+                ref
+                for ref in candidates
+                if ref.get("full_name")
+                and match_name(ctx.claimed_name, ref["full_name"]) is NameMatch.MATCH
+            ]
+        return any(
+            ref.get("verifiable") and parse_iso_date(ref.get("dob")) == value for ref in candidates
+        )
 
     # --- Pha 1: lượt 0 ---------------------------------------------------------------------
 

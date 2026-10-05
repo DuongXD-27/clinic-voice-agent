@@ -5,12 +5,7 @@ import numpy as np
 import pytest
 from tests.transports.http.fakes import FakeASR
 
-from speech.asr.offline import (
-    AudioTooLong,
-    InvalidAudio,
-    transcribe_offline,
-    transcribe_turn,
-)
+from speech.asr.offline import AudioTooLong, InvalidAudio, transcribe_offline, transcribe_turn
 from speech.asr.vad import EnergyFrameClassifier
 from speech.audio.codec import encode_wav
 from speech.types import AudioSegment, Transcript
@@ -194,30 +189,3 @@ def test_turn_longer_than_30_seconds_is_rejected() -> None:
     with pytest.raises(AudioTooLong) as caught:
         transcribe_turn(_wav([(31, 0)], rate=8_000), recognizer=FakeASR())
     assert caught.value.limit_ms == 30_000
-
-
-def test_turn_silence_gate_skips_asr_on_room_tone() -> None:
-    """Hồi quy (bộ PM, B-SIL-01): tiếng phòng được khuếch đại +20 dB rồi ASR bịa ra "ĐÂY"."""
-    asr = FakeASR("đây")
-    room = _wav([(3, 30)])  # ~ −63 dBFS
-
-    result = transcribe_turn(room, recognizer=asr, vad_factory=_energy_vad)
-
-    assert result.text == ""
-    assert result.confidence is None
-    assert result.model_audio is None
-    assert asr.received == []
-    assert result.steps == ["DC_REMOVAL", "VAD_NO_SPEECH"]
-    assert result.gain_db == 0.0
-
-
-def test_turn_silence_gate_still_decodes_audible_audio_the_vad_missed() -> None:
-    """Silero bỏ sót giọng trong tiếng đường phố SNR 6 dB (bộ PM): file đủ to vẫn phải tới ASR."""
-    asr = FakeASR("tôi tên là lan")
-    below_vad_threshold = _wav([(3, 400)])  # ~ −38 dBFS, dưới ngưỡng 500 của VAD năng lượng
-
-    result = transcribe_turn(below_vad_threshold, recognizer=asr, vad_factory=_energy_vad)
-
-    assert result.text == "tôi tên là lan"
-    assert result.model_audio is asr.received[0]
-    assert "VAD_NO_SPEECH" not in result.steps

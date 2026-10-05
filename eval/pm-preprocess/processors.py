@@ -24,10 +24,10 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from speech.asr.offline import is_silent_turn
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import read_wav, to_sample_rate
 from speech.audio.preprocess import (
+    LevelStats,
     detect_speech_frames,
     measure_level,
     normalize_gain,
@@ -37,6 +37,14 @@ from speech.audio.preprocess import (
 from speech.types import AudioSegment
 
 _FRAME_MS = 30
+
+
+def is_silent_turn(flags: list[bool], level: LevelStats) -> bool:
+    """Experimental gate: little detected speech and room tone below -55 dBFS."""
+    quiet = level.speech_rms_dbfs is None or level.speech_rms_dbfs < -55.0
+    return quiet and sum(flags) * _FRAME_MS < 200
+
+
 MODEL_DIR = Path(__file__).resolve().parents[2] / "temp" / "models" / "speech-enhancement"
 # tên -> (loại, file model)
 ENHANCERS: dict[str, tuple[str, Optional[str]]] = {

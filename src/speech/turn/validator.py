@@ -42,28 +42,8 @@ class TurnValidator:
         state: Optional[str] = None,
         expected_input: Optional[str] = None,
     ) -> ValidationDecision:
-        return self.decide(
-            candidate_text,
-            noise_evidence=noise_evidence,
-            vad_probability=vad_probability,
-            stability=stability,
-            state=state,
-            expected_input=expected_input,
-        )[0]
-
-    def decide(
-        self,
-        candidate_text: str,
-        *,
-        noise_evidence: Optional[NoiseEvidence] = None,
-        vad_probability: Optional[float] = None,
-        stability: StabilityVerdict = StabilityVerdict.UNKNOWN,
-        state: Optional[str] = None,
-        expected_input: Optional[str] = None,
-    ) -> tuple[ValidationDecision, str]:
-        """Như `evaluate` kèm lý do (giá trị cố định) để chẩn đoán đếm được cổng nào bỏ lượt."""
         if stability == StabilityVerdict.OSCILLATING:
-            return ValidationDecision.DROP, "oscillating"
+            return ValidationDecision.DROP
 
         is_short_text = len(candidate_text.split()) <= self._max_short_text_words
         if (
@@ -71,9 +51,9 @@ class TurnValidator:
             and is_short_text
             and noise_evidence.snr_db < self._min_snr_db
         ):
-            return ValidationDecision.DROP, "low_snr_short"
+            return ValidationDecision.DROP
 
         if stability == StabilityVerdict.CONVERGING:
-            return ValidationDecision.ACCEPT, "converging"
+            return ValidationDecision.ACCEPT
 
-        return ValidationDecision.WAIT, "insufficient_evidence"
+        return ValidationDecision.WAIT

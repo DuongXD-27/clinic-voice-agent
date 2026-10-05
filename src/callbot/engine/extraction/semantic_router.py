@@ -10,6 +10,7 @@ Hai việc tách bạch:
   chứng lại toàn bộ rồi mới giữ (evidence T-05, đợt 3).
 """
 
+from dataclasses import replace
 from enum import Enum
 from typing import Optional
 
@@ -358,21 +359,4 @@ def _without_model(result: ExtractionResult, route_reason: RouteReason) -> Extra
 
 
 def _replace(result: ExtractionResult, **changes) -> ExtractionResult:
-    fields = {
-        name: getattr(result, name)
-        for name in (
-            "turn",
-            "question_id",
-            "transcript",
-            "full_name",
-            "dob",
-            "intent",
-            "clinical",
-            "agreement",
-            "slot_choice",
-            "cancel_reason",
-            "line_signal",
-            "silent",
-        )
-    }
-    return ExtractionResult(**{**fields, **changes})
+    return replace(result, **changes)

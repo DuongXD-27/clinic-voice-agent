@@ -1,7 +1,7 @@
 """So tiền xử lý của /v1/stt/turn trên bộ eval PM (`temp/PM_Public_Eval_STT`), từng file.
 
-B0/B1/D1 chạy ĐÚNG `speech.asr.offline.transcribe_turn` của API (D1 = có cổng im lặng, đang bật trên
-API). D2–D8 thêm các bộ xử lý trong `processors.py` (không đưa vào API) theo cùng thứ tự `_prepare`.
+B0/B1 chạy `speech.asr.offline.transcribe_turn` của API. D1 và các biến thể có cổng im lặng
+chỉ chạy trong `processors.py`, cùng các bộ xử lý D2–D8, theo thứ tự của `_prepare`.
 Mỗi file x cấu hình lưu lại audio ASR đã nghe. Plan và tiêu chí: temp/docs/plan-preprocess-pm-eval.md;
 kết quả: docs/evidence/pm-preprocess-2026-10-02.md.
 
@@ -67,7 +67,7 @@ SUSPECT_REFERENCE = {"B-TIME-02"}
 # Vòng 2: cổng an toàn (Silero không thấy giọng VÀ file dưới −55 dBFS), mỗi bộ xử lý đo riêng,
 # có và không có lọc thông cao. Tham số giữ nguyên như plan. Giá trị = tham số của
 # `prepare_experiment`; None = trường `production` (không tiền xử lý, như /v1/calls).
-_API = ({}, {"gate": True})  # đi qua transcribe_turn của API
+_API = ({},)  # chỉ baseline đi qua transcribe_turn của API
 DSP_CONFIGS: dict[str, Optional[dict]] = {
     "B0": None,
     "B1": {},
@@ -83,7 +83,7 @@ DSP_CONFIGS: dict[str, Optional[dict]] = {
 DSP_LABELS = {
     "B0": "production (không xử lý)",
     "B1": "text hiện tại",
-    "D1": "B1 + cổng im lặng (đang bật trên API)",
+    "D1": "B1 + cổng im lặng thử nghiệm trong eval",
     "D2": "D1 + lọc thông cao 100 Hz",
     "D3": "D1 + khử nhiễu 0,5",
     "D4": "D1 + khử nhiễu 0,8",
@@ -115,7 +115,7 @@ NEURAL_CONFIGS: dict[str, Optional[dict]] = {
 NEURAL_LABELS = {
     "B0": "production (không xử lý)",
     "B1": "text hiện tại",
-    "N0": "B1 + cổng im lặng (đang bật trên API)",
+    "N0": "B1 + cổng im lặng thử nghiệm trong eval",
     "N1": "N0 + lọc thông cao + khử nhiễu 0,8 (= D7)",
     "N2": "N0 + GTCRN (16k)",
     "N3": "N0 + DPDFNet baseline (16k)",
@@ -143,7 +143,7 @@ LIMIT_CONFIGS: dict[str, Optional[dict]] = {
 LIMIT_LABELS = {
     "B0": "production (không xử lý)",
     "B1": "text hiện tại",
-    "N0": "B1 + cổng im lặng (đang bật trên API)",
+    "N0": "B1 + cổng im lặng thử nghiệm trong eval",
     "N4": "N0 + DPDFNet2 (16k), nén không giới hạn",
     "N4-l12": "N0 + DPDFNet2 (16k), nén tối đa 12 dB",
     "N4-l6": "N0 + DPDFNet2 (16k), nén tối đa 6 dB",
@@ -172,7 +172,7 @@ OPT_CONFIGS: dict[str, Optional[dict]] = {
 OPT_LABELS = {
     "B0": "production (không xử lý)",
     "B1": "text hiện tại",
-    "O0": "cổng im lặng (đang bật trên API) — baseline",
+    "O0": "cổng im lặng thử nghiệm — baseline eval",
     "O1": "O0 + WebRTC NS",
     "O2": "O0 + SpeexDSP denoise",
     "O3": "O0 + RNNoise [lấy lại N9]",
@@ -289,17 +289,28 @@ def _resolve(params: dict, rate: str) -> dict:
 
 def run_config(params: dict, data: bytes, asr, vad, *, compare: bool = False) -> Outcome:
     if params in _API:
+
+        class Capture:
+            input_sample_rate = asr.input_sample_rate
+
+            def __init__(self):
+                self.audio = []
+
+            def transcribe(self, segment):
+                self.audio.append(segment)
+                return asr.transcribe(segment)
+
+        capture = Capture()
         result = transcribe_turn(
             data,
-            recognizer=asr,
+            recognizer=capture,
             compare=compare,
-            vad_factory=vad if params.get("gate") else None,
         )
         return Outcome(
             result.text,
             result.steps,
             result.gain_db,
-            result.model_audio.pcm if result.model_audio else None,
+            capture.audio[0].pcm,
             result.timings.preprocess_ms,
             result.production.text if result.production else None,
         )
@@ -318,12 +329,11 @@ def self_check(asr, vad) -> None:
     for folder in RATES.values():
         for case in load_cases():
             data = (PM_DIR / folder / "Ha_Noi" / "S01" / case.file).read_bytes()
-            for gate in (False, True):
-                api = run_config({"gate": True} if gate else {}, data, asr, vad)
-                pcm, steps, _ = prepare_experiment(data, asr.input_sample_rate, vad, gate=gate)
-                if pcm != api.pcm or steps != api.steps:
-                    mismatches += 1
-                    print(f"KHÁC: {folder} {case.file} gate={gate} {steps} vs {api.steps}")
+            api = run_config({}, data, asr, vad)
+            pcm, steps, _ = prepare_experiment(data, asr.input_sample_rate, vad)
+            if pcm != api.pcm or steps != api.steps:
+                mismatches += 1
+                print(f"KHÁC: {folder} {case.file} {steps} vs {api.steps}")
     print(f"self-check: {mismatches} file khác API")
     if mismatches:
         raise SystemExit(1)

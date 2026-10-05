@@ -14,9 +14,12 @@ Bộ dữ liệu (`--dataset`):
   dump yên tĩnh, chỉ giữ đoạn to hơn nền >= 15 dB (giọng người gọi, không phải ảo giác). Đây là
   loại câu dễ bị validator/bộ lọc từ đệm bỏ nhầm nhất.
 
-Cấu hình (`--profile`): `production` = đúng cấu hình deploy (WebRTC VAD, không Validator);
-`target` = cấu hình mục tiêu (Silero + Validator). Profile ghi đè hẳn các khoá này, kết quả không
-phụ thuộc .env của máy chạy; `--set` ghi đè tiếp lên profile.
+Cấu hình (`--profile`): `production` = đúng cấu hình deploy (Silero VAD + Validator, như
+config/speech.yaml); `target` là tên cũ của cùng cấu hình đó; `webrtc-legacy` = deploy trước
+28/09 (WebRTC VAD, không Validator). Profile ghi đè hẳn các khoá này, kết quả không phụ thuộc
+.env của máy chạy; `--set` ghi đè tiếp lên profile. Kết quả cũ gắn nhãn `production` trước
+28/09 là WebRTC; từ 28/09 tới trước khi bỏ speech_shared_detector thực chất là Silero, không
+Validator — để ý khi `--compare` với các lần chạy đó.
 Xác định (deterministic): TurnController chạy theo đồng hồ ảo (cả `clock` lẫn `sleep`), và
 mỗi frame chỉ được đẩy khi VAD + ASR đã xử lý xong frame trước (ASR coi như tức thời). Chạy
 hai lần cùng tham số cho kết quả giống hệt — khác biệt giữa hai cấu hình là do cấu hình.
@@ -38,7 +41,7 @@ Chỉ số chính:
 Chạy (từ gốc repo; dữ liệu và kết quả nằm trong temp/noise-bench/, không commit):
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --profile production
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --dataset golden
-    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --profile target --set speech_shared_detector=true
+    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --set vad_end_silence_ms=500
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --compare cu moi
 So với code cũ: tạo git worktree của commit cũ rồi chạy với NOISE_BENCH_SRC=<worktree>/src.
 """
@@ -70,12 +73,12 @@ sys.path.insert(0, str(ROOT / "eval" / "stt-bench"))
 
 from evaluate import calculate_wer  # noqa: E402
 
+from callbot.transports.livekit.settings import LiveKitSettings  # noqa: E402
 from inference.asr import create_asr_gateway  # noqa: E402
 from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.audio.codec import resample  # noqa: E402
 from speech.bundle import build_streaming_bundle  # noqa: E402
-from speech.diagnostics import SpeechDiagnostics, record_as_log_fields  # noqa: E402
 from speech.settings import SpeechSettings  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
 from speech.types import AudioSegment  # noqa: E402
@@ -89,16 +92,20 @@ GOLDEN = ROOT / "eval" / "stt-bench" / "golden-cases.yaml"
 DEFAULT_CONDITIONS = "clean,office@15,office@8,office@3,babble@12,babble@6"
 NOISE_ONLY_TRIALS = 12
 FRAME_S = FRAME / RATE
+# Phải khớp config/speech.yaml: deploy đổi sang Silero + Validator từ 28/09
+# (docs/evidence/livekit-audio-plan-execution-2026-09-28.md §5.2).
+_PRODUCTION = {
+    "vad_provider": "silero",
+    "turn_validator_enabled": True,
+}
 PROFILES: dict[str, dict[str, object]] = {
-    "production": {
+    "production": _PRODUCTION,
+    # Tên cũ của cấu hình Silero + Validator trước khi lên production; giữ cho lệnh trong docs.
+    "target": _PRODUCTION,
+    # Deploy trước 28/09, để so với số đo cũ.
+    "webrtc-legacy": {
         "vad_provider": "webrtc",
         "turn_validator_enabled": False,
-    },
-    # Cấu hình mục tiêu chốt theo số đo 28/09 (docs/evidence/livekit-audio-plan-execution-...):
-    # Silero thay WebRTC, có Validator. Speech Admission đã gỡ.
-    "target": {
-        "vad_provider": "silero",
-        "turn_validator_enabled": True,
     },
 }
 
@@ -334,31 +341,31 @@ class DecodeMeter:
         return self.calls, self.seconds, self.audio_seconds
 
 
-_PROBE_CACHE: dict[str, object] = {}
-
-
-def _probe_factory(settings: SpeechSettings):
-    """Probe Silero mới cho mỗi trial (có state). None nếu tắt bằng --no-probe hoặc thiếu
-    onnxruntime — vẫn đếm được lý do bỏ lượt, chỉ thiếu xác suất."""
-    if not _PROBE_CACHE.get("enabled", True):
-        return None
-    from speech.asr.vad.silero_probe import build_probe
-
-    return build_probe(settings.silero_vad_model_path, RATE)
+def _livekit_queues() -> dict[str, int]:
+    """Hàng đợi/pre-roll như worker LiveKit thật (config/livekit.yaml); frame cố định 30 ms
+    vì bộ đo cắt audio theo `FRAME`."""
+    livekit = LiveKitSettings()
+    return {
+        "frame_ms": FRAME * 1000 // RATE,
+        "input_queue_ms": livekit.input_queue_ms,
+        "asr_queue_ms": livekit.asr_queue_ms,
+        "barge_in_preroll_ms": livekit.barge_in_preroll_ms,
+    }
 
 
 async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRecognizer) -> dict:
     """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core và thời điểm
-    (giây audio) chốt từng turn, cùng kết cục từng đoạn giọng (speech/diagnostics.py — chỉ quan
-    sát, không đổi quyết định). Xác định: xem docstring module."""
+    (giây audio) chốt từng turn. Xác định: xem docstring module."""
     recognizer = _CapturingRecognizer(asr)
-    bundle = build_streaming_bundle(settings, asr=recognizer, frame_ms=30)
     clock = VirtualTime()
-    # Bộ phân loại dùng chung đã có probe (bundle); probe riêng chỉ khi không dùng chung.
-    diagnostics = SpeechDiagnostics(
-        clock=clock.now,
-        probe=None if settings.speech_shared_detector else _probe_factory(settings),
+    bundle = build_streaming_bundle(
+        settings,
+        sample_rate=RATE,
+        **_livekit_queues(),
+        asr=recognizer,
     )
+    # Bundle dựng TurnController theo đồng hồ thật; bộ đo đẩy audio nhanh hơn thời gian thực nên
+    # dựng lại cùng cấu hình, chạy theo đồng hồ ảo.
     controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
@@ -367,7 +374,6 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         validator=bundle.validator,
         clock=clock.now,
         sleep=clock.sleep,
-        diagnostics=diagnostics,
     )
     frame_ms = FRAME * 1000 // RATE
 
@@ -384,14 +390,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
 
     turns: list[str] = []
     turn_times: list[float] = []
-    async for turn in bundle.stt_pipeline.stream(
-        frames(),
-        turn_controller=controller,
-        evidence_tracker=bundle.evidence_tracker,
-        noise_tracker=bundle.noise_tracker,
-        noise_classifier=bundle.noise_classifier,
-        diagnostics=diagnostics,
-    ):
+    async for turn in bundle.stt_pipeline.stream(frames(), turn_controller=controller):
         turns.append(turn.text)
         turn_times.append(clock.now())
     return {
@@ -399,18 +398,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         "final_confidences": recognizer.final_confidences,
         "turns": turns,
         "turn_times": turn_times,
-        "utterances": [record_as_log_fields(r) for r in diagnostics.utterances],
     }
-
-
-def _reason_counts(rows: list[dict]) -> dict[str, int]:
-    """Đếm kết cục các đoạn giọng (EMITTED:emitted, DROPPED:min_decode, ...) trên các trial."""
-    counts: dict[str, int] = {}
-    for row in rows:
-        for u in row.get("utterances", []):
-            key = f"{u['decision']}:{u['reason']}"
-            counts[key] = counts.get(key, 0) + 1
-    return dict(sorted(counts.items()))
 
 
 def _has_digit(text: str) -> bool:
@@ -594,7 +582,7 @@ def run(
     profile: str,
     overrides: dict,
 ) -> dict:
-    overrides = {"sample_rate": RATE, **PROFILES[profile], **overrides}
+    overrides = {**PROFILES[profile], **overrides}
     settings = SpeechSettings(**overrides)
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     meter = DecodeMeter()
@@ -652,7 +640,6 @@ def run(
                     "turns": turns,
                     "turn_times": out["turn_times"],
                     "latency_s": _latency(out["turn_times"], LEAD_S + len(case["speech"]) / RATE),
-                    "utterances": out["utterances"],
                     "drift_errors": drift_err,
                     "turn_drift_errors": turn_drift_err,
                     "drift_words": drift_n,
@@ -675,7 +662,6 @@ def run(
                         "finals": out["finals"],
                         "final_confidences": out["final_confidences"],
                         "turns": out["turns"],
-                        "utterances": out["utterances"],
                     }
                 )
                 false_finals += bool(out["finals"])
@@ -702,8 +688,6 @@ def run(
             "noise_only_trials": len(noise_only_rows),
             "latency_p50": _percentile(latencies, 50),
             "latency_p90": _percentile(latencies, 90),
-            "speech_outcomes": _reason_counts(rows),
-            "noise_outcomes": _reason_counts(noise_only_rows),
             "decode_calls": calls_after - calls_before,
             "decode_s": round(decode_s_after - decode_s_before, 2),
             "seconds": round(time.monotonic() - started, 1),
@@ -759,34 +743,6 @@ def compare(labels: list[str]) -> None:
             print(f"{condition:11} " + " ".join(cells))
 
 
-def diff(label_a: str, label_b: str) -> None:
-    """Hai lần chạy có cho cùng finals, turns và thời điểm chốt ở MỌI trial không (kiểm thay đổi
-    chỉ-quan-sát không đổi hành vi)."""
-    a, b = (
-        json.loads((WORK_DIR / "results" / f"{x}.json").read_text()) for x in (label_a, label_b)
-    )
-    keys = ("finals", "turns", "turn_times")
-    total = changed = 0
-    for condition, block in a["conditions"].items():
-        other = b["conditions"].get(condition)
-        if other is None:
-            print(f"{condition}: thiếu ở {label_b}")
-            continue
-        if len(block["cases"]) != len(other["cases"]) or len(block["noise_only"]) != len(
-            other["noise_only"]
-        ):
-            print(f"{condition}: số trial khác nhau")
-        pairs = list(zip(block["cases"], other["cases"], strict=False)) + list(
-            zip(block["noise_only"], other["noise_only"], strict=False)
-        )
-        for x, y in pairs:
-            total += 1
-            if any(x.get(k) != y.get(k) for k in keys):
-                changed += 1
-                print(f"{condition} {x.get('id', 'noise')}: khác")
-    print(f"{changed}/{total} trial khác")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--label")
@@ -804,28 +760,13 @@ def main() -> None:
         help="ghi đè SpeechSettings, vd. --set speech_foreground_gate_enabled=true",
     )
     parser.add_argument("--compare", nargs="+")
-    parser.add_argument(
-        "--no-probe", action="store_true", help="không chạy Silero song song (bỏ xác suất)"
-    )
-    parser.add_argument(
-        "--diff",
-        nargs=2,
-        metavar=("NHÃN_A", "NHÃN_B"),
-        help="so từng trial: finals/turns/thời điểm",
-    )
     args = parser.parse_args()
-    _PROBE_CACHE["enabled"] = not args.no_probe
-    if args.diff:
-        diff(*args.diff)
-        return
     if args.compare:
         compare(args.compare)
         return
     if not args.label:
         parser.error("--label hoặc --compare là bắt buộc")
     overrides = dict(item.split("=", 1) for item in args.set)
-    if args.no_probe:
-        overrides.setdefault("speech_diagnostics_probe", "false")
     run(args.label, args.dataset, args.conditions.split(","), args.repeats, args.profile, overrides)
 
 

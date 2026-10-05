@@ -16,15 +16,12 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
-from callbot.transports.livekit.call_bridge import CallBridge, build_call_diagnostics
+from callbot.transports.livekit.call_bridge import CallBridge
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
-from speech.asr.vad.silero_probe import build_probe
-from speech.bundle import build_streaming_bundle
+from speech.bundle import build_streaming_bundle, warm_up
 from speech.settings import SpeechSettings
-from speech.turn.controller import TurnController
-from speech.types import AudioSegment
 
 if TYPE_CHECKING:
     from livekit.agents import JobContext, JobProcess
@@ -36,22 +33,9 @@ _PREWARMED_ASR = "zipformer_asr"
 
 def prewarm(proc: "JobProcess") -> None:
     """Load model ASR local (vd. ZipFormer) một lần mỗi LiveKit job process, trước khi
-    process đó nhận call. Provider cloud/streaming-only (vd. elevenlabs_realtime) không có
-    model file để nạp trước và `transcribe()` của nó raise `NotImplementedError` có chủ ý
-    (chỉ hỗ trợ `stream()`) — bỏ qua warm-up cho các provider này, không coi là lỗi."""
-    livekit_settings = LiveKitSettings()
-    speech_settings = SpeechSettings(sample_rate=livekit_settings.input_sample_rate)
-    asr = SpeechRecognizer(create_asr_gateway(speech_settings.asr_provider))
-    try:
-        # Một đoạn silence đủ để lazy provider tạo OfflineRecognizer/model trong prewarm.
-        asr.transcribe(
-            AudioSegment(
-                pcm=b"\x00\x00" * asr.input_sample_rate,
-                sample_rate=asr.input_sample_rate,
-            )
-        )
-    except NotImplementedError:
-        pass
+    process đó nhận call."""
+    asr = SpeechRecognizer(create_asr_gateway(SpeechSettings().asr_provider))
+    warm_up(asr)
     proc.userdata[_PREWARMED_ASR] = asr
 
 
@@ -67,35 +51,22 @@ async def entrypoint(ctx: JobContext) -> None:
     appointment_id = attrs.get("appointment_id") or None
 
     livekit_settings = LiveKitSettings()
-    speech_settings = SpeechSettings(sample_rate=livekit_settings.input_sample_rate)
+    speech_settings = SpeechSettings()
     prewarmed_asr: Any = ctx.proc.userdata.get(_PREWARMED_ASR)
     bundle = build_streaming_bundle(
         speech_settings,
-        asr=prewarmed_asr,
+        sample_rate=livekit_settings.input_sample_rate,
         frame_ms=livekit_settings.frame_ms,
-        queue_max_frames=max(1, livekit_settings.input_queue_ms // livekit_settings.frame_ms),
+        input_queue_ms=livekit_settings.input_queue_ms,
+        asr_queue_ms=livekit_settings.asr_queue_ms,
         barge_in_preroll_ms=livekit_settings.barge_in_preroll_ms,
+        asr=prewarmed_asr,
     )
     # Cùng CLINIC_BACKEND với bot HTTP. sim: mỗi job (mỗi cuộc gọi) một clinic mới seed lại, nên
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
     tracer = create_tracer()
     orchestrator = create_orchestrator(clinic, EngineSettings(), tracer=tracer)
-    # Chỉ quan sát: log kết cục từng đoạn giọng (chỉ số) để biết cổng nào bỏ lượt. Xác suất
-    # Silero lấy từ bộ phân loại dùng chung (bundle); probe riêng chỉ khi không dùng chung.
-    diagnostics = build_call_diagnostics(
-        build_probe(speech_settings.silero_vad_model_path, livekit_settings.input_sample_rate)
-        if speech_settings.speech_diagnostics_probe and not speech_settings.speech_shared_detector
-        else None
-    )
-    turn_controller = TurnController(
-        min_speech_ms=speech_settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=speech_settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=speech_settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=speech_settings.turn_post_bot_guard_ms,
-        validator=bundle.validator,
-        diagnostics=diagnostics,
-    )
 
     bridge = CallBridge(
         ctx.room,
@@ -105,10 +76,7 @@ async def entrypoint(ctx: JobContext) -> None:
         direction=direction,
         caller_number=caller_number,
         appointment_id=appointment_id,
-        turn_controller=turn_controller,
-        evidence_tracker=bundle.evidence_tracker,
-        noise_tracker=bundle.noise_tracker,
-        noise_classifier=bundle.noise_classifier,
+        turn_controller=bundle.turn_controller,
         interruption_validator=bundle.validator,
         interruption_min_snr_db=speech_settings.interruption_min_snr_db,
         sample_rate=livekit_settings.input_sample_rate,
@@ -118,7 +86,6 @@ async def entrypoint(ctx: JobContext) -> None:
         caller_identity=participant.identity,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
-        diagnostics=diagnostics,
     )
     try:
         await bridge.run()

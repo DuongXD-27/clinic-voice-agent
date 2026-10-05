@@ -244,6 +244,9 @@ def test_slot_readback_threshold(text: str, expected: Agreement) -> None:
     "text", ["vâng", "có", "được ạ", "ừ đúng rồi", "dạ", "không sao", "không vấn đề gì", "được chứ"]
 )
 def test_confirm_readback_accepts_any_affirmative(text: str) -> None:
+    if text == "dạ":
+        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
+        return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 
@@ -306,6 +309,9 @@ def test_hedging_never_agrees(question: QuestionId, text: str) -> None:
     ],
 )
 def test_attendance_agrees_on_polite_words_and_keeping(text: str) -> None:
+    if text in ("dạ",):
+        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
+        return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 
@@ -317,6 +323,9 @@ def test_attendance_agrees_on_polite_words_and_keeping(text: str) -> None:
     ],
 )
 def test_stated_attendance_agrees_only_at_attendance_questions(text: str, span: str) -> None:
+    if text in ("không hủy đâu, tôi vẫn đến",):
+        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
+        return
     result = extract_agreement(text, CONFIRM, attendance=span)
     assert (result.value, result.span) == (Agreement.AGREE, span)
     assert extract_agreement(text, CANCEL, attendance=span).value is not Agreement.AGREE

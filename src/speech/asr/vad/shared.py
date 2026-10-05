@@ -12,69 +12,42 @@ quả đã tính cho chính đối tượng frame đó (kể cả frame phát l�
 
 Khoá theo danh tính đối tượng (`id` + giữ tham chiếu), không theo nội dung: hai frame im lặng
 giống hệt byte vẫn là hai thời điểm khác nhau.
-
-`probe` (tuỳ chọn): Silero thô cho xác suất giọng liên tục mỗi frame (sherpa-onnx chỉ trả bool
-đã qua `min_speech_duration` và hangover). Cũng có trạng thái nên chạy ở đây, cùng lúc và cùng
-thứ tự với `classify`; chẩn đoán và pre-speech của ASR đọc lại qua `probability(frame)`.
 """
 
 from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from typing import Optional
 
 from speech.asr.vad.base import FrameClassifier
-from speech.diagnostics import ProbabilityProbe
 
 logger = logging.getLogger(__name__)
 
-# ~61 s ở 30 ms/frame: lớn hơn trần hàng đợi ASR (20 x 50 frame) + pre-roll, nên frame nằm chờ
-# trong hàng đợi ASR vẫn còn kết quả khi ASR xử lý tới.
-_DEFAULT_CAPACITY = 2048
-
 
 class SharedSpeechDetector:
-    def __init__(
-        self,
-        classifier: FrameClassifier,
-        *,
-        probe: Optional[ProbabilityProbe] = None,
-        capacity: int = _DEFAULT_CAPACITY,
-    ) -> None:
-        self._classifier = classifier
-        self._probe = probe
-        self._capacity = capacity
-        self._results: OrderedDict[int, tuple[bytes, bool, Optional[float]]] = OrderedDict()
-        self._missed = 0
+    """`capacity`: số kết quả gần nhất giữ lại — phải phủ hết frame còn nằm chờ trong hàng đợi
+    VAD/ASR và pre-roll, nếu không frame đó bị coi là im lặng (xem `lookup`). `build_streaming_bundle`
+    tính từ config/livekit.yaml."""
 
-    @property
-    def has_probe(self) -> bool:
-        return self._probe is not None
+    def __init__(self, classifier: FrameClassifier, *, capacity: int) -> None:
+        self._classifier = classifier
+        self._capacity = capacity
+        self._results: OrderedDict[int, tuple[bytes, bool]] = OrderedDict()
+        self._missed = 0
 
     def classify(self, frame: bytes) -> bool:
         """Gọi đúng một lần cho mỗi frame, theo thứ tự tới."""
         is_speech = self._classifier.is_speech(frame)
         key = id(frame)
         self._results.pop(key, None)
-        self._results[key] = (frame, is_speech, self._probability(frame))
+        self._results[key] = (frame, is_speech)
         while len(self._results) > self._capacity:
             self._results.popitem(last=False)
         return is_speech
 
-    def _probability(self, frame: bytes) -> Optional[float]:
-        if self._probe is None:
-            return None
-        try:
-            return self._probe.probability(frame)
-        except Exception as exc:  # probe chỉ bổ sung: lỗi thì tắt, không làm hỏng cuộc gọi
-            logger.warning("shared_detector: probe lỗi, tắt (%s)", type(exc).__name__)
-            self._probe = None
-            return None
-
     def lookup(self, frame: bytes) -> bool:
-        cached = self._cached(frame)
-        if cached is not None:
+        cached = self._results.get(id(frame))
+        if cached is not None and cached[0] is frame:
             return cached[1]
         # Frame chưa qua classify() (hoặc đã quá cũ): không được đưa vào bộ phân loại có trạng
         # thái lệch thứ tự — coi là không có tiếng nói.
@@ -82,15 +55,6 @@ class SharedSpeechDetector:
         if self._missed == 1:
             logger.warning("shared_detector: frame chưa được phân loại, coi là im lặng")
         return False
-
-    def probability(self, frame: bytes) -> Optional[float]:
-        """Xác suất giọng Silero thô của frame đã classify; None nếu không có probe/không còn."""
-        cached = self._cached(frame)
-        return cached[2] if cached is not None else None
-
-    def _cached(self, frame: bytes) -> Optional[tuple[bytes, bool, Optional[float]]]:
-        cached = self._results.get(id(frame))
-        return cached if cached is not None and cached[0] is frame else None
 
     def view(self) -> FrameClassifier:
         return _DetectorView(self)

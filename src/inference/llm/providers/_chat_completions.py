@@ -62,7 +62,9 @@ class ChatCompletionsProvider:
         client_factory: HttpClientFactory | None = None,
     ) -> None:
         self._config = config
-        self._timeout = build_http_timeout(config.timeout_s, config.connect_timeout_s)
+        self._timeout = build_http_timeout(
+            min(3.0, config.timeout_s), min(1.0, config.connect_timeout_s)
+        )
         self._client_factory = client_factory or httpx.Client
 
     @property

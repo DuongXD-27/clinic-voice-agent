@@ -1,9 +1,8 @@
 """Bước hỏi tên khi luật thiếu dấu hiệu họ tên (UNANCHORED): kết cục slot filling quyết định.
 
 Đi qua `NameSlotFiller` thật với gateway giả trả từng `StructuredReply`, không mock exception ở
-extractor. Chỉ câu trả lời khẳng định "không có tên" của mô hình mới lật được tên của luật; mô hình
-không trả lời được thì giữ đúng hành vi chỉ dùng luật. Tên đã nghe được đối chiếu ngay: câu rác mà
-mô hình coi là tên thì Verifier không khớp và chuyển máy.
+extractor. Model lỗi hoặc trả dữ liệu không hợp lệ phải hỏi lại, không khôi phục tên của luật.
+Tên đã nghe được đối chiếu ngay: câu rác mà mô hình coi là tên thì chuyển máy khi không khớp.
 """
 
 import json
@@ -79,17 +78,17 @@ def test_slot_filler_reports_each_outcome(outcome):
 
 
 # Bảng §4.1, hàng UNANCHORED: model accepted -> tên model; no_name -> không phải tên;
-# rejected / unavailable -> tên của luật (đã bỏ lời dẫn, hậu tố), không phải cả vùng câu.
+# rejected / unavailable -> không có tên chắc chắn, phải hỏi lại.
 @pytest.mark.parametrize("transcript", ["dạ Lê Na ạ", "dạ tôi tên Lê Na ạ", "Lê Na"])
 @pytest.mark.parametrize(
     "outcome, expected, provenance",
     [
         ("accepted", "lê na", Provenance.FALLBACK),
         ("no_name", None, Provenance.NONE),
-        ("rejected", "lê na", Provenance.NORMALIZED),
-        ("timeout", "lê na", Provenance.NORMALIZED),
-        ("refusal", "lê na", Provenance.NORMALIZED),
-        ("invalid_response", "lê na", Provenance.NORMALIZED),
+        ("rejected", None, Provenance.NONE),
+        ("timeout", None, Provenance.NONE),
+        ("refusal", None, Provenance.NONE),
+        ("invalid_response", None, Provenance.NONE),
     ],
 )
 def test_unanchored_name_by_slot_filling_outcome(transcript, outcome, expected, provenance):
@@ -157,9 +156,7 @@ def test_garbage_the_model_names_is_matched_and_transferred(monkeypatch, directi
     actions = [bot.start_call(_start(direction, call_id))]
     actions.append(bot.handle_turn(call_id, CallerInput(turn=1, text="Trần Thế Gian")))
     context = bot.sessions.store.get_session(call_id).context
-    assert context["claimed_name"] == "trần thế gian"
-    assert actions[-1].utterance == t.ASK_DOB
-    actions.append(bot.handle_turn(call_id, CallerInput(turn=2, text=DOB)))
+    assert context == {}  # Ended sessions discard identifying data.
 
     final = actions[-1]
     assert (final.state, final.outcome, final.transfer_reason) == ("ENDED", "TRANSFERRED", reason)
@@ -168,14 +165,13 @@ def test_garbage_the_model_names_is_matched_and_transferred(monkeypatch, directi
 
 
 @pytest.mark.parametrize(
-    "transcript, expected",
-    [("dạ Lê Na ạ", "lê na"), ("Lê Na", "lê na"), ("trần thế gian", "trần thế gian")],
+    "transcript",
+    ["dạ Lê Na ạ", "Lê Na", "trần thế gian"],
 )
-def test_without_a_model_the_name_step_matches_the_rule_only_mode(
-    monkeypatch, transcript, expected
-):
+def test_without_a_model_an_unmatched_rule_name_transfers_immediately(monkeypatch, transcript):
     bot, _ = _bot(monkeypatch, None)
     bot.start_call(_start("inbound", "rules-only"))
     action = bot.handle_turn("rules-only", CallerInput(turn=1, text=transcript))
-    assert action.utterance == t.ASK_DOB
-    assert bot.sessions.store.get_session("rules-only").context["claimed_name"] == expected
+    assert action.outcome == "TRANSFERRED"
+    assert action.transfer_reason == "PATIENT_NOT_FOUND"
+    assert bot.sessions.store.get_session("rules-only").context == {}

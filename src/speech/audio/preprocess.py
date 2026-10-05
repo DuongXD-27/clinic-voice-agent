@@ -184,13 +184,6 @@ def split_long_regions(
     return result
 
 
-def _outside_regions(n_frames: int, regions: list[tuple[int, int]], frame_ms: int) -> np.ndarray:
-    outside = np.ones(n_frames, dtype=bool)
-    for begin, end in regions:
-        outside[begin // frame_ms : -(-end // frame_ms)] = False
-    return outside
-
-
 def estimate_snr_db(
     pcm: bytes,
     sample_rate: int,
@@ -209,7 +202,9 @@ def estimate_snr_db(
         return None
     levels = _frame_rms(_samples(pcm), sample_rate * frame_ms // 1000)[: len(flags)]
     mask = np.array(flags[: len(levels)], dtype=bool)
-    outside = _outside_regions(len(levels), regions, frame_ms)
+    outside = np.ones(len(levels), dtype=bool)
+    for begin, end in regions:
+        outside[begin // frame_ms : -(-end // frame_ms)] = False
     speech, noise = levels[mask], levels[outside]
     if speech.size == 0 or noise.size == 0:
         return None

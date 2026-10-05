@@ -94,6 +94,26 @@ class LineSignal(str, Enum):
     NONE = "NONE"
 
 
+class IdentityStatus(str, Enum):
+    PRESENT = "PRESENT"  # CÓ: value and verbatim span
+    ABSENT = "ABSENT"  # KHÔNG CÓ
+    MULTIPLE = "MULTIPLE"  # NHIỀU GIÁ TRỊ
+    UNCERTAIN = "UNCERTAIN"  # KHÔNG CHẮC
+
+
+@dataclass(frozen=True)
+class IdentityValue(Generic[T]):
+    status: IdentityStatus
+    value: Optional[T] = None
+    span: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.status is IdentityStatus.PRESENT and (self.value is None or not self.span):
+            raise ValueError("PRESENT identity requires a value and a verbatim span")
+        if self.status is not IdentityStatus.PRESENT and (self.value is not None or self.span):
+            raise ValueError("Only PRESENT identity can carry a value or span")
+
+
 # MORE: xin nghe khung khác ("khung khác", "còn khung nào") — không có tiêu chí lọc (T-10)
 SlotChoiceKind = Literal["MATCH", "AMBIGUOUS", "NO_MATCH", "MORE", "ANY"]
 DayPeriod = Literal["MORNING", "NOON", "AFTERNOON", "EVENING"]
@@ -179,6 +199,7 @@ class TurnContext:
     # Nội dung câu hỏi đang chờ, chỉ có ở ASK_NAME: ngữ cảnh cho slot filling họ tên, không phải
     # nguồn chữ để lấy tên. None khi không ở ASK_NAME hoặc phiên không lưu nội dung câu hỏi.
     question_text: Optional[str] = None
+    asr_confidence: Optional[float] = None
 
     @property
     def today(self) -> date:
@@ -201,6 +222,14 @@ class ExtractionResult:
     # Hợp đồng rev 1.1 §1.1.7: lượt im lặng (silence_ms > 0) KHÔNG phải failed understanding (§1.1.5).
     # Khi silent, mọi trường là skipped — Policy đếm vào bộ đếm im lặng, không đếm vào bộ đếm không hiểu.
     silent: bool = False
+    name_identity: Optional[IdentityValue[str]] = None
+    dob_identity: Optional[IdentityValue[date]] = None
+    model_status: Optional[str] = None
+    confirmation_conflict: bool = False
+
+    @property
+    def model_failed(self) -> bool:
+        return self.model_status in {"TIMEOUT", "ERROR", "INVALID"}
 
     @classmethod
     def only(
@@ -247,6 +276,9 @@ class ExtractionResult:
             "transcript": self.transcript,
             "silent": self.silent,
             **{name: _field_to_trace(getattr(self, name)) for name in fields},
+            "name_identity": _identity_to_trace(self.name_identity),
+            "dob_identity": _identity_to_trace(self.dob_identity),
+            "model_status": self.model_status,
         }
 
 
@@ -257,6 +289,12 @@ def to_local(moment: datetime) -> datetime:
 
 def _field_to_trace(item: Field[Any]) -> dict[str, Any]:
     return {"value": _jsonable(item.value), "provenance": item.provenance.value, "span": item.span}
+
+
+def _identity_to_trace(item: Optional[IdentityValue[Any]]) -> Optional[dict[str, Any]]:
+    if item is None:
+        return None
+    return {"status": item.status.value, "value": _jsonable(item.value), "span": item.span}
 
 
 def _jsonable(value: Any) -> Any:

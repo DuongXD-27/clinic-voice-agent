@@ -120,20 +120,6 @@ quyết định có gọi ASR hay không, xem `STTPipeline.transcribe_segment`).
 - Cơ chế debug: `LIVEKIT_DEBUG_DUMP_AUDIO=1` ghi PCM thật (đúng đường dữ liệu vào ASR)
   ra `temp/audio/livekit_debug_<room>.wav` — công cụ duy nhất để xác nhận ASR
   hallucinate do audio bị méo hay do model tự nghe nhầm khi audio hoàn toàn sạch.
-- Log đo lường (chỉ số, không text — [evidence PR1](../evidence/speech-diagnostics-2026-10-01.md)):
-  - `AUDIO_INGRESS`: loại participant (`STANDARD`/`SIP`, không log identity), nguồn track,
-    `audio.settings` (cờ AEC/NS/AGC/voiceIsolation trình duyệt thật sự áp dụng), tần số frame.
-  - `TURN_ACCEPTED` / `TURN_DROPPED`: mỗi đoạn giọng một dòng với `utterance_id`, cổng
-    (`stage`) và lý do (`reason`: `not_meaningful`, `oscillating`, `low_snr_short`,
-    `min_speech`, `post_bot_guard`, `during_bot_speech`, `min_decode`, `no_text`,
-    `superseded`), `snr_db`, xác suất Silero và hai cặp thời lượng/độ trễ:
-    - `speech_ms`, `endpoint_ms` theo detector. Detector giữ "đang nói" thêm
-      `silero_min_silence_ms` (500 ms) sau khi hết giọng, nên `endpoint_ms` thiếu phần đó.
-    - `voice_ms`, `voice_endpoint_ms` theo Silero thô (probe, xác suất ≥ 0,5):
-      `voice_endpoint_ms` là thời gian người gọi thật sự chờ sau khi ngừng nói.
-  - `BARGE_IN`: kết cục ứng viên ngắt lời (`CONFIRMED`/`REVERTED`/`BOT_STOPPED`) và độ trễ.
-  - `AUDIO_INGRESS_SUMMARY` cuối cuộc: băng thông hiệu dụng (`narrowband` = G.711), audio bị
-    rơi (`missing_ms`), độ sâu hàng đợi, mức nền/giọng, đếm kết cục theo lý do.
 
 ### 3.2. `audio_adapter.py`
 
@@ -295,7 +281,7 @@ interface `stream(frames) -> AsyncIterator[TranscriptEvent]`.
 | Biến | Giá trị hiện tại | Ý nghĩa |
 |---|---|---|
 | `ASR_PROVIDER` | `zipformer` | `zipformer` (gipformer1.5 local) hoặc `elevenlabs_realtime` (cloud) |
-| `SAMPLE_RATE` | `8000` | Áp dụng cho `SpeechSettings` — đường HTTP batch. LiveKit dùng riêng `LiveKitSettings.input_sample_rate` |
+| `LIVEKIT_INPUT_SAMPLE_RATE` | `16000` | Tần số PCM của pipeline LiveKit. Đường HTTP giữ tần số gốc của clip (không còn khóa `SAMPLE_RATE`) |
 | `VAD_PROVIDER` | `webrtc` | `energy` hoặc `webrtc` |
 | `TTS_PROVIDER` | `vbee` | Provider TTS (`openai` / `elevenlabs` / `vbee`) |
 | `ZIPFORMER_*_PATH` | trỏ `assets/zipformer/` (nội dung model gipformer1.5) | Asset model đang dùng — xem §5 lịch sử đổi model |

@@ -277,34 +277,3 @@ def test_turn_requires_bearer_key(stt_client: TestClient, monkeypatch: pytest.Mo
     monkeypatch.setattr(http_settings, "bot_api_keys", "sk_test")
 
     assert _upload_turn(stt_client, _wav()).status_code == 401
-
-
-def _room_tone_wav() -> bytes:
-    pcm = np.random.default_rng(0).normal(0, 15, 48_000).astype(np.int16).tobytes()  # ~ −67 dBFS
-    return encode_wav(AudioSegment(pcm=pcm, sample_rate=16_000))
-
-
-def test_turn_returns_silence_for_room_tone_without_asr(stt_client: TestClient) -> None:
-    """Hồi quy (bộ PM, B-SIL-01): tiếng phòng bị khuếch đại +20 dB rồi model bịa ra "ĐÂY"."""
-    asr = stt_client.app.state.speech.asr
-    calls_before = len(asr.received)  # lúc khởi động app đã warm-up ASR một lần
-
-    response = _upload_turn(stt_client, _room_tone_wav())
-
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert (body["text"], body["is_silence"]) == ("", True)
-    assert body["preprocessing"]["steps"] == ["DC_REMOVAL", "VAD_NO_SPEECH"]
-    assert body["preprocessing"]["gain_db"] == 0.0
-    assert len(asr.received) == calls_before
-
-
-def test_silence_gate_can_be_turned_off(
-    stt_client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(stt_client.app.state, "stt_silence_gate", False)
-
-    body = _upload_turn(stt_client, _room_tone_wav()).json()
-
-    assert body["text"] == "xin chào"
-    assert "VAD_NO_SPEECH" not in body["preprocessing"]["steps"]

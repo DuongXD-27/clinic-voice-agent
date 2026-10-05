@@ -28,7 +28,7 @@ bench = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bench)
 
 from speech.audio.noise_tracker import NoiseTracker, UtteranceEvidenceTracker  # noqa: E402
-from speech.bundle import _build_noise_classifier  # noqa: E402
+from speech.bundle import _build_silero  # noqa: E402
 
 FRAME = bench.FRAME
 GAP, HOLD, READ_AT = 20, 100, 20  # 600 ms, 3 s, 600 ms — như UtteranceEvidenceTracker
@@ -165,7 +165,7 @@ def _shorten(speech: np.ndarray) -> np.ndarray:
 
 
 def main() -> None:
-    settings = bench.SpeechSettings(sample_rate=bench.RATE, vad_provider="silero")
+    settings = bench.SpeechSettings(vad_provider="silero")
     asr = bench.SpeechRecognizer(bench.create_asr_gateway(settings.asr_provider))
     golden = bench.load_golden()
     web = bench.build_web_set(asr, settings.silero_vad_model_path)
@@ -175,7 +175,7 @@ def main() -> None:
     median_rms = float(np.median([bench._active_rms(c["speech"]) for _, c in cases]))
 
     def factory():
-        return _build_noise_classifier(settings)
+        return _build_silero(settings, bench.RATE)
 
     rows: list[dict] = []
     rng = np.random.default_rng(2026)

@@ -50,9 +50,8 @@ Hai tuỳ chọn:
 1. Đọc WAV, trộn về mono.
 2. Bỏ DC offset.
 3. Resample **một lần, thẳng về 16 kHz**.
-4. **Cổng im lặng:** Silero không thấy giọng **và** cả clip nhỏ hơn −55 dBFS thì trả `text` rỗng, không gọi model (bước `VAD_NO_SPEECH`). Tắt bằng `STT_EVAL_SILENCE_GATE=false`.
-5. Khuếch đại nếu clip quá nhỏ (giọng dưới −35 dBFS).
-6. Model nhận dạng **nguyên clip một lần**, không cắt đoạn.
+4. Khuếch đại nếu clip quá nhỏ (giọng dưới −35 dBFS).
+5. Model nhận dạng **nguyên clip một lần**, không cắt đoạn.
 
 Lý do từng bước xem [phần Tiền xử lý](#tiền-xử-lý-làm-gì-và-vì-sao).
 
@@ -168,13 +167,11 @@ Không bước nào mô phỏng streaming: không có kết quả tạm thời (
 | 3 | **Bỏ DC offset** | ✓ | ✓ | Mic rẻ hay làm lệch tín hiệu khỏi mức 0. Bộ trích đặc trưng của model đã tự bỏ phần này, nhưng phải bỏ trước thì mới đo đúng độ lớn và đỉnh ở bước 5 |
 | 4 | **Resample một lần, thẳng về 16 kHz** (soxr chất lượng cao) | ✓ | ✓ | Model được huấn luyện ở 16 kHz. Resample thẳng giữ được dải 4–8 kHz, nơi có các phụ âm s/x/ch/th rất quan trọng với tiếng Việt (từ 29/09 `/v1/calls` cũng làm vậy, trước đó hạ về 8 kHz rồi mới nâng lại). Với file 8 kHz thì không lấy lại được (cảnh báo `NARROWBAND_SOURCE`) |
 | 5 | **Khuếch đại clip quá nhỏ** (chỉ khi giọng dưới −35 dBFS; đưa về khoảng −26 dBFS; tối đa +20 dB; đỉnh không vượt −1 dBFS) | ✓ | ✓ | Clip thu nhỏ tiếng làm model đoán bừa. Đo được: clip nhỏ hơn 15–25 dB thì WER giảm từ 0,42–0,47 xuống 0,38. Clip đủ to thì **không** đụng tới, vì khuếch đại clip bình thường làm WER hơi tệ đi (0,39 → 0,40). Chỉ nhân một hằng số cho cả clip, không dùng nén/AGC vì chúng làm méo âm sắc theo thời gian |
-| 5b | **Cổng im lặng**: Silero gắn cờ giọng dưới 200 ms **và** mức giọng của cả clip dưới −55 dBFS thì trả rỗng, không gọi model | ✓ | — | Clip chỉ có tiếng phòng (bộ PM, `B-SIL-01`, −67 dBFS) từng bị bước 5 khuếch đại +20 dB rồi model bịa ra "ĐÂY"; không khuếch đại thì vẫn bịa "Ừ". Không dùng **mỗi** Silero: trong tiếng đường phố SNR 6 dB, xác suất giọng của Silero không quá 0,31 nên câu thật bị bỏ (17/19 file ồn mạnh). Giọng nhỏ nhất của bộ PM (nói xa) ở −48,8 dBFS. Số đo: [evidence 02/10](../evidence/pm-preprocess-2026-10-02.md) |
 | 6 | **Cắt đoạn bằng Silero VAD** (gộp các đoạn cách nhau dưới 0,7 s; đệm 1 s phía trước, 0,3 s phía sau) | — | ✓ | Bỏ khoảng lặng và nhiễu giữa các câu, vốn là nơi model hay "bịa chữ", và cho mốc thời gian từng câu. Đệm trước dài vì Silero phát hiện giọng chậm, và bỏ qua từ rất ngắn đứng ngay trước chỗ ngắt. Với một lượt nói thì bước này gần như không giúp gì (golden: 0,390 so với 0,392), nên chế độ turn không dùng |
 | 7 | **Mỗi lần decode tối đa 30 s** | Giới hạn clip ≤ 30 s | Chia đoạn dài tại frame yên nhất | Bộ nhớ của model tăng theo bình phương độ dài: 30 s cần 0,6 GB, 90 s cần 3 GB, 180 s cần khoảng 12 GB. Không giới hạn thì một file 3 phút làm OOM cả server (đã xảy ra khi chạy thử 133 file LiveKit) |
 
 **Kỹ thuật cố ý không dùng:**
 - **Khử nhiễu (Krisp, GTCRN):** đo ngày 28/09 cho thấy WER **tệ hơn**, kể cả trên audio sạch ([evidence](../evidence/livekit-audio-plan-execution-2026-09-28.md)). Bộ khử nhiễu để lại dấu vết mà model chưa từng gặp lúc huấn luyện.
-- **Lọc thông cao 100 Hz, khử nhiễu cổ điển (`noisereduce`), khử vang WPE, cắt đầu/đuôi theo VAD:** đo 02/10 trên bộ PM, thay đổi nhỏ và trái chiều, không đạt tiêu chí ([evidence](../evidence/pm-preprocess-2026-10-02.md)). Khử vang giúp câu nói xa nhưng làm hỏng câu ồn mạnh ở 8 kHz.
 - **Pre-emphasis:** bộ trích đặc trưng của model đã tự làm; làm thêm là áp dụng hai lần.
 - **AGC/compressor:** như đã nói ở bước 5.
 

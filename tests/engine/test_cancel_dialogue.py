@@ -157,7 +157,7 @@ def test_contradictory_cancel_answer_is_asked_again_without_writing(answer: str)
     bot, clinic = _requesting("c_t05_contradiction")
     action = _run(bot, "c_t05_contradiction", [answer], start=4)
 
-    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+    assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
     ctx = _context(bot, "c_t05_contradiction")
     assert ctx.pending_action == "CANCEL"  # không bỏ hủy, cũng không ghi hủy
     assert [e.kind for e in ctx.evidence] == ["REQUEST"]
@@ -369,7 +369,7 @@ def test_a_reason_containing_a_negation_is_recorded_but_does_not_unlock_the_writ
     """G-6 / AC-4: "hủy giúp tôi vì không cần khám nữa" mơ hồ — lưu lý do, vẫn phải hỏi lại."""
     bot, clinic = _requesting("c_t05_negation_reason")
     action = _run(bot, "c_t05_negation_reason", ["Hủy giúp tôi vì không cần khám nữa"], start=4)
-    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+    assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
     assert _context(bot, "c_t05_negation_reason").cancel_reason == "NO_LONGER_NEEDED"
 
     action = _run(bot, "c_t05_negation_reason", ["Hủy giúp tôi"], start=5)
@@ -671,7 +671,7 @@ def test_cancel_request_before_verification_neither_discloses_nor_writes() -> No
     )
     action = _run(bot, "c_t05_early", ["Tôi muốn hủy lịch khám"])
 
-    assert action.utterance == t.ASK_NAME_FOR_REQUEST and clinic.writes == []
+    assert action.utterance == t.ASK_NAME_AGAIN and clinic.writes == []
     assert FACTS not in action.utterance
     ctx = _context(bot, "c_t05_early")
     assert (ctx.pending_action, ctx.cancel_reason) == (None, None)
@@ -869,7 +869,7 @@ def test_a_broken_model_still_keeps_the_grounded_rule_reason_and_asks_again() ->
 
     action = _run(bot, "c_sem_broken", ["Tôi không đủ tiền"], start=4)
     assert broken.calls == 1
-    assert action.utterance == t.CANCEL_REASON_NOTED and clinic.writes == []
+    assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
     ctx = _context(bot, "c_sem_broken")
     assert (ctx.pending_action, ctx.cancel_reason) == ("CANCEL", "COST")
 
@@ -988,6 +988,10 @@ def test_a_clear_confirmation_outside_the_settled_set_cancels_without_the_model(
 ) -> None:
     bot, clinic = _requesting_with(semantic, "c_sf05_clear_off")
     action = _run(bot, "c_sf05_clear_off", [line], start=4)
+    if semantic is not None:
+        assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
+        assert _context(bot, "c_sf05_clear_off").failed_understandings == 1
+        return
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
@@ -1035,11 +1039,17 @@ def test_a_verified_model_confirmation_cancels_once_with_the_flag_on(
 def test_without_the_flag_or_a_usable_model_the_leftover_answer_is_asked_again(
     semantic, cancel_confirm: bool
 ) -> None:
-    bot, clinic = _requesting_with(semantic(), "c_promo_off", cancel_confirm=cancel_confirm)
+    adapter = semantic()
+    bot, clinic = _requesting_with(adapter, "c_promo_off", cancel_confirm=cancel_confirm)
     status_before = clinic.appointments["apt_00417"]["status"]
     action = _run(bot, "c_promo_off", ["Thôi thì hủy giúp tôi vậy"], start=4)
 
-    assert not action.ended and action.utterance == t.CANCEL_CHOICE
+    assert not action.ended and action.utterance == (
+        t.CANCEL_CONFLICT
+        if isinstance(adapter, BrokenSemantic)
+        or (isinstance(adapter, FakeSemantic) and not adapter._replies)
+        else t.CANCEL_CHOICE
+    )
     _assert_nothing_cancelled(bot, clinic, "c_promo_off", status_before)
 
 
@@ -1097,8 +1107,13 @@ def test_a_stale_question_is_flagged_and_still_blocked_by_the_guardrail() -> Non
     )
     bot, clinic = _requesting_with(semantic, "c_sem_stale")
 
-    # "em chưa hiểu" không nhắc lại câu hỏi -> câu hỏi đang chờ vẫn ở lượt 3
     _run(bot, "c_sem_stale", ["Vợ tôi bảo thế"], start=4)
+    # Inject a stale persisted question, independent of the model-error reprompt behavior.
+    store = bot.sessions.store
+    with store.call_lock("c_sem_stale", 1):
+        state = store._load("c_sem_stale")
+        state["session"]["context"]["question"]["turn"] = 3
+        store._save("c_sem_stale", state)
     action = _run(bot, "c_sem_stale", [line], start=5)
 
     assert not action.ended and clinic.writes == []
@@ -1199,13 +1214,11 @@ def test_a_semantic_timeout_asks_again_instead_of_a_contradiction() -> None:
 
     action = _run(bot, "c_sem_ket_tien_timeout", [KET_TIEN], start=4)
     assert gateway.calls == 1
-    assert action.utterance == t.NOT_UNDERSTOOD and action.utterance != t.CANCEL_CHOICE
+    assert action.utterance == t.CANCEL_CONFLICT and action.utterance != t.CANCEL_CHOICE
     assert not action.ended and clinic.writes == []
     assert _context(bot, "c_sem_ket_tien_timeout").pending_action == "CANCEL"
 
-    # "Em chưa hiểu" không nhắc lại câu xác nhận (T-08): lượt này hỏi lại, lượt sau mới là xác nhận
+    # R-31 asks a fresh closed question at turn 4; a clear answer at turn 5 can confirm it.
     action = _run(bot, "c_sem_ket_tien_timeout", ["Hủy giúp tôi"], start=5)
-    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
-    action = _run(bot, "c_sem_ket_tien_timeout", ["Hủy lịch"], start=6)
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]

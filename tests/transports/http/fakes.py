@@ -1,7 +1,7 @@
 """Fake ASR/TTS cho test HTTP transport — không đụng provider thật (Gemini/OpenAI/ZipFormer)."""
 
 from pathlib import Path
-from typing import AsyncIterator, Callable, Optional
+from typing import AsyncIterator, Optional
 
 from speech.audio.storage import AudioArtifactStore
 from speech.bundle import SpeechBundle
@@ -55,7 +55,6 @@ def make_speech_bundle(
     base_url: str = "http://test",
     asr: Optional[FakeASR] = None,
     tts: Optional[FakeTTS] = None,
-    audio_loader: Optional[Callable[[str], AudioSegment]] = None,
 ) -> SpeechBundle:
     """Bundle an toàn cho test — không import/gọi sherpa-onnx, openai hay Gemini thật.
 
@@ -67,5 +66,9 @@ def make_speech_bundle(
         asr=asr or FakeASR(),
         tts=tts if tts is not None else FakeTTS(respond=True),
         audio_store=AudioArtifactStore(str(audio_dir), base_url),
-        audio_loader=audio_loader or (lambda url: _SILENT_SEGMENT),
     )
+
+
+def load_silent_audio(_url: str) -> AudioSegment:
+    """Thay `load_from_url` trong test: không tải URL thật."""
+    return _SILENT_SEGMENT

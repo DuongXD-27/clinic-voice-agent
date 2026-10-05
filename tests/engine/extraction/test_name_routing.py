@@ -179,8 +179,7 @@ def test_a_model_rejection_keeps_an_ambiguous_suffix_unresolved():
 
 
 # --- UNANCHORED: câu thiếu dấu hiệu họ tên do slot filling quyết định -------------------------
-# Chỉ câu trả lời khẳng định "không có tên" của mô hình mới lật được tên của luật. Mô hình không
-# trả lời được, trả lời không dùng được hoặc không được cấu hình thì giữ hành vi luật cũ.
+# Không cấu hình model thì giữ luật. Model lỗi hoặc trả tên không dùng được phải hỏi lại.
 
 
 def slot(status: SlotFillingStatus, name: str | None = None) -> SlotFillingResult:
@@ -245,27 +244,26 @@ def test_model_no_name_overrules_the_unanchored_rule_name(text, rule_name):
         None,  # cài đặt không xử lý trường tên
     ],
 )
-def test_unusable_model_answer_keeps_the_unanchored_rule_name(text, rule_name, outcome):
+def test_unusable_model_answer_does_not_restore_the_unanchored_rule_name(text, rule_name, outcome):
     fallback = FakeFallback(full_name=outcome)
     result = name_with(fallback, text)
     assert fallback.calls == ["full_name"]
-    assert result.value == rule_name
-    assert result.provenance is Provenance.NORMALIZED
+    assert not result.found
 
 
 @pytest.mark.parametrize("text, rule_name", RULE_NAMES)
-def test_provider_exception_keeps_the_unanchored_rule_name(text, rule_name):
+def test_provider_exception_does_not_restore_the_unanchored_rule_name(text, rule_name):
     class BrokenFallback(FakeFallback):
         def full_name(self, transcript, **context):
             raise TimeoutError("synthetic provider timeout")
 
-    assert name_with(BrokenFallback(), text).value == rule_name
+    assert not name_with(BrokenFallback(), text).found
 
 
 def test_accepted_name_that_fails_the_extractor_guard_counts_as_rejected():
-    # Mô hình báo ACCEPTED nhưng tên không nằm trong câu: không dùng, giữ tên của luật
+    # Mô hình báo ACCEPTED nhưng tên không nằm trong câu: không dùng, hỏi lại.
     fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "nguyễn văn b"))
-    assert name_with(fallback, "dạ Lê Na ạ").value == "lê na"
+    assert not name_with(fallback, "dạ Lê Na ạ").found
 
 
 @pytest.mark.parametrize(
@@ -299,9 +297,9 @@ def test_unanchored_name_before_a_dob_comes_from_the_name_zone_only():
     assert result.full_name.value == "lê na"
     assert result.dob.value == date(1978, 3, 14)
 
-    # Chữ lấy từ phần ngày sinh không được thành tên; tên của luật vẫn đứng
+    # Chữ lấy từ phần ngày sinh không được thành tên; hỏi lại tên.
     fallback = FakeFallback(full_name=slot(SlotFillingStatus.ACCEPTED, "14/03/1978"))
-    assert name_with(fallback, text).value == "lê na"
+    assert not name_with(fallback, text).found
 
 
 @pytest.mark.parametrize(

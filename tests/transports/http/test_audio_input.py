@@ -5,6 +5,7 @@ import pytest
 from tests.transports.http.test_calls import _start, _turn
 
 from callbot.engine.session import CallContext
+from callbot.transports.http import calls as http_calls
 from speech.types import Transcript
 
 
@@ -21,7 +22,7 @@ def test_explicit_silence_skips_broken_audio_and_asr(client, clinic, monkeypatch
     def forbidden(*args):
         pytest.fail("silence_ms must bypass loading and ASR")
 
-    monkeypatch.setattr(speech, "audio_loader", forbidden)
+    monkeypatch.setattr(http_calls, "load_from_url", forbidden)
     monkeypatch.setattr(speech.asr, "transcribe", forbidden)
     assert (
         _start(
@@ -61,7 +62,7 @@ def test_empty_asr_is_not_silence_even_when_asr_labels_it_silent(client, clinic,
     assert clinic.writes == []
 
 
-@pytest.mark.parametrize("stage", ["audio_loader", "asr"])
+@pytest.mark.parametrize("stage", ["load_audio", "asr"])
 @pytest.mark.parametrize(
     "error", [ValueError("private transcript"), httpx.ReadTimeout("private URL")]
 )
@@ -69,7 +70,7 @@ def test_stt_failure_does_not_consume_turn_and_can_retry(client, clinic, monkeyp
     _start(client, "c_failed_asr", mode="audio")
     speech = client.app.state.speech
     target, attribute = (
-        (speech, "audio_loader") if stage == "audio_loader" else (speech.asr, "transcribe")
+        (http_calls, "load_from_url") if stage == "load_audio" else (speech.asr, "transcribe")
     )
     original = getattr(target, attribute)
 
@@ -98,7 +99,7 @@ def test_identical_transcript_uses_same_identity_readback_and_confirm_flow(clien
     speech = client.app.state.speech
     for turn, text in enumerate(["Nguyễn Văn A", "14/03/1978", "vâng"], start=1):
         speech.asr.transcript = text
-        speech.asr.confidence = 0.01  # metadata never changes the business decision
+        speech.asr.confidence = 1.0  # Certain extraction; low confidence is tested separately.
         response = _turn(
             client,
             call_id,
@@ -117,3 +118,16 @@ def test_identical_transcript_uses_same_identity_readback_and_confirm_flow(clien
             assert clinic.writes == []
     assert response.json()["state"] == "ENDED" and response.json()["outcome"] == "CONFIRMED"
     assert len(clinic.writes) == 1 and clinic.writes[0][1] == "CONFIRMED"
+
+
+def test_low_asr_confidence_reasks_open_identity_without_disclosure(client, clinic):
+    _start(client, "c_low_confidence", mode="audio")
+    speech = client.app.state.speech
+    speech.asr.transcript = "Nguyễn Văn A"
+    speech.asr.confidence = 0.01
+    response = _turn(client, "c_low_confidence", 1, None, audio_url="https://clip/1")
+    assert response.status_code == 200
+    ctx = _context(client, "c_low_confidence")
+    assert ctx.question.question_id.value == "ASK_NAME" and not ctx.identity_verified
+    assert ctx.claimed_name is None and ctx.failed_understandings == 1
+    assert "Nguyễn" not in response.json()["utterance"] and clinic.writes == []

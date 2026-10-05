@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Generic, Optional, TypeVar
 
-from callbot.engine.extraction.schema import Field
+from callbot.engine.extraction.schema import Field, IdentityStatus, IdentityValue
 from callbot.engine.extraction.text import compile_phrases
 
 T = TypeVar("T")
@@ -54,6 +54,27 @@ class Reading(Generic[T]):
     field: Field[T]
     reason: Reason
     zone: Optional[str] = None
+
+
+def identity_value(
+    reading: Reading[T], transcript: str, *, confidence: Optional[float] = None
+) -> IdentityValue[T]:
+    """Extraction only: no record access and no judgement about the caller's identity."""
+    if reading.reason is Reason.AMBIGUOUS:
+        return IdentityValue(IdentityStatus.MULTIPLE)
+    if reading.reason in {
+        Reason.UNCERTAIN,
+        Reason.UNRESOLVED_BOUNDARY,
+        Reason.OUT_OF_RANGE,
+        Reason.NEGATED,
+    }:
+        return IdentityValue(IdentityStatus.UNCERTAIN)
+    if reading.reason is not Reason.OK or not reading.field.found or reading.field.value is None:
+        return IdentityValue(IdentityStatus.ABSENT)
+    if confidence is not None and confidence < 0.5:
+        return IdentityValue(IdentityStatus.UNCERTAIN)
+    # Full utterance is a verbatim evidence span even when date/name normalization changes spelling.
+    return IdentityValue(IdentityStatus.PRESENT, reading.field.value, transcript)
 
 
 # "không phải A": bác bỏ A và KHÔNG kèm giá trị thay thế, trừ khi có "mà là B" đi sau.

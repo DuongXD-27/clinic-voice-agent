@@ -8,6 +8,8 @@ from tests.transports.livekit_support import require_livekit
 
 require_livekit()
 
+from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
+
 from callbot.engine.errors import OutboundStartFailed  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
@@ -113,15 +115,7 @@ class _FakeSTTPipeline:
     def __init__(self, turns: list[UserTurnCompleted]) -> None:
         self._turns = turns
 
-    async def stream(
-        self,
-        frames,
-        turn_controller=None,
-        interruption=None,
-        evidence_tracker=None,
-        noise_tracker=None,
-        noise_classifier=None,
-    ):
+    async def stream(self, frames, turn_controller=None, interruption=None):
         for turn in self._turns:
             yield turn
 
@@ -202,7 +196,7 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     tts = _FakeTTS()
     room = _FakeRoom("web-test-room")
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     fake_source = _FakeAudioSource()
 
     async def _fake_publish_tts_track():
@@ -237,7 +231,7 @@ async def test_outbound_start_failure_notifies_browser_without_crashing_job() ->
     )
     tts = _FakeTTS()
     room = _FakeRoom("web-outbound-rejected")
-    bridge = CallBridge(
+    bridge = make_call_bridge(
         room,
         orchestrator,
         _FakeSTTPipeline([]),
@@ -266,7 +260,9 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
             yield
 
     orchestrator = _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), [])
-    bridge = CallBridge(_FakeRoom("web-stt-failure"), orchestrator, BrokenPipeline(), _FakeTTS())
+    bridge = make_call_bridge(
+        _FakeRoom("web-stt-failure"), orchestrator, BrokenPipeline(), _FakeTTS()
+    )
     source = _FakeAudioSource()
 
     async def publish():
@@ -296,7 +292,7 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
     orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
     stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
     room = _FakeRoom("web-transcript-room")
-    bridge = CallBridge(room, orchestrator, stt_pipeline, _FakeTTS())
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
 
     async def _fake_publish_tts_track():
         bridge._audio_source = _FakeAudioSource()
@@ -347,7 +343,9 @@ async def test_transcript_publish_failure_does_not_break_call(monkeypatch, caplo
     tts = _FakeTTS()
     room = _FakeRoom("web-broken-data-room")
     room.local_participant = _BrokenDataParticipant()
-    bridge = CallBridge(room, orchestrator, _FakeSTTPipeline([UserTurnCompleted(text="x")]), tts)
+    bridge = make_call_bridge(
+        room, orchestrator, _FakeSTTPipeline([UserTurnCompleted(text="x")]), tts
+    )
 
     async def _fake_publish_tts_track():
         bridge._audio_source = _FakeAudioSource()
@@ -382,7 +380,7 @@ async def test_speak_buffers_odd_byte_chunks_into_valid_pcm16_frames(monkeypatch
     tts = _OddByteTTS()
     room = _FakeRoom("web-odd-byte-room")
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     real_source = rtc.AudioSource(sample_rate=24000, num_channels=1)
     bridge._audio_source = real_source
 
@@ -412,7 +410,7 @@ async def test_speak_stops_publishing_and_clears_queue_when_interrupted(monkeypa
     tts = _MultiChunkTTS()
     room = _FakeRoom("web-barge-in-room")
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     fake_source = _FakeAudioSource()
     bridge._audio_source = fake_source
 
@@ -457,7 +455,7 @@ def _speaking_bridge(tts: _FakeTTS) -> tuple[CallBridge, _NativeLikeAudioSource]
     orchestrator = _FakeOrchestrator(
         opening=BotAction(utterance="", state="AWAITING_INTENT"), turn_actions=[]
     )
-    bridge = CallBridge(_FakeRoom("web-frames-room"), orchestrator, _FakeSTTPipeline([]), tts)
+    bridge = make_call_bridge(_FakeRoom("web-frames-room"), orchestrator, _FakeSTTPipeline([]), tts)
     source = _NativeLikeAudioSource(tts.stream_sample_rate)
     bridge._audio_source = source
     return bridge, source
@@ -632,7 +630,7 @@ async def test_speak_times_out_instead_of_hanging_forever_on_wait_for_playout(mo
     tts = _FakeTTS()
     room = _FakeRoom("web-hanging-playout-room")
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     fake_source = _HangingAudioSource()
     bridge._audio_source = fake_source
 
@@ -648,7 +646,7 @@ async def test_call_bridge_stops_immediately_if_opening_already_ends_call(monkey
     tts = _FakeTTS()
     room = _FakeRoom("web-busy-room")
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     fake_source = _FakeAudioSource()
 
     async def _fake_publish_tts_track():
@@ -676,7 +674,7 @@ def _real_bridge(monkeypatch, room_name: str, lines: list[str]):
     clinic = FakeClinicAPI()
     orchestrator = create_orchestrator(clinic)
     tts = _FakeTTS()
-    bridge = CallBridge(
+    bridge = make_call_bridge(
         _FakeRoom(room_name),
         orchestrator,
         _FakeSTTPipeline([UserTurnCompleted(text=line) for line in lines]),

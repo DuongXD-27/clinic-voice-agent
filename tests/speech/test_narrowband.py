@@ -2,12 +2,9 @@ import math
 import struct
 
 import pytest
-from pydantic import ValidationError
 
-from speech import SpeechSettings, STTPipeline
-from speech.asr.vad import EnergyFrameClassifier, StreamingVAD
 from speech.audio import alaw_to_pcm16, decode_wav, encode_wav, mulaw_to_pcm16
-from speech.types import NARROWBAND_RATE, AudioSegment, Transcript
+from speech.types import NARROWBAND_RATE, AudioSegment
 
 
 def _wav(format_tag: int, sample_rate: int, bits: int, frames: bytes, channels: int = 1) -> bytes:
@@ -33,24 +30,6 @@ def _tone(freq_hz: float, rate: int, seconds: float, amplitude: int = 8000) -> b
         struct.pack("<h", int(amplitude * math.sin(2 * math.pi * freq_hz * i / rate)))
         for i in range(count)
     )
-
-
-def test_settings_default_to_narrowband(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("SAMPLE_RATE", raising=False)
-    assert SpeechSettings(_env_file=None).sample_rate == NARROWBAND_RATE
-
-
-@pytest.mark.parametrize("rate", [8000, 16000])
-def test_settings_sample_rate_from_environment(rate: int, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SAMPLE_RATE", str(rate))
-    assert SpeechSettings(_env_file=None).sample_rate == rate
-
-
-@pytest.mark.parametrize("rate", ["44100", "invalid", "8000.5"])
-def test_settings_rejects_invalid_sample_rate(rate: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SAMPLE_RATE", rate)
-    with pytest.raises(ValidationError):
-        SpeechSettings(_env_file=None)
 
 
 def test_g711_silence_and_extremes() -> None:
@@ -84,37 +63,3 @@ def test_downsample_16k_filters_out_of_band() -> None:
         return float(np.sqrt(np.mean(np.frombuffer(s.pcm, dtype=np.int16).astype(np.float64) ** 2)))
 
     assert rms(out_band) < 0.1 * rms(in_band)
-
-
-class _RecordingASR:
-    name = "fake"
-    input_sample_rate = NARROWBAND_RATE
-
-    def __init__(self) -> None:
-        self.received: list[AudioSegment] = []
-
-    def transcribe(self, segment: AudioSegment) -> Transcript:
-        self.received.append(segment)
-        return Transcript(text="alo")
-
-
-def test_pipeline_feeds_asr_at_8k() -> None:
-    pytest.importorskip("numpy")
-    asr = _RecordingASR()
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(EnergyFrameClassifier()))
-
-    assert pipeline.transcribe_segment(
-        AudioSegment(pcm=b"\x00\x00" * 8000, sample_rate=8000)
-    ).is_silence
-    assert asr.received == []
-
-    result = pipeline.transcribe_segment(
-        AudioSegment(pcm=_tone(300, 16000, 0.5), sample_rate=16000)
-    )
-    assert result.text == "alo"
-    assert asr.received[0].sample_rate == NARROWBAND_RATE
-
-
-def test_voice_lookback_rejects_negative_values() -> None:
-    with pytest.raises(ValidationError):
-        SpeechSettings(_env_file=None, asr_voice_lookback_ms=-1)

@@ -2,8 +2,8 @@
 gian thực, in mọi sự kiện: VAD, tín hiệu AsrSegmentEnd, partial/final ASR,
 quyết định TurnValidator, turn gửi lên core. Dùng để tái hiện lỗi của một cuộc gọi thật.
 
-Cấu hình lấy từ `.env` (biến môi trường đã đặt sẵn được ưu tiên), vd. thử bộ phân loại dùng chung:
-    SPEECH_SHARED_DETECTOR=true .venv/bin/python eval/noise-bench/replay_dump.py <wav>
+Cấu hình lấy từ `.env` (biến môi trường đã đặt sẵn được ưu tiên), vd.:
+    TURN_VALIDATOR_ENABLED=false .venv/bin/python eval/noise-bench/replay_dump.py <wav>
 
 Bản ghi không có trạng thái bot nói; `--bot 19.35:on,28.75:off` giả lập bot bắt đầu/dừng
 nói tại các mốc (giây trong file). `--offline` chỉ decode batch từng đoạn Silero, không qua
@@ -31,11 +31,11 @@ for _line in (ROOT / ".env").read_text().splitlines():
         _key, _value = _line.split("=", 1)
         os.environ.setdefault(_key.strip(), _value.strip().strip('"').strip("'"))
 
+from callbot.transports.livekit.settings import LiveKitSettings  # noqa: E402
 from inference.asr import create_asr_gateway  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.bundle import build_streaming_bundle  # noqa: E402
 from speech.settings import SpeechSettings  # noqa: E402
-from speech.turn.controller import TurnController  # noqa: E402
 from speech.turn.validator import TurnValidator  # noqa: E402
 from speech.types import AudioSegment  # noqa: E402
 
@@ -129,14 +129,17 @@ async def replay(
     index_of: dict[int, int] = {}
     keep: list[bytes] = []  # giữ tham chiếu để id(frame) không bị tái sử dụng
     tap = _Tap(asr, index_of)
-    bundle = build_streaming_bundle(settings, asr=tap, frame_ms=30)
-    controller = TurnController(
-        min_speech_ms=settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
-        validator=bundle.validator,
+    livekit = LiveKitSettings()
+    bundle = build_streaming_bundle(
+        settings,
+        sample_rate=RATE,
+        frame_ms=FRAME * 1000 // RATE,
+        input_queue_ms=livekit.input_queue_ms,
+        asr_queue_ms=livekit.asr_queue_ms,
+        barge_in_preroll_ms=livekit.barge_in_preroll_ms,
+        asr=tap,
     )
+    controller = bundle.turn_controller
     loop = asyncio.get_running_loop()
     started = loop.time()
 
@@ -154,13 +157,7 @@ async def replay(
             await asyncio.sleep(max(0.0, started + (n + 1) * 0.03 - loop.time()))
         await asyncio.sleep(1.5)
 
-    async for turn in bundle.stt_pipeline.stream(
-        frames(),
-        turn_controller=controller,
-        evidence_tracker=bundle.evidence_tracker,
-        noise_tracker=bundle.noise_tracker,
-        noise_classifier=bundle.noise_classifier,
-    ):
+    async for turn in bundle.stt_pipeline.stream(frames(), turn_controller=controller):
         print(f"{_stamp()} >>> TURN {turn.text!r}")
 
     fed = tap.fed
@@ -180,9 +177,9 @@ def main() -> None:
         if w.getframerate() != RATE or w.getnchannels() != 1:
             raise SystemExit(f"cần WAV mono {RATE} Hz")
         pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-    settings = SpeechSettings(sample_rate=RATE, vad_provider="silero")
+    settings = SpeechSettings(vad_provider="silero")
     print(
-        f"duration={len(pcm) / RATE:.2f}s shared_detector={settings.speech_shared_detector} "
+        f"duration={len(pcm) / RATE:.2f}s vad={settings.vad_provider} "
         f"validator={settings.turn_validator_enabled}"
     )
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))

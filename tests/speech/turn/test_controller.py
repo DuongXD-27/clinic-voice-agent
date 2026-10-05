@@ -8,7 +8,7 @@ from speech.types import TranscriptEvent
 
 
 async def _next_turn(controller: TurnController, timeout: float = 1.0):
-    return await asyncio.wait_for(anext(controller.turns()), timeout=timeout)
+    return await asyncio.wait_for(controller.get_turn(), timeout=timeout)
 
 
 async def test_final_transcript_emits_turn_immediately() -> None:
@@ -49,7 +49,7 @@ async def test_final_arriving_before_timeout_cancels_timeout_and_uses_final_text
 
 async def test_pause_inside_utterance_does_not_emit_turn_early() -> None:
     """VAD speech_start giữa chừng reset candidate — pause giữa câu không tự chốt turn
-    nếu vẫn còn nói tiếp sau đó (đây là việc của VAD/StreamingVAD phía trên: chỉ phát
+    nếu vẫn còn nói tiếp sau đó (đây là việc của VAD phía trên: chỉ phát
     speech_end khi im lặng đủ dài, TurnController tin tưởng speech_end là thật)."""
     controller = TurnController(max_wait_after_vad_end_ms=50, min_speech_ms=0)
     await controller.on_vad_event(VadEvent("speech_start"))
@@ -69,9 +69,7 @@ async def test_empty_partial_does_not_emit_turn() -> None:
     (partial rỗng) -> không được tạo UserTurnCompleted giả."""
     controller = TurnController(max_wait_after_vad_end_ms=20)
     await controller.on_vad_event(VadEvent("speech_start"))
-    assert controller.has_active_vad_candidate
     await controller.on_vad_event(VadEvent("speech_end"))
-    assert not controller.has_active_vad_candidate
 
     await asyncio.sleep(0.1)
 
