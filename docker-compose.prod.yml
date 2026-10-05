@@ -85,7 +85,8 @@ services:
   caddy:
     image: caddy:2.8-alpine
     restart: unless-stopped
-    command: caddy reverse-proxy --from ${BOT_DOMAIN:?Cần BOT_DOMAIN trong .env} --to bot:8000
+    # BOT_ADDRESS (tuỳ chọn) ghi đè địa chỉ lắng nghe, ví dụ http://<IP> để chạy HTTP thuần không cần domain.
+    command: caddy reverse-proxy --from ${BOT_ADDRESS:-${BOT_DOMAIN:?Cần BOT_DOMAIN trong .env}} --to bot:8000
     ports:
       - "80:80"
       - "443:443"

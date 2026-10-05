@@ -67,7 +67,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
-      url: https://${{ vars.BOT_DOMAIN }}
+      url: ${{ vars.BOT_SCHEME || 'https' }}://${{ vars.BOT_DOMAIN }}
     permissions:
       contents: read
       packages: read
@@ -77,6 +77,8 @@ jobs:
       EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       EC2_USER: ${{ vars.EC2_USER || 'ubuntu' }}
       BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
+      # staging không có domain: đặt BOT_SCHEME=http và BOT_DOMAIN=<IP>; Caddy khi đó chỉ phục vụ HTTP, không xin chứng chỉ.
+      BOT_SCHEME: ${{ vars.BOT_SCHEME || 'https' }}
       CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
       CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
       BOT_API_KEYS: ${{ secrets.BOT_API_KEYS }}
@@ -141,7 +143,12 @@ jobs:
             # Stream the generated env over SSH; do not leave a secrets file on the runner.
             {
               printf '%s\n' "BOT_DOMAIN=$BOT_DOMAIN"
-              printf '%s\n' "PUBLIC_BASE_URL=https://$BOT_DOMAIN"
+              if [ "$BOT_SCHEME" = "http" ]; then
+                printf '%s\n' "BOT_ADDRESS=http://$BOT_DOMAIN"
+              else
+                printf '%s\n' "BOT_ADDRESS=$BOT_DOMAIN"
+              fi
+              printf '%s\n' "PUBLIC_BASE_URL=$BOT_SCHEME://$BOT_DOMAIN"
               printf '%s\n' "CLINIC_MOCK_BASE_URL=$CLINIC_MOCK_BASE_URL"
               printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
               printf '%s\n' "BOT_API_KEYS=$BOT_API_KEYS"
@@ -196,7 +203,7 @@ jobs:
           ready=0
           for _ in $(seq 1 30); do
             # `-w '\n'`: body /ready không có newline, runner giữ dòng đó tới cuối step làm log lệch thứ tự.
-            if curl -fsS --connect-timeout 5 -w '\n' "https://$BOT_DOMAIN/ready"; then
+            if curl -fsS --connect-timeout 5 -w '\n' "$BOT_SCHEME://$BOT_DOMAIN/ready"; then
               ready=1
               break
             fi
@@ -212,7 +219,7 @@ jobs:
           AUTH=()
           if [ -n "$SMOKE_KEY" ]; then AUTH=(-H "Authorization: Bearer $SMOKE_KEY"); fi
           status="$(curl -sS --connect-timeout 5 -o /tmp/smoke_body -w '%{http_code}' \
-            -X POST "https://$BOT_DOMAIN/v1/calls" "${AUTH[@]}" \
+            -X POST "$BOT_SCHEME://$BOT_DOMAIN/v1/calls" "${AUTH[@]}" \
             -H "Content-Type: application/json" -d '{}')"
           if [ "$status" != "422" ]; then
             echo "POST /v1/calls: mong đợi 422, nhận $status" >&2
