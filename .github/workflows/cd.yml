@@ -1,29 +1,33 @@
 name: CD
 
-# CI đã lọc path code/runtime. CD chỉ nhận commit main đã qua CI thành công.
+# CI đã lọc path code/runtime. CD chỉ nhận commit đã qua CI thành công:
+# main -> environment production (tag latest), develop -> environment staging (tag develop).
+# Mỗi environment có EC2_HOST, EC2_SSH_KEY, BOT_DOMAIN và secret riêng, nên hai nhánh deploy lên hai EC2 khác nhau.
 on:
   workflow_run:
     workflows: ["CI"]
-    branches: [main]
+    branches: [main, develop]
     types: [completed]
 
 permissions: {}
 
 concurrency:
-  group: deploy-production
+  group: deploy-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+  CHANNEL_TAG: ${{ github.event.workflow_run.head_branch == 'main' && 'latest' || 'develop' }}
 
 jobs:
   build:
-    name: Build production image
+    name: Build image
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main'
+      (github.event.workflow_run.head_branch == 'main' ||
+       github.event.workflow_run.head_branch == 'develop')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -52,17 +56,17 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}:${{ env.DEPLOY_SHA }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ env.CHANNEL_TAG }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
-    name: Deploy production
+    name: Deploy ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
-      name: production
+      name: ${{ github.event.workflow_run.head_branch == 'main' && 'production' || 'staging' }}
       url: https://${{ vars.BOT_DOMAIN }}
     permissions:
       contents: read
