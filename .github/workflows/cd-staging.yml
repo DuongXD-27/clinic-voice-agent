@@ -1,0 +1,237 @@
+name: CD Staging
+
+# Deploy nhánh develop lên environment staging (EC2 riêng). Tách khỏi cd.yml của production.
+# CI đã lọc path code/runtime. CD chỉ nhận commit develop đã qua CI thành công.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [develop]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  build:
+    name: Build staging image
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push immutable image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.DEPLOY_SHA }}
+            ${{ env.IMAGE }}:develop
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy staging
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: ${{ vars.BOT_SCHEME || 'https' }}://${{ vars.BOT_DOMAIN }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      REMOTE_DIR: /opt/callbot
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+      EC2_USER: ${{ vars.EC2_USER || 'ubuntu' }}
+      BOT_DOMAIN: ${{ vars.BOT_DOMAIN }}
+      # staging không có domain: đặt BOT_SCHEME=http và BOT_DOMAIN=<IP>; Caddy khi đó chỉ phục vụ HTTP, không xin chứng chỉ.
+      BOT_SCHEME: ${{ vars.BOT_SCHEME || 'https' }}
+      CLINIC_MOCK_BASE_URL: ${{ vars.CLINIC_MOCK_BASE_URL }}
+      CLINIC_MOCK_API_KEY: ${{ secrets.CLINIC_MOCK_API_KEY }}
+      BOT_API_KEYS: ${{ secrets.BOT_API_KEYS }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+      NAME_FALLBACK_PROVIDER: ${{ vars.NAME_FALLBACK_PROVIDER || 'none' }}
+      NAME_FALLBACK_MODEL: ${{ vars.NAME_FALLBACK_MODEL }}
+      NAME_FALLBACK_MAX_TOKENS: ${{ vars.NAME_FALLBACK_MAX_TOKENS }}
+      NAME_FALLBACK_TIMEOUT_S: ${{ vars.NAME_FALLBACK_TIMEOUT_S || '3.0' }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Validate staging configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${EC2_HOST:?Missing secret EC2_HOST}"
+          : "${EC2_SSH_KEY:?Missing secret EC2_SSH_KEY}"
+          : "${BOT_DOMAIN:?Missing variable BOT_DOMAIN}"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Prepare staging environment over SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_TARGET="$EC2_USER@$EC2_HOST"
+          ssh -o BatchMode=yes "$SSH_TARGET" \
+            "sudo install -d -o '$EC2_USER' -g '$EC2_USER' -m 700 '$REMOTE_DIR'"
+          scp docker-compose.prod.yml "$SSH_TARGET:$REMOTE_DIR/docker-compose.yml.next"
+
+          # .env trên server do người vận hành quản lý: CD chỉ tạo khi chưa có (lần deploy đầu),
+          # không bao giờ ghi đè. Muốn đổi cấu hình thì sửa trực tiếp /opt/callbot/.env.
+          if ssh -o BatchMode=yes "$SSH_TARGET" "test -f '$REMOTE_DIR/.env'"; then
+            echo "Keeping existing $REMOTE_DIR/.env"
+          else
+            : "${CLINIC_MOCK_BASE_URL:?Missing variable CLINIC_MOCK_BASE_URL}"
+            : "${CLINIC_MOCK_API_KEY:?Missing secret CLINIC_MOCK_API_KEY}"
+            : "${REDIS_PASSWORD:?Missing secret REDIS_PASSWORD}"
+            case "$NAME_FALLBACK_PROVIDER" in
+              none) ;;
+              openai) : "${OPENAI_API_KEY:?Missing secret OPENAI_API_KEY}" ;;
+              gemini) : "${GEMINI_API_KEY:?Missing secret GEMINI_API_KEY}" ;;
+              groq) : "${GROQ_API_KEY:?Missing secret GROQ_API_KEY}" ;;
+              openrouter) : "${OPENROUTER_API_KEY:?Missing secret OPENROUTER_API_KEY}" ;;
+              *) echo "Invalid NAME_FALLBACK_PROVIDER" >&2; exit 1 ;;
+            esac
+            # Stream the generated env over SSH; do not leave a secrets file on the runner.
+            {
+              printf '%s\n' "BOT_DOMAIN=$BOT_DOMAIN"
+              if [ "$BOT_SCHEME" = "http" ]; then
+                printf '%s\n' "BOT_ADDRESS=http://$BOT_DOMAIN"
+              else
+                printf '%s\n' "BOT_ADDRESS=$BOT_DOMAIN"
+              fi
+              printf '%s\n' "PUBLIC_BASE_URL=$BOT_SCHEME://$BOT_DOMAIN"
+              printf '%s\n' "CLINIC_MOCK_BASE_URL=$CLINIC_MOCK_BASE_URL"
+              printf '%s\n' "CLINIC_MOCK_API_KEY=$CLINIC_MOCK_API_KEY"
+              printf '%s\n' "BOT_API_KEYS=$BOT_API_KEYS"
+              printf '%s\n' "DEMO_CLINIC_ADMIN_ENABLED=false"
+              printf '%s\n' "REDIS_PASSWORD=$REDIS_PASSWORD"
+              printf '%s\n' "REDIS_MAXMEMORY=256mb"
+              printf '%s\n' "WEB_CONCURRENCY=2"
+              printf '%s\n' "GEMINI_API_KEY=$GEMINI_API_KEY"
+              printf '%s\n' "OPENAI_API_KEY=$OPENAI_API_KEY"
+              printf '%s\n' "GROQ_API_KEY=$GROQ_API_KEY"
+              printf '%s\n' "OPENROUTER_API_KEY=$OPENROUTER_API_KEY"
+              printf '%s\n' "NAME_FALLBACK_PROVIDER=$NAME_FALLBACK_PROVIDER"
+              printf '%s\n' "NAME_FALLBACK_MODEL=$NAME_FALLBACK_MODEL"
+              printf '%s\n' "NAME_FALLBACK_MAX_TOKENS=$NAME_FALLBACK_MAX_TOKENS"
+              printf '%s\n' "NAME_FALLBACK_TIMEOUT_S=$NAME_FALLBACK_TIMEOUT_S"
+            } | ssh -o BatchMode=yes "$SSH_TARGET" \
+              "umask 077; cat > '$REMOTE_DIR/.env.next' && mv '$REMOTE_DIR/.env.next' '$REMOTE_DIR/.env'"
+          fi
+
+          # IMAGE đổi mỗi lần deploy nên nằm ở file riêng, để không phải đụng tới .env.
+          # Bản đang chạy được giữ ở image.env.prev để rollback (xem docker-compose.prod.yml).
+          printf '%s\n' "IMAGE=$IMAGE:$DEPLOY_SHA" | ssh -o BatchMode=yes "$SSH_TARGET" \
+            "cat > '$REMOTE_DIR/image.env.next'"
+          ssh -o BatchMode=yes "$SSH_TARGET" \
+            "set -eu; cd '$REMOTE_DIR'; \
+            if [ -f image.env ] && ! cmp -s image.env image.env.next; then cp image.env image.env.prev; fi; \
+            mv docker-compose.yml.next docker-compose.yml; \
+            mv image.env.next image.env"
+
+      - name: Pull and restart services
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH_TARGET="$EC2_USER@$EC2_HOST"
+          printf '%s' "$GHCR_TOKEN" | ssh -o BatchMode=yes "$SSH_TARGET" \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+          ssh -o BatchMode=yes "$SSH_TARGET" \
+            "set -eu; \
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT; \
+            cd '$REMOTE_DIR'; \
+            docker compose --env-file .env --env-file image.env config --quiet; \
+            docker compose --env-file .env --env-file image.env pull; \
+            docker compose --env-file .env --env-file image.env up -d --remove-orphans"
+
+      # Chỉ kiểm tra phần callbot tự quản lý: /ready (process, Redis, dọn phiên) và /v1/calls gọi
+      # được với API key. Không mở cuộc gọi: Clinic là hệ thống riêng, dữ liệu dùng chung có thể bị
+      # đổi bất kỳ lúc nào và deploy callbot không được hỏng hay ghi rác vào đó vì smoke test.
+      - name: Smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          ready=0
+          for _ in $(seq 1 30); do
+            # `-w '\n'`: body /ready không có newline, runner giữ dòng đó tới cuối step làm log lệch thứ tự.
+            if curl -fsS --connect-timeout 5 -w '\n' "$BOT_SCHEME://$BOT_DOMAIN/ready"; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" -eq 1
+
+          # Body rỗng: auth chạy trước validate nên key đúng -> 422, sai key -> 401. Request dừng ở
+          # validate, không tạo phiên, không gọi Clinic (khoá bởi tests/transports/http/test_auth.py).
+          # Server bật auth (BOT_API_KEYS trong /opt/callbot/.env) thì secret phải chứa một key
+          # server chấp nhận; dùng key đầu tiên. Secret trống = gọi không kèm header.
+          SMOKE_KEY="$(printf '%s' "${BOT_API_KEYS:-}" | cut -d, -f1 | tr -d '[:space:]')"
+          AUTH=()
+          if [ -n "$SMOKE_KEY" ]; then AUTH=(-H "Authorization: Bearer $SMOKE_KEY"); fi
+          status="$(curl -sS --connect-timeout 5 -o /tmp/smoke_body -w '%{http_code}' \
+            -X POST "$BOT_SCHEME://$BOT_DOMAIN/v1/calls" "${AUTH[@]}" \
+            -H "Content-Type: application/json" -d '{}')"
+          if [ "$status" != "422" ]; then
+            echo "POST /v1/calls: mong đợi 422, nhận $status" >&2
+            cat /tmp/smoke_body >&2; echo >&2
+            exit 1
+          fi
+          echo "POST /v1/calls OK (422 validate, key hợp lệ)"
+
+      # Chỉ dọn khi bản mới đã qua smoke test. `prune -f` cũ chỉ xoá image dangling nên image
+      # tag SHA của mọi lần deploy trước nằm lại mãi. `-a` xoá image không container nào dùng;
+      # filter `until` giữ các bản gần đây để rollback không phải pull lại (GHCR vẫn còn đủ).
+      # Không prune volume: caddy_data giữ chứng chỉ Let's Encrypt.
+      - name: Clean up old images
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes "$EC2_USER@$EC2_HOST" \
+            "docker image prune -af --filter 'until=72h' && docker builder prune -f && docker system df"
