@@ -16,6 +16,7 @@ on:
       - ".env.example"
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/cd-staging.yml"
   pull_request:
     paths:
       - "src/**"
@@ -30,6 +31,7 @@ on:
       - ".env.example"
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
+      - ".github/workflows/cd-staging.yml"
 
 permissions:
   contents: read
