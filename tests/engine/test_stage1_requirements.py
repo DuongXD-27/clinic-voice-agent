@@ -11,7 +11,7 @@ import pytest
 from callbot.engine import CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import InformationExtractor, model_budget
-from callbot.engine.extraction.agreement import extract_agreement
+from callbot.engine.extraction.agreement import confirmation_veto, extract_agreement
 from callbot.engine.extraction.fallback import SlotFillingResult, SlotFillingStatus
 from callbot.engine.extraction.schema import (
     VN_TZ,
@@ -32,6 +32,7 @@ from callbot.engine.verification.names import NameMatch, compare_names
 from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_confirm_dialogue import _at_readback, _context
 from tests.engine.test_output_guard_flow import _MemorySink, _tracer
+from tests.engine.test_reschedule_dialogue import _at_read_back, _say
 
 NOW = datetime(2026, 10, 2, tzinfo=VN_TZ)
 
@@ -128,6 +129,20 @@ def test_name_retry_is_open_persisted_and_limited(second, reason):
     second_action = bot.handle_turn("retry", CallerInput(2, text=second))
     assert second_action.ended and second_action.transfer_reason == reason
     assert all(write[1] == "TRANSFERRED" for write in clinic.writes)
+
+
+def test_dob_before_name_counts_as_understood_and_keeps_the_name_retry():
+    bot = create_orchestrator(FakeClinicAPI())
+    bot.start_call(CallStart("dob_first", "outbound", appointment_id="apt_00417"))
+    first = bot.handle_turn("dob_first", CallerInput(1, text="sinh ngày 14/3/1978"))
+    assert first.utterance == t.ASK_NAME_AFTER_DOB
+    stored = _context(bot, "dob_first")
+    assert stored.identity_retries == {} and stored.failed_understandings == 0
+    unclear = bot.handle_turn("dob_first", CallerInput(2, text="hình như Nguyễn Văn A"))
+    assert not unclear.ended and unclear.utterance == t.ASK_NAME_AGAIN
+    assert _context(bot, "dob_first").identity_retries == {"ASK_NAME": 1}
+    verified = bot.handle_turn("dob_first", CallerInput(3, text="Nguyễn Văn A"))
+    assert verified.state == "AWAITING_INTENT"
 
 
 def test_retry_with_exact_name_and_dob_authenticates_without_disclosing_beforehand():
@@ -409,3 +424,44 @@ def test_write_invariant_blocks_forged_model_confirmation():
     with pytest.raises(SevereFailureBlocked):
         bot._dialogue._gateway.confirm(ctx)
     assert clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "vâng, không vấn đề gì",
+        "được, không sao",
+        "vâng, không sao đâu",
+        "dạ vâng, không có gì",
+        "khong van de gi",
+    ],
+)
+def test_affirmative_idioms_with_khong_confirm_at_readback(text):
+    assert not confirmation_veto(text)
+    bot, clinic, _ = _at_readback("idiom")
+    action = bot.handle_turn("idiom", CallerInput(3, text=text))
+    assert action.outcome == "CONFIRMED"
+    assert [write[1] for write in clinic.writes] == ["CONFIRMED"]
+
+
+def test_affirmative_idiom_with_khong_reschedules_at_slot_readback():
+    clinic, bot = _at_read_back("idiom_slot")
+    _say(bot, "idiom_slot", "được, không sao đâu")
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_b502"})]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "vâng, không",
+        "đồng ý, à không",
+        "tôi muốn hủy à không chỉ hỏi thôi",
+        "tôi đổi ý",
+        "không sao, nhưng không đi được",
+        "vâng không sao, à không",
+    ],
+)
+def test_negation_outside_affirmative_idioms_still_vetoes(text):
+    assert confirmation_veto(text)
+    for question in (QuestionId.CONFIRM_READBACK, QuestionId.SLOT_READBACK):
+        assert extract_agreement(text, question).value is not Agreement.AGREE

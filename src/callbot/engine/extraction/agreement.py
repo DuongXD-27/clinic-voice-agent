@@ -454,8 +454,12 @@ def extract_agreement(
 
 
 def confirmation_veto(transcript: str) -> bool:
-    """R-41: rechecked by the write invariant, independently of a model's AGREE label."""
-    text = clean(transcript)
+    """R-41: rechecked by the write invariant, independently of a model's AGREE label.
+
+    Affirmative idioms ("không sao", "không vấn đề gì") are removed first: their "không" is not a
+    negation. Any other "không / chưa / đừng" left in the turn still vetoes it.
+    """
+    text = remove_phrases(clean(transcript), _AGREE_IDIOMS)
     return is_bare_da(transcript) or bool(
         re.search(r"(?<!\w)(?:không|khong|chưa|chua|đừng|đổi ý|doi y)(?!\w)", text)
         or (is_unaccented(text) and _has_ambiguous_dung(text))

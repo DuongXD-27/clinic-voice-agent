@@ -244,7 +244,7 @@ def test_slot_readback_threshold(text: str, expected: Agreement) -> None:
     "text", ["vâng", "có", "được ạ", "ừ đúng rồi", "dạ", "không sao", "không vấn đề gì", "được chứ"]
 )
 def test_confirm_readback_accepts_any_affirmative(text: str) -> None:
-    if text in ("dạ", "không sao", "không vấn đề gì"):
+    if text == "dạ":
         assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
         return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
@@ -458,9 +458,6 @@ def test_filler_sound_alone_is_not_a_confirmation(text: str) -> None:
     ],
 )
 def test_short_attendance_answers_still_agree(text: str) -> None:
-    if text in ("không thành vấn đề", "không có vấn đề gì"):
-        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
-        return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 

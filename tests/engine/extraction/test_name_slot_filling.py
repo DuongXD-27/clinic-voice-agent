@@ -425,12 +425,12 @@ def test_silence_prompt_keeps_the_pending_business_question(monkeypatch):
 def test_name_after_dob_sends_only_the_current_question_and_answer(monkeypatch):
     bot, payloads = recorded_bot(monkeypatch, "slot-dob", completion())
     action = bot.handle_turn("slot-dob", CallerInput(turn=1, text="14/03/1978"))
-    assert action.utterance == t.ASK_NAME_AGAIN and payloads == []
+    assert action.utterance == t.ASK_NAME_AFTER_DOB and payloads == []
     bot.handle_turn("slot-dob", CallerInput(turn=2, text=TRANSCRIPT))
     assert [sent_turn(p) for p in payloads] == [
         {
             "question_id": "ASK_NAME",
-            "bot_question": t.ASK_NAME_AGAIN,
+            "bot_question": t.ASK_NAME_AFTER_DOB,
             "customer_answer": TRANSCRIPT,
         }
     ]

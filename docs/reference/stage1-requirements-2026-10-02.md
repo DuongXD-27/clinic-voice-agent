@@ -10,6 +10,7 @@ Phạm vi: R-19, R-22, R-23, R-31, R-40 và R-41 theo bảng yêu cầu ngày 01
 - Không khớp thì chuyển máy ngay. Trường thiếu, nhiều giá trị, không chắc hoặc tên nghi ngờ được hỏi mở lại đúng trường, tối đa một lần. Bộ đếm từng trường lưu trong phiên và lượt hỏi lại dùng chung bộ đếm không hiểu.
 - Lần hỏi lại vẫn không có giá trị chắc chắn thì `NOT_UNDERSTOOD`; tên vẫn nghi ngờ hoặc định danh không khớp thì `IDENTITY_FAILED` trên outbound. Inbound không có hồ sơ duy nhất khớp dùng `PATIENT_NOT_FOUND` theo R-09.
 - Lời chào hoặc nhu cầu nghiệp vụ không cung cấp định danh cũng thuộc `ABSENT`, không được dùng để kéo dài số lần hỏi lại. Im lặng vẫn dùng bộ đếm riêng; xin nhắc lại và yêu cầu chờ vẫn có cách xử lý riêng.
+- Lượt điền được định danh còn thiếu là hiểu, kể cả khi không phải định danh đang hỏi (đang hỏi tên mà khách khai ngày sinh): giữ ngày sinh, hỏi `ASK_NAME_AFTER_DOB`, không dùng lượt hỏi lại. Nếu cùng lượt đó tên là `UNCERTAIN`, `MULTIPLE` hoặc nghi ngờ thì vẫn dùng lượt hỏi lại tên.
 - Confidence STT dưới 0.5 là tín hiệu bổ sung để xếp `UNCERTAIN`. Confidence cao không khôi phục tên/ngày sinh bị luật đánh dấu phân vân, phủ định hoặc nhiều giá trị.
 
 ## Model và xác nhận
@@ -20,6 +21,7 @@ Phạm vi: R-19, R-22, R-23, R-31, R-40 và R-41 theo bảng yêu cầu ngày 01
 - Event `ie.model` chỉ ghi `model`, `latency_ms`, `model_result`; không chứa transcript, prompt hay span.
 - “Dạ” đơn thuần không bao giờ là đồng ý. “Dạ vâng” có từ đồng ý độc lập và vẫn phải qua ngưỡng của hành động.
 - Câu có tín hiệu đồng ý và phủ định/đổi ý phải hỏi lại có/không. Invariant kiểm tra lại transcript của lượt và bằng chứng trước khi ghi, không tin riêng nhãn của model. Câu hỏi “được không?” và lời từ chối thuần túy vẫn đi theo luồng hỏi lại/từ chối.
+- Cụm khẳng định cố định không phải phủ định: “không sao”, “không sao đâu”, “không vấn đề”, “không vấn đề gì”, “không có vấn đề gì”, “không thành vấn đề”, “không có gì” (danh sách `_AGREE_IDIOMS` trong `extraction/agreement.py`, dùng chung cho IE và invariant ghi). Bỏ các cụm này trước khi tìm “không / chưa / đừng / đổi ý”; còn từ phủ định nào khác thì vẫn hỏi lại có/không. **Cần PO duyệt danh sách này.**
 - `/transfer` vẫn được phép ghi `TRANSFERRED`; khóa lỗi model chỉ cấm các lệnh ghi nghiệp vụ của lượt.
 
 ## Đầu ra

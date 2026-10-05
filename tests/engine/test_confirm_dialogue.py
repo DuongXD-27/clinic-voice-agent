@@ -395,12 +395,6 @@ def test_yes_after_the_reread_confirms() -> None:
 
 @pytest.mark.parametrize("answer", ["không thành vấn đề", "nhất định rồi", "tôi sẽ có mặt"])
 def test_other_ways_of_agreeing_confirm_in_one_turn(answer: str) -> None:
-    if answer in ("không thành vấn đề",):
-        bot, clinic, _ = _at_readback("c_unsafe")
-        action = _run(bot, "c_unsafe", [answer], start=3)
-        assert not action.ended and clinic.writes == []
-        assert _context(bot, "c_unsafe").evidence == []
-        return
     bot, clinic, _ = _at_readback("c_t04s8_agree")
     action = _run(bot, "c_t04s8_agree", [answer], start=3)
     assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]

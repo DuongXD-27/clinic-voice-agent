@@ -272,12 +272,12 @@ class DialogueManager:
         ctx.identity_step = question.value
         if name_suspicious:
             return self._retry_identity(ctx, QuestionId.ASK_NAME, suspicious=True)
-        expected = ex.question_id or question
-        if progressed and question is not expected:
-            if question is QuestionId.ASK_DOB and dob.status in (
-                IdentityStatus.UNCERTAIN,
-                IdentityStatus.MULTIPLE,
-            ):
+        if progressed:
+            # Q-1: filling a missing identifier counts as understood, even when it was not the one
+            # asked ("sinh ngày 14/3/1978" while asking the name). Only an unclear attempt at the
+            # remaining identifier in the same turn spends its retry.
+            pending = name if question is QuestionId.ASK_NAME else dob
+            if pending.status in (IdentityStatus.UNCERTAIN, IdentityStatus.MULTIPLE):
                 return self._retry_identity(ctx, question)
             text = t.ASK_NAME_AFTER_DOB if question is QuestionId.ASK_NAME else t.ASK_DOB
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))

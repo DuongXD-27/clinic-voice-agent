@@ -126,7 +126,7 @@ def test_inbound_name_and_dob_in_one_answer() -> None:
 
 def test_dob_before_name_is_kept_and_only_name_is_asked() -> None:
     actions, _ = _call(_outbound("c_dob_first"), [DOB, NAME])
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
+    assert actions[1].utterance == t.ASK_NAME_AFTER_DOB
     assert actions[2].state == "AWAITING_INTENT"
     _assert_no_disclosure(actions)
 
@@ -189,9 +189,9 @@ def test_out_of_scope_at_name_step_transfers_even_with_digits() -> None:
 
 
 def test_repeating_known_dob_does_not_reset_the_counter() -> None:
-    actions, _ = _call(_outbound("c_loop"), [DOB, DOB])
-    assert actions[1].state == "AWAITING_IDENTITY"
-    _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
+    actions, _ = _call(_outbound("c_loop"), [DOB, DOB, DOB])
+    assert actions[1].state == actions[2].state == "AWAITING_IDENTITY"
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
 def test_missing_name_twice_transfers_not_understood() -> None:
