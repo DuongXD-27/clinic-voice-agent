@@ -16,6 +16,9 @@ bot cho thêm hai mốc phía server, nên mỗi lượt có 4 mốc:
 Mốc "có tiếng" là frame đầu vượt ngưỡng năng lượng (--rms), nên gồm cả đoạn lặng đầu câu của
 provider và độ trễ mạng — như nhau giữa hai lần chạy cùng provider, nên so trước / sau vẫn đúng.
 Không ghi text: chỉ số ký tự câu bot nói. Chạy trong container bot (xem run.sh).
+
+--wav nhận file WAV thay câu TTS, mỗi file một lượt, phát theo thời gian thực.
+--include-transcripts lưu thêm text để so với nhãn; --out ghi JSON sạch vào file.
 """
 
 from __future__ import annotations
@@ -146,10 +149,11 @@ class Mic:
 
 
 class Call:
-    def __init__(self, threshold: float) -> None:
+    def __init__(self, threshold: float, *, include_transcripts: bool = False) -> None:
         self.audio = BotAudio(threshold)
         self.messages: list[dict] = []
         self._tasks: list[asyncio.Task] = []
+        self._include_transcripts = include_transcripts
 
     def on_data(self, packet) -> None:
         if getattr(packet, "topic", None) != TRANSCRIPT_TOPIC:
@@ -167,6 +171,8 @@ class Call:
                 "ended": bool(message.get("ended")),
             }
         )
+        if self._include_transcripts:
+            self.messages[-1]["text"] = message.get("text") or ""
 
     def on_track(self, track, publication, participant) -> None:
         from livekit import rtc
@@ -224,7 +230,7 @@ async def one_call(
 
     grant = token(args.base_url, args.appointment)
     room_name = grant["room_name"]
-    call = Call(args.rms)
+    call = Call(args.rms, include_transcripts=args.include_transcripts)
     room = rtc.Room()
     room.on("data_received", call.on_data)
     room.on("track_subscribed", call.on_track)
@@ -253,7 +259,9 @@ async def one_call(
         }
         rows.append(row)
         bot = await wait_for(lambda: call.message("bot", 0), args.timeout, "bot_text_0")
-        onset = await wait_for(lambda: call.audio.onset_after(joined), args.timeout, "bot_audio_0")
+        onset = await wait_for(
+            lambda: call.audio.onset_after(max(joined, bot["at"])), args.timeout, "bot_audio_0"
+        )
         row.update(
             engine_ms=round(bot["at"] - joined),  # gồm dispatch worker + Clinic + Engine
             tts_ms=round(onset - bot["at"]),
@@ -286,8 +294,9 @@ async def one_call(
                 lambda t=turn: call.message("bot", t), args.timeout, f"bot_text_{turn}"
             )
             caller = call.message("caller", turn)
+            response_since = max(said_to, bot["at"])
             onset = await wait_for(
-                lambda since=said_to: call.audio.onset_after(since),
+                lambda since=response_since: call.audio.onset_after(since),
                 args.timeout,
                 f"bot_audio_{turn}",
             )
@@ -322,6 +331,8 @@ async def one_call(
         await call.close()
         await room.disconnect()
         await source.aclose()
+    if args.include_transcripts:
+        args.transcripts.extend({"call_id": room_name, **message} for message in call.messages)
     return room_name, rows
 
 
@@ -345,7 +356,9 @@ async def barge_in(
     try:
         bot = await wait_for(lambda: call.message("bot", turn + 1), args.timeout, "bot_text_barge")
         onset = await wait_for(
-            lambda: call.audio.onset_after(said_to), args.timeout, "bot_audio_barge"
+            lambda: call.audio.onset_after(max(said_to, bot["at"])),
+            args.timeout,
+            "bot_audio_barge",
         )
         caller = call.message("caller", turn + 1)
         row.update(
@@ -358,11 +371,30 @@ async def barge_in(
         row["note"] = "không thấy lượt bot đáp câu nói chen"
 
 
+def wav_clip(path: str) -> bytes:
+    from speech.audio.codec import decode_wav
+
+    pcm = decode_wav(Path(path).read_bytes(), target_rate=RATE).pcm
+    if not pcm:
+        raise ValueError(f"WAV không có audio: {path}")
+    return pcm
+
+
 async def run(args) -> dict:
     cache = Path(args.cache_dir)
-    log(f"[livekit {args.label}] sinh/đọc cache câu người gọi...")
-    clips = [caller_clip(text, RATE, cache) for text in args.lines]
-    barge_clip = caller_clip(BARGE_IN_LINE, RATE, cache) if args.barge_in else None
+    log(f"[livekit {args.label}] nạp audio người gọi...")
+    clips = (
+        [wav_clip(path) for path in args.wav]
+        if args.wav
+        else [caller_clip(text, RATE, cache) for text in args.lines]
+    )
+    barge_clip = None
+    if args.barge_in:
+        barge_clip = (
+            wav_clip(args.barge_in_wav)
+            if args.barge_in_wav
+            else caller_clip(BARGE_IN_LINE, RATE, cache)
+        )
     meta = base_meta(args.label, args.image)
     meta.update(
         base_url=args.base_url,
@@ -371,6 +403,8 @@ async def run(args) -> dict:
         caller_turns=len(clips),
         barge_in=args.barge_in,
         rms_threshold=args.rms,
+        caller_source="wav" if args.wav else "tts",
+        caller_audio_ms=[round(len(pcm) / 2 / RATE * 1000) for pcm in clips],
     )
     samples, call_ids = [], []
     for index in range(1, args.calls + 1):
@@ -387,7 +421,8 @@ async def run(args) -> dict:
         if index < args.calls:
             await asyncio.sleep(args.gap)
     meta["call_ids"] = call_ids
-    return result("livekit", meta, samples)
+    extra = {"transcripts": args.transcripts} if args.include_transcripts else {}
+    return result("livekit", meta, samples, **extra)
 
 
 def summarize(data: dict) -> dict:
@@ -453,7 +488,14 @@ def main() -> int:
         "--base-url", default="http://localhost:8000", help="nơi xin token /livekit/token"
     )
     parser.add_argument("--appointment", default="apt_00427")
-    parser.add_argument("--say", action="append", default=None)
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument("--say", action="append", default=None)
+    source.add_argument("--wav", action="append", help="WAV người gọi; lặp flag cho mỗi lượt")
+    parser.add_argument("--barge-in-wav", help="WAV ngắt lời, tự bật --barge-in")
+    parser.add_argument("--include-transcripts", action="store_true", help="lưu text tới engine")
+    parser.add_argument(
+        "--out", type=Path, help="ghi JSON vào file, tránh stdout của thư viện native"
+    )
     parser.add_argument(
         "--rms", type=float, default=300.0, help="ngưỡng năng lượng coi là bot có tiếng"
     )
@@ -465,12 +507,24 @@ def main() -> int:
     profile = PROFILES[args.profile]
     args.calls = args.calls if args.calls is not None else profile["calls"]
     args.barge_in = args.barge_in if args.barge_in is not None else profile["barge_in"]
-    args.lines = args.say or CALLER_LINES
+    if args.barge_in_wav:
+        args.barge_in = True
+    if args.wav and args.barge_in and not args.barge_in_wav:
+        parser.error("Dùng WAV và barge-in cần --barge-in-wav; profile quick chỉ phát WAV đã chọn.")
+    args.lines = [] if args.wav else args.say or CALLER_LINES
+    args.transcripts = []
     args.base_url = args.base_url.rstrip("/")
+    if args.calls < 1 or args.timeout <= 0:
+        parser.error("--calls và --timeout phải lớn hơn 0")
+    for path in (args.wav or []) + ([args.barge_in_wav] if args.barge_in_wav else []):
+        try:
+            wav_clip(path)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
 
-    turns = 1 + len(args.lines) + (1 if args.barge_in else 0)
+    turns = 1 + len(args.wav or args.lines) + (1 if args.barge_in else 0)
     bot = args.calls * turns * BOT_CHARS_PER_TURN
-    lines = args.lines + ([BARGE_IN_LINE] if args.barge_in else [])
+    lines = args.lines + ([BARGE_IN_LINE] if args.barge_in and not args.barge_in_wav else [])
     caller = caller_quota(lines, Path(args.cache_dir))
     log(f"[livekit] dự kiến: bot ~{bot} ký tự (ước lượng), câu người gọi {caller} ký tự")
     if args.dry_run:
@@ -478,7 +532,12 @@ def main() -> int:
     data = asyncio.run(run(args))
     log()
     log(report(data))
-    emit(data)
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        log(f"Kết quả: {args.out}")
+    else:
+        emit(data)
     return 0
 
 
