@@ -12,6 +12,9 @@ input_sample_rate: 16000
 frame_ms: 30
 # Backpressure: 1,5 s đủ hấp thụ jitter ngắn nhưng buộc producer chậm lại nếu inference không kịp
 input_queue_ms: 1500
+# Hàng đợi riêng của ASR, rộng hơn input_queue_ms nhiều: decode chậm không được chặn VAD/barge-in.
+# Cache kết quả phân loại frame (SharedSpeechDetector) được tính theo hai hàng đợi này + pre-roll.
+asr_queue_ms: 30000
 # Giữ phần đầu câu nói chen lúc bot đang phát, replay vào ASR khi xác nhận barge-in thật
 barge_in_preroll_ms: 500
 # Queue phát càng dài thì barge-in càng chậm (default LiveKit AudioSource là 1000)

@@ -5,8 +5,9 @@ import pytest
 
 pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 
+from tests.speech.pipeline_factory import make_stt_pipeline  # noqa: E402
+
 from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
-from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
 from speech.audio.noise_tracker import NoiseTracker  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
@@ -87,9 +88,9 @@ async def test_hallucination_pattern_from_real_noise_is_dropped_end_to_end() -> 
     turn_controller = TurnController(min_speech_ms=0, validator=validator)
     # Classifier giả luôn báo có tiếng nói (đúng tình huống thật: VAD nhận nhầm nhiễu).
     evidence = TurnEvidence(
-        _AlwaysSpeechClassifier(), transcript=evidence_tracker, noise=noise_tracker
+        _AlwaysSpeechClassifier(), frame_ms=30, transcript=evidence_tracker, noise=noise_tracker
     )
-    pipeline = STTPipeline(asr=asr, vad=vad, evidence=evidence)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, evidence=evidence)
 
     # Frame gần như im lặng (biên độ thấp, gần noise_floor mặc định).
     silence_like_frame = b"\x00\x05" * 240
@@ -108,7 +109,7 @@ async def test_validator_none_by_default_keeps_old_behavior() -> None:
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
     asr = _FakeASR([TranscriptEvent(text="tôi muốn đổi lịch", is_final=True)])
     turn_controller = TurnController(min_speech_ms=0)
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     turns = await asyncio.wait_for(
         _collect(pipeline.stream(_frames(4), turn_controller=turn_controller)), timeout=2.0
@@ -163,7 +164,8 @@ async def test_short_answer_final_after_silence_is_not_dropped() -> None:
     asr = _FinalAfterFramesASR([(len(frames), "dạ không")])
     vad = _FakeAsyncVAD([VadEvent("speech")] * 10 + [VadEvent("speech_start")])
     controller = TurnController(min_speech_ms=0, validator=TurnValidator(min_snr_db=3.0))
-    pipeline = STTPipeline(asr=asr, vad=vad, evidence=TurnEvidence(_ByFrameClassifier(loud)))
+    evidence = TurnEvidence(_ByFrameClassifier(loud), frame_ms=30)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, evidence=evidence)
 
     turns = await asyncio.wait_for(
         _collect(pipeline.stream(_sequence(frames), turn_controller=controller)),
@@ -190,10 +192,10 @@ async def test_stability_is_judged_per_utterance() -> None:
 
     tracker = _SpyTracker()
     asr = _FinalAfterFramesASR([(5, "vâng"), (10, "có"), (15, "vâng")])
-    pipeline = STTPipeline(
+    pipeline = make_stt_pipeline(
         asr=asr,
         vad=_FakeAsyncVAD([]),
-        evidence=TurnEvidence(_AlwaysSpeechClassifier(), transcript=tracker),
+        evidence=TurnEvidence(_AlwaysSpeechClassifier(), frame_ms=30, transcript=tracker),
     )
 
     await asyncio.wait_for(

@@ -37,6 +37,7 @@ from callbot.transports.http.schemas import (
     TurnResponse,
 )
 from callbot.transports.input_mapping import caller_input_from_transcript
+from speech.audio.loader import load_from_url
 from speech.bundle import SpeechBundle
 from speech.types import Transcript
 
@@ -117,7 +118,7 @@ def _transcribe(tracer: Tracer, speech: SpeechBundle, audio_url: str) -> Transcr
             streaming=False,
         )
         try:
-            segment = speech.audio_loader(audio_url)
+            segment = load_from_url(audio_url)
         except Exception as exc:
             _set_speech_error(span, exc, stage="STT_LOAD")
             raise _error(503, "UPSTREAM", "Không thể tải hoặc giải mã audio đầu vào") from exc

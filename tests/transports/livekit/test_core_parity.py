@@ -9,6 +9,7 @@ from tests.transports.livekit_support import require_livekit
 require_livekit()
 
 from tests.transports.http.test_audio_parity import SCENARIOS, _records  # noqa: E402
+from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
 from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
     _FakeAudioSource,
     _FakeRoom,
@@ -18,7 +19,6 @@ from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
 
 from callbot.engine import CallerInput, CallStart, EngineSettings, create_orchestrator  # noqa: E402
 from callbot.engine.extraction.schema import VN_TZ  # noqa: E402
-from callbot.transports.livekit.call_bridge import CallBridge  # noqa: E402
 from clinic_mock_sim import FakeClinicAPI  # noqa: E402
 from speech.turn.events import UserTurnCompleted  # noqa: E402
 
@@ -55,7 +55,7 @@ async def test_bridge_and_text_share_core_actions_and_clinic_state(
             for text in lines
         ]
     )
-    bridge = CallBridge(room, bots[1], pipeline, tts, **config)
+    bridge = make_call_bridge(room, bots[1], pipeline, tts, **config)
     source = _FakeAudioSource()
 
     async def publish():

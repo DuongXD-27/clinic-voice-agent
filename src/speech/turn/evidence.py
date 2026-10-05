@@ -22,13 +22,15 @@ class TurnEvidence:
         self,
         noise_classifier: FrameClassifier,
         *,
+        frame_ms: int,
         transcript: Optional[TranscriptEvidenceTracker] = None,
         noise: Optional[NoiseTracker] = None,
     ) -> None:
         self._noise_classifier = noise_classifier
         self._transcript = transcript or TranscriptEvidenceTracker()
         self._noise = noise or NoiseTracker()
-        self._utterance = UtteranceEvidenceTracker()
+        # Các cửa sổ của tracker tính bằng frame: phải biết frame dài bao nhiêu ms.
+        self._utterance = UtteranceEvidenceTracker(frame_ms=frame_ms)
         self.frame_noise: Optional[NoiseEvidence] = None
         self.utterance_noise: Optional[NoiseEvidence] = None
 

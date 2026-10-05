@@ -9,7 +9,8 @@ các frame nó nhận. Bot bắt đầu nói giữa câu người dùng — câu
 import asyncio
 from typing import AsyncIterator
 
-from speech.asr.pipeline import STTPipeline
+from tests.speech.pipeline_factory import make_stt_pipeline
+
 from speech.asr.vad.base import VadEvent
 from speech.turn.controller import TurnController
 from speech.turn.interruption import InterruptionController, InterruptionState
@@ -85,7 +86,7 @@ async def test_bot_starting_to_speak_discards_pending_asr_segment() -> None:
     frames = [_make_frame(i) for i in range(1, 7)]
     controller = TurnController(min_speech_ms=0)
     asr = _RecordingASR()
-    pipeline = STTPipeline(asr=asr, vad=_FakeAsyncVAD([]))
+    pipeline = make_stt_pipeline(asr=asr, vad=_FakeAsyncVAD([]))
 
     def _bot_starts_at_frame_3(index: int) -> None:
         if index == 3:
@@ -113,7 +114,7 @@ async def test_rejected_barge_in_candidate_discards_asr_segment() -> None:
         [VadEvent("speech_start"), VadEvent("speech", b"x"), VadEvent("speech_end")]
     )
     asr = _RecordingASR()
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     frames = [_make_frame(i) for i in range(1, 8)]
     await asyncio.wait_for(
@@ -139,7 +140,7 @@ async def test_confirmed_barge_in_keeps_asr_segment() -> None:
     interruption.on_bot_started_speaking()
     vad = _FakeAsyncVAD([VadEvent("speech_start")] + [VadEvent("speech", b"x")] * 7)
     asr = _RecordingASR(partial_after=2)
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     frames = [_make_frame(i) for i in range(1, 9)]
     await asyncio.wait_for(
@@ -160,7 +161,7 @@ async def test_no_marker_when_asr_received_nothing() -> None:
     controller = TurnController(min_speech_ms=0)
     controller.on_bot_speaking_changed(True)
     asr = _RecordingASR()
-    pipeline = STTPipeline(asr=asr, vad=_FakeAsyncVAD([]))
+    pipeline = make_stt_pipeline(asr=asr, vad=_FakeAsyncVAD([]))
 
     frames = [_make_frame(i) for i in range(1, 5)]
     await asyncio.wait_for(

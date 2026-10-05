@@ -3,7 +3,8 @@
 import asyncio
 from typing import AsyncIterator
 
-from speech.asr.pipeline import STTPipeline
+from tests.speech.pipeline_factory import make_stt_pipeline
+
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
 from speech.turn.controller import TurnController
@@ -57,10 +58,10 @@ async def _aiter(frames: list[bytes]) -> AsyncIterator[bytes]:
 
 async def test_each_frame_is_classified_once_for_all_consumers() -> None:
     classifier = _CountingClassifier()
-    detector = SharedSpeechDetector(classifier)
+    detector = SharedSpeechDetector(classifier, capacity=64)
     frames = _frames("..SSSSS" + "." * 25)
     asr = _ViewCheckingASR(detector.view())
-    pipeline = STTPipeline(
+    pipeline = make_stt_pipeline(
         asr=asr,
         vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600),
         detector=detector,

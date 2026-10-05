@@ -2,8 +2,8 @@ import asyncio
 from typing import AsyncIterator
 
 import pytest
+from tests.speech.pipeline_factory import make_stt_pipeline
 
-from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import VadEvent
 from speech.turn.controller import TurnController
 from speech.turn.interruption import InterruptionController, InterruptionState
@@ -85,7 +85,7 @@ async def _realtime_frames(count: int) -> AsyncIterator[bytes]:
 async def test_stream_combines_vad_and_asr_into_user_turn_completed() -> None:
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
     asr = _FakeASR([TranscriptEvent(text="xin chào bác sĩ", is_final=True)])
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     turns = await asyncio.wait_for(
         _collect(pipeline.stream(_frames(5), turn_controller=TurnController(min_speech_ms=0))),
@@ -101,9 +101,11 @@ async def test_stream_stops_after_frames_exhausted_with_no_pending_turn() -> Non
     hết, không treo vô hạn chờ turn không bao giờ tới."""
     vad = _FakeAsyncVAD([])
     asr = _FakeASR([])
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
-    turns = await asyncio.wait_for(_collect(pipeline.stream(_frames(3))), timeout=2.0)
+    turns = await asyncio.wait_for(
+        _collect(pipeline.stream(_frames(3), TurnController())), timeout=2.0
+    )
 
     assert turns == []
 
@@ -114,7 +116,7 @@ async def test_stream_vad_and_asr_run_concurrently_not_sequentially() -> None:
     delay = 0.05
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")], emit_delay=delay)
     asr = _FakeASR([TranscriptEvent(text="song song", is_final=True)], emit_delay=delay)
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
     start = asyncio.get_event_loop().time()
     turns = await asyncio.wait_for(
@@ -145,7 +147,7 @@ async def test_stream_feeds_interruption_controller_with_same_vad_and_asr_events
     # giữa 2 task song song thay vì phụ thuộc lịch trình mặc định của event loop.
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")], emit_delay=[0.0, 0.04])
     asr = _FakeASR([TranscriptEvent(text="dừng lại", is_final=True)], emit_delay=[0.02])
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
     tts = _FakeCancellableTTS()
     # min_speech_ms=0: final ASR đến ở t=0.02s — dưới ngưỡng mặc định 200ms của
     # InterruptionController; test này kiểm tra wiring event, không phải ngưỡng duration
@@ -180,7 +182,7 @@ async def test_stream_blocks_asr_frames_while_bot_speaking() -> None:
     dù VAD vẫn nhận đủ (để InterruptionController phát hiện barge-in)."""
     vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
     asr = _FakeASR([])
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
     controller = TurnController(min_speech_ms=0)
     controller.on_bot_speaking_changed(True)
 
@@ -201,7 +203,7 @@ async def test_confirmed_barge_in_replays_bounded_preroll_to_asr() -> None:
         [VadEvent("speech_start"), VadEvent("speech", b"x"), VadEvent("speech_end")]
     )
     asr = _FakeASR([TranscriptEvent(text="dừng lại", is_final=False)], emit_delay=0.015)
-    pipeline = STTPipeline(
+    pipeline = make_stt_pipeline(
         asr=asr,
         vad=vad,
         barge_in_preroll_frames=3,

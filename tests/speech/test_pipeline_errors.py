@@ -3,10 +3,11 @@
 import asyncio
 
 import pytest
+from tests.speech.pipeline_factory import make_stt_pipeline
 
-from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.energy import EnergyFrameClassifier
+from speech.turn.controller import TurnController
 
 
 class _ASR:
@@ -40,7 +41,7 @@ async def _frames(broken=False):
 @pytest.mark.parametrize("stage", ["asr", "vad", "input"])
 @pytest.mark.parametrize("queue_size", [1, 50])
 async def test_stream_worker_error_propagates_without_a_caller_turn(stage, queue_size):
-    pipeline = STTPipeline(
+    pipeline = make_stt_pipeline(
         asr=_BrokenASR() if stage == "asr" else _ASR(),
         vad=_BrokenVAD() if stage == "vad" else AsyncStreamingVAD(EnergyFrameClassifier(100)),
         queue_max_frames=queue_size,
@@ -48,7 +49,7 @@ async def test_stream_worker_error_propagates_without_a_caller_turn(stage, queue
     turns = []
 
     async def collect():
-        async for turn in pipeline.stream(_frames(broken=stage == "input")):
+        async for turn in pipeline.stream(_frames(broken=stage == "input"), TurnController()):
             turns.append(turn)
 
     with pytest.raises(RuntimeError, match=f"{stage} failure"):

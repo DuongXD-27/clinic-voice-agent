@@ -56,10 +56,11 @@ async def entrypoint(ctx: JobContext) -> None:
     bundle = build_streaming_bundle(
         speech_settings,
         sample_rate=livekit_settings.input_sample_rate,
-        asr=prewarmed_asr,
         frame_ms=livekit_settings.frame_ms,
-        queue_max_frames=max(1, livekit_settings.input_queue_ms // livekit_settings.frame_ms),
+        input_queue_ms=livekit_settings.input_queue_ms,
+        asr_queue_ms=livekit_settings.asr_queue_ms,
         barge_in_preroll_ms=livekit_settings.barge_in_preroll_ms,
+        asr=prewarmed_asr,
     )
     # Cùng CLINIC_BACKEND với bot HTTP. sim: mỗi job (mỗi cuộc gọi) một clinic mới seed lại, nên
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.

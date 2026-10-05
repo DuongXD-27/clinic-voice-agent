@@ -32,7 +32,7 @@ from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
 from speech.turn.validator import TurnValidator
-from speech.types import NARROWBAND_RATE, AudioSegment
+from speech.types import AudioSegment
 
 if TYPE_CHECKING:
     from livekit import rtc
@@ -111,20 +111,22 @@ class CallBridge:
         stt_pipeline: STTPipeline,
         tts: SpeechSynthesizer,
         *,
-        sample_rate: int = NARROWBAND_RATE,
+        turn_controller: TurnController,
+        interruption_validator: Optional[TurnValidator],
+        interruption_min_snr_db: Optional[float],
+        sample_rate: int,
+        frame_ms: int,
+        input_queue_ms: int,
+        output_queue_ms: int,
+        silence_timeout_ms: int,
+        krisp_noise_suppression_enabled: bool,
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
-        turn_controller: Optional[TurnController] = None,
-        interruption_validator: Optional[TurnValidator] = None,
-        interruption_min_snr_db: Optional[float] = None,
-        frame_ms: int = 30,
-        input_queue_ms: int = 1_500,
-        output_queue_ms: int = 200,
         caller_identity: Optional[str] = None,
-        silence_timeout_ms: int = 0,
-        krisp_noise_suppression_enabled: bool = False,
     ) -> None:
+        """Mọi tham số cấu hình (StreamingSpeechBundle, config/livekit.yaml, config/speech.yaml)
+        đều bắt buộc — worker.py truyền đủ. Chỉ thông tin của cuộc gọi là tuỳ chọn."""
         self._room = room
         self._orchestrator = orchestrator
         candidate_tracer = getattr(orchestrator, "tracer", None)
@@ -164,7 +166,7 @@ class CallBridge:
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
         # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
         # tạo sẵn theo SpeechSettings).
-        self._turn_controller = turn_controller or TurnController()
+        self._turn_controller = turn_controller
         # Ngắt lời huỷ cả request TTS lẫn hàng đợi phát qua CallBridge.cancel(). Dùng chung
         # TurnValidator với turn_controller để lọc barge-in giả do nhiễu.
         self._interruption = InterruptionController(

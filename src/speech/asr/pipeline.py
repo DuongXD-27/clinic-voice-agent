@@ -23,7 +23,7 @@ from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.evidence import TurnEvidence
 from speech.turn.interruption import InterruptionController, InterruptionState
-from speech.types import NARROWBAND_RATE, AsrSegmentEnd
+from speech.types import AsrSegmentEnd
 
 _QUEUE_DONE = object()
 # ASR tồn quá mức này (ms audio chưa decode) thì log cảnh báo; hết cảnh báo khi còn một nửa.
@@ -40,18 +40,23 @@ class STTPipeline:
         asr: Recognizer,
         vad: AsyncStreamingVAD,
         *,
-        sample_rate: int = NARROWBAND_RATE,
+        sample_rate: int,
+        queue_max_frames: int,
+        asr_queue_max_frames: int,
+        barge_in_preroll_frames: int,
         detector: Optional[SharedSpeechDetector] = None,
         evidence: Optional[TurnEvidence] = None,
         asr_stream_options: Optional[Mapping[str, object]] = None,
-        queue_max_frames: int = 50,
-        asr_queue_max_frames: Optional[int] = None,
-        barge_in_preroll_frames: int = 17,
     ) -> None:
-        if queue_max_frames <= 0:
-            raise ValueError("queue_max_frames phải lớn hơn 0")
-        if barge_in_preroll_frames <= 0:
-            raise ValueError("barge_in_preroll_frames phải lớn hơn 0")
+        """Kích thước hàng đợi/pre-roll tính bằng frame, `build_streaming_bundle` quy đổi từ
+        config/livekit.yaml."""
+        for name, value in (
+            ("queue_max_frames", queue_max_frames),
+            ("asr_queue_max_frames", asr_queue_max_frames),
+            ("barge_in_preroll_frames", barge_in_preroll_frames),
+        ):
+            if value <= 0:
+                raise ValueError(f"{name} phải lớn hơn 0")
         self.asr = asr
         self.vad = vad
         self.sample_rate = sample_rate
@@ -59,9 +64,9 @@ class STTPipeline:
         self.evidence = evidence
         self.asr_stream_options = dict(asr_stream_options or {})
         self.queue_max_frames = queue_max_frames
-        # Hàng đợi ASR rộng hơn hàng đợi VAD nhiều (mặc định 20x ≈ 30 s): decode chậm không
-        # được chặn _fanout, nếu không VAD và barge-in đứng theo ASR.
-        self.asr_queue_max_frames = asr_queue_max_frames or queue_max_frames * 20
+        # Hàng đợi ASR rộng hơn hàng đợi VAD nhiều: decode chậm không được chặn _fanout, nếu
+        # không VAD và barge-in đứng theo ASR.
+        self.asr_queue_max_frames = asr_queue_max_frames
         self.barge_in_preroll_frames = barge_in_preroll_frames
 
     @property
@@ -75,12 +80,12 @@ class STTPipeline:
     async def stream(
         self,
         frames: AsyncIterator[bytes],
-        turn_controller: Optional[TurnController] = None,
+        turn_controller: TurnController,
         interruption: Optional[InterruptionController] = None,
     ) -> AsyncIterator[UserTurnCompleted]:
         """`frames`: PCM ở `sample_rate`, liên tục suốt cuộc gọi. `interruption` nhận cùng
         event VAD/ASR với TurnController để xác nhận barge-in."""
-        call = _CallStream(self, turn_controller or TurnController(), interruption)
+        call = _CallStream(self, turn_controller, interruption)
         async for turn in call.turns(frames):
             yield turn
 

@@ -5,9 +5,11 @@ import pytest
 
 pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 
+from tests.speech.pipeline_factory import make_stt_pipeline  # noqa: E402
+
 from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
-from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
+from speech.turn.controller import TurnController  # noqa: E402
 from speech.turn.evidence import TurnEvidence  # noqa: E402
 from speech.types import Transcript, TranscriptEvent  # noqa: E402
 
@@ -82,9 +84,10 @@ async def test_evidence_tracker_observes_oscillating_partials() -> None:
             return verdicts[-1]
 
     tracker = _SpyTracker(oscillation_repeat_threshold=2)
-    pipeline = STTPipeline(asr=asr, vad=vad, evidence=TurnEvidence(_NoSpeech(), transcript=tracker))
+    evidence = TurnEvidence(_NoSpeech(), frame_ms=30, transcript=tracker)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, evidence=evidence)
 
-    await asyncio.wait_for(_collect(pipeline.stream(_frames(4))), timeout=2.0)
+    await asyncio.wait_for(_collect(pipeline.stream(_frames(4), TurnController())), timeout=2.0)
 
     assert verdicts[-1] == StabilityVerdict.OSCILLATING
 
@@ -92,9 +95,11 @@ async def test_evidence_tracker_observes_oscillating_partials() -> None:
 async def test_evidence_tracker_none_by_default_does_not_break_stream() -> None:
     vad = _FakeAsyncVAD([])
     asr = _FakeASR([TranscriptEvent(text="xin chào", is_final=False)])
-    pipeline = STTPipeline(asr=asr, vad=vad)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
 
-    turns = await asyncio.wait_for(_collect(pipeline.stream(_frames(2))), timeout=2.0)
+    turns = await asyncio.wait_for(
+        _collect(pipeline.stream(_frames(2), TurnController())), timeout=2.0
+    )
 
     assert turns == []
 

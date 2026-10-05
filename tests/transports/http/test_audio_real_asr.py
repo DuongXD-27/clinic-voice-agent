@@ -11,6 +11,7 @@ import pytest
 import yaml
 from tests.transports.http.test_calls import _start, _turn
 
+from callbot.transports.http import calls as http_calls
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
 from speech.audio.codec import decode_wav
@@ -48,7 +49,7 @@ def test_real_asr_clips_drive_shared_core(
         loaded.append(clip)
         return decode_wav(paths[clip].read_bytes())
 
-    monkeypatch.setattr(speech, "audio_loader", load)
+    monkeypatch.setattr(http_calls, "load_from_url", load)
     call_id = f"c_real_{scenario}"
     assert _start(client, call_id, mode="audio").status_code == 200
     for turn, clip in enumerate(clips, 1):

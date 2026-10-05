@@ -5,6 +5,7 @@ import pytest
 from tests.transports.http.test_calls import _start, _turn
 
 from callbot.engine.session import CallContext
+from callbot.transports.http import calls as http_calls
 from speech.types import Transcript
 
 
@@ -21,7 +22,7 @@ def test_explicit_silence_skips_broken_audio_and_asr(client, clinic, monkeypatch
     def forbidden(*args):
         pytest.fail("silence_ms must bypass loading and ASR")
 
-    monkeypatch.setattr(speech, "audio_loader", forbidden)
+    monkeypatch.setattr(http_calls, "load_from_url", forbidden)
     monkeypatch.setattr(speech.asr, "transcribe", forbidden)
     assert (
         _start(
@@ -61,7 +62,7 @@ def test_empty_asr_is_not_silence_even_when_asr_labels_it_silent(client, clinic,
     assert clinic.writes == []
 
 
-@pytest.mark.parametrize("stage", ["audio_loader", "asr"])
+@pytest.mark.parametrize("stage", ["load_audio", "asr"])
 @pytest.mark.parametrize(
     "error", [ValueError("private transcript"), httpx.ReadTimeout("private URL")]
 )
@@ -69,7 +70,7 @@ def test_stt_failure_does_not_consume_turn_and_can_retry(client, clinic, monkeyp
     _start(client, "c_failed_asr", mode="audio")
     speech = client.app.state.speech
     target, attribute = (
-        (speech, "audio_loader") if stage == "audio_loader" else (speech.asr, "transcribe")
+        (http_calls, "load_from_url") if stage == "load_audio" else (speech.asr, "transcribe")
     )
     original = getattr(target, attribute)
 

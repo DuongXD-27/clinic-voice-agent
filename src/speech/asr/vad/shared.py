@@ -23,13 +23,13 @@ from speech.asr.vad.base import FrameClassifier
 
 logger = logging.getLogger(__name__)
 
-# ~61 s ở 30 ms/frame: lớn hơn trần hàng đợi ASR (20 x 50 frame) + pre-roll, nên frame nằm chờ
-# trong hàng đợi ASR vẫn còn kết quả khi ASR xử lý tới.
-_DEFAULT_CAPACITY = 2048
-
 
 class SharedSpeechDetector:
-    def __init__(self, classifier: FrameClassifier, *, capacity: int = _DEFAULT_CAPACITY) -> None:
+    """`capacity`: số kết quả gần nhất giữ lại — phải phủ hết frame còn nằm chờ trong hàng đợi
+    VAD/ASR và pre-roll, nếu không frame đó bị coi là im lặng (xem `lookup`). `build_streaming_bundle`
+    tính từ config/livekit.yaml."""
+
+    def __init__(self, classifier: FrameClassifier, *, capacity: int) -> None:
         self._classifier = classifier
         self._capacity = capacity
         self._results: OrderedDict[int, tuple[bytes, bool]] = OrderedDict()

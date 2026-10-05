@@ -31,6 +31,7 @@ for _line in (ROOT / ".env").read_text().splitlines():
         _key, _value = _line.split("=", 1)
         os.environ.setdefault(_key.strip(), _value.strip().strip('"').strip("'"))
 
+from callbot.transports.livekit.settings import LiveKitSettings  # noqa: E402
 from inference.asr import create_asr_gateway  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.bundle import build_streaming_bundle  # noqa: E402
@@ -128,7 +129,16 @@ async def replay(
     index_of: dict[int, int] = {}
     keep: list[bytes] = []  # giữ tham chiếu để id(frame) không bị tái sử dụng
     tap = _Tap(asr, index_of)
-    bundle = build_streaming_bundle(settings, sample_rate=RATE, asr=tap, frame_ms=30)
+    livekit = LiveKitSettings()
+    bundle = build_streaming_bundle(
+        settings,
+        sample_rate=RATE,
+        frame_ms=FRAME * 1000 // RATE,
+        input_queue_ms=livekit.input_queue_ms,
+        asr_queue_ms=livekit.asr_queue_ms,
+        barge_in_preroll_ms=livekit.barge_in_preroll_ms,
+        asr=tap,
+    )
     controller = bundle.turn_controller
     loop = asyncio.get_running_loop()
     started = loop.time()

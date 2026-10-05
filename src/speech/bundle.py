@@ -9,7 +9,7 @@ Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết
 import logging
 from contextlib import aclosing
 from dataclasses import dataclass
-from typing import AsyncIterator, Awaitable, Callable, Optional, Protocol
+from typing import AsyncIterator, Optional, Protocol
 
 from inference.asr import create_asr_gateway
 from inference.tts import TTSGateway, create_tts_gateway
@@ -19,7 +19,6 @@ from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
-from speech.audio.loader import load_from_url
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
 from speech.turn.controller import TurnController
@@ -116,8 +115,6 @@ class SpeechBundle:
     asr: Recognizer
     tts: Synthesizer
     audio_store: AudioArtifactStore
-    # Seam cho test — mặc định tải thật qua HTTP như harness gửi.
-    audio_loader: Callable[[str], AudioSegment] = load_from_url
 
 
 def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
@@ -155,20 +152,26 @@ def build_streaming_bundle(
     settings: SpeechSettings,
     *,
     sample_rate: int,
+    frame_ms: int,
+    input_queue_ms: int,
+    asr_queue_ms: int,
+    barge_in_preroll_ms: int,
     asr: Optional[Recognizer] = None,
-    frame_ms: int = 30,
-    queue_max_frames: int = 50,
-    barge_in_preroll_ms: int = 500,
-    clock: Optional[Callable[[], float]] = None,
-    sleep: Optional[Callable[[float], Awaitable[None]]] = None,
 ) -> StreamingSpeechBundle:
     """Đường LiveKit (transports/livekit/worker.py). Đường HTTP dùng `build_speech_bundle`.
 
-    `sample_rate`: tần số PCM vào (LiveKitSettings.input_sample_rate). Một bộ phân loại theo
-    `vad_provider`, phân loại mỗi frame đúng một lần, dùng chung cho VAD chính và bộ chốt câu
-    của ASR. `clock`/`sleep`: đồng hồ ảo cho bộ đo offline.
+    `sample_rate`, `frame_ms`, `*_queue_ms`, `barge_in_preroll_ms`: lấy từ LiveKitSettings
+    (config/livekit.yaml), không có mặc định ở đây. Một bộ phân loại theo `vad_provider`, phân
+    loại mỗi frame đúng một lần, dùng chung cho VAD chính và bộ chốt câu của ASR.
     """
-    detector = SharedSpeechDetector(_build_classifier(settings, sample_rate))
+    queue_max_frames = max(1, input_queue_ms // frame_ms)
+    asr_queue_max_frames = max(1, asr_queue_ms // frame_ms)
+    preroll_frames = max(1, barge_in_preroll_ms // frame_ms)
+    # Frame còn nằm trong hàng đợi VAD/ASR hoặc pre-roll phải còn kết quả khi được đọc lại.
+    detector = SharedSpeechDetector(
+        _build_classifier(settings, sample_rate),
+        capacity=queue_max_frames + asr_queue_max_frames + preroll_frames,
+    )
     asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     validator = None
     evidence = None
@@ -178,7 +181,8 @@ def build_streaming_bundle(
         evidence = TurnEvidence(
             detector.view()
             if settings.vad_provider == "silero"
-            else _build_silero(settings, sample_rate)
+            else _build_silero(settings, sample_rate),
+            frame_ms=frame_ms,
         )
     stt_pipeline = STTPipeline(
         asr,
@@ -192,7 +196,8 @@ def build_streaming_bundle(
             "end_silence_ms": settings.vad_end_silence_ms,
         },
         queue_max_frames=queue_max_frames,
-        barge_in_preroll_frames=max(1, barge_in_preroll_ms // frame_ms),
+        asr_queue_max_frames=asr_queue_max_frames,
+        barge_in_preroll_frames=preroll_frames,
     )
     turn_controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
@@ -200,8 +205,6 @@ def build_streaming_bundle(
         max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
         post_bot_guard_ms=settings.turn_post_bot_guard_ms,
         validator=validator,
-        clock=clock,
-        sleep=sleep,
     )
     tts = SpeechSynthesizer(
         create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
