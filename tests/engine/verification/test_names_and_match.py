@@ -20,21 +20,21 @@ REF = {
 @pytest.mark.parametrize(
     "a, b",
     [
-        ("Nguyễn Văn A", "nguyen van a"),
+        ("Nguyễn Văn A", "nguyễn văn a"),
         ("NGUYỄN VĂN A", "Nguyễn Văn A"),
         ("Nguyễn   Văn\tA", "Nguyễn Văn A"),
         ("  Nguyễn Văn A  ", "Nguyễn Văn A"),
         (unicodedata.normalize("NFD", "Nguyễn Văn A"), "Nguyễn Văn A"),  # NFD từ ASR
-        ("Đặng Thị Hà", "dang thi ha"),  # đ/Đ không tách được bằng NFD
+        ("Đặng Thị Hà", "đặng thị hà"),  # đ/Đ không tách được bằng NFD
     ],
 )
-def test_normalize_name_is_diacritic_case_and_space_insensitive(a: str, b: str) -> None:
+def test_normalize_name_preserves_diacritics_but_ignores_case_and_space(a: str, b: str) -> None:
     assert normalize_name(a) == normalize_name(b)
 
 
 def test_normalize_name_tradeoff_ha_equals_ha() -> None:
-    # Đánh đổi có chủ ý (docstring names.py): bỏ dấu để chịu lỗi ASR — DOB là yếu tố thứ hai
-    assert normalize_name("Hà") == normalize_name("Hạ")
+    # R-22: lệch dấu thanh không được tự chấp nhận khi N chưa chốt.
+    assert normalize_name("Hà") != normalize_name("Hạ")
 
 
 def test_normalize_name_does_not_drop_or_reorder_tokens() -> None:
@@ -46,7 +46,7 @@ def test_normalize_name_does_not_drop_or_reorder_tokens() -> None:
     "name, dob, expected",
     [
         ("nguyễn văn a", DOB, MatchDetail.NAME_AND_DOB_MATCH),
-        ("Nguyen Van A", DOB, MatchDetail.NAME_AND_DOB_MATCH),
+        ("Nguyen Van A", DOB, MatchDetail.NAME_MISMATCH),
         ("Nguyễn Văn A", date(1979, 3, 14), MatchDetail.DOB_MISMATCH),
         ("Trần Văn B", DOB, MatchDetail.NAME_MISMATCH),
         ("Trần Văn B", date(1979, 3, 14), MatchDetail.BOTH_MISMATCH),
@@ -80,7 +80,7 @@ def test_matches_wrapper_keeps_bool_contract_on_mock_verify_block() -> None:
     assert not matches("nguyễn văn a", DOB, {"full_name": "Nguyễn Văn A", "dob": "14/03/1978"})
 
 
-@pytest.mark.parametrize("claimed", ["ông nguyễn văn a", "chú Nguyễn Văn A", "ong nguyen van a"])
+@pytest.mark.parametrize("claimed", ["ông nguyễn văn a", "chú Nguyễn Văn A", "ong nguyễn văn a"])
 def test_an_honorific_before_the_name_still_matches(claimed: str) -> None:
     assert match_record(claimed, DOB, REF) is MatchDetail.NAME_AND_DOB_MATCH
 

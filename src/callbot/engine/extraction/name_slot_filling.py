@@ -15,6 +15,7 @@ from callbot.engine.extraction.fallback import (
     guard_fallback,
 )
 from callbot.engine.extraction.full_name import valid_name_span
+from callbot.engine.extraction.model_budget import report_model_status
 from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
 from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
@@ -95,6 +96,7 @@ class NameSlotFiller:
             status = "invalid_response"
         finally:
             elapsed_ms = timer.elapsed_ms
+            report_model_status(status)
             # Never log exception text, response bodies, names, transcripts, bot questions,
             # or credentials.
             logger.info(

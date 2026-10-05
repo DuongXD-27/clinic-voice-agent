@@ -98,7 +98,7 @@ def test_identical_transcript_uses_same_identity_readback_and_confirm_flow(clien
     speech = client.app.state.speech
     for turn, text in enumerate(["Nguyễn Văn A", "14/03/1978", "vâng"], start=1):
         speech.asr.transcript = text
-        speech.asr.confidence = 0.01  # metadata never changes the business decision
+        speech.asr.confidence = 1.0  # Certain extraction; low confidence is tested separately.
         response = _turn(
             client,
             call_id,
@@ -117,3 +117,16 @@ def test_identical_transcript_uses_same_identity_readback_and_confirm_flow(clien
             assert clinic.writes == []
     assert response.json()["state"] == "ENDED" and response.json()["outcome"] == "CONFIRMED"
     assert len(clinic.writes) == 1 and clinic.writes[0][1] == "CONFIRMED"
+
+
+def test_low_asr_confidence_reasks_open_identity_without_disclosure(client, clinic):
+    _start(client, "c_low_confidence", mode="audio")
+    speech = client.app.state.speech
+    speech.asr.transcript = "Nguyễn Văn A"
+    speech.asr.confidence = 0.01
+    response = _turn(client, "c_low_confidence", 1, None, audio_url="https://clip/1")
+    assert response.status_code == 200
+    ctx = _context(client, "c_low_confidence")
+    assert ctx.question.question_id.value == "ASK_NAME" and not ctx.identity_verified
+    assert ctx.claimed_name is None and ctx.failed_understandings == 1
+    assert "Nguyễn" not in response.json()["utterance"] and clinic.writes == []

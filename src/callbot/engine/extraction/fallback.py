@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Protocol, TypeVar
 
+from callbot.engine.extraction.model_budget import report_model_status
 from callbot.engine.extraction.schema import Agreement, Field, Intent, Provenance, QuestionId
 from callbot.engine.extraction.text import clean
 
@@ -58,9 +59,15 @@ class FallbackExtractor(Protocol):
 def guard_fallback(result: Optional[Field[T]], transcript: str, default: Optional[T]) -> Field[T]:
     """Nhận kết quả tuyến sau chỉ khi có span thật sự nằm trong transcript."""
     if result is None or result.value is None or result.provenance is not Provenance.FALLBACK:
+        if result is not None:
+            report_model_status("invalid_response")
+        return Field.nothing(default)
+    if isinstance(default, Enum) and not isinstance(result.value, type(default)):
+        report_model_status("invalid_response")
         return Field.nothing(default)
     span = clean(result.span or "")
     if not span or not _contains_words(clean(transcript), span):
+        report_model_status("invalid_response")
         return Field.nothing(default)
     return Field(result.value, Provenance.FALLBACK, span=span)
 

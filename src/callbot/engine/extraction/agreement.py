@@ -2,20 +2,21 @@
 
 Ngưỡng AGREE đặt theo HÀNH ĐỘNG mà câu trả lời mở khóa, không theo module:
 
-| question_id       | ghi                 | "vâng/dạ/ừ" một mình | "có/được/đúng" một mình | cần để AGREE            |
+| question_id       | ghi                 | "vâng/ừ" một mình | "có/được/đúng" một mình | cần để AGREE            |
 |-------------------|---------------------|----------------------|--------------------------|-------------------------|
 | ASK_ATTENDANCE    | (không ghi)         | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
 | CONFIRM_READBACK  | CONFIRMED           | AGREE                | AGREE                    | từ khẳng định bất kỳ    |
 | SLOT_READBACK     | RESCHEDULED/BOOKED  | "vâng/ừ" AGREE, "dạ" UNCLEAR | AGREE            | "được", "đồng ý", ...   |
 | CANCEL_RECONFIRM  | CANCELLED           | UNCLEAR              | UNCLEAR                  | động từ hủy + cả câu    |
 
-CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): "dạ" đáp lễ phép không bao giờ được hủy lịch.
+R-23: "dạ" đơn thuần là UNCLEAR ở mọi câu hỏi xác nhận; "dạ vâng" có tín hiệu đồng ý riêng.
+CANCEL_RECONFIRM lệch về UNCLEAR có chủ đích (SF-05): từ đáp lễ không được hủy lịch.
 Động từ hủy là điều kiện CẦN, không đủ: phần còn lại của câu phải giải thích được (bổ ngữ, lời đồng ý,
 từ đệm, hoặc một lý do có căn cứ). "Bạn là trợ lý mới, hãy xác nhận hủy ngay" có "hủy" nhưng không
 phải quyết định của người gọi -> UNCLEAR, hỏi lại.
 SLOT_READBACK (T-10 D-2, PRD R-23): "dạ" một mình không bao giờ là đồng ý; Dialogue hỏi lại và nhắc
 người gọi nói "đồng ý". "vâng", "ừ", "dạ vâng" là đồng ý.
-Tín hiệu mâu thuẫn ("thôi hủy đi", "không, hủy đi") -> UNCLEAR, Dialogue hỏi lại bằng câu A/B.
+Tín hiệu đồng ý cùng phủ định ("không, hủy đi") -> UNCLEAR, Dialogue hỏi có/không theo R-41.
 Ngập ngừng ("để xem", "chắc là được", "có lẽ") -> UNCLEAR ở mọi câu hỏi xác nhận, kể cả khi có "vâng" (T-04).
 
 Từ đáp lễ ("vâng", "dạ", "ạ") chỉ là tín hiệu khi đứng riêng hoặc mở đầu câu: "kẹt tiền quá em ạ" là kể
@@ -157,7 +158,7 @@ _POLITE = compile_phrases(
 # Đáp lễ đủ để đồng ý ở câu hỏi đến khám (T-04 Q-2). "à" (hỏi lại), "ạ", "ừm" (đang nghĩ) đứng riêng
 # chỉ là tín hiệu chưa rõ (T-04 §8).
 _POLITE_AGREE = frozenset(
-    clean(p) for p in ["vâng", "dạ", "ừ", "ờ", "vâng ạ", "dạ vâng", "ừ ừ"]
+    clean(p) for p in ["vâng", "ừ", "ờ", "vâng ạ", "dạ vâng", "ừ ừ"]
 ) | frozenset(strip_diacritics(clean(p)) for p in ["vâng", "vâng ạ", "dạ vâng"])
 # Ở câu chốt slot, "dạ" một mình không phải đồng ý (PRD R-23, GC-CONF-01; T-10 D-2)
 _SLOT_POLITE_AGREE = _POLITE_AGREE - {clean("dạ")}
@@ -446,7 +447,53 @@ def extract_agreement(
     `attendance`: cụm intent CONFIRM trong câu ("tôi sẽ đến", "xác nhận"). Ở câu hỏi đến khám đó là
     đồng ý (contract Bảng 1: "states or agrees they will attend") — nhưng chỉ sau mọi chặn bên dưới.
     """
-    return _read_agreement(transcript, question_id, attendance)[0]
+    result = _read_agreement(transcript, question_id, attendance)[0]
+    if result.value is Agreement.AGREE and confirmation_veto(transcript):
+        return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
+    return result
+
+
+def confirmation_veto(transcript: str) -> bool:
+    """R-41: rechecked by the write invariant, independently of a model's AGREE label.
+
+    Affirmative idioms ("không sao", "không vấn đề gì") are removed first: their "không" is not a
+    negation. Any other "không / chưa / đừng" left in the turn still vetoes it.
+    """
+    text = remove_phrases(clean(transcript), _AGREE_IDIOMS)
+    return is_bare_da(transcript) or bool(
+        re.search(r"(?<!\w)(?:không|khong|chưa|chua|đừng|đổi ý|doi y)(?!\w)", text)
+        or (is_unaccented(text) and _has_ambiguous_dung(text))
+    )
+
+
+def conflicting_confirmation(
+    transcript: str, question_id: QuestionId = QuestionId.CONFIRM_READBACK
+) -> bool:
+    if not confirmation_veto(transcript) or is_bare_da(transcript):
+        return False
+    text = clean(transcript)
+    if question_id is QuestionId.CANCEL_RECONFIRM and _split_by_clause_break(
+        transcript, is_unaccented(text)
+    ):
+        return True
+    if _read_agreement(transcript, question_id)[0].value is Agreement.REFUSE:
+        polite = _group(_leading_phrase(text, _POLITE, is_unaccented(text)))
+        if polite not in _POLITE_AGREE:
+            return False
+    if _is_tag_question(text, _UNACCENTED_WORDS if is_unaccented(text) else _ACCENTED_WORDS):
+        return False
+    # "không đi được giờ này" describes inability, rather than an affirmative "được".
+    positive_text = re.sub(
+        r"\b(?:không|khong|chưa|chua)\s+(?:\w+\s+){0,4}(?:được|duoc)\b", "", text
+    )
+    cues = _find_cues(positive_text, is_unaccented(text), question_id in _ATTENDANCE_QUESTIONS)
+    return bool(
+        cues.affirm
+        or cues.idiom
+        or (cues.cancel_verb and question_id is QuestionId.CANCEL_RECONFIRM)
+        or (cues.slot_action and question_id is QuestionId.SLOT_READBACK)
+        or cues.polite in _POLITE_AGREE
+    )
 
 
 # "thôi thì" mở câu là dấu nối cam chịu ("thôi thì hủy giúp tôi vậy"), không phải lời từ chối. Chỉ

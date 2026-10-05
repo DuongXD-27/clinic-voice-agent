@@ -19,6 +19,7 @@ thành công thì chặn đối soát; đúng một lệnh thành công thì c�
 """
 
 import inspect
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Optional
@@ -26,6 +27,7 @@ from typing import Any, Optional
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import WriteOutcomeUnknown
 from callbot.engine.extraction.schema import QuestionId
+from callbot.engine.extraction.text import normalize, strip_diacritics
 from callbot.engine.journal import ClinicCommand, JournalEntry
 from callbot.engine.policy import guardrails
 from callbot.engine.policy.guardrails import SevereFailureBlocked
@@ -54,7 +56,95 @@ OPERATION_OUTCOME: dict[str, Outcome] = {
     "unreachable": "UNREACHABLE",
 }
 # Câu đọc lại câu hỏi động của lượt trước: nguồn gốc không persist nên coi như lộ lịch (fail-closed)
-_REREAD = UtteranceSpec("QUESTION_REREAD", discloses=True)
+_REREAD = UtteranceSpec(
+    "QUESTION_REREAD", discloses=True, disclosed_fields=frozenset({"starts_at", "clinic", "status"})
+)
+
+_BASE_FIELDS = frozenset({"starts_at", "clinic", "status"})
+STATE_FIELDS = {
+    "AWAITING_IDENTITY": frozenset(),
+    "AWAITING_INTENT": _BASE_FIELDS,
+    "AWAITING_CONFIRMATION": _BASE_FIELDS,
+    "CLOSING": _BASE_FIELDS,
+    "OFFERING_SLOTS": _BASE_FIELDS | {"slot_id"},
+}
+_FIELD_KEYS = {
+    "starts_at": frozenset({"starts_at"}),
+    "clinic": frozenset({"clinic", "clinic_id", "clinic_name", "department"}),
+    "status": frozenset({"status"}),
+    "slot_id": frozenset({"slot_id"}),
+}
+_NEVER_FIELDS = frozenset(
+    {
+        "phone",
+        "phone_number",
+        "caller_number",
+        "patient_id",
+        "appointment_id",
+        "full_name",
+        "display_name",
+        "dob",
+        "provider_name",
+        "doctor_name",
+        "physician_name",
+        "reason",
+        "visit_reason",
+        "appointment_reason",
+        "cancel_reason",
+    }
+)
+
+
+def _allowed_fields(inp: "GuardInput") -> frozenset[str]:
+    if not inp.ctx.identity_verified or inp.action.outcome == "UNREACHABLE":
+        return frozenset()
+    state = (
+        "CLOSING"
+        if inp.action.ended and inp.action.outcome in SUCCESS_OUTCOMES
+        else inp.action.state
+    )
+    return STATE_FIELDS.get(state, frozenset())
+
+
+def _project(data: dict[str, Any], allowed: frozenset[str]) -> dict[str, Any]:
+    keys = set().union(*(_FIELD_KEYS[field] for field in allowed if field in _FIELD_KEYS))
+    return {key: value for key, value in data.items() if key in keys}
+
+
+def _protected_text(inp: "GuardInput") -> None:
+    """Detect protected values even if a source smuggles one into an allowed display field."""
+    utterance = normalize(inp.action.utterance)
+    numeric = re.sub(r"\D", "", utterance)
+    allowed = _allowed_fields(inp)
+
+    def walk(data: Any) -> None:
+        if isinstance(data, dict):
+            for key, value in data.items():
+                denied = key in _NEVER_FIELDS or (key == "slot_id" and "slot_id" not in allowed)
+                if denied and isinstance(value, str) and value.strip():
+                    token = normalize(value)
+                    if re.search(r"(?<!\w)" + re.escape(token) + r"(?!\w)", utterance):
+                        raise _Violation("OG-1", "SF-03")
+                    if key in {"phone", "phone_number", "caller_number"}:
+                        digits = re.sub(r"\D", "", value)
+                        if len(digits) >= 7 and digits in numeric:
+                            raise _Violation("OG-1", "SF-03")
+                    if key in {"full_name", "provider_name", "doctor_name", "physician_name"}:
+                        if len(token) > 3 and strip_diacritics(token) in strip_diacritics(
+                            utterance
+                        ):
+                            raise _Violation("OG-1", "SF-03")
+                walk(value)
+        elif isinstance(data, (list, tuple)):
+            for item in data:
+                walk(item)
+
+    walk(inp.ctx.call.to_dict())
+    walk(inp.ctx.identity_reference)
+    walk(inp.sources.appointments)
+    walk(inp.sources.slots)
+    if inp.receipt is not None:
+        walk(inp.receipt.result)
 
 
 @dataclass(frozen=True)
@@ -197,6 +287,7 @@ def check(inp: GuardInput) -> GuardVerdict:
     try:
         spec, record = _origin(inp)
         _disclosure(inp, spec)
+        _protected_text(inp)
         if record is not None:
             _sources(inp, record)
         _clinical(inp.action.utterance)
@@ -274,11 +365,14 @@ def _disclosure(inp: GuardInput, spec: UtteranceSpec) -> None:
     """OG-1 (SF-03): kể cả khi đọc lại câu hỏi đã từng qua guard ở lượt trước."""
     if spec.discloses and (not inp.ctx.identity_verified or inp.action.outcome == "UNREACHABLE"):
         raise _Violation("OG-1", "SF-03")
+    if not spec.disclosed_fields <= _allowed_fields(inp):
+        raise _Violation("OG-1", "SF-03")
 
 
 def _sources(inp: GuardInput, record: RenderRecord) -> None:
     """OG-2 / OG-3: mọi ref phải có nguồn và nằm trong phạm vi; render lại phải ra đúng nguyên văn."""
     spec = RENDERERS[record.template_id]
+    allowed_fields = _allowed_fields(inp)
     ctx = inp.ctx
     allowed_appointments = {
         appointment_id
@@ -297,12 +391,12 @@ def _sources(inp: GuardInput, record: RenderRecord) -> None:
                 receipt = inp.receipt
                 if receipt is None or receipt.result.get("appointment_id") != ref.id:
                     raise _Violation("OG-5", OUTPUT_UNPROVEN_SUCCESS)
-                data[ref.param] = dict(receipt.result)
+                data[ref.param] = _project(dict(receipt.result), allowed_fields)
             else:
                 appointment = inp.sources.appointment(ref.id)
                 if appointment is None:
                     raise _Violation("OG-3", "SF-02")
-                data[ref.param] = appointment
+                data[ref.param] = _project(appointment, allowed_fields)
             continue
         if ref.id is None or ref.id not in available:
             raise _Violation("OG-3", "SF-02")
@@ -310,7 +404,7 @@ def _sources(inp: GuardInput, record: RenderRecord) -> None:
             raise _Violation("OG-3", "SF-02")
         if spec.slot_scope == "SELECTED" and ref.id != ctx.selected_slot_id:
             raise _Violation("OG-3", "SF-02")
-        slot = inp.sources.slot(ref.id)
+        slot = _project(inp.sources.slot(ref.id), allowed_fields)
         if kind == "SLOTS":
             data[ref.param].append(slot)
         else:

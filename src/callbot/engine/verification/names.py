@@ -1,6 +1,37 @@
-"""Khoá so khớp tên cho Verifier (chuyển từ `engine/nlu/normalizer.py`, giữ nguyên quy tắc)."""
+"""R-22: so từng âm tiết, giữ nguyên dấu; lệch dấu thanh cần hỏi lại khi N chưa chốt."""
 
 import unicodedata
+from enum import Enum
+
+from callbot.engine.extraction.text import normalize
+
+
+class NameMatch(str, Enum):
+    MATCH = "MATCH"
+    SUSPICIOUS = "SUSPICIOUS"
+    MISMATCH = "MISMATCH"
+
+
+_TONES = frozenset("\u0300\u0301\u0303\u0309\u0323")
+
+
+def strip_tones(text: str) -> str:
+    """Remove tone marks only: ă/â/ê/ô/ơ/ư/đ remain distinct syllables."""
+    return unicodedata.normalize(
+        "NFC", "".join(c for c in unicodedata.normalize("NFD", text) if c not in _TONES)
+    )
+
+
+def compare_names(claimed: str, reference: str) -> NameMatch:
+    left, right = normalize_name(claimed).split(), normalize_name(reference).split()
+    if not left or len(left) != len(right):
+        return NameMatch.MISMATCH
+    if left == right:
+        return NameMatch.MATCH
+    if [strip_tones(s) for s in left] == [strip_tones(s) for s in right]:
+        # N is not calibrated: a tone difference never authenticates a caller.
+        return NameMatch.SUSPICIOUS
+    return NameMatch.MISMATCH
 
 
 def normalize_text(text: str) -> str:
@@ -13,8 +44,5 @@ def strip_diacritics(text: str) -> str:
 
 
 def normalize_name(name: str) -> str:
-    """Khoá so khớp tên: bỏ dấu, lowercase, gộp khoảng trắng.
-
-    Bỏ dấu để chịu được lỗi ASR; đánh đổi là "Hà" khớp "Hạ" — DOB là yếu tố thứ hai.
-    """
-    return " ".join(strip_diacritics(normalize_text(name)).split())
+    """Canonical spelling, retaining vowels, consonants and tone marks (R-22)."""
+    return normalize(name)

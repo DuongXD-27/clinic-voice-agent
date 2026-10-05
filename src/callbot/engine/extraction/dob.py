@@ -263,11 +263,15 @@ def _ambiguous(tokens: list[str]) -> bool:
     Chỉ tính khi hai bên của từ nối đều là số — "hay" ở chỗ khác trong câu không phải lựa
     chọn giữa hai ngày.
     """
+    if tokens.count("tháng") > 1:
+        return True
     text = " ".join(tokens)
     for _, pattern in ALTERNATIVES.for_text(text, mixed=True):
         for match in pattern.finditer(text):
             before = token_index(tokens, match.start())
             after = token_index(tokens, match.end() - 1) + 1
+            if after < len(tokens) and tokens[after] == "ngày":
+                after += 1  # Numeric dates expand to "ngày 15 tháng ...".
             if before > 0 and after < len(tokens):
                 if is_number_token(tokens[before - 1]) and is_number_token(tokens[after]):
                     return True

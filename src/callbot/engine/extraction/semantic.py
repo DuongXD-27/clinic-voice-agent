@@ -19,6 +19,7 @@ from typing import Literal, Optional, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from callbot.engine.extraction.model_budget import report_model_status
 from callbot.engine.extraction.schema import Agreement, ClinicalLevel, Intent, QuestionId
 from callbot.engine.extraction.text import normalize
 from callbot.engine.types import CancelReason, Direction, PendingAction
@@ -135,11 +136,24 @@ def ground_reading(reading: SemanticReading, context: SemanticContext) -> Option
     """
     kind = ReplyKind(reading.reply_kind)
     reply_span = _grounded(reading.reply_span, context.transcript)
+    for label, span in (
+        (reading.intent, reading.intent_span),
+        (reading.cancel_reason, reading.reason_span),
+        (reading.clinical, reading.clinical_span),
+    ):
+        if (label is None) != (span is None) or (
+            span is not None and _grounded(span, context.transcript) is None
+        ):
+            return None
+    if reading.reply_span is not None and reply_span is None:
+        return None
     if kind in _DECISIVE_KINDS and reply_span is None:
         # Kết luận chắc chắn mà không chỉ được chỗ nào trong câu -> không nhận
         return None
 
     intent, intent_span = _read_intent(reading, context)
+    if reading.intent is not None and intent is None:
+        return None
     reason, reason_span = _read_reason(reading, context)
     clinical = ClinicalLevel(reading.clinical) if reading.clinical is not None else None
     clinical_span = _grounded(reading.clinical_span, context.transcript)
@@ -258,6 +272,7 @@ class LLMSemanticExtractor:
         except ValidationError:
             status = "invalid_response"
         finally:
+            report_model_status(status)
             # Không log transcript, prompt, tên, hay khóa API — chỉ số liệu kỹ thuật.
             logger.info(
                 "Semantic fallback: %s",

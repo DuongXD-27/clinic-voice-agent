@@ -41,6 +41,7 @@ class UtteranceSpec:
     template_id: str
     discloses: bool = False
     success_outcome: Optional[Outcome] = None
+    disclosed_fields: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,7 @@ def renderer(
     sources: Optional[Mapping[str, SourceKind]] = None,
     str_args: Optional[Mapping[str, Collection[str]]] = None,
     slot_scope: Optional[SlotScope] = None,
+    disclosed_fields: Optional[Collection[str]] = None,
 ) -> Callable[[F], F]:
     """Đăng ký hàm dựng câu động. `sources`: tham số nào là dữ liệu nguồn và kiểu gì.
 
@@ -110,6 +112,13 @@ def renderer(
             sources=dict(sources or {}),
             str_args=dict(str_args or {}),
             slot_scope=slot_scope,
+            disclosed_fields=frozenset(
+                disclosed_fields
+                if disclosed_fields is not None
+                else {"starts_at", "clinic", "status"}
+                if discloses
+                else ()
+            ),
         )
         if template_id in RENDERERS:
             raise ValueError(f"Renderer {template_id} đã đăng ký")

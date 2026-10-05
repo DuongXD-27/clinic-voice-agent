@@ -331,7 +331,7 @@ def test_orchestrator_uses_normalized_name_or_reprompts(success, transcript, mon
         assert len(clients) == 1
 
 
-def test_orchestrator_accepts_name_ending_in_nha_from_slot_filling(monkeypatch):
+def test_ner_name_ending_in_nha_still_requires_record_match(monkeypatch):
     name = "Nguyễn Văn Nha"
     adapter, _ = adapter_for(lambda _: httpx.Response(200, json=completion(name, name)))
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
@@ -342,8 +342,8 @@ def test_orchestrator_accepts_name_ending_in_nha_from_slot_filling(monkeypatch):
     bot.start_call(CallStart(call_id="slot-nha", direction="inbound", caller_number="0912345600"))
     run = bot.handle_turn_with_details("slot-nha", CallerInput(turn=1, text=name))
 
-    assert run.action.state == "AWAITING_IDENTITY"
-    assert bot.sessions.store.get_session("slot-nha").context["identity_step"] == "ASK_DOB"
+    assert run.action.outcome == "TRANSFERRED"
+    assert run.action.transfer_reason == "PATIENT_NOT_FOUND"
     assert run.extraction["full_name"]["value"] == "nguyễn văn nha"
     assert run.extraction["full_name"]["provenance"] == "FALLBACK"
 

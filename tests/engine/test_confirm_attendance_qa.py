@@ -184,8 +184,8 @@ def test_TC_CF_12_cancel_requires_second_confirmation():
 def test_TC_CF_13_wrong_identity_cannot_confirm_or_disclose():
     bot, clinic, before, opening = start("TC_CF_13")
     prompt = turn(bot, "TC_CF_13", 1, "Trần Văn B")
-    failed = turn(bot, "TC_CF_13", 2, DOB)
-    for action in (opening, prompt, failed):
+    failed = prompt
+    for action in (opening, failed):
         for part in READBACK_PARTS:
             assert part not in action.utterance
     assert_transfer(failed, clinic, "IDENTITY_FAILED")

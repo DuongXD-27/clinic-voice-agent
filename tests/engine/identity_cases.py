@@ -43,6 +43,15 @@ def _identity_failure(
     dob: str,
     expected_transfer_reason: str = "IDENTITY_FAILED",
 ) -> tuple[IdentityTurn, ...]:
+    if name != CORRECT_NAME:
+        return (
+            IdentityTurn(
+                name,
+                "ENDED",
+                expected_outcome="TRANSFERRED",
+                expected_transfer_reason=expected_transfer_reason,
+            ),
+        )
     return (
         IdentityTurn(name, "AWAITING_IDENTITY", "dob"),
         IdentityTurn(

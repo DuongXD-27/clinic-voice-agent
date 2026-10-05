@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from callbot.engine.extraction.agreement import confirmation_veto
 from callbot.engine.extraction.schema import Agreement, Intent
 from callbot.engine.session.context import CallContext, PendingAction
 from callbot.engine.session.fsm import CONFIRMATION_QUESTION_FOR
@@ -71,6 +72,20 @@ def assert_action_confirmed(
         and question.slot_id == slot_id
     ]
     code = "SF-05" if action == "CANCEL" else "CONFIRMATION"
+    if ctx.business_write_blocked:
+        raise SevereFailureBlocked(code, "Model failed in this turn; business writes are blocked")
+    caller = next(
+        (
+            item.text
+            for item in reversed(ctx.history)
+            if item.role == "caller" and item.turn == ctx.turn
+        ),
+        None,
+    )
+    if caller is not None and confirmation_veto(caller):
+        raise SevereFailureBlocked(code, "Caller confirmation contains a veto")
+    if any(confirmation_veto(item.transcript) for item in confirmations):
+        raise SevereFailureBlocked(code, "Confirmation evidence contains a veto")
     if not confirmations:
         raise SevereFailureBlocked(code, f"Chưa có xác nhận hợp lệ cho {action} ({slot_id})")
     if action != "CANCEL":

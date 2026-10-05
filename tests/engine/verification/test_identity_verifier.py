@@ -179,7 +179,7 @@ def _prepared(fake: FakeClinicAPI, ctx: CallContext) -> tuple[IdentityVerifier, 
     "name, dob, status, detail",
     [
         (NAME, DOB, VerificationStatus.VERIFIED, MatchDetail.NAME_AND_DOB_MATCH),
-        ("nguyen van a", DOB, VerificationStatus.VERIFIED, MatchDetail.NAME_AND_DOB_MATCH),
+        ("nguyen van a", DOB, VerificationStatus.MISMATCH, MatchDetail.NAME_MISMATCH),
         ("Trần Văn B", DOB, VerificationStatus.MISMATCH, MatchDetail.NAME_MISMATCH),
         (NAME, date(1979, 3, 14), VerificationStatus.MISMATCH, MatchDetail.DOB_MISMATCH),
         ("Trần Văn B", date(1979, 3, 14), VerificationStatus.MISMATCH, MatchDetail.BOTH_MISMATCH),

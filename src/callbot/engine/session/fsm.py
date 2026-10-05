@@ -139,6 +139,8 @@ def check_invariants(ctx: CallContext, state: Optional[CallState] = None) -> Non
 def check_write(ctx: CallContext, action: PendingAction, slot_id: Optional[str] = None) -> None:
     """Chạy ngay trước lệnh ghi nghiệp vụ; bằng chứng xác nhận do guardrails kiểm tra riêng."""
     check_invariants(ctx)
+    if ctx.business_write_blocked:
+        raise InconsistentSession(f"{ctx.call_id}: model failure blocks business writes this turn")
     if ctx.ended:
         raise InconsistentSession(f"{ctx.call_id}: phiên đã kết thúc")
     if not ctx.identity_verified:
