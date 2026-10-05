@@ -30,6 +30,14 @@ function chat(page: Page) {
   return page.getByLabel("Hội thoại");
 }
 
+/** Mọi biến thể câu chào đều phải công bố AI, tổng đài và hỏi danh tính. */
+async function expectIdentityGreeting(page: Page) {
+  const greeting = chat(page).getByText(/trợ lý ảo AI/);
+  await expect(greeting).toBeVisible();
+  await expect(greeting).toContainText("Vinmec");
+  await expect(greeting).toContainText(/họ (?:và )?tên|anh chị nào/);
+}
+
 /** Giá trị một ô trong thanh trạng thái (dt = nhãn, dd ngay sau = giá trị). */
 function metric(page: Page, label: string) {
   return page.locator("dt", { hasText: label }).locator("xpath=following-sibling::dd[1]");
@@ -45,7 +53,7 @@ test("outbound: xác minh danh tính rồi xác nhận lịch → CONFIRMED", as
   ).toContainText("SCHEDULED");
 
   await startCall(page);
-  await expect(chat(page).getByText(/trợ lý ảo AI của tổng đài Vinmec/)).toBeVisible();
+  await expectIdentityGreeting(page);
 
   const input = page.getByLabel("Lời người gọi");
   await input.fill("Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978");
@@ -68,7 +76,7 @@ test("inbound: im lặng 3 lượt → TRANSFERRED", async ({ page }) => {
   await page.getByLabel("Số người gọi").selectOption("0912345600");
 
   await startCall(page);
-  await expect(chat(page).getByText(/Vinmec xin nghe/)).toBeVisible();
+  await expectIdentityGreeting(page);
 
   const silence = page.getByRole("button", { name: "Im lặng 2 giây" });
   for (let turn = 1; turn <= 3; turn += 1) {

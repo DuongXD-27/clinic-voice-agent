@@ -145,7 +145,13 @@ class DialogueManager:
                     ctx.call_id,
                     type(exc).__name__,
                 )
-        return BotAction(text, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason=reason)
+        return BotAction(
+            t.choose_static(ctx, text),
+            "ENDED",
+            ended=True,
+            outcome="TRANSFERRED",
+            transfer_reason=reason,
+        )
 
     def unreachable(self, ctx: CallContext, reason: UnreachableReason) -> BotAction:
         """§1.1.7: không để lại chi tiết lịch hẹn trên voicemail.
@@ -162,7 +168,7 @@ class DialogueManager:
             )
             return self.transfer(ctx, "SYSTEM_ERROR")
         return BotAction(
-            t.GOODBYE_UNREACHABLE,
+            t.choose_static(ctx, t.GOODBYE_UNREACHABLE),
             "ENDED",
             ended=True,
             outcome="UNREACHABLE",
@@ -173,7 +179,7 @@ class DialogueManager:
 
     def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
         if is_hold_request(extraction.transcript):
-            return Reply(BotAction(t.HOLD, ctx.state), "NEUTRAL")
+            return Reply(BotAction(t.choose_static(ctx, t.HOLD), ctx.state), "NEUTRAL")
         if is_return_signal(extraction.transcript) and ctx.question is not None:
             ctx.question = replace(ctx.question, turn=ctx.turn)
             return Reply(BotAction(ctx.question.text, ctx.state), "NEUTRAL")
@@ -238,8 +244,8 @@ class DialogueManager:
             # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
             # được nhắc lại sau im lặng) thì chào lại một lần. Hỏi "ai đấy" vẫn được giới thiệu lại.
             ctx.neutral_greetings += 1
-            opening = ctx.question is not None and ctx.question.text == t.greeting(
-                ctx.call.direction
+            opening = ctx.question is not None and ctx.question.text in t.static_choices(
+                t.greeting(ctx.call.direction)
             )
             if is_identity_question(ex.transcript):
                 # "Ai đấy?" là câu hỏi cần trả lời, kể cả sau reprompt / đã nhận tên.
@@ -286,7 +292,9 @@ class DialogueManager:
             ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
-                t.appointment_summary(ctx, appointment),
+                t.appointment_summary(
+                    ctx, appointment, variant=t.choose_variant(ctx, "APPOINTMENT_SUMMARY")
+                ),
                 "AWAITING_INTENT",
                 action="CONFIRM",
             )
@@ -322,7 +330,9 @@ class DialogueManager:
                 ask(
                     ctx,
                     QuestionId.CONFIRM_READBACK,
-                    t.attendance_reread(ctx, appointment),
+                    t.attendance_reread(
+                        ctx, appointment, variant=t.choose_variant(ctx, "ATTENDANCE_REREAD")
+                    ),
                     ctx.state,
                     action="CONFIRM",
                 ),
@@ -342,7 +352,9 @@ class DialogueManager:
                     ask(
                         ctx,
                         QuestionId.CONFIRM_READBACK,
-                        t.attendance_readback(ctx, appointment),
+                        t.attendance_readback(
+                            ctx, appointment, variant=t.choose_variant(ctx, "ATTENDANCE_READBACK")
+                        ),
                         "AWAITING_CONFIRMATION",
                         action="CONFIRM",
                     )
@@ -699,7 +711,9 @@ class DialogueManager:
             ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
-                t.keep_appointment(ctx, appointment),
+                t.keep_appointment(
+                    ctx, appointment, variant=t.choose_variant(ctx, "KEEP_APPOINTMENT")
+                ),
                 "AWAITING_INTENT",
                 action="CONFIRM",
             )
@@ -817,7 +831,15 @@ class DialogueManager:
         return ask(
             ctx,
             QuestionId.OFFER_SLOTS,
-            t.offer_slots(ctx, page, prefix, remaining, full_date, action if invite else None),
+            t.offer_slots(
+                ctx,
+                page,
+                prefix,
+                remaining,
+                full_date,
+                action if invite else None,
+                variant=t.choose_variant(ctx, "OFFER_SLOTS"),
+            ),
             "OFFERING_SLOTS",
             action=ctx.pending_action,
         )
@@ -838,7 +860,14 @@ class DialogueManager:
         return ask(
             ctx,
             QuestionId.SLOT_READBACK,
-            t.slot_offer_readback(ctx, slot, action, prefix, full_date),
+            t.slot_offer_readback(
+                ctx,
+                slot,
+                action,
+                prefix,
+                full_date,
+                variant=t.choose_variant(ctx, "SLOT_OFFER_READBACK"),
+            ),
             "AWAITING_CONFIRMATION",
             action=action,
             slot_id=slot["slot_id"],
@@ -853,7 +882,7 @@ class DialogueManager:
         return ask(
             ctx,
             QuestionId.SLOT_READBACK,
-            t.slot_readback(ctx, slot, action),
+            t.slot_readback(ctx, slot, action, variant=t.choose_variant(ctx, "SLOT_READBACK")),
             "AWAITING_CONFIRMATION",
             action=action,
             slot_id=slot["slot_id"],
@@ -939,7 +968,7 @@ class DialogueManager:
         if question_id is not None:
             # Hỏi lại cùng một câu hỏi danh tính bằng lời khác
             return Reply(ask(ctx, question_id, text, ctx.state), "NOT_UNDERSTOOD")
-        return Reply(BotAction(text, ctx.state), "NOT_UNDERSTOOD")
+        return Reply(BotAction(t.choose_static(ctx, text), ctx.state), "NOT_UNDERSTOOD")
 
     @staticmethod
     def _answers_last_question(ctx: CallContext) -> bool:

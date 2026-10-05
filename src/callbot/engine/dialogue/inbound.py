@@ -14,5 +14,5 @@ def opening(ctx: CallContext, verifier: IdentityVerifier) -> BotAction:
     if prepare.transfer_reason is not None:
         # Không hỏi tên khi không có hồ sơ đối chiếu. Contract mở phiên không có outcome;
         # Policy.check_preconditions chuyển máy ở lượt 1 theo identity_lookup đã lưu.
-        return BotAction(t.GREETING_HANDOFF_INBOUND, "AWAITING_IDENTITY")
+        return BotAction(t.choose_static(ctx, t.GREETING_HANDOFF_INBOUND), "AWAITING_IDENTITY")
     return ask(ctx, QuestionId.ASK_NAME, t.GREETING_INBOUND, "AWAITING_IDENTITY")
