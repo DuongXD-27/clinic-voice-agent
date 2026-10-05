@@ -28,9 +28,8 @@ async def test_idle_ignores_speech_events() -> None:
     tts = _FakeTTS()
     controller = InterruptionController(tts)
 
-    interrupted = await controller.on_speech_started(VadEvent("speech_start"))
+    await controller.on_speech_started(VadEvent("speech_start"))
 
-    assert interrupted is False
     assert controller.state == InterruptionState.IDLE
     assert tts.cancel_calls == 0
 
@@ -146,41 +145,6 @@ async def test_meaningless_partial_does_not_confirm_even_after_min_duration() ->
     assert confirmed is False
     assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
     assert tts.cancel_calls == 0
-
-
-async def test_partial_below_min_confidence_does_not_confirm() -> None:
-    tts = _FakeTTS()
-    clock = _FakeClock()
-    controller = InterruptionController(tts, min_speech_ms=200, min_confidence=0.6, clock=clock)
-    controller.on_bot_started_speaking()
-    await controller.on_speech_started(VadEvent("speech_start"))
-    clock.advance(0.25)
-
-    confirmed = await controller.on_partial_transcript(
-        TranscriptEvent(text="dừng lại", is_final=False, confidence=0.3)
-    )
-
-    assert confirmed is False
-    assert controller.state == InterruptionState.INTERRUPTION_CANDIDATE
-    assert tts.cancel_calls == 0
-
-
-async def test_partial_with_no_confidence_ignores_min_confidence_threshold() -> None:
-    """Provider không cung cấp confidence (None, như ZipFormer hiện tại) không được bị
-    chặn bởi min_confidence — ngưỡng chỉ áp dụng khi có giá trị thật để so sánh."""
-    tts = _FakeTTS()
-    clock = _FakeClock()
-    controller = InterruptionController(tts, min_speech_ms=200, min_confidence=0.6, clock=clock)
-    controller.on_bot_started_speaking()
-    await controller.on_speech_started(VadEvent("speech_start"))
-    clock.advance(0.25)
-
-    confirmed = await controller.on_partial_transcript(
-        TranscriptEvent(text="dừng lại", is_final=False, confidence=None)
-    )
-
-    assert confirmed is True
-    assert controller.state == InterruptionState.INTERRUPTED
 
 
 async def test_bot_stopped_speaking_resets_to_idle() -> None:

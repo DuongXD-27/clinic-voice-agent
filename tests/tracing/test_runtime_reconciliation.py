@@ -16,6 +16,7 @@ from callbot.tracing.config import TracingSettings, create_tracer
 from callbot.tracing.langfuse_sink import LangfuseOtlpSettings
 from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
+from callbot.transports.http import calls as http_calls
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
 from clinic_mock_sim import FakeClinicAPI
@@ -114,7 +115,7 @@ class ClosingCallMode(CallModeStore):
 
 
 def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
-    tmp_path, redis_store_factory, redis_server
+    tmp_path, redis_store_factory, redis_server, monkeypatch
 ) -> None:
     timeline: list[object] = []
     sink = LifecycleSink(timeline)
@@ -129,7 +130,11 @@ def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
         asr=asr,
         tts=tts,
         audio_store=TrackingAudioStore(tmp_path / "audio", timeline),
-        audio_loader=lambda _url: (timeline.append(("audio_load", *_active_turn())), _AUDIO)[1],
+    )
+    monkeypatch.setattr(
+        http_calls,
+        "load_from_url",
+        lambda _url: (timeline.append(("audio_load", *_active_turn())), _AUDIO)[1],
     )
     clinic = ClosingClinic(timeline)
 
@@ -299,7 +304,6 @@ def _runtime_app(tmp_path, redis_store_factory, redis_server, tracer: Tracer):
         asr=FakeASR(),
         tts=FakeTTS(),
         audio_store=AudioArtifactStore(str(tmp_path / "audio"), "http://test"),
-        audio_loader=lambda _url: _AUDIO,
     )
     return create_app(
         clinic_factory=FakeClinicAPI,

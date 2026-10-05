@@ -345,28 +345,12 @@ async def _finals(asr: ZipFormerASR, frames: list, **options) -> list[str]:
     return [e.text async for e in asr.stream(_aiter(frames), **options) if e.is_final]
 
 
-async def test_finalize_marker_closes_utterance_before_silence_endpoint() -> None:
-    """Hồi quy (cuộc gọi LiveKit 2026-09-26): pipeline ngừng đưa audio khi ASR mới thấy
-    570/600 ms im lặng -> câu cũ nằm lại buffer rồi bị chốt/ghép cùng câu sau. FINALIZE
-    phải chốt ngay câu đang có, câu sau bắt đầu từ buffer rỗng."""
-    frames = [_UTTERANCE_A] * 5 + [_SILENT] * 3 + [AsrSegmentEnd.FINALIZE] + [_UTTERANCE_B] * 5
-
-    assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["A", "B"]
-
-
 async def test_discard_marker_drops_utterance_without_event() -> None:
     """Bot bắt đầu nói giữa câu: phần dở bị bỏ, không phát final, không ghép vào câu sau
     (bug thật: "ANH SINH ANH SINH NGÀY ...")."""
     frames = [_UTTERANCE_A] * 5 + [AsrSegmentEnd.DISCARD] + [_UTTERANCE_B] * 5
 
     assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["B"]
-
-
-async def test_finalize_marker_keeps_min_decode_guard() -> None:
-    """FINALIZE không được lách ngưỡng chống hallucination trên audio siêu ngắn."""
-    frames = [_UTTERANCE_A] * 2 + [AsrSegmentEnd.FINALIZE]
-
-    assert await _finals(_LabellingASR(), frames, min_decode_ms=400) == []
 
 
 class _ScoredFakeRecognizer:

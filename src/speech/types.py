@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal, Optional
+from typing import Optional
 
 # Băng hẹp điện thoại (300–3400 Hz): pipeline xử lý đúng chất lượng audio mà
 # đường dây thật mang lại, không phải 16 kHz sạch của benchmark (Appendix B.1).
@@ -8,8 +8,6 @@ NARROWBAND_RATE = 8_000
 WIDEBAND_RATE = 16_000
 SAMPLE_WIDTH_BYTES = 2
 CHANNELS = 1
-
-SampleRate = Literal[8_000, 16_000]
 
 
 @dataclass(frozen=True)
@@ -48,11 +46,9 @@ class AsrSegmentEnd(Enum):
     hoặc bị ghép vào câu sau. Bug thật (cuộc gọi LiveKit 2026-09-26): lượt 2 lặp lại
     nguyên văn lượt 1, lượt 3 thành "ANH SINH ANH SINH NGÀY ...".
 
-    FINALIZE: chốt ngay phần đang có, như khi gặp đủ khoảng lặng. DISCARD: bỏ phần đang
-    có, không phát event nào.
+    DISCARD: bỏ phần đang có, không phát event nào.
     """
 
-    FINALIZE = "finalize"
     DISCARD = "discard"
 
 

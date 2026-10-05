@@ -1,131 +1,292 @@
-# Luồng STT (Speech-to-Text) — giải thích chi tiết
+# Luồng STT (âm thanh → văn bản)
 
-Tài liệu này giải thích **STT đi vào đâu, xử lý qua những bước nào**, đối chiếu trực tiếp với code trên nhánh `main` ngày 17/09/2026. Khác với [ai-callbot-architecture.md](ai-callbot-architecture.md) (bức tranh toàn hệ thống), file này đào sâu riêng phần âm thanh → văn bản.
+Đối chiếu với code trên `main` ngày 05/10/2026. Có ba đường STT, cùng dùng một ASR gateway
+(`inference.asr`, provider chọn bằng `asr_provider` trong `config/speech.yaml`).
 
-## 1. Hợp đồng không ép kiến trúc STT
+| Đường | Vào | Cắt câu | Chốt lượt | File chính |
+|---|---|---|---|---|
+| HTTP `POST /v1/calls/{id}/turn` (được chấm điểm) | một clip mỗi lượt (`audio_url`) | không — decode cả clip | harness quyết định | `callbot/transports/http/calls.py` |
+| LiveKit (web call) | PCM liên tục | VAD | TurnController + Validator | `speech/asr/pipeline.py` |
+| STT eval `/v1/stt` (công cụ PM) | file WAV | Silero cắt đoạn | — | `speech/asr/offline.py` |
 
-Theo `The Callbot Contract` (AIHR-PC-001, §6.2):
-
-> Teams MAY choose any architecture — an STT → NLU → dialogue → TTS pipeline, a speech-to-speech model, or anything in between.
-
-Nghĩa là **không có luồng STT "đúng" bắt buộc**. Hợp đồng chỉ ràng buộc:
-
-- Hai endpoint HTTP: `POST /v1/calls` và `POST /v1/calls/{call_id}/turn`, phản hồi trong 8 giây (§4.1.2).
-- `mode: "audio"` từ tuần 3 trở đi thay cho `mode: "text"` của tuần 1–2 (Listing 1).
-- Mỗi lượt nhận `audio_url` (clip do harness cung cấp) hoặc `text`, không phải cả hai.
-- Kết quả được chấm là **bản ghi lịch hẹn cuối cùng** (§2.1), không phải transcript — nói đúng nhưng ghi sai trạng thái vẫn là case fail.
-
-→ Team tự quyết cách biến audio thành text. Phần dưới đây là cách team này **đã chọn và đã viết code**, không phải yêu cầu từ hợp đồng.
-
-## 2. Kiến trúc đã chọn: pipeline có bước riêng, không speech-to-speech
-
-Code hiện tại đi theo hướng cascaded — tách rời từng bước thay vì một model nghe-hiểu-trả lời trực tiếp:
-
-```
-audio_url (URL clip .wav của harness)
-   │
-   ▼
-[1] Tải + giải mã  →  audio/loader.py, audio/codec.py
-   │  (PCM 16-bit mono, giữ tần số gốc; ASR resample một lần về 16 kHz)
-   ▼
-[2] VAD (Voice Activity Detection)  →  vad/streaming.py, vad/energy.py
-   │  (có tiếng nói hay im lặng — bỏ qua ASR nếu im lặng)
-   ▼
-[3] ASR (nhận dạng)  →  asr/gemini.py hoặc asr/phowhisper.py
-   │  (audio → text tiếng Việt)
-   ▼
-[4] Transcript  →  types.py: Transcript(text, is_silence, confidence)
-   │
-   ▼
-CallerInput.text  →  engine/orchestrator.py (dialogue, FSM, extraction...)
+```mermaid
+flowchart LR
+    H["HTTP turn<br/>audio_url"] --> R1["SpeechRecognizer.transcribe"]
+    L["LiveKit track<br/>PCM 30 ms/frame"] --> P["STTPipeline<br/>VAD + ASR + TurnController"]
+    E["/v1/stt<br/>file WAV"] --> O["offline.py<br/>Silero cắt đoạn"]
+    R1 --> G[("ASRGateway<br/>asr_provider")]
+    P --> G
+    O --> G
+    R1 --> C1["CallerInput → core"]
+    P --> C2["UserTurnCompleted → CallBridge → CallerInput → core"]
+    O --> C3["JSON transcript"]
 ```
 
-Điểm nối tất cả các bước trên là `STTPipeline` tại [src/speech/asr/pipeline.py](../../src/speech/asr/pipeline.py).
+## 1. Đường HTTP
 
-## 3. Từng bước, có trích dẫn code
+```mermaid
+flowchart LR
+    A["POST /turn"] --> S{"silence_ms > 0?"}
+    S -- có --> N["không gọi ASR<br/>text rỗng, giữ silence_ms"]
+    S -- không --> LD["load_from_url<br/>giữ tần số gốc"]
+    LD --> RS["SpeechRecognizer.transcribe<br/>resample về tần số model"]
+    RS --> GW["ASRGateway → provider.transcribe(pcm)"]
+    GW --> T["Transcript(text, confidence)"]
+    T --> CI["caller_input_from_transcript → core"]
+    N --> CI
+```
 
-### 3.1 Nhận audio_url, tải và giải mã
+- Rẽ nhánh ở `calls.py::_resolve_input`.
+- Không có VAD: clip toàn nhiễu vẫn được decode.
+- Lắp ở `speech/bundle.py::build_speech_bundle`, warm-up model lúc khởi động (`warm_up`).
 
-[audio/loader.py:7-13](../../src/speech/audio/loader.py#L7-L13) — `load_from_url()` gọi HTTP GET tới `audio_url` mà harness gửi (timeout 3s), lấy bytes wav thô.
+## 2. Đường LiveKit
 
-[audio/codec.py:15-32](../../src/speech/audio/codec.py#L15-L32) — `decode_wav()` tự đọc header RIFF thủ công (module `wave` chuẩn của Python không đọc được G.711), hỗ trợ 3 định dạng:
-- PCM 16-bit thường
-- G.711 μ-law (Bắc Mỹ) — giải mã bằng bảng tra ở [audio/g711.py](../../src/speech/audio/g711.py)
-- G.711 A-law (chuẩn châu Âu/VN, phổ biến trên tổng đài SIP thật)
+### 2.1 Thành phần (một bundle cho một cuộc gọi)
 
-Sau đó downmix về mono nếu stereo, và **resample về tần số pipeline** (mặc định 8000 Hz) bằng [codec.py:60-73](../../src/speech/audio/codec.py#L60-L73) — có lọc thông thấp trước khi hạ tần số để tránh aliasing (nhiễu giả tần số cao gập ngược vào dải nghe được).
+Lắp ở `speech/bundle.py::build_streaming_bundle`. Mọi thành phần đều có trạng thái, không dùng
+chung giữa các cuộc gọi.
 
-### 3.2 VAD — có tiếng nói hay không
+```
+StreamingSpeechBundle
+├── stt_pipeline: STTPipeline
+│   ├── detector: SharedSpeechDetector(classifier theo vad_provider)
+│   ├── vad: AsyncStreamingVAD(detector.view(), end_silence_ms=vad_end_silence_ms)
+│   ├── asr: SpeechRecognizer ─ stream(silence_classifier=detector.view())
+│   └── evidence: TurnEvidence (khi turn_validator_enabled; SNR luôn đo bằng Silero)
+├── turn_controller: TurnController(validator)
+├── validator: TurnValidator | None  ── CallBridge dùng lại cho InterruptionController
+└── tts
+```
 
-[vad/streaming.py](../../src/speech/asr/vad/streaming.py) chia PCM thành khung 30ms (`split_frames`, dòng 9-14), mỗi khung được `FrameClassifier` (hiện có `EnergyFrameClassifier` — phân loại theo năng lượng RMS, xem [vad/energy.py](../../src/speech/asr/vad/energy.py)) đánh giá là "speech" hay không. `StreamingVAD.process()` (dòng 24-40) gom các khung liên tiếp thành sự kiện `speech_start` / `speech` / `speech_end`.
+### 2.2 Luồng dữ liệu tổng thể
 
-Lý do có bước này: [pipeline.py:38-40](../../src/speech/asr/pipeline.py#L38-L40) — nếu cả đoạn không có tiếng nói, **bỏ qua ASR hoàn toàn**. Đây là tối ưu cost — mỗi lần gọi Gemini/PhoWhisper tốn tiền/compute, và "cost per session" chiếm 15% điểm số (§5, bảng trọng số).
+```mermaid
+flowchart TB
+    subgraph CB["CallBridge (transports/livekit/call_bridge.py)"]
+        FR["_frames()<br/>PCM input_sample_rate, 30 ms"]
+        TQ["_turn_queue"]
+        SIL["_watch_silence<br/>silence_timeout_ms"]
+        CORE["CallerInput → CallOrchestrator"]
+        TTS["phát TTS<br/>on_bot_speaking_changed(True/False)"]
+    end
 
-### 3.3 ASR — gọi qua gateway, chọn provider qua config
+    subgraph PL["STTPipeline._CallStream (speech/asr/pipeline.py)"]
+        FO["_fanout"]
+        DET["SharedSpeechDetector.classify<br/>(1 lần / frame)"]
+        VQ[["vad_queue<br/>50 frame"]]
+        AQ[["asr_queue<br/>1000 frame ≈ 30 s"]]
+        EV["TurnEvidence.observe_frame<br/>SNR frame + SNR câu"]
+        DV["_drain_vad"]
+        DA["_drain_asr"]
+    end
 
-[speech/settings.py](../../src/speech/settings.py) — `asr_provider` (`gemini` | `phowhisper` | `zipformer`, env `ASR_PROVIDER`) chỉ chọn provider. Model/API key của từng provider nằm trong [inference/asr/config.py](../../src/inference/asr/config.py) (`GEMINI_ASR_MODEL`, `PHOWHISPER_MODEL`, `ZIPFORMER_*_PATH`), giống cách `inference/llm` làm.
+    VAD["AsyncStreamingVAD.process<br/>speech_start / speech / speech_end"]
+    ASR["ZipFormerASR.stream<br/>partial / final"]
+    TC["TurnController"]
+    IC["InterruptionController"]
 
-| Provider | File | Cách hoạt động | Đánh đổi |
-|---|---|---|---|
-| ZipFormer | [providers/zipformer.py](../../src/inference/asr/providers/zipformer.py) | Self-host qua sherpa-onnx (batch), nhận 16kHz | Chạy local CPU; mặc định trong docker-compose |
-| Gemini | [providers/gemini.py](../../src/inference/asr/providers/gemini.py) | Gửi thẳng wav 8kHz lên Gemini API (`generate_content` với prompt ép chỉ trả text tiếng Việt) | Cloud, cần `GEMINI_API_KEY`, không tự host được |
-| PhoWhisper | [providers/phowhisper.py](../../src/inference/asr/providers/phowhisper.py) | Self-hosted qua `transformers.pipeline`, nhưng Whisper chỉ nhận 16kHz nên phải **upsample** 8kHz→16kHz trước | Chạy local; audio điện thoại mất dải trên 4kHz nên WER sẽ cao hơn số công bố trên 16kHz sạch |
+    FR --> FO
+    FO --> DET
+    FO --> VQ
+    FO --> EV
+    FO -- "bot không nói, hoặc đang CANDIDATE" --> AQ
+    VQ --> DV --> VAD
+    AQ --> DA --> ASR
+    DET -. "view(): đọc lại kết quả" .-> VAD
+    DET -. "view()" .-> ASR
 
-Các provider implement chung interface `ASRProvider` ([asr/base.py](../../src/inference/asr/base.py)): nhận PCM đúng `input_sample_rate` của model, trả `ASRResult`. [`ASRGateway`](../../src/inference/asr/gateway.py) là điểm gọi duy nhất (`create_asr_gateway(provider)`), không xử lý audio. [speech/asr/recognizer.py](../../src/speech/asr/recognizer.py) (`SpeechRecognizer`) resample `AudioSegment` về tần số model rồi gọi gateway, trả `Transcript` — đổi provider chỉ cần đổi config, không sửa pipeline.
+    VAD -- "on_vad_event" --> TC
+    VAD -- "speech_start / speech_end" --> IC
+    ASR -- "observe_transcript → stability" --> EV
+    EV -- "on_evidence_updated<br/>(SNR câu, stability)" --> TC
+    EV -- "on_evidence_updated<br/>(SNR frame, stability)" --> IC
+    ASR -- "on_transcript_event" --> TC
+    ASR -- "on_partial_transcript" --> IC
 
-`STTPipeline.stream()` hiện **chưa cài đặt** (chưa provider nào có ASR streaming) và raise `NotImplementedError`.
+    TC -- "get_turn(): UserTurnCompleted" --> TQ
+    SIL -- "lượt im lặng (text rỗng)" --> TQ
+    TQ --> CORE --> TTS
+    IC -- "INTERRUPTED → tts.cancel()" --> TTS
+    TTS -- "is_bot_speaking" --> TC
+    TC -. "is_bot_speaking" .-> FO
+    IC -. "state" .-> FO
+```
 
-### 3.4 Gộp lại thành Transcript
+Hai worker `_drain_vad` và `_drain_asr` chạy song song, mỗi worker có hàng đợi riêng. Hàng đợi
+ASR rộng gấp 20 lần để decode chậm không chặn `_fanout` (nếu không VAD và barge-in đứng theo
+ASR). ASR tồn ≥ 1 s audio thì log cảnh báo.
 
-[speech/types.py:37-43](../../src/speech/types.py#L37-L43) — `Transcript` là kết quả cuối: `text`, `confidence` (optional), `is_silence`. Đây là thứ engine thực sự nhận.
+### 2.3 Định tuyến một frame (`_fanout`)
 
-[speech/asr/transcript.py](../../src/speech/asr/transcript.py) — `TranscriptAggregator` gộp các event partial/final của ASR streaming thành một `Transcript` — chỉ dùng cho phone leg (âm thanh chảy liên tục), **không dùng** cho đường HTTP theo lượt (turn-based), vì ở đó mỗi lượt đã là một đoạn audio trọn vẹn rồi.
+```mermaid
+flowchart TD
+    F["frame 30 ms"] --> C["detector.classify(frame)"]
+    C --> V["vad_queue.put(frame) — luôn luôn"]
+    V --> E["evidence.observe_frame(frame) — nếu bật validator"]
+    E --> B{"TurnController<br/>is_bot_speaking?"}
+    B -- không --> CLR["xoá pre-roll"] --> SEND["asr_queue.put(frame)"]
+    B -- có --> Y["sleep(0): nhường VAD xử lý frame vừa vào"]
+    Y --> S{"Interruption state?"}
+    S -- "INTERRUPTION_CANDIDATE" --> R{"đã phát lại<br/>pre-roll?"}
+    R -- chưa --> D1["DISCARD câu dở trong ASR"] --> RP["đưa pre-roll (≤ 500 ms) vào ASR"] --> SEND
+    R -- rồi --> SEND
+    S -- "BOT_SPEAKING / INTERRUPTED" --> PR["giữ frame trong pre-roll<br/>(không decode tiếng bot vọng)"]
+    PR --> I{"INTERRUPTED?"}
+    I -- không --> D2["DISCARD câu dở trong ASR"]
+    I -- có --> K["giữ câu ngắt lời đã xác nhận"]
+```
 
-### 3.5 Điểm vào `STTPipeline`
+`DISCARD` là `AsrSegmentEnd.DISCARD` đặt vào hàng đợi ASR: ASR chỉ tự chốt câu khi thấy đủ
+khoảng lặng, nên ngừng đưa frame thì phải báo bỏ câu dở, nếu không nó bị ghép vào câu sau
+("ANH SINH" + "ANH SINH NGÀY ...").
 
-[pipeline.py:20-30](../../src/speech/asr/pipeline.py#L20-L30) — `transcribe_turn(text, audio_url, silence_ms)` là hàm tổng hợp, xử lý đúng 3 khả năng của một lượt theo §4.1 hợp đồng:
-1. `silence_ms > 0` → im lặng, không cần ASR
-2. `text` có sẵn (text mode) → dùng luôn, không qua audio
-3. `audio_url` có (audio mode) → tải, decode, chạy VAD + ASR (`transcribe_segment`, dòng 32-41)
+### 2.4 ASR cắt câu và decode (`ZipFormerASR.stream`)
 
-## 4. Khoảng trống quan trọng: STT viết xong nhưng CHƯA nối vào request thật
+Chunked-offline: gom từng câu theo `silence_classifier` (chính là `detector.view()`, nên cùng
+quyết định với VAD), decode lại **cả câu** mỗi lần phát partial.
 
-Đây là lý do bạn "chưa hiểu STT đi vào như nào" — **vì hiện tại nó chưa thực sự nằm trên đường đi của một request HTTP nào cả.**
+```mermaid
+flowchart TD
+    IN["item từ asr_queue"] --> X{"AsrSegmentEnd.DISCARD?"}
+    X -- có --> DS["bỏ câu dở + pre-speech"]
+    X -- không --> SP{"is_speech?"}
+    SP -- "không, chưa mở câu" --> PS["giữ vào pre-speech 300 ms"]
+    SP -- "có / đang trong câu" --> ADD["thêm vào câu (kèm pre-speech khi mở)<br/>đếm speech_ms, silent_ms"]
+    ADD --> PA{"is_speech và speech_ms ≥ min_decode_ms (400)<br/>và đủ nhịp partial?"}
+    PA -- có --> DP["decode cả câu (to_thread)<br/>→ partial nếu text đổi"]
+    PA -- không --> FI
+    DP --> FI{"silent_ms ≥ vad_end_silence_ms (600)<br/>hoặc speech_ms ≥ max_turn_speech_ms (15 s)?"}
+    FI -- có --> FD["decode cả câu → final<br/>(chỉ khi speech_ms ≥ min_decode_ms)"] --> CL["đóng câu"]
+    FI -- không --> W["chờ frame tiếp"]
+```
 
-Bằng chứng trực tiếp trong [transports/http/calls.py](../../src/callbot/transports/http/calls.py):
+- Câu dưới `min_decode_ms` tiếng nói không bao giờ được decode: ZipFormer bịa cả cụm từ từ "à"/"ờm".
+- Nói liền quá `max_turn_speech_ms` thì chốt cưỡng bức và mở ngay câu mới.
+- Tham số ZipFormer ở `config/asr.yaml`.
 
-- [dòng 99-101](../../src/callbot/transports/http/calls.py#L99-L101): `POST /v1/calls` **chặn cứng** `mode == "audio"`, trả lỗi `501 AUDIO_NOT_IMPLEMENTED`.
-- [dòng 128-129](../../src/callbot/transports/http/calls.py#L128-L129): `POST /v1/calls/{id}/turn` **từ chối** mọi request có `audio_url`, trả lỗi `422 AUDIO_URL_NOT_ALLOWED`.
+### 2.5 Chốt lượt (`TurnController`)
 
-Và trong `engine/types.py`, [`CallerInput.transcript`](../../src/callbot/engine/types.py#L79-L81) chỉ đơn giản trả về `self.text` — engine **không hề gọi `STTPipeline`**. `main.py` của transport HTTP cũng không import hay khởi tạo `STTPipeline`/`SpeechSettings`/`GeminiASR`/`PhoWhisperASR` ở đâu cả (đã kiểm tra bằng grep, không có kết quả).
+VAD và ASR cùng đẩy event vào; controller không tự đọc audio.
 
-Nói cách khác: mọi thứ trong `src/speech/` tồn tại như một **thư viện đã viết và có unit test riêng** ([tests/speech/test_narrowband.py](../../tests/speech/test_narrowband.py) — test `STTPipeline`, VAD, codec, G.711 đầy đủ), nhưng **chưa có dây nối** từ `calls.py` gọi vào nó. Toàn bộ cuộc gọi hiện tại (tuần 1-2 theo lịch hợp đồng) chỉ chạy `mode: "text"`.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant VAD as AsyncStreamingVAD
+    participant ASR as ZipFormerASR
+    participant EV as TurnEvidence
+    participant TC as TurnController
+    participant CB as CallBridge
 
-## 5. Để luồng audio thật sự chạy end-to-end, cần nối gì
+    VAD->>TC: speech_start (tạo candidate, started_at)
+    loop mỗi partial
+        ASR->>EV: observe_transcript → stability
+        EV->>TC: on_evidence_updated(SNR câu, stability)
+        ASR->>TC: on_transcript_event(partial) — chỉ cập nhật text
+    end
+    VAD->>TC: speech_end sau 600 ms im lặng
+    TC->>TC: _try_emit(allow_partial=False) — chưa có final thì hẹn timeout 300 ms
+    ASR->>TC: final (sau đủ 600 ms im lặng + decode)
+    TC->>TC: _try_emit(is_last_chance=True)
+    TC-->>CB: UserTurnCompleted(text, confidence, timing)
+    Note over TC: Hết timeout mà ASR còn tồn audio:<br/>chờ tối đa turn_max_wait_for_asr_ms (3 s)<br/>rồi chốt bằng partial cuối
+```
 
-(Không phải việc cần làm ngay — chỉ liệt kê khoảng cách giữa "đã có" và "chạy được".)
+Điều kiện trong `_try_emit` — qua hết thì chốt:
 
-1. Bỏ chặn ở `calls.py:99-101` và `calls.py:128-129`.
-2. Khởi tạo `STTPipeline` một lần trong `main.py`, tương tự cách `CallOrchestrator` đang được tạo trong lifespan (xem [calls.py:37-39](../../src/callbot/transports/http/calls.py#L37-L39) — `orchestrator` lấy từ `request.app.state`). Việc này dễ hơn tưởng — factory đã có sẵn: [`speech/__init__.py:17-25`](../../src/speech/__init__.py#L17-L25) hàm `create_stt_pipeline(settings)` tự lắp VAD + ASR provider (theo `SpeechSettings.asr_provider`) thành một `STTPipeline` hoàn chỉnh, chỉ cần gọi và gán vào `app.state`.
-3. Trong `call_turn()`, khi có `audio_url`: gọi `stt_pipeline.transcribe_turn(text=None, audio_url=..., silence_ms=...)` → lấy `Transcript` → dựng `CallerInput(text=transcript.text, silence_ms=..., audio_url=audio_url, asr_confidence=transcript.confidence)` rồi mới đưa vào `orchestrator.handle_turn()` như hiện tại.
-4. Chiều ngược lại dùng OpenAI TTS trong [inference/tts](../../src/inference/tts/) (`TTS_PROVIDER=openai`) để sinh `audio_url`; mode `text` không gọi TTS.
+```mermaid
+flowchart TD
+    T["_try_emit"] --> A{"đã chốt hoặc<br/>bot đang nói?"}
+    A -- có --> NO["không chốt<br/>(giữ candidate)"]
+    A -- không --> B{"có final?"}
+    B -- không --> B2{"allow_partial và<br/>VAD đã speech_end?"}
+    B2 -- không --> NO
+    B2 -- có --> C
+    B -- có --> C{"text rỗng?"}
+    C -- có --> NO
+    C -- không --> M{"is_meaningful_text?<br/>(không phải dấu câu / từ đệm à, ừ, dạ…)"}
+    M -- không --> DROP["bỏ candidate"]
+    M -- có --> D{"đủ turn_min_speech_ms (250)<br/>+ phần thiếu của post_bot_guard (500)?"}
+    D -- chưa --> SCH["hẹn kiểm tra lại đúng lúc đủ"]
+    D -- đủ --> V{"TurnValidator"}
+    V -- DROP --> DROP
+    V -- "WAIT, chưa phải cơ hội cuối" --> NO
+    V -- "ACCEPT, hoặc WAIT ở cơ hội cuối" --> OK["UserTurnCompleted → hàng đợi"]
+```
 
-## 6. Vì sao mọi thứ chốt ở 8kHz, không phải 16kHz
+`TurnValidator.evaluate`:
 
-[speech/types.py:4-7](../../src/speech/types.py#L4-L7): điện thoại truyền âm thoại băng hẹp 300–3400 Hz, số hoá chuẩn ở 8000 Hz (đủ theo định lý Nyquist cho dải đó). Các benchmark ASR công khai (kể cả PhoWhisper, Whisper) thường đo trên 16kHz "sạch" — không phản ánh chất lượng thật khi âm thanh đã đi qua đường dây điện thoại. Đây chính là lý do Appendix B.1 của hợp đồng cảnh báo: **đo WER trên bản ghi 8kHz tự thu, không tin số liệu leaderboard 16kHz.**
+| Điều kiện | Quyết định |
+|---|---|
+| transcript dao động (`OSCILLATING`, vd. "đây"→"tại"→"đây") | DROP |
+| ≤ 2 từ **và** SNR câu < `turn_validator_min_snr_db` (3 dB) | DROP |
+| transcript hội tụ (`CONVERGING`) | ACCEPT |
+| còn lại | WAIT ("cơ hội cuối" — có final hoặc hết timeout — coi như ACCEPT) |
 
-`SpeechSettings.sample_rate` mặc định là `NARROWBAND_RATE = 8000`; đổi thành `16000` chỉ nên dùng để so sánh nội bộ, không phải số báo cáo chính thức.
+Bot nói xong (`on_bot_speaking_changed(False)`): candidate nghe được trong lúc bot nói bị bỏ, trừ
+khi đó là lần ngắt lời đã xác nhận (`preserve_candidate=True`) — khi đó chốt ngay nếu đã có final.
 
-## 7. Phần streaming / phone leg (tuần 6) — chưa cần bây giờ
+### 2.6 Ngắt lời (`InterruptionController`)
 
-`STTPipeline.stream()` ([pipeline.py:43-49](../../src/speech/asr/pipeline.py#L43-L49)) là đường dành riêng cho cuộc gọi điện thoại thật qua SIP (§1.3.1-1.3.2 hợp đồng) — âm thanh chảy liên tục hai chiều, cần xử lý ngắt lời (barge-in). Cả hai ASR provider đều raise `NotImplementedError` cho `stream()`. Theo Appendix B.2 của hợp đồng: việc này chỉ cần từ tuần 5, và **đường được chấm điểm không bao giờ đi qua điện thoại** (§1.3.1: "Scoring never goes through a phone line") — nên đây không phải ưu tiên trước mắt.
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> BOT_SPEAKING: on_bot_started_speaking(text)
+    BOT_SPEAKING --> INTERRUPTION_CANDIDATE: VAD speech_start
+    INTERRUPTION_CANDIDATE --> BOT_SPEAKING: VAD speech_end chưa xác nhận
+    INTERRUPTION_CANDIDATE --> INTERRUPTED: partial qua gate → tts.cancel()
+    BOT_SPEAKING --> IDLE: on_bot_stopped_speaking
+    INTERRUPTION_CANDIDATE --> IDLE: on_bot_stopped_speaking
+    INTERRUPTED --> IDLE: on_bot_stopped_speaking
+```
 
-Chi tiết kiến trúc cụ thể cho đường này (SIP/RTP, ZipFormer streaming qua sherpa-onnx, tách service hay gộp chung) xem [phone-leg-architecture.md](phone-leg-architecture.md).
+Gate xác nhận (mọi điều kiện đều phải qua — thà bỏ lỡ một lần ngắt lời còn hơn cắt lời bot sai):
 
-## 8. Vì sao Streamlit prototype (nhánh `prototype`) không giúp hiểu luồng STT
+1. Candidate kéo dài ≥ 200 ms.
+2. `is_meaningful_text(partial)`.
+3. Không phải tiếng bot vọng lại: `fuzz.partial_ratio` với câu bot đang đọc < 70.
+4. SNR frame ≥ `interruption_min_snr_db`.
+5. `TurnValidator` trả ACCEPT (WAIT cũng bị chặn).
 
-Nhánh `prototype` (không nằm trên `main`, xem lịch sử commit `1c8a87c`) có một app Streamlit tên "voice MVP". Tên gây hiểu lầm: đọc thẳng docstring dòng đầu của file đó, nó tự ghi rõ là **"chat trực quan, KHÔNG dùng voice (ASR/TTS)"** — giả định transcript đã sạch sẵn (người dùng gõ text đóng vai kết quả STT), không hề chạy audio/VAD/ASR/TTS thật. Các provider TTS thật (Azure, Vbee, Viettel AI TTS, ElevenLabs) cũng chỉ có trên `prototype`, chưa từng merge vào `main`. Vì vậy nếu bạn từng thấy app đó chạy, nó không minh hoạ luồng STT — nó minh hoạ phần dialogue/engine với input giả lập là text.
+Chỉ khi state là `INTERRUPTION_CANDIDATE` thì `_fanout` mới phát lại pre-roll và đưa audio vào
+ASR — đó là cách ASR có partial để gate xét (xem 2.3).
 
----
+### 2.7 Lượt im lặng
 
-**Tóm gọn một câu:** logic biến audio thành text (giải mã, lọc tiếng ồn/im lặng, nhận dạng) đã viết xong, có factory lắp sẵn (`create_stt_pipeline`) và test riêng trong `src/speech/`, nhưng đường HTTP đang phục vụ harness (`calls.py`) chủ động chặn audio và chỉ chạy text — đó là lý do luồng STT "chưa thấy nó chạy ở đâu" khi bạn theo dõi một request thật.
+`CallBridge._watch_silence` hỏi `TurnController.silence_elapsed_s()` — tính từ mốc muộn hơn
+giữa lúc bot dứt lời và lần cuối VAD còn thấy tiếng nói; trả `None` khi bot đang nói hoặc đang
+có câu dở. Đủ `silence_timeout_ms` thì đẩy `UserTurnCompleted(text="", silence_ms=…)` vào cùng
+`_turn_queue`, core nhận như lượt im lặng của HTTP.
+
+## 3. Cấu hình liên quan (`config/speech.yaml`)
+
+| Khóa | Mặc định | Ảnh hưởng |
+|---|---|---|
+| `asr_provider` | `zipformer` | `zipformer` chạy cả hai đường; `elevenlabs_realtime` chỉ LiveKit; `gemini`, `phowhisper` chỉ HTTP |
+| `vad_provider` | `silero` | classifier cho VAD + chốt câu ASR trên LiveKit (`energy` / `webrtc` / `silero`) |
+| `vad_end_silence_ms` | 600 | im lặng để VAD phát `speech_end` **và** ASR phát final |
+| `silero_min_silence_ms` | 500 | làm mượt nhãn của Silero |
+| `turn_min_speech_ms` | 250 | lượt ngắn hơn bị bỏ |
+| `turn_max_wait_after_vad_end_ms` | 300 | chờ final sau `speech_end` rồi chốt bằng partial |
+| `turn_max_wait_for_asr_ms` | 3000 | chờ ASR xử lý hết phần tồn trước khi chốt bằng partial |
+| `turn_post_bot_guard_ms` | 500 | câu bắt đầu sát lúc bot dứt lời phải dài thêm phần còn thiếu |
+| `turn_validator_enabled`, `turn_validator_min_snr_db` | true, 3.0 | lọc lượt ảo giác |
+| `interruption_min_snr_db` | 0.0 | lọc barge-in giả |
+
+Tần số mẫu: HTTP giữ tần số gốc của clip; LiveKit dùng `input_sample_rate` trong
+`config/livekit.yaml`. Pre-roll barge-in: `barge_in_preroll_ms` (500) cũng ở `livekit.yaml`.
+
+## 4. Bản đồ file
+
+| File | Vai trò |
+|---|---|
+| `speech/bundle.py` | lắp thành phần cho từng đường |
+| `speech/asr/pipeline.py` | STTPipeline: fan-out frame, hai worker VAD/ASR |
+| `speech/asr/recognizer.py` | nối ASR gateway, resample về tần số model |
+| `speech/asr/vad/` | `shared.py` (phân loại một lần/frame), `silero.py`, `webrtc.py`, `energy.py`, `async_stream.py` (VAD) |
+| `speech/turn/controller.py` | chốt lượt |
+| `speech/turn/interruption.py` | xác nhận ngắt lời khi bot đang nói |
+| `speech/turn/validator.py`, `speech/turn/evidence.py` | lọc lượt ảo giác (SNR + độ ổn định) |
+| `inference/asr/providers/zipformer.py` | decode + `stream()` chunked-offline |
+| `callbot/transports/livekit/call_bridge.py` | nhận frame, lượt im lặng, phát TTS, chuyển lượt cho core |
+| `speech/asr/offline.py`, `speech/audio/preprocess.py` | đường STT eval |

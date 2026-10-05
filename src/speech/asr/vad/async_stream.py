@@ -1,9 +1,6 @@
-"""Bản async của StreamingVAD — cho audio đến real-time (LiveKit track), không có sẵn trong bộ nhớ.
+"""VAD cho audio đến real-time (LiveKit track), không có sẵn trong bộ nhớ.
 
-Giữ đúng cùng state machine với StreamingVAD.process (speech/asr/vad/streaming.py) — chỉ
-đổi `for` đồng bộ thành `async for` để không chặn event loop khi frame đến chậm hơn thời
-gian xử lý. Không viết lại thuật toán để tránh 2 bản lệch nhau; StreamingVAD (sync) vẫn
-được STTPipeline.transcribe_segment dùng cho đường HTTP batch hiện có.
+`async for` để không chặn event loop khi frame đến chậm hơn thời gian xử lý.
 """
 
 from typing import AsyncIterator

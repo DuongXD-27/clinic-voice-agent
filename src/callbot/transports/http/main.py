@@ -175,7 +175,14 @@ def create_app(
                 clinic, engine_settings or EngineSettings(), tracer=tracer, store=store
             )
             speech = speech_factory()
-            await asyncio.to_thread(warm_up, speech)
+            try:
+                await asyncio.to_thread(warm_up, speech.asr)
+            except Exception:
+                # Không chặn khởi động (vd. provider hosted thiếu API key) — mode=audio sẽ lỗi
+                # rõ ràng ở lượt gọi thật.
+                logger.warning(
+                    "Không warm-up được ASR provider %s", getattr(speech.asr, "name", "?")
+                )
             app.state.speech = speech
             audio_dir = Path(speech.audio_store.directory)
             audio_dir.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from dataclasses import replace
 from uuid import uuid4
 
@@ -18,6 +17,7 @@ from callbot.tracing.config import TracingSettings, create_tracer
 from callbot.tracing.langfuse_sink import LangfuseOtlpSettings, LangfuseOtlpTraceSink, _otlp_span
 from callbot.tracing.models import CompletedSpan
 from callbot.tracing.pseudonym import CallKeyFactory
+from callbot.transports.http import calls as http_calls
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.main import create_app
 from clinic_mock_sim import FakeClinicAPI
@@ -72,13 +72,11 @@ def _app(
     asr: FakeASR | None = None,
     tts: FakeTTS | None = None,
     audio_store: AudioArtifactStore | None = None,
-    audio_loader: Callable[[str], AudioSegment] | None = None,
 ):
     speech = SpeechBundle(
         asr=asr or FakeASR(transcript="Nguyễn Văn A"),
         tts=tts or FakeTTS(),
         audio_store=audio_store or AudioArtifactStore(str(tmp_path / "audio"), "http://test"),
-        audio_loader=audio_loader or (lambda _url: _AUDIO),
     )
     return create_app(
         clinic_factory=FakeClinicAPI,
@@ -202,20 +200,15 @@ def test_stt_provider_failure_is_safe_and_reports_upstream_unavailable(
 
 
 def test_audio_load_failure_is_an_stt_stage_error(
-    tmp_path, redis_store_factory, redis_server
+    tmp_path, redis_store_factory, redis_server, monkeypatch
 ) -> None:
     sink = MemorySink()
 
     def broken_loader(_url: str) -> AudioSegment:
         raise ValueError("private audio URL and decode detail")
 
-    app = _app(
-        tmp_path,
-        redis_store_factory,
-        redis_server,
-        _tracer(sink),
-        audio_loader=broken_loader,
-    )
+    monkeypatch.setattr(http_calls, "load_from_url", broken_loader)
+    app = _app(tmp_path, redis_store_factory, redis_server, _tracer(sink))
     with TestClient(app) as client:
         assert _start(client, "audio-load-failure", mode="audio").status_code == 200
         assert _audio_turn(client, "audio-load-failure").status_code == 503

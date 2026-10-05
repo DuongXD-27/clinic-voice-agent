@@ -10,6 +10,7 @@ from tests.transports.livekit_support import require_livekit
 
 require_livekit()
 
+from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
 from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
     _FakeAudioSource,
     _FakeOrchestrator,
@@ -21,7 +22,6 @@ from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
 from callbot.engine.types import BotAction  # noqa: E402
 from callbot.tracing import Tracer  # noqa: E402
 from callbot.tracing.pseudonym import CallKeyFactory  # noqa: E402
-from callbot.transports.livekit.call_bridge import CallBridge  # noqa: E402
 from speech.turn.events import UserTurnCompleted  # noqa: E402
 
 
@@ -45,7 +45,7 @@ async def _run_one_call(room_name: str, user_text: str) -> tuple[str, list[str]]
     tts = _FakeTTS()
     room = _FakeRoom(room_name)
 
-    bridge = CallBridge(room, orchestrator, stt_pipeline, tts)
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, tts)
     bridge._audio_source = _FakeAudioSource()
     bridge._publish_tts_track = _noop_publish
 
@@ -88,8 +88,8 @@ async def test_turn_controller_and_interruption_are_distinct_instances_per_bridg
     orchestrator_b = _FakeOrchestrator(opening=opening, turn_actions=[])
     stt_pipeline = _FakeSTTPipeline([])
 
-    bridge_a = CallBridge(_FakeRoom("room-a"), orchestrator_a, stt_pipeline, _FakeTTS())
-    bridge_b = CallBridge(_FakeRoom("room-b"), orchestrator_b, stt_pipeline, _FakeTTS())
+    bridge_a = make_call_bridge(_FakeRoom("room-a"), orchestrator_a, stt_pipeline, _FakeTTS())
+    bridge_b = make_call_bridge(_FakeRoom("room-b"), orchestrator_b, stt_pipeline, _FakeTTS())
 
     assert bridge_a._turn_controller is not bridge_b._turn_controller
     assert bridge_a._interruption is not bridge_b._interruption
@@ -112,7 +112,7 @@ async def test_livekit_parallel_calls_keep_separate_trace_trees() -> None:
         closing = BotAction(utterance="tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
         orchestrator = _FakeOrchestrator(opening, [closing])
         orchestrator.tracer = Tracer(sink, keys)
-        bridge = CallBridge(
+        bridge = make_call_bridge(
             _FakeRoom(room_name),
             orchestrator,
             _FakeSTTPipeline([UserTurnCompleted(text="xin chào", confidence=0.8)]),

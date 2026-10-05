@@ -14,9 +14,12 @@ Bộ dữ liệu (`--dataset`):
   dump yên tĩnh, chỉ giữ đoạn to hơn nền >= 15 dB (giọng người gọi, không phải ảo giác). Đây là
   loại câu dễ bị validator/bộ lọc từ đệm bỏ nhầm nhất.
 
-Cấu hình (`--profile`): `production` = đúng cấu hình deploy (WebRTC VAD, không Validator);
-`target` = cấu hình mục tiêu (Silero + Validator). Profile ghi đè hẳn các khoá này, kết quả không
-phụ thuộc .env của máy chạy; `--set` ghi đè tiếp lên profile.
+Cấu hình (`--profile`): `production` = đúng cấu hình deploy (Silero VAD + Validator, như
+config/speech.yaml); `target` là tên cũ của cùng cấu hình đó; `webrtc-legacy` = deploy trước
+28/09 (WebRTC VAD, không Validator). Profile ghi đè hẳn các khoá này, kết quả không phụ thuộc
+.env của máy chạy; `--set` ghi đè tiếp lên profile. Kết quả cũ gắn nhãn `production` trước
+28/09 là WebRTC; từ 28/09 tới trước khi bỏ speech_shared_detector thực chất là Silero, không
+Validator — để ý khi `--compare` với các lần chạy đó.
 Xác định (deterministic): TurnController chạy theo đồng hồ ảo (cả `clock` lẫn `sleep`), và
 mỗi frame chỉ được đẩy khi VAD + ASR đã xử lý xong frame trước (ASR coi như tức thời). Chạy
 hai lần cùng tham số cho kết quả giống hệt — khác biệt giữa hai cấu hình là do cấu hình.
@@ -38,7 +41,7 @@ Chỉ số chính:
 Chạy (từ gốc repo; dữ liệu và kết quả nằm trong temp/noise-bench/, không commit):
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --profile production
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --dataset golden
-    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --profile target --set speech_shared_detector=true
+    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --set vad_end_silence_ms=500
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --compare cu moi
 So với code cũ: tạo git worktree của commit cũ rồi chạy với NOISE_BENCH_SRC=<worktree>/src.
 """
@@ -70,6 +73,7 @@ sys.path.insert(0, str(ROOT / "eval" / "stt-bench"))
 
 from evaluate import calculate_wer  # noqa: E402
 
+from callbot.transports.livekit.settings import LiveKitSettings  # noqa: E402
 from inference.asr import create_asr_gateway  # noqa: E402
 from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
@@ -88,16 +92,20 @@ GOLDEN = ROOT / "eval" / "stt-bench" / "golden-cases.yaml"
 DEFAULT_CONDITIONS = "clean,office@15,office@8,office@3,babble@12,babble@6"
 NOISE_ONLY_TRIALS = 12
 FRAME_S = FRAME / RATE
+# Phải khớp config/speech.yaml: deploy đổi sang Silero + Validator từ 28/09
+# (docs/evidence/livekit-audio-plan-execution-2026-09-28.md §5.2).
+_PRODUCTION = {
+    "vad_provider": "silero",
+    "turn_validator_enabled": True,
+}
 PROFILES: dict[str, dict[str, object]] = {
-    "production": {
+    "production": _PRODUCTION,
+    # Tên cũ của cấu hình Silero + Validator trước khi lên production; giữ cho lệnh trong docs.
+    "target": _PRODUCTION,
+    # Deploy trước 28/09, để so với số đo cũ.
+    "webrtc-legacy": {
         "vad_provider": "webrtc",
         "turn_validator_enabled": False,
-    },
-    # Cấu hình mục tiêu chốt theo số đo 28/09 (docs/evidence/livekit-audio-plan-execution-...):
-    # Silero thay WebRTC, có Validator. Speech Admission đã gỡ.
-    "target": {
-        "vad_provider": "silero",
-        "turn_validator_enabled": True,
     },
 }
 
@@ -333,12 +341,31 @@ class DecodeMeter:
         return self.calls, self.seconds, self.audio_seconds
 
 
+def _livekit_queues() -> dict[str, int]:
+    """Hàng đợi/pre-roll như worker LiveKit thật (config/livekit.yaml); frame cố định 30 ms
+    vì bộ đo cắt audio theo `FRAME`."""
+    livekit = LiveKitSettings()
+    return {
+        "frame_ms": FRAME * 1000 // RATE,
+        "input_queue_ms": livekit.input_queue_ms,
+        "asr_queue_ms": livekit.asr_queue_ms,
+        "barge_in_preroll_ms": livekit.barge_in_preroll_ms,
+    }
+
+
 async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRecognizer) -> dict:
     """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core và thời điểm
     (giây audio) chốt từng turn. Xác định: xem docstring module."""
     recognizer = _CapturingRecognizer(asr)
-    bundle = build_streaming_bundle(settings, asr=recognizer, frame_ms=30)
     clock = VirtualTime()
+    bundle = build_streaming_bundle(
+        settings,
+        sample_rate=RATE,
+        **_livekit_queues(),
+        asr=recognizer,
+    )
+    # Bundle dựng TurnController theo đồng hồ thật; bộ đo đẩy audio nhanh hơn thời gian thực nên
+    # dựng lại cùng cấu hình, chạy theo đồng hồ ảo.
     controller = TurnController(
         min_speech_ms=settings.turn_min_speech_ms,
         max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
@@ -363,13 +390,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
 
     turns: list[str] = []
     turn_times: list[float] = []
-    async for turn in bundle.stt_pipeline.stream(
-        frames(),
-        turn_controller=controller,
-        evidence_tracker=bundle.evidence_tracker,
-        noise_tracker=bundle.noise_tracker,
-        noise_classifier=bundle.noise_classifier,
-    ):
+    async for turn in bundle.stt_pipeline.stream(frames(), turn_controller=controller):
         turns.append(turn.text)
         turn_times.append(clock.now())
     return {
@@ -561,7 +582,7 @@ def run(
     profile: str,
     overrides: dict,
 ) -> dict:
-    overrides = {"sample_rate": RATE, **PROFILES[profile], **overrides}
+    overrides = {**PROFILES[profile], **overrides}
     settings = SpeechSettings(**overrides)
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     meter = DecodeMeter()

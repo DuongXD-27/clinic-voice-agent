@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("livekit", reason="cần extra [livekit] cài livekit-agents/livekit-api")
 
 from livekit import rtc  # noqa: E402
+from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
 from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
     _FakeAudioSource,
     _FakeOrchestrator,
@@ -51,7 +52,7 @@ class _ScriptedPipeline:
 
 
 def _bridge(orchestrator, pipeline, *, silence_timeout_ms: int, controller=None) -> CallBridge:
-    bridge = CallBridge(
+    bridge = make_call_bridge(
         _FakeRoom("web-input-room"),
         orchestrator,
         pipeline,
@@ -173,7 +174,7 @@ async def test_stale_silence_timeout_is_ignored() -> None:
 
 
 def _track_bridge(monkeypatch, caller_identity: str | None) -> tuple[CallBridge, list]:
-    bridge = CallBridge(
+    bridge = make_call_bridge(
         _FakeRoom("web-track-room"),
         _FakeOrchestrator(
             opening=BotAction(utterance="", state="AWAITING_INTENT"), turn_actions=[]

@@ -8,11 +8,12 @@ from fastapi.testclient import TestClient
 import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
 from callbot.engine.dialogue import templates
+from callbot.transports.http import calls as http_calls
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.config import settings as http_settings
 from callbot.transports.http.main import create_app
 from clinic_mock_sim import FakeClinicAPI
-from tests.transports.http.fakes import make_speech_bundle
+from tests.transports.http.fakes import load_silent_audio, make_speech_bundle
 
 # Fixture `clinic`, `clinic_scenario` và chặn gọi clinic mock thật — xem src/clinic_mock_sim/README.md
 pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
@@ -44,6 +45,12 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     monkeypatch.setattr(engine_module, "_default_session_store", redis_store_factory)
     # BOT_API_KEYS trong .env bật auth cho mọi request test; test_auth.py tự bật lại khi cần.
     monkeypatch.setattr(http_settings, "bot_api_keys", "")
+
+
+@pytest.fixture(autouse=True)
+def offline_audio_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mode=audio không tải audio_url thật; test cần audio khác tự patch đè."""
+    monkeypatch.setattr(http_calls, "load_from_url", load_silent_audio)
 
 
 @pytest.fixture

@@ -26,16 +26,13 @@ from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
     segment_to_livekit_frame,
 )
-from speech.asr.evidence import TranscriptEvidenceTracker
 from speech.asr.pipeline import STTPipeline
-from speech.asr.vad.base import FrameClassifier
-from speech.audio.noise_tracker import NoiseTracker
 from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import InterruptionController, InterruptionState
 from speech.turn.validator import TurnValidator
-from speech.types import NARROWBAND_RATE, AudioSegment
+from speech.types import AudioSegment
 
 if TYPE_CHECKING:
     from livekit import rtc
@@ -114,23 +111,22 @@ class CallBridge:
         stt_pipeline: STTPipeline,
         tts: SpeechSynthesizer,
         *,
-        sample_rate: int = NARROWBAND_RATE,
+        turn_controller: TurnController,
+        interruption_validator: Optional[TurnValidator],
+        interruption_min_snr_db: Optional[float],
+        sample_rate: int,
+        frame_ms: int,
+        input_queue_ms: int,
+        output_queue_ms: int,
+        silence_timeout_ms: int,
+        krisp_noise_suppression_enabled: bool,
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
-        turn_controller: Optional[TurnController] = None,
-        evidence_tracker: Optional[TranscriptEvidenceTracker] = None,
-        noise_tracker: Optional[NoiseTracker] = None,
-        noise_classifier: Optional[FrameClassifier] = None,
-        interruption_validator: Optional[TurnValidator] = None,
-        interruption_min_snr_db: Optional[float] = None,
-        frame_ms: int = 30,
-        input_queue_ms: int = 1_500,
-        output_queue_ms: int = 200,
         caller_identity: Optional[str] = None,
-        silence_timeout_ms: int = 0,
-        krisp_noise_suppression_enabled: bool = False,
     ) -> None:
+        """Mọi tham số cấu hình (StreamingSpeechBundle, config/livekit.yaml, config/speech.yaml)
+        đều bắt buộc — worker.py truyền đủ. Chỉ thông tin của cuộc gọi là tuỳ chọn."""
         self._room = room
         self._orchestrator = orchestrator
         candidate_tracer = getattr(orchestrator, "tracer", None)
@@ -142,11 +138,6 @@ class CallBridge:
         self._caller_number = caller_number
         self._appointment_id = appointment_id
         self._turn_number = 0
-        # Turn Validator (xem StreamingSpeechBundle) — None khi turn_validator_enabled=False,
-        # truyền thẳng xuống stt_pipeline.stream() mỗi lần _consume_turns() gọi.
-        self._evidence_tracker = evidence_tracker
-        self._noise_tracker = noise_tracker
-        self._noise_classifier = noise_classifier
         self._frame_ms = frame_ms
         self._input_queue_frames = max(1, input_queue_ms // frame_ms)
         self._output_queue_ms = output_queue_ms
@@ -173,18 +164,11 @@ class CallBridge:
         # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
         # thật; không phải khuyến nghị bật cho production.
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
-        # 1 TurnController + 1 InterruptionController riêng cho call này — không tạo
-        # qua default của STTPipeline.stream() để CallBridge điều khiển được
-        # bot-speaking state của TurnController khi barge-in xảy ra. worker.py truyền
-        # instance đã cấu hình từ SpeechSettings (turn_min_speech_ms, ...); nếu không
-        # truyền thì dùng default của TurnController (giữ tương thích test cũ).
-        self._turn_controller = turn_controller or TurnController()
-        # Interruption hủy cả request TTS lẫn playout queue qua CallBridge.cancel().
-        # `interruption_validator` dùng CHUNG TurnValidator với turn_controller (nếu
-        # turn_validator_enabled) — xem docstring InterruptionController.__init__ #3 và
-        # module speech/turn/interruption.py: barge-in false-positive từ noise trong lúc
-        # bot nói không thể lọc trước ASR (audio phải tới ASR thật để tự confirm), nên cần lớp
-        # phòng thủ riêng ở đây.
+        # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
+        # tạo sẵn theo SpeechSettings).
+        self._turn_controller = turn_controller
+        # Ngắt lời huỷ cả request TTS lẫn hàng đợi phát qua CallBridge.cancel(). Dùng chung
+        # TurnValidator với turn_controller để lọc barge-in giả do nhiễu.
         self._interruption = InterruptionController(
             self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
         )
@@ -407,9 +391,6 @@ class CallBridge:
                 self._frames(),
                 turn_controller=self._turn_controller,
                 interruption=self._interruption,
-                evidence_tracker=self._evidence_tracker,
-                noise_tracker=self._noise_tracker,
-                noise_classifier=self._noise_classifier,
             ):
                 await self._turn_queue.put(turn)
         except asyncio.CancelledError:

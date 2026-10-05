@@ -51,11 +51,5 @@ def test_empty_frame_is_not_speech() -> None:
     assert classifier.is_speech(b"") is False
 
 
-def test_last_probability_reflects_last_call() -> None:
-    classifier = SileroVadClassifier(str(_MODEL_PATH), sample_rate=_SAMPLE_RATE)
-    classifier.is_speech(_silence())
-    assert classifier.last_probability == 0.0
-
-
 if __name__ == "__main__":
     pytest.main([__file__])
