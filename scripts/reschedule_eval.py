@@ -168,7 +168,7 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
     if after.pending_action is None:
         return Observed("KEEP_OLD")
     utterance = action.utterance
-    if utterance == t.NOT_UNDERSTOOD:
+    if utterance in t.static_choices(t.NOT_UNDERSTOOD):
         return Observed("NOT_UNDERSTOOD")
     asked = after.question.question_id if after.question else None
     if asked is QuestionId.ASK_SLOT_PREFERENCE:

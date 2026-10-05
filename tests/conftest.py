@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 import callbot.engine as engine_module
 from callbot.engine import EngineSettings, RedisSessionStore
+from callbot.engine.dialogue import templates
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.config import settings as http_settings
 from callbot.transports.http.main import create_app
@@ -15,6 +16,15 @@ from tests.transports.http.fakes import make_speech_bundle
 
 # Fixture `clinic`, `clinic_scenario` và chặn gọi clinic mock thật — xem src/clinic_mock_sim/README.md
 pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
+
+
+@pytest.fixture(autouse=True)
+def fixed_dialogue_variant(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Business tests giữ cách nói v0; test_dialogue_variants chạy cả bốn và selector thật.
+
+    Cố định selector, không bỏ qua render/guard hay thay đổi phản hồi sau khi engine tạo ra.
+    """
+    monkeypatch.setattr(templates, "choose_variant", lambda ctx, group: "v0")
 
 
 @pytest.fixture(autouse=True)

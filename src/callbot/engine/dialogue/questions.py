@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+from callbot.engine.dialogue import templates
 from callbot.engine.extraction.schema import QuestionId
 from callbot.engine.session.context import CallContext, PendingAction, Question
 from callbot.engine.types import BotAction, CallState
@@ -16,5 +17,6 @@ def ask(
     slot_id: Optional[str] = None,
 ) -> BotAction:
     """Ghi nội dung và lượt hỏi; SessionManager áp dụng state khi lưu phản hồi."""
+    text = templates.choose_static(ctx, text)
     ctx.question = Question(question_id, text, ctx.turn, action=action, slot_id=slot_id)
     return BotAction(text, state)

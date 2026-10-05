@@ -78,7 +78,9 @@ def test_blocked_turn_trace_has_rule_and_code_but_no_content(monkeypatch, redis_
     with tracer.start_trace(call_id=call_id, turn=0, component="TURN", operation="http.start_call"):
         bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
     monkeypatch.setattr(
-        t, "appointment_summary", lambda ctx, appointment: "Lịch khám khoa Tim mạch lúc 9 giờ."
+        t,
+        "appointment_summary",
+        lambda ctx, appointment, *, variant="v0": "Lịch khám khoa Tim mạch lúc 9 giờ.",
     )
     for turn, text in enumerate(["Nguyễn Văn A", "14/03/1978"], start=1):
         with tracer.start_trace(

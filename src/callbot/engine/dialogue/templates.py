@@ -11,6 +11,7 @@ Gateway trả về và so nguyên văn, nên renderer không được đọc th�
 from datetime import date, datetime
 from typing import Any, Optional
 
+from callbot.engine.dialogue.variants import VARIANT_IDS, choose_variant
 from callbot.engine.extraction.schema import to_local
 from callbot.engine.policy import guardrails
 from callbot.engine.policy.utterances import renderer, static
@@ -231,6 +232,208 @@ DONE_SAFE: dict[str, str] = {
     "UNREACHABLE": GOODBYE_UNREACHABLE,
 }
 
+# Câu gốc là v0 để các renderer/test gọi trực tiếp vẫn có một cách nói chuẩn.
+# Mỗi câu thay thế cũng đăng ký riêng: guard không nới allow-list cho text tùy ý.
+# Xác nhận hủy (CANCEL_*), câu fallback DONE_SAFE và nhắc im lặng giữ nguyên.
+STATIC_VARIANTS: dict[str, tuple[str, ...]] = {}
+_STATIC_GROUPS: dict[str, str] = {}
+
+
+def _static_group(group: str, original: str, *alternatives: str) -> None:
+    if len(alternatives) != 3 or len({original, *alternatives}) != 4:
+        raise ValueError(f"{group} cần đúng bốn câu khác nhau")
+    STATIC_VARIANTS[original] = (
+        original,
+        *(
+            static(f"{group}_{variant}", text)
+            for variant, text in zip(VARIANT_IDS[1:], alternatives, strict=True)
+        ),
+    )
+    _STATIC_GROUPS[original] = group
+
+
+_static_group(
+    "GREETING_OUTBOUND",
+    GREETING_OUTBOUND,
+    f"Dạ, em chào anh chị. Em là {AI_DISCLOSURE} của tổng đài Vinmec. Cho em xin họ và tên đầy đủ ạ?",
+    f"Xin chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em biết họ tên đầy đủ ạ?",
+    f"Dạ, tổng đài Vinmec xin chào. Em là {AI_DISCLOSURE}. Cho em hỏi họ và tên đầy đủ của anh chị ạ?",
+)
+_static_group(
+    "GREETING_INBOUND",
+    GREETING_INBOUND,
+    f"Dạ, em chào anh chị. Em là {AI_DISCLOSURE} của tổng đài Vinmec. Cho em xin họ và tên đầy đủ ạ?",
+    f"Tổng đài Vinmec xin nghe. Em là {AI_DISCLOSURE}. Anh chị cho em biết họ tên đầy đủ ạ?",
+    f"Dạ, anh chị đang gặp {AI_DISCLOSURE} của tổng đài Vinmec. Cho em hỏi họ và tên đầy đủ ạ?",
+)
+_static_group(
+    "GREETING_HANDOFF_INBOUND",
+    GREETING_HANDOFF_INBOUND,
+    f"Dạ, tổng đài Vinmec xin nghe. Em là {AI_DISCLOSURE}. Em xin nối máy với nhân viên để hỗ trợ anh chị ạ.",
+    f"Em chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. Em sẽ chuyển máy tới nhân viên hỗ trợ ạ.",
+    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. Em xin chuyển cuộc gọi tới nhân viên để hỗ trợ tiếp ạ.",
+)
+_static_group(
+    "GREETING_BACK_OUTBOUND",
+    GREETING_BACK_OUTBOUND,
+    f"Dạ, em nghe anh chị ạ. Em là {AI_DISCLOSURE} của tổng đài Vinmec. Cho em xin họ tên đầy đủ ạ?",
+    f"Em chào anh chị, em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em biết họ tên đầy đủ ạ?",
+    f"Dạ, đây là {AI_DISCLOSURE} của tổng đài Vinmec. Cho em hỏi họ và tên đầy đủ của anh chị ạ?",
+)
+_static_group(
+    "GREETING_BACK_INBOUND",
+    GREETING_BACK_INBOUND,
+    f"Dạ, Vinmec xin nghe. Em là {AI_DISCLOSURE} của tổng đài. Cho em xin họ tên đầy đủ ạ?",
+    f"Em đang nghe anh chị ạ. Em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em biết họ tên đầy đủ ạ?",
+    f"Dạ, đây là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị vui lòng cho em xin họ và tên đầy đủ ạ?",
+)
+_static_group(
+    "ASK_NAME_AGAIN",
+    ASK_NAME_AGAIN,
+    "Dạ, cho em xin lại họ và tên đầy đủ của anh chị ạ.",
+    "Em chưa nghe rõ họ tên. Anh chị đọc lại họ và tên đầy đủ giúp em ạ.",
+    "Anh chị vui lòng nhắc lại họ và tên đầy đủ để em đối chiếu ạ.",
+)
+_static_group(
+    "ASK_NAME_AFTER_DOB",
+    ASK_NAME_AFTER_DOB,
+    "Dạ, em xin thêm họ và tên đầy đủ để đối chiếu ạ.",
+    "Anh chị cho em biết thêm họ và tên đầy đủ ạ.",
+    "Em xin họ và tên đầy đủ của anh chị để tiếp tục xác minh ạ.",
+)
+_static_group(
+    "ASK_NAME_FOR_REQUEST",
+    ASK_NAME_FOR_REQUEST,
+    "Dạ, em cần xác minh thông tin trước khi hỗ trợ. Cho em xin họ và tên đầy đủ ạ.",
+    "Để hỗ trợ đúng người, em xin họ và tên đầy đủ của anh chị trước ạ.",
+    "Dạ, mình cần xác minh thông tin trước. Anh chị cho em biết họ và tên đầy đủ ạ.",
+)
+_static_group(
+    "ASK_DOB_FOR_REQUEST",
+    ASK_DOB_FOR_REQUEST,
+    "Dạ, em cần xác minh thông tin trước khi hỗ trợ. Cho em xin ngày tháng năm sinh ạ.",
+    "Để hỗ trợ đúng người, em xin thêm ngày tháng năm sinh của anh chị ạ.",
+    "Dạ, mình cần xác minh thông tin trước. Anh chị cho em biết ngày tháng năm sinh ạ.",
+)
+_static_group(
+    "ASK_NAME_DECLINED",
+    ASK_NAME_DECLINED,
+    "Dạ, em cần họ tên để xác minh trước khi hỗ trợ. Anh chị cho em biết họ và tên đầy đủ ạ.",
+    "Để xác minh đúng người, em cần họ và tên đầy đủ. Anh chị vui lòng cung cấp giúp em ạ.",
+    "Em cần đối chiếu họ tên trước ạ. Cho em xin họ và tên đầy đủ của anh chị.",
+)
+_static_group(
+    "ASK_DOB",
+    ASK_DOB,
+    "Dạ, cho em xin ngày tháng năm sinh để đối chiếu ạ.",
+    "Em xin thêm ngày tháng năm sinh của anh chị để xác minh thông tin ạ.",
+    "Anh chị vui lòng cho em biết ngày tháng năm sinh ạ.",
+)
+_static_group(
+    "INTRODUCE_AGAIN_ASK_DOB",
+    INTRODUCE_AGAIN_ASK_DOB,
+    f"Dạ, đây là {AI_DISCLOSURE} của tổng đài Vinmec. Cho em xin ngày tháng năm sinh ạ.",
+    f"Em là {AI_DISCLOSURE} của tổng đài Vinmec ạ. Anh chị cho em biết ngày tháng năm sinh để đối chiếu ạ.",
+    f"Dạ, anh chị đang gặp {AI_DISCLOSURE} của tổng đài Vinmec. Em xin thêm ngày tháng năm sinh ạ.",
+)
+_static_group(
+    "ASK_DOB_AGAIN",
+    ASK_DOB_AGAIN,
+    "Dạ, em chưa nghe rõ ngày sinh. Anh chị đọc lại đủ ngày, tháng, năm giúp em ạ.",
+    "Anh chị nhắc lại ngày tháng năm sinh giúp em ạ, em chưa nghe rõ.",
+    "Em xin nghe lại ngày, tháng và năm sinh của anh chị ạ.",
+)
+_static_group(
+    "ASK_DOB_INVALID",
+    ASK_DOB_INVALID,
+    "Dạ, em cần đủ ngày, tháng và năm sinh theo dương lịch. Anh chị đọc lại giúp em ạ.",
+    "Anh chị cho em biết đầy đủ ngày tháng năm sinh theo dương lịch ạ.",
+    "Em xin lại ngày, tháng, năm sinh theo dương lịch của anh chị ạ.",
+)
+_static_group(
+    "ASK_DOB_DECLINED",
+    ASK_DOB_DECLINED,
+    "Dạ, em cần ngày sinh để đối chiếu trước khi hỗ trợ. Cho em xin ngày tháng năm sinh ạ.",
+    "Để xác minh đúng người, em cần ngày tháng năm sinh. Anh chị vui lòng cung cấp giúp em ạ.",
+    "Em cần đối chiếu thêm ngày sinh ạ. Anh chị cho em biết ngày tháng năm sinh để xác minh ạ.",
+)
+_static_group(
+    "ASK_INTENT_INBOUND",
+    ASK_INTENT_INBOUND,
+    "Dạ, em đã xác minh xong. Anh chị cần hỗ trợ gì ạ?",
+    "Cảm ơn anh chị. Em có thể hỗ trợ việc gì tiếp theo ạ?",
+    "Thông tin đã được xác minh ạ. Anh chị muốn em hỗ trợ gì hôm nay?",
+)
+_static_group(
+    "ASK_CHANGE_OR_CANCEL",
+    ASK_CHANGE_OR_CANCEL,
+    "Anh chị muốn em hỗ trợ đổi lịch hay hủy lịch khám ạ?",
+    "Dạ, mình muốn đổi sang lịch khác hay hủy lịch khám này ạ?",
+    "Em xin hỏi thêm: anh chị muốn đổi lịch hay hủy lịch ạ?",
+)
+_static_group(
+    "NOT_UNDERSTOOD",
+    NOT_UNDERSTOOD,
+    "Dạ, em chưa hiểu rõ. Anh chị nói lại giúp em ạ.",
+    "Anh chị có thể nói lại ý vừa rồi giúp em không ạ?",
+    "Em chưa nắm rõ ý vừa rồi. Anh chị nhắc lại giúp em ạ.",
+)
+_static_group(
+    "HOLD",
+    HOLD,
+    "Dạ vâng, em chờ ạ.",
+    "Anh chị cứ từ từ, em đang chờ ạ.",
+    "Dạ, khi nào sẵn sàng anh chị nói tiếp giúp em ạ.",
+)
+_static_group(
+    "TRANSFER",
+    TRANSFER,
+    "Dạ, em xin nối máy với nhân viên để hỗ trợ tiếp ạ.",
+    "Em sẽ chuyển cuộc gọi tới nhân viên hỗ trợ anh chị ạ.",
+    "Dạ, để nhân viên hỗ trợ thêm, em xin chuyển máy ạ.",
+)
+_static_group(
+    "GOODBYE_UNREACHABLE",
+    GOODBYE_UNREACHABLE,
+    "Dạ, em xin kết thúc cuộc gọi và liên hệ lại sau ạ.",
+    "Em xin phép gọi lại vào lúc khác ạ. Em chào anh chị.",
+    "Dạ, em sẽ liên hệ lại sau. Em xin chào ạ.",
+)
+_static_group(
+    "BOOKING_ABANDONED",
+    BOOKING_ABANDONED,
+    "Dạ, em chưa tạo lịch hẹn nào. Anh chị cần hỗ trợ gì thêm ạ?",
+    "Em chưa đặt lịch ạ. Anh chị muốn em hỗ trợ việc gì tiếp theo?",
+    "Dạ, chưa có lịch nào được đặt. Em có thể hỗ trợ gì thêm ạ?",
+)
+_static_group(
+    "ASK_SLOT_PREFERENCE_RESCHEDULE",
+    ASK_SLOT_PREFERENCE["RESCHEDULE"],
+    "Anh chị cho em biết ngày hoặc buổi muốn đổi lịch sang ạ.",
+    "Dạ, em xin ngày hoặc buổi anh chị muốn đổi sang ạ.",
+    "Để tìm khung phù hợp, anh chị muốn đổi lịch sang ngày nào hoặc buổi nào ạ?",
+)
+_static_group(
+    "ASK_SLOT_PREFERENCE_BOOK",
+    ASK_SLOT_PREFERENCE["BOOK"],
+    "Anh chị cho em biết ngày hoặc buổi muốn đặt lịch ạ.",
+    "Dạ, em xin ngày hoặc buổi anh chị muốn đặt lịch ạ.",
+    "Để tìm khung phù hợp, anh chị muốn đặt lịch vào ngày nào hoặc buổi nào ạ?",
+)
+
+
+def static_choices(original: str) -> tuple[str, ...]:
+    """Tập câu đã duyệt cho một hành vi; câu ngoài danh mục giữ nguyên."""
+    return STATIC_VARIANTS.get(original, (original,))
+
+
+def choose_static(ctx: CallContext, original: str) -> str:
+    group = _STATIC_GROUPS.get(original)
+    if group is None:
+        return original
+    return STATIC_VARIANTS[original][VARIANT_IDS.index(choose_variant(ctx, group))]
+
+
 _PERIOD_WORDS = ((12, "sáng"), (18, "chiều"), (24, "tối"))
 _WEEKDAYS = ("thứ Hai", "thứ Ba", "thứ Tư", "thứ Năm", "thứ Sáu", "thứ Bảy", "Chủ nhật")
 # §1.1.3 Rev 1.1: đọc ngày, giờ và chuyên khoa. Cơ sở là thông tin bổ sung.
@@ -281,31 +484,56 @@ def attendance_facts(appointment: dict[str, Any]) -> str:
     return f"{speak_datetime(appointment['starts_at'])} tại {clinic_name(appointment)}"
 
 
-@renderer("APPOINTMENT_SUMMARY", discloses=True, sources={"appointment": "APPOINTMENT"})
-def appointment_summary(ctx: CallContext, appointment: dict[str, Any]) -> str:
+@renderer(
+    "APPOINTMENT_SUMMARY",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def appointment_summary(
+    ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0"
+) -> str:
     """Figure 0 rev 1.1: tóm tắt + đọc lại ngày, giờ, cơ sở + hỏi đến được không, trong một lượt."""
     guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        return _attendance_variant(appointment, variant, ASK_ATTENDANCE)
     return (
         f"Cảm ơn anh chị. Lịch khám {_department(appointment)}của anh chị là "
         f"{attendance_facts(appointment)} ạ. {ASK_ATTENDANCE}"
     )
 
 
-@renderer("ATTENDANCE_READBACK", discloses=True, sources={"appointment": "APPOINTMENT"})
-def attendance_readback(ctx: CallContext, appointment: dict[str, Any]) -> str:
+@renderer(
+    "ATTENDANCE_READBACK",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def attendance_readback(
+    ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0"
+) -> str:
     """§1.1.3: đọc lại ngày, giờ, chuyên khoa trước khi CONFIRMED."""
     guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        return _attendance_variant(appointment, variant, "Anh chị đồng ý chứ ạ?")
     return (
         f"Dạ, em xin xác nhận lại: lịch khám {_department(appointment)}"
         f"{attendance_facts(appointment)}. Anh chị đồng ý chứ ạ?"
     )
 
 
-@renderer("ATTENDANCE_REREAD", discloses=True, sources={"appointment": "APPOINTMENT"})
-def attendance_reread(ctx: CallContext, appointment: dict[str, Any]) -> str:
+@renderer(
+    "ATTENDANCE_REREAD",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def attendance_reread(ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0") -> str:
     """Câu trả lời chưa rõ: đọc lại (kiến trúc §3.2 "Chưa rõ -> O_READ") bằng câu hỏi có / không —
     "vâng" là câu trả lời hợp lệ, khác câu A/B."""
     guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        return _attendance_variant(appointment, variant, ASK_ATTENDANCE)
     return (
         f"Dạ, lịch khám {_department(appointment)}của anh chị là "
         f"{attendance_facts(appointment)}. {ASK_ATTENDANCE}"
@@ -327,9 +555,21 @@ def confirmed(ctx: CallContext, appointment: dict[str, Any]) -> str:
     )
 
 
-@renderer("KEEP_APPOINTMENT", discloses=True, sources={"appointment": "APPOINTMENT"})
-def keep_appointment(ctx: CallContext, appointment: dict[str, Any]) -> str:
+@renderer(
+    "KEEP_APPOINTMENT",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def keep_appointment(ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0") -> str:
     guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        lead = {
+            "v1": "Dạ, lịch cũ vẫn được giữ nguyên:",
+            "v2": "Em giữ nguyên lịch cũ và xin đọc lại:",
+            "v3": "Lịch cũ được giữ nguyên ạ. Em xin nhắc lại:",
+        }[variant]
+        return f"{lead} lịch khám {_department(appointment)}{attendance_facts(appointment)}. {ASK_ATTENDANCE}"
     return (
         f"Dạ, em giữ nguyên lịch khám {_department(appointment)}"
         f"{attendance_facts(appointment)} cho anh chị. {ASK_ATTENDANCE}"
@@ -340,7 +580,7 @@ def keep_appointment(ctx: CallContext, appointment: dict[str, Any]) -> str:
     "OFFER_SLOTS",
     discloses=True,
     sources={"slots": "SLOTS"},
-    str_args={"prefix": SLOT_PREFIXES, "invite": SLOT_INVITES},
+    str_args={"prefix": SLOT_PREFIXES, "invite": SLOT_INVITES, "variant": VARIANT_IDS},
     slot_scope="PRESENTED",
 )
 def offer_slots(
@@ -350,6 +590,8 @@ def offer_slots(
     remaining: int = 0,
     full_date: Optional[date] = None,
     invite: Optional[str] = None,
+    *,
+    variant: str = "v0",
 ) -> str:
     """Tối đa 2 khung mỗi lượt (PRD R-25); `remaining` là số khung phù hợp chưa đọc (T-10).
 
@@ -363,13 +605,32 @@ def offer_slots(
     )
     if invite is not None:
         other_day = "đổi sang ngày khác" if invite == "RESCHEDULE" else "đặt vào ngày khác"
-        return f"Dạ, lịch trống gần nhất có {options}. Anh chị chọn khung nào, hoặc muốn {other_day} ạ?"
+        lead = (
+            "Dạ, lịch trống gần nhất có",
+            "Em xin đọc các khung trống gần nhất:",
+            "Các khung trống gần nhất là",
+            "Dạ, em tìm được các khung trống gần nhất:",
+        )[VARIANT_IDS.index(variant)]
+        return f"{lead} {options}. Anh chị chọn khung nào, hoặc muốn {other_day} ạ?"
     more = f"Ngoài ra còn {remaining} khung khác. " if remaining > 0 else ""
     if full_date is not None:
-        lead = f"{_full(full_date)} Gần nhất em còn"
+        lead = (
+            f"{_full(full_date)} "
+            + (
+                "Gần nhất em còn",
+                "Các khung gần nhất là",
+                "Em xin đọc các khung gần nhất:",
+                "Em tìm được các khung gần nhất:",
+            )[VARIANT_IDS.index(variant)]
+        )
     else:
         # prefix đã mở bằng "Dạ, " — không lặp "Dạ" lần hai
-        lead = "Hiện còn" if prefix else "Dạ, hiện còn"
+        lead = (
+            "Hiện còn" if prefix else "Dạ, hiện còn",
+            "Em xin đọc các khung trống:",
+            "Các khung trống hiện có là",
+            "Em tìm được các khung trống sau:",
+        )[VARIANT_IDS.index(variant)]
     return f"{prefix}{lead} {options}. {more}Anh chị chọn khung nào ạ?"
 
 
@@ -405,7 +666,7 @@ def ask_date_again(ctx: CallContext, issue: str, action: str, day: Optional[date
     "SLOT_OFFER_READBACK",
     discloses=True,
     sources={"slot": "SLOT"},
-    str_args={"prefix": SLOT_PREFIXES, "action": SLOT_ACTIONS},
+    str_args={"prefix": SLOT_PREFIXES, "action": SLOT_ACTIONS, "variant": VARIANT_IDS},
     slot_scope="SELECTED",
 )
 def slot_offer_readback(
@@ -414,6 +675,8 @@ def slot_offer_readback(
     action: str,
     prefix: str = "",
     full_date: Optional[date] = None,
+    *,
+    variant: str = "v0",
 ) -> str:
     """Chỉ còn một khung phù hợp: đọc và hỏi có/không luôn, không hỏi "chọn khung nào" (Hình 0)."""
     guardrails.assert_can_disclose(ctx)
@@ -424,6 +687,13 @@ def slot_offer_readback(
         lead = f"{_full(full_date)} Gần nhất {when}"
     else:
         lead = when[0].upper() + when[1:] if prefix else f"Dạ, {when}"
+    if variant != "v0":
+        intro = {
+            "v1": "Em xin đọc khung trống này:",
+            "v2": "Em xin nhắc lại khung trống:",
+            "v3": "Khung trống em tìm được là:",
+        }[variant]
+        lead = f"{_full(full_date)} {intro} {when}" if full_date is not None else f"{intro} {when}"
     return f"{prefix}{lead}. Anh chị {verb} giờ đó nhé ạ?"
 
 
@@ -431,15 +701,23 @@ def slot_offer_readback(
     "SLOT_READBACK",
     discloses=True,
     sources={"slot": "SLOT"},
-    str_args={"action": SLOT_ACTIONS},
+    str_args={"action": SLOT_ACTIONS, "variant": VARIANT_IDS},
     slot_scope="SELECTED",
 )
-def slot_readback(ctx: CallContext, slot: dict[str, Any], action: str = "RESCHEDULE") -> str:
+def slot_readback(
+    ctx: CallContext, slot: dict[str, Any], action: str = "RESCHEDULE", *, variant: str = "v0"
+) -> str:
     """Đọc lại giờ + thứ + ngày + cơ sở của khung đã chọn; không đọc khoa (T-10 V-6)."""
     guardrails.assert_can_disclose(ctx)
     what = "đổi lịch sang" if action == "RESCHEDULE" else "đặt lịch"
+    lead = (
+        "Dạ, em xác nhận",
+        "Em xin đọc lại yêu cầu",
+        "Dạ, em nhắc lại thông tin",
+        "Em xin xác nhận lại việc",
+    )[VARIANT_IDS.index(variant)]
     return (
-        f"Dạ, em xác nhận {what} {speak_datetime(slot['starts_at'])} tại {clinic_name(slot)}. "
+        f"{lead} {what} {speak_datetime(slot['starts_at'])} tại {clinic_name(slot)}. "
         "Anh chị đồng ý chứ ạ?"
     )
 
@@ -498,3 +776,13 @@ def clinic_name(appointment: dict[str, Any]) -> str:
 def _department(appointment: dict[str, Any]) -> str:
     department = appointment.get("department")
     return f"{department} " if department else ""
+
+
+def _attendance_variant(appointment: dict[str, Any], variant: str, question: str) -> str:
+    facts = f"lịch khám {_department(appointment)}{attendance_facts(appointment)}"
+    statements = {
+        "v1": f"Dạ, em xin đọc lại: {facts}.",
+        "v2": f"Em xin nhắc lại thông tin {facts}.",
+        "v3": f"Dạ, em xin xác nhận thông tin {facts}.",
+    }
+    return f"{statements[variant]} {question}"
