@@ -139,7 +139,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T4 30/09 · Đường B — Vbee phát giọng theo luồng ✅ Đã xong 
 
-> **Kết quả** ([evidence](../evidence/tts-vbee-streaming.md)): `synthesize_stream` + `cancel()` + `AsyncClient` chung + `aclose()` khi job kết thúc; 26 test mới, cả suite pass. Trần 3 s chỉ tính thời gian chờ Vbee (không tính lúc đang phát, nếu không câu dài > 3 s audio bị cắt). Trace EC2 (02/10, bản main) xác nhận Vbee gửi audio dần, byte đầu về trước khi sinh xong câu. Chưa có số TTFA của code stream: đo bằng benchmark "sau" khi merge + deploy. Kèm `cancel()` đóng request khi nói chen. (Số đo local hôm trước bị mạng VN che, không dùng.) Fallback trên stream đã bổ sung ở task 01/10.
+> **Kết quả** ([evidence](../evidence/tts-vbee-streaming.md)): `synthesize_stream` + `cancel()` + `AsyncClient` chung + `aclose()` khi job kết thúc; 26 test mới, cả suite pass. Trần 3 s chỉ tính thời gian chờ Vbee (không tính lúc đang phát, nếu không câu dài > 3 s audio bị cắt). Trace EC2 (02/10, bản main) xác nhận Vbee gửi audio dần, byte đầu về trước khi sinh xong câu. Benchmark "sau" trên prod (05/10, [chi tiết](../evidence/benchmark-streaming-truoc-sau.md)): câu 234 ký tự TTFA 1063 → 268 ms; các lượt LiveKit TTFA 885–992 → 553–744 ms; câu chào chưa nhanh hơn (byte đầu Vbee chậm, theo dõi tuần 4); Đường A không đổi. Kèm `cancel()` đóng request khi nói chen. (Số đo local hôm trước bị mạng VN che, không dùng.) Fallback trên stream đã bổ sung ở task 01/10.
 
 **Gửi PM:** Implement streaming cho Vbee: phát audio theo từng chunk ngay khi provider sinh ra thay vì chờ đọc xong cả câu, giúp giảm thời gian tới âm thanh đầu tiên trên cuộc gọi realtime. Hỗ trợ cancel request để dừng ngay khi user barge-in.
 

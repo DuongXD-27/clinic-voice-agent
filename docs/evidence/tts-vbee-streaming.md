@@ -18,14 +18,16 @@ Kế hoạch: `docs/plans/tts-w3-w6.md`, mục T4 30/09 "Đường B — Vbee ph
 
 **Hành vi của Vbee trên EC2** (trace bản main, chưa có stream, bảng ở mục "Số đo trên EC2"): Vbee gửi audio dần, byte đầu về trước khi sinh xong cả câu. Đây là điều kiện để stream có tác dụng.
 
-**Chưa có số đo TTFA của code stream.** Code chưa deploy nên chưa đo được trên cuộc gọi thật; evidence này không đưa số ước tính. Số đo trước / sau dùng bộ benchmark `scripts/bench/`:
-- số "trước" đã đo ngày 02/10 trên image `9344380`;
-- số "sau" đo sau khi merge và deploy nhánh.
+**Số đo trên prod sau khi deploy** (05/10, image `97e139c`; trước: 02/10, image `9344380`). Bộ benchmark `scripts/bench/`, chi tiết ở [benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md):
+- Tại `SpeechSynthesizer`: câu 234 ký tự TTFA 1063 → 268 ms; câu 113 ký tự 576 → 445 ms; câu 45 ký tự không đổi (242 → 250 ms). TTS total không đổi, Stall 0.
+- Cuộc gọi LiveKit (2 cuộc trước, 2 cuộc sau): TTFA các lượt 885–992 ms → 553–744 ms. Khoảng từ byte đầu của Vbee tới lúc nghe tiếng giảm từ 324–403 ms xuống 117–136 ms.
+- Câu chào chưa nhanh hơn (848 / 1066 → 1232 / 1029 ms) vì byte đầu của Vbee cho câu chào về chậm hơn ở cả hai lần sau; chưa rõ nguyên nhân, theo dõi bằng trace tuần 4.
+- Đường A không đổi (TTS total 749 → 708 ms). Không lỗi, không fallback.
 
-Kết quả ghi ở [benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md); cách đo ở [latency-benchmark.md](../reference/latency-benchmark.md).
+Cách đo ở [latency-benchmark.md](../reference/latency-benchmark.md).
 
 **Giá trị của task với Đường B:**
-- bot phát được chunk đầu ngay khi Vbee gửi, không chờ sinh xong cả câu (mức giảm TTFA: chờ benchmark "sau");
+- bot phát được chunk đầu ngay khi Vbee gửi, không chờ sinh xong cả câu (các lượt LiveKit: TTFA 885–992 → 553–744 ms);
 - `cancel()` đóng hẳn request tới Vbee khi khách nói chen (barge-in, Phụ lục B.2), không để request chạy ngầm;
 - đường Vbee đồng bộ với ElevenLabs/OpenAI: cả ba đều có `synthesize_stream` + `cancel`, `CallBridge` không phải xử lý riêng.
 
@@ -179,7 +181,7 @@ Chạy `pytest` trên Windows mà không đặt `PYTHONUTF8=1` thì `tests/test_
 ## Ghi chú
 
 - **Fallback và observability trên stream:** task này để stream gọi thẳng provider, nên tạm thời mất fallback và span LiveKit thiếu `voice`. Cả hai đã xử lý ở task 01/10 ([tts-stream-fallback.md](tts-stream-fallback.md)). Hai task merge cùng nhau trong nhánh `feature/tts-w3-vbee-streaming`.
-- **Số đo trước / sau:** dùng bộ benchmark `scripts/bench/` ([benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md)). Số "sau" điền sau khi merge.
+- **Số đo trước / sau:** dùng bộ benchmark `scripts/bench/` ([benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md)). Đã đo "sau" ngày 05/10.
 - **p95 và câu dài thật:** lấy từ trace các cuộc gọi tuần 4 (06/10, diễn tập 09/10). Trace nằm trong container và mất khi deploy, nên đọc bằng `scripts/tts_trace_report.py` trước khi deploy, hoặc thêm volume cho `/app/traces` (việc của người làm observability).
 - **Hướng giảm tiếp, chưa làm:** tách `utterance` thành từng câu nhỏ (theo dấu chấm).
   - Đường B: TTFA chỉ còn bằng thời gian sinh câu đầu tiên.

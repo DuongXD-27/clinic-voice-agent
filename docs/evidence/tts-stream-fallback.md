@@ -116,7 +116,7 @@ python -m ruff format --check src tests/inference/tts tests/speech/test_asr_tts_
 
 ## Ghi chú
 
-- **Sau khi merge và deploy** (CD deploy từ main): chạy benchmark "sau" ([benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md)). Lần chạy này vừa là kiểm hồi quy, vừa là số đo:
+- **Sau khi merge và deploy** (CD deploy từ main): đã chạy benchmark "sau" ngày 05/10 ([benchmark-streaming-truoc-sau.md](benchmark-streaming-truoc-sau.md)). Kết quả kiểm hồi quy: HTTP 3 lượt không lượt nào ≥ 8 s, WAV đúng, 0 fallback; LiveKit 2 cuộc gọi, 0 lỗi, 0 fallback. Lần chạy này kiểm:
   - phần HTTP kiểm Đường A (turn latency ≤ 8 s, WAV đúng định dạng, không lượt nào chuyển ElevenLabs);
   - phần LiveKit gọi một cuộc thật trên Đường B, qua đường stream mới của gateway. Dự phòng chỉ chạy khi Vbee lỗi, nên lần chạy thường không kích hoạt nó.
 - **Dự phòng chỉ bật khi cấu hình:** repo mặc định `tts_fallback_provider: null` (`config/speech.yaml`). Prod đã đặt `TTS_FALLBACK_PROVIDER=elevenlabs` trong `/opt/callbot/.env` từ 28/09 ([tts-audio-mode-prod.md](tts-audio-mode-prod.md)), nên deploy xong là có, không cần sửa `.env`.
