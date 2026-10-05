@@ -38,7 +38,7 @@ Chỉ số chính:
 Chạy (từ gốc repo; dữ liệu và kết quả nằm trong temp/noise-bench/, không commit):
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --profile production
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label moi --dataset golden
-    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --profile target --set speech_shared_detector=true
+    PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --label x --profile target --set vad_end_silence_ms=500
     PYTHONPATH=src .venv/bin/python eval/noise-bench/bench.py --compare cu moi
 So với code cũ: tạo git worktree của commit cũ rồi chạy với NOISE_BENCH_SRC=<worktree>/src.
 """
@@ -76,7 +76,6 @@ from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.audio.codec import resample  # noqa: E402
 from speech.bundle import build_streaming_bundle  # noqa: E402
 from speech.settings import SpeechSettings  # noqa: E402
-from speech.turn.controller import TurnController  # noqa: E402
 from speech.types import AudioSegment  # noqa: E402
 
 RATE = 16_000
@@ -337,14 +336,12 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
     """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core và thời điểm
     (giây audio) chốt từng turn. Xác định: xem docstring module."""
     recognizer = _CapturingRecognizer(asr)
-    bundle = build_streaming_bundle(settings, asr=recognizer, frame_ms=30)
     clock = VirtualTime()
-    controller = TurnController(
-        min_speech_ms=settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
-        validator=bundle.validator,
+    bundle = build_streaming_bundle(
+        settings,
+        sample_rate=RATE,
+        asr=recognizer,
+        frame_ms=30,
         clock=clock.now,
         sleep=clock.sleep,
     )
@@ -363,13 +360,7 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
 
     turns: list[str] = []
     turn_times: list[float] = []
-    async for turn in bundle.stt_pipeline.stream(
-        frames(),
-        turn_controller=controller,
-        evidence_tracker=bundle.evidence_tracker,
-        noise_tracker=bundle.noise_tracker,
-        noise_classifier=bundle.noise_classifier,
-    ):
+    async for turn in bundle.stt_pipeline.stream(frames(), turn_controller=bundle.turn_controller):
         turns.append(turn.text)
         turn_times.append(clock.now())
     return {
@@ -561,7 +552,7 @@ def run(
     profile: str,
     overrides: dict,
 ) -> dict:
-    overrides = {"sample_rate": RATE, **PROFILES[profile], **overrides}
+    overrides = {**PROFILES[profile], **overrides}
     settings = SpeechSettings(**overrides)
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     meter = DecodeMeter()

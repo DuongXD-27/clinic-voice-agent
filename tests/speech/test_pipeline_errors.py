@@ -7,7 +7,6 @@ import pytest
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.energy import EnergyFrameClassifier
-from speech.asr.vad.streaming import StreamingVAD
 
 
 class _ASR:
@@ -43,8 +42,7 @@ async def _frames(broken=False):
 async def test_stream_worker_error_propagates_without_a_caller_turn(stage, queue_size):
     pipeline = STTPipeline(
         asr=_BrokenASR() if stage == "asr" else _ASR(),
-        vad=StreamingVAD(EnergyFrameClassifier(100)),
-        async_vad=_BrokenVAD() if stage == "vad" else AsyncStreamingVAD(EnergyFrameClassifier(100)),
+        vad=_BrokenVAD() if stage == "vad" else AsyncStreamingVAD(EnergyFrameClassifier(100)),
         queue_max_frames=queue_size,
     )
     turns = []

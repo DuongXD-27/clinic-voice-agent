@@ -66,9 +66,8 @@ class ElevenLabsRealtimeASR:
         bằng cùng chiến lược energy/webrtc classifier như ZipFormer.stream(), KHÔNG dùng
         VAD nội bộ của ElevenLabs (xem docstring module).
 
-        `AsrSegmentEnd.FINALIZE` commit ngay như khi đủ `end_silence_ms`. DISCARD bị bỏ
-        qua: audio đã gửi lên server không rút lại được, và commit để rồi bỏ kết quả có
-        thể trả về sau khi bot dứt lời, thành turn giả."""
+        `AsrSegmentEnd.DISCARD` bị bỏ qua: audio đã gửi lên server không rút lại được, và
+        commit để rồi bỏ kết quả có thể trả về sau khi bot dứt lời, thành turn giả."""
         if audio_sample_rate not in _SUPPORTED_RATES:
             raise ValueError(
                 f"ElevenLabsRealtimeASR stream không hỗ trợ sample rate {audio_sample_rate} "
@@ -137,10 +136,6 @@ class ElevenLabsRealtimeASR:
             try:
                 async for frame in frames:
                     if isinstance(frame, AsrSegmentEnd):
-                        if frame is AsrSegmentEnd.FINALIZE and in_speech:
-                            await _commit()
-                            in_speech = False
-                            silent_ms = 0.0
                         continue
                     frame_ms = len(frame) / 2 / audio_sample_rate * 1000
                     if frame_ms <= 0:

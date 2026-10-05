@@ -1,6 +1,6 @@
 from typing import AsyncIterator, Iterable
 
-from speech.asr.vad import AsyncStreamingVAD, EnergyFrameClassifier, StreamingVAD
+from speech.asr.vad import AsyncStreamingVAD, EnergyFrameClassifier
 from speech.asr.vad.base import VadEvent
 from speech.asr.vad.streaming import FRAME_MS, split_frames
 
@@ -22,14 +22,17 @@ async def _run_async(frames: list[bytes], end_silence_ms: int = 600) -> list[Vad
     return [event async for event in vad.process(_aiter(frames))]
 
 
-def _run_sync(frames: list[bytes], end_silence_ms: int = 600) -> list[VadEvent]:
-    vad = StreamingVAD(_classifier(), end_silence_ms=end_silence_ms)
-    return list(vad.process(frames))
-
-
-async def test_matches_sync_streaming_vad_on_same_input() -> None:
+async def test_emits_start_and_end_around_each_utterance() -> None:
     frames = [_LOUD] * 5 + [_SILENT] * 25 + [_LOUD] * 3
-    assert await _run_async(frames) == _run_sync(frames)
+    kinds = [event.kind for event in await _run_async(frames)]
+    assert kinds == (
+        ["speech_start"]
+        + ["speech"] * 5
+        + ["speech_end"]
+        + ["speech_start"]
+        + ["speech"] * 3
+        + ["speech_end"]
+    )
 
 
 async def test_pause_inside_utterance_does_not_cut_turn() -> None:

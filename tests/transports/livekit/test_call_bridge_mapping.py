@@ -113,15 +113,7 @@ class _FakeSTTPipeline:
     def __init__(self, turns: list[UserTurnCompleted]) -> None:
         self._turns = turns
 
-    async def stream(
-        self,
-        frames,
-        turn_controller=None,
-        interruption=None,
-        evidence_tracker=None,
-        noise_tracker=None,
-        noise_classifier=None,
-    ):
+    async def stream(self, frames, turn_controller=None, interruption=None):
         for turn in self._turns:
             yield turn
 

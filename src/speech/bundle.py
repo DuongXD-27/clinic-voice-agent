@@ -1,28 +1,29 @@
-"""Bundle speech (ASR/TTS/audio storage) cho đường HTTP `mode="audio"` (§4.1.2).
+"""Lắp các thành phần speech cho hai đường:
+
+- HTTP `mode="audio"` (`build_speech_bundle`): mỗi lượt là một clip, ASR decode cả clip.
+- LiveKit (`build_streaming_bundle`): audio liên tục, qua STTPipeline (VAD + ASR + chốt lượt).
 
 Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết khái niệm audio.
-Tầng transport của callbot chỉ nối bundle này vào request.
 """
 
 import logging
 from contextlib import aclosing
 from dataclasses import dataclass
-from typing import AsyncIterator, Callable, Optional, Protocol
+from typing import AsyncIterator, Awaitable, Callable, Optional, Protocol
 
 from inference.asr import create_asr_gateway
 from inference.tts import TTSGateway, create_tts_gateway
-from speech.asr.evidence import TranscriptEvidenceTracker
 from speech.asr.pipeline import STTPipeline
 from speech.asr.recognizer import Recognizer, SpeechRecognizer
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
-from speech.asr.vad.streaming import StreamingVAD
 from speech.audio.loader import load_from_url
-from speech.audio.noise_tracker import NoiseTracker
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
+from speech.turn.controller import TurnController
+from speech.turn.evidence import TurnEvidence
 from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
 
@@ -141,132 +142,106 @@ def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
 
 @dataclass
 class StreamingSpeechBundle:
+    """Mọi thành phần speech của MỘT cuộc gọi LiveKit (đều có trạng thái, không dùng chung)."""
+
     stt_pipeline: STTPipeline
+    turn_controller: TurnController
     tts: SpeechSynthesizer
-    # Turn Validator (docs/reference/livekit-architecture.md §5.4, §6) — None khi
-    # turn_validator_enabled=False (mặc định). worker.py truyền `validator` vào
-    # TurnController(); call_bridge.py truyền evidence_tracker/noise_tracker/
-    # noise_classifier vào stt_pipeline.stream() để cấp dữ liệu cho validator đó.
+    # None khi turn_validator_enabled=False. CallBridge dùng lại cho InterruptionController.
     validator: Optional[TurnValidator] = None
-    evidence_tracker: Optional[TranscriptEvidenceTracker] = None
-    noise_tracker: Optional[NoiseTracker] = None
-    noise_classifier: Optional[FrameClassifier] = None
-
-
-def _build_vad_classifier(settings: SpeechSettings) -> FrameClassifier:
-    if settings.vad_provider == "webrtc":
-        from speech.asr.vad.webrtc import WebRtcVadClassifier
-
-        return WebRtcVadClassifier(
-            aggressiveness=settings.vad_webrtc_aggressiveness, sample_rate=settings.sample_rate
-        )
-    if settings.vad_provider == "silero":
-        # Cùng classifier dùng cho NoiseTracker (_build_noise_classifier) — nhưng đây là
-        # instance RIÊNG, không share: SileroVadClassifier stateful, mỗi consumer (main
-        # VAD, ASR endpoint, Validator) cần instance độc lập (xem docstring
-        # speech/asr/vad/silero.py).
-        return _build_noise_classifier(settings)
-    return EnergyFrameClassifier(settings.vad_rms_threshold)
-
-
-def _build_noise_classifier(settings: SpeechSettings) -> FrameClassifier:
-    """Dùng cho NoiseTracker (evidence của TurnValidator) — LUÔN Silero VAD, không
-    đọc `vad_provider` trực tiếp (bug thật đã gặp khi `vad_provider=webrtc`: WebRTC báo
-    speech=True gần như liên tục trên noise phòng thuần, khiến noise_floor không cập
-    nhật đúng và SNR dao động hỗn loạn, xem docstring `SpeechSettings.silero_vad_model_path`).
-    Khi `vad_provider=silero`, `_build_vad_classifier()` cũng gọi hàm này (instance riêng
-    mỗi lần, xem đó) — NoiseTracker vẫn luôn dùng Silero dù main VAD là gì."""
-    from speech.asr.vad.silero import SileroVadClassifier
-
-    return SileroVadClassifier(
-        settings.silero_vad_model_path,
-        sample_rate=settings.sample_rate,
-        min_silence_ms=settings.silero_min_silence_ms,
-    )
 
 
 def build_streaming_bundle(
     settings: SpeechSettings,
     *,
+    sample_rate: int,
     asr: Optional[Recognizer] = None,
     frame_ms: int = 30,
     queue_max_frames: int = 50,
     barge_in_preroll_ms: int = 500,
+    clock: Optional[Callable[[], float]] = None,
+    sleep: Optional[Callable[[float], Awaitable[None]]] = None,
 ) -> StreamingSpeechBundle:
-    """Bundle cho đường LiveKit streaming (transports/livekit/worker.py) — khác
-    `build_speech_bundle` (HTTP batch `mode="audio"`): cần cả VAD sync/async cùng
-    classifier và ASR provider có `stream()` (chỉ ZipFormer hỗ trợ hiện tại)."""
-    # 2 instance riêng cho vad/async_vad (không share) — cả WebRtcVadClassifier lẫn
-    # SileroVadClassifier đều stateful (xem docstring từng module), sync/async không được
-    # cho hai consumer đồng thời dùng chung. `sync_classifier` trong thực tế chỉ phục vụ
-    # `transcribe_segment()` (đường HTTP batch), `async_classifier` phục vụ `stream()`
-    # (đường LiveKit) — không chạy đồng thời trên cùng 1 call, nhưng tách riêng để không
-    # phụ thuộc giả định đó và tránh state cũ (buffer Silero chưa flush) rò từ lần gọi
-    # trước sang lần sau.
-    sync_classifier = _build_vad_classifier(settings)
-    detector = (
-        SharedSpeechDetector(_build_noise_classifier(settings))
-        if settings.speech_shared_detector
-        else None
-    )
-    async_classifier = detector.view() if detector else _build_vad_classifier(settings)
-    # ASR endpointing cần classifier riêng thứ 3: WebRTC/Silero đều có state nội bộ,
-    # không được cho hai consumer đồng thời dùng chung một instance (trừ khi dùng chung
-    # detector — view() không có state, chỉ đọc kết quả _fanout đã tính).
-    asr_endpoint_classifier = detector.view() if detector else _build_vad_classifier(settings)
-    vad = StreamingVAD(sync_classifier, end_silence_ms=settings.vad_end_silence_ms)
-    async_vad = AsyncStreamingVAD(async_classifier, end_silence_ms=settings.vad_end_silence_ms)
+    """Đường LiveKit (transports/livekit/worker.py). Đường HTTP dùng `build_speech_bundle`.
+
+    `sample_rate`: tần số PCM vào (LiveKitSettings.input_sample_rate). Một bộ phân loại theo
+    `vad_provider`, phân loại mỗi frame đúng một lần, dùng chung cho VAD chính và bộ chốt câu
+    của ASR. `clock`/`sleep`: đồng hồ ảo cho bộ đo offline.
+    """
+    detector = SharedSpeechDetector(_build_classifier(settings, sample_rate))
     asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
+    validator = None
+    evidence = None
+    if settings.turn_validator_enabled:
+        validator = TurnValidator(min_snr_db=settings.turn_validator_min_snr_db)
+        # SNR cần Silero (xem speech/turn/evidence.py); dùng lại detector nếu đã là Silero.
+        evidence = TurnEvidence(
+            detector.view()
+            if settings.vad_provider == "silero"
+            else _build_silero(settings, sample_rate)
+        )
     stt_pipeline = STTPipeline(
         asr,
-        vad,
-        settings.sample_rate,
-        async_vad=async_vad,
-        queue_max_frames=queue_max_frames,
-        barge_in_preroll_frames=max(1, barge_in_preroll_ms // frame_ms),
+        AsyncStreamingVAD(detector.view(), end_silence_ms=settings.vad_end_silence_ms),
+        sample_rate=sample_rate,
+        detector=detector,
+        evidence=evidence,
         asr_stream_options={
-            "audio_sample_rate": settings.sample_rate,
-            "silence_classifier": asr_endpoint_classifier,
+            "audio_sample_rate": sample_rate,
+            "silence_classifier": detector.view(),
             "end_silence_ms": settings.vad_end_silence_ms,
         },
-        speech_detector=detector,
+        queue_max_frames=queue_max_frames,
+        barge_in_preroll_frames=max(1, barge_in_preroll_ms // frame_ms),
+    )
+    turn_controller = TurnController(
+        min_speech_ms=settings.turn_min_speech_ms,
+        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
+        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
+        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
+        validator=validator,
+        clock=clock,
+        sleep=sleep,
     )
     tts = SpeechSynthesizer(
         create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
     )
-
-    validator = None
-    evidence_tracker = None
-    noise_tracker = None
-    noise_classifier = None
-    if settings.turn_validator_enabled:
-        validator = TurnValidator(min_snr_db=settings.turn_validator_min_snr_db)
-        evidence_tracker = TranscriptEvidenceTracker()
-        noise_tracker = NoiseTracker()
-        # Classifier riêng (không dùng chung detector): Silero, không phải
-        # _build_vad_classifier/WebRTC — xem _build_noise_classifier.
-        noise_classifier = detector.view() if detector else _build_noise_classifier(settings)
-
     return StreamingSpeechBundle(
-        stt_pipeline=stt_pipeline,
-        tts=tts,
-        validator=validator,
-        evidence_tracker=evidence_tracker,
-        noise_tracker=noise_tracker,
-        noise_classifier=noise_classifier,
+        stt_pipeline=stt_pipeline, turn_controller=turn_controller, tts=tts, validator=validator
     )
 
 
-def warm_up(bundle: SpeechBundle) -> None:
+def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+    if settings.vad_provider == "silero":
+        return _build_silero(settings, sample_rate)
+    if settings.vad_provider == "webrtc":
+        from speech.asr.vad.webrtc import WebRtcVadClassifier
+
+        return WebRtcVadClassifier(
+            aggressiveness=settings.vad_webrtc_aggressiveness, sample_rate=sample_rate
+        )
+    return EnergyFrameClassifier(settings.vad_rms_threshold)
+
+
+def _build_silero(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+    from speech.asr.vad.silero import SileroVadClassifier
+
+    return SileroVadClassifier(
+        settings.silero_vad_model_path,
+        sample_rate=sample_rate,
+        min_silence_ms=settings.silero_min_silence_ms,
+    )
+
+
+def warm_up(asr: Recognizer) -> None:
     """Buộc ASR load model (vd. ZipFormer ~1.8s lần đầu) trước khi nhận traffic thật.
 
     Không để lượt đầu tiên của cuộc gọi đầu tiên gánh chi phí này trong ngân sách
-    8 giây/lượt (§4.1.2). Không fail startup nếu provider không warm-up được (vd.
-    provider hosted cần API key chưa cấu hình) — chỉ log, mode=audio khi đó vẫn sẽ
-    lỗi rõ ràng ở lượt gọi thật thay vì im lặng chặn app khởi động.
+    8 giây/lượt (§4.1.2). Provider chỉ có `stream()` (vd. elevenlabs_realtime) raise
+    `NotImplementedError` có chủ ý — bỏ qua. Lỗi khác ném ra, nơi gọi tự quyết có chặn
+    khởi động hay không.
     """
     try:
-        segment = AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=bundle.asr.input_sample_rate)
-        bundle.asr.transcribe(segment)
-    except Exception:
-        logger.warning("Không warm-up được ASR provider %s", getattr(bundle.asr, "name", "?"))
+        asr.transcribe(AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=asr.input_sample_rate))
+    except NotImplementedError:
+        pass

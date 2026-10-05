@@ -6,7 +6,6 @@ from typing import AsyncIterator
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
-from speech.asr.vad.streaming import StreamingVAD
 from speech.turn.controller import TurnController
 from speech.types import Transcript, TranscriptEvent
 
@@ -63,9 +62,8 @@ async def test_each_frame_is_classified_once_for_all_consumers() -> None:
     asr = _ViewCheckingASR(detector.view())
     pipeline = STTPipeline(
         asr=asr,
-        vad=StreamingVAD(classifier),
-        async_vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600),
-        speech_detector=detector,
+        vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600),
+        detector=detector,
     )
 
     await asyncio.wait_for(

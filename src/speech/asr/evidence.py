@@ -33,30 +33,18 @@ class TranscriptEvidenceTracker:
     def __init__(self, *, window: int = 5, oscillation_repeat_threshold: int = 2) -> None:
         self._window: "deque[str]" = deque(maxlen=window)
         self._repeat_threshold = oscillation_repeat_threshold
-        self._last_verdict = StabilityVerdict.UNKNOWN
-
-    @property
-    def last_verdict(self) -> StabilityVerdict:
-        return self._last_verdict
 
     def observe(self, event) -> StabilityVerdict:
         text = event.text.strip().lower()
         if not text:
-            self._last_verdict = StabilityVerdict.UNKNOWN
-            return self._last_verdict
-
+            return StabilityVerdict.UNKNOWN
         previous = self._window[-1] if self._window else None
         self._window.append(text)
-
         if self._is_oscillating():
-            self._last_verdict = StabilityVerdict.OSCILLATING
-        elif (
-            previous is not None and len(self._window) >= 2 and self._is_converging(previous, text)
-        ):
-            self._last_verdict = StabilityVerdict.CONVERGING
-        else:
-            self._last_verdict = StabilityVerdict.UNKNOWN
-        return self._last_verdict
+            return StabilityVerdict.OSCILLATING
+        if previous is not None and self._is_converging(previous, text):
+            return StabilityVerdict.CONVERGING
+        return StabilityVerdict.UNKNOWN
 
     def _is_oscillating(self) -> bool:
         """Dao động = một text ngắn QUAY LẠI sau khi đã đổi sang text khác (A→B→A, vd.

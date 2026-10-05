@@ -281,7 +281,7 @@ interface `stream(frames) -> AsyncIterator[TranscriptEvent]`.
 | Biến | Giá trị hiện tại | Ý nghĩa |
 |---|---|---|
 | `ASR_PROVIDER` | `zipformer` | `zipformer` (gipformer1.5 local) hoặc `elevenlabs_realtime` (cloud) |
-| `SAMPLE_RATE` | `8000` | Áp dụng cho `SpeechSettings` — đường HTTP batch. LiveKit dùng riêng `LiveKitSettings.input_sample_rate` |
+| `LIVEKIT_INPUT_SAMPLE_RATE` | `16000` | Tần số PCM của pipeline LiveKit. Đường HTTP giữ tần số gốc của clip (không còn khóa `SAMPLE_RATE`) |
 | `VAD_PROVIDER` | `webrtc` | `energy` hoặc `webrtc` |
 | `TTS_PROVIDER` | `vbee` | Provider TTS (`openai` / `elevenlabs` / `vbee`) |
 | `ZIPFORMER_*_PATH` | trỏ `assets/zipformer/` (nội dung model gipformer1.5) | Asset model đang dùng — xem §5 lịch sử đổi model |

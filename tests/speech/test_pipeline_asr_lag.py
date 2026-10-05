@@ -12,7 +12,6 @@ from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import VadEvent
 from speech.asr.vad.energy import EnergyFrameClassifier
-from speech.asr.vad.streaming import StreamingVAD
 from speech.turn.controller import TurnController
 from speech.types import Transcript, TranscriptEvent
 
@@ -103,8 +102,7 @@ async def test_slow_asr_does_not_stall_vad_and_turn_waits_for_final() -> None:
     timer = _ManualTimer()
     pipeline = STTPipeline(
         asr=asr,
-        vad=StreamingVAD(EnergyFrameClassifier(100.0)),
-        async_vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=600),
+        vad=AsyncStreamingVAD(EnergyFrameClassifier(100.0), end_silence_ms=600),
         queue_max_frames=5,  # trước đây cũng là trần hàng đợi ASR: ASR ngủ là VAD đứng
     )
     controller = _LoggingController(

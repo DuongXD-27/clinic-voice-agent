@@ -8,11 +8,11 @@ pytest.importorskip("rapidfuzz", reason="cần extra [speech] cài rapidfuzz")
 from speech.asr.evidence import StabilityVerdict, TranscriptEvidenceTracker  # noqa: E402
 from speech.asr.pipeline import STTPipeline  # noqa: E402
 from speech.asr.vad.base import VadEvent  # noqa: E402
-from speech.asr.vad.streaming import StreamingVAD  # noqa: E402
+from speech.turn.evidence import TurnEvidence  # noqa: E402
 from speech.types import Transcript, TranscriptEvent  # noqa: E402
 
 
-class _NullEnergyClassifier:
+class _NoSpeech:
     def is_speech(self, frame: bytes) -> bool:
         return False
 
@@ -74,20 +74,25 @@ async def test_evidence_tracker_observes_oscillating_partials() -> None:
             TranscriptEvent(text="đây", is_final=False),
         ]
     )
-    tracker = TranscriptEvidenceTracker(oscillation_repeat_threshold=2)
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+    verdicts = []
 
-    await asyncio.wait_for(
-        _collect(pipeline.stream(_frames(4), evidence_tracker=tracker)), timeout=2.0
-    )
+    class _SpyTracker(TranscriptEvidenceTracker):
+        def observe(self, event):
+            verdicts.append(super().observe(event))
+            return verdicts[-1]
 
-    assert tracker.last_verdict == StabilityVerdict.OSCILLATING
+    tracker = _SpyTracker(oscillation_repeat_threshold=2)
+    pipeline = STTPipeline(asr=asr, vad=vad, evidence=TurnEvidence(_NoSpeech(), transcript=tracker))
+
+    await asyncio.wait_for(_collect(pipeline.stream(_frames(4))), timeout=2.0)
+
+    assert verdicts[-1] == StabilityVerdict.OSCILLATING
 
 
 async def test_evidence_tracker_none_by_default_does_not_break_stream() -> None:
     vad = _FakeAsyncVAD([])
     asr = _FakeASR([TranscriptEvent(text="xin chào", is_final=False)])
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullEnergyClassifier()), async_vad=vad)
+    pipeline = STTPipeline(asr=asr, vad=vad)
 
     turns = await asyncio.wait_for(_collect(pipeline.stream(_frames(2))), timeout=2.0)
 

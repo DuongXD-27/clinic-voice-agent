@@ -153,7 +153,7 @@ async def main() -> None:
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
-    overrides = {"sample_rate": RATE, **bench.PROFILES[args.profile]}
+    overrides = dict(bench.PROFILES[args.profile])
     settings = SpeechSettings(**overrides)
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
 

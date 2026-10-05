@@ -11,15 +11,9 @@ from typing import AsyncIterator
 
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import VadEvent
-from speech.asr.vad.streaming import StreamingVAD
 from speech.turn.controller import TurnController
 from speech.turn.interruption import InterruptionController, InterruptionState
 from speech.types import AsrSegmentEnd, Transcript, TranscriptEvent
-
-
-class _NullClassifier:
-    def is_speech(self, frame: bytes) -> bool:
-        return False
 
 
 class _FakeAsyncVAD:
@@ -62,8 +56,11 @@ class _RecordingASR:
 
 
 class _FakeCancellableTTS:
+    def __init__(self) -> None:
+        self.cancel_calls = 0
+
     async def cancel(self) -> None:
-        pass
+        self.cancel_calls += 1
 
 
 def _make_frame(tag: int) -> bytes:
@@ -88,9 +85,7 @@ async def test_bot_starting_to_speak_discards_pending_asr_segment() -> None:
     frames = [_make_frame(i) for i in range(1, 7)]
     controller = TurnController(min_speech_ms=0)
     asr = _RecordingASR()
-    pipeline = STTPipeline(
-        asr=asr, vad=StreamingVAD(_NullClassifier()), async_vad=_FakeAsyncVAD([])
-    )
+    pipeline = STTPipeline(asr=asr, vad=_FakeAsyncVAD([]))
 
     def _bot_starts_at_frame_3(index: int) -> None:
         if index == 3:
@@ -111,13 +106,14 @@ async def test_rejected_barge_in_candidate_discards_asr_segment() -> None:
     gửi ASR phải bị bỏ, không thành tiền tố của câu người dùng nói sau khi bot dứt lời."""
     controller = TurnController(min_speech_ms=0)
     controller.on_bot_speaking_changed(True)
-    interruption = InterruptionController(_FakeCancellableTTS(), min_speech_ms=0)
+    tts = _FakeCancellableTTS()
+    interruption = InterruptionController(tts, min_speech_ms=0)
     interruption.on_bot_started_speaking()
     vad = _FakeAsyncVAD(
         [VadEvent("speech_start"), VadEvent("speech", b"x"), VadEvent("speech_end")]
     )
     asr = _RecordingASR()
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullClassifier()), async_vad=vad)
+    pipeline = STTPipeline(asr=asr, vad=vad)
 
     frames = [_make_frame(i) for i in range(1, 8)]
     await asyncio.wait_for(
@@ -129,7 +125,7 @@ async def test_rejected_barge_in_candidate_discards_asr_segment() -> None:
         timeout=2.0,
     )
 
-    assert interruption.confirmed_count == 0
+    assert tts.cancel_calls == 0  # không xác nhận ngắt lời
     assert asr.items.count(AsrSegmentEnd.DISCARD) == 1
     assert len(asr.items) > 1 and asr.items[-1] is AsrSegmentEnd.DISCARD
 
@@ -143,7 +139,7 @@ async def test_confirmed_barge_in_keeps_asr_segment() -> None:
     interruption.on_bot_started_speaking()
     vad = _FakeAsyncVAD([VadEvent("speech_start")] + [VadEvent("speech", b"x")] * 7)
     asr = _RecordingASR(partial_after=2)
-    pipeline = STTPipeline(asr=asr, vad=StreamingVAD(_NullClassifier()), async_vad=vad)
+    pipeline = STTPipeline(asr=asr, vad=vad)
 
     frames = [_make_frame(i) for i in range(1, 9)]
     await asyncio.wait_for(
@@ -164,9 +160,7 @@ async def test_no_marker_when_asr_received_nothing() -> None:
     controller = TurnController(min_speech_ms=0)
     controller.on_bot_speaking_changed(True)
     asr = _RecordingASR()
-    pipeline = STTPipeline(
-        asr=asr, vad=StreamingVAD(_NullClassifier()), async_vad=_FakeAsyncVAD([])
-    )
+    pipeline = STTPipeline(asr=asr, vad=_FakeAsyncVAD([]))
 
     frames = [_make_frame(i) for i in range(1, 5)]
     await asyncio.wait_for(
