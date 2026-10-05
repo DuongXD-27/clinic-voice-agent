@@ -243,7 +243,7 @@ def test_contact_then_reported_name_sentence_verifies_over_http(client, clinic) 
     _start(client, "c_spoken_identity")
     contact = _turn(client, "c_spoken_identity", 1, "hú hú em ơi")
     assert contact.status_code == 200
-    assert contact.json()["utterance"] == t.greeting_back("outbound")
+    assert contact.json()["utterance"] == t.ASK_NAME_AGAIN
     name = _turn(client, "c_spoken_identity", 2, "à thì anh tên là Nguyễn Văn A nhé em")
     assert name.status_code == 200 and name.json()["utterance"] == t.ASK_DOB
     dob = _turn(client, "c_spoken_identity", 3, "14/03/1978")
@@ -258,7 +258,7 @@ def test_calls_do_not_share_state(client: TestClient) -> None:
 
     # c_iso_b chưa có tên: giữ ngày sinh (T-02) nhưng vẫn phải hỏi tên — không dùng tên của c_iso_a
     response = _turn(client, "c_iso_b", 1, "Ngày 14 tháng 3 năm 1978.")
-    assert response.json()["utterance"] == t.ASK_NAME_AFTER_DOB
+    assert response.json()["utterance"] == t.ASK_NAME_AGAIN
     assert response.json()["state"] == "AWAITING_IDENTITY"
     assert _turn(client, "c_iso_a", 2, "Ngày 14 tháng 3 năm 1978.").json()["state"] == (
         "AWAITING_INTENT"

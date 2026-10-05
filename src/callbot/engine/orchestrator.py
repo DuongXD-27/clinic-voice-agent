@@ -113,7 +113,9 @@ def _extraction_attributes(extraction: ExtractionResult) -> dict[str, object]:
     }
 
 
-def build_turn_context(ctx: CallContext, turn: int, received_at: datetime) -> TurnContext:
+def build_turn_context(
+    ctx: CallContext, turn: int, received_at: datetime, asr_confidence: Optional[float] = None
+) -> TurnContext:
     """Những gì IE được biết (nguyên tắc 2): KHÔNG có hồ sơ bệnh nhân, tên / ngày sinh, `verify.*`."""
     question = ctx.question
     return TurnContext(
@@ -121,6 +123,7 @@ def build_turn_context(ctx: CallContext, turn: int, received_at: datetime) -> Tu
         question_id=question.question_id if question else None,
         direction=ctx.call.direction,
         now=to_local(received_at),
+        asr_confidence=asr_confidence,
         slots=tuple(dict(slot) for slot in ctx.slots),
         presented_slot_ids=tuple(ctx.presented_slot_ids),
         pending_action=ctx.pending_action,
@@ -245,6 +248,7 @@ class CallOrchestrator:
             core.enrich(state_before=state_before, silent=caller.is_silence)
             core.enrich_ancestor("TURN", direction=ctx.call.direction, state_before=state_before)
         ctx.turn = caller.turn
+        ctx.business_write_blocked = False
         ctx.record("caller", caller.transcript)
         # R-01: chụp đầu lượt (deepcopy) — câu hỏi đang chờ và slot vừa nạp từ store
         turn = _TurnOutput(deepcopy(ctx.question), SourceRegistry(ctx.slots))
@@ -266,10 +270,13 @@ class CallOrchestrator:
                         component="EXTRACTION", operation="core.extract"
                     ) as span:
                         extraction = self._extractor.extract(
-                            build_turn_context(ctx, caller.turn, received_at),
+                            build_turn_context(
+                                ctx, caller.turn, received_at, caller.asr_confidence
+                            ),
                             caller.transcript,
                             silence_ms=caller.silence_ms,
                         )
+                        ctx.business_write_blocked = extraction.model_failed
                         try:
                             span.enrich(**_extraction_attributes(extraction))
                         except Exception:

@@ -84,6 +84,8 @@ class CallContext:
     identity_step: IdentityStep = "ASK_NAME"
     claimed_name: Optional[str] = None
     claimed_dob: Optional[date] = None
+    identity_retries: dict[str, int] = field(default_factory=dict)
+    business_write_blocked: bool = False
     # "Dữ liệu chuẩn nội bộ" đọc ở lượt 0 (§4.2.2 bản sao chỉ đọc): mỗi phần tử
     # {patient_id, full_name, dob, verifiable}. Outbound đúng 1; inbound mọi ứng viên GET /patients.
     # SF-03/§1.1.2: KHÔNG đưa vào build_turn_context (IE), trace hay lời thoại — Verifier đọc riêng.
@@ -228,6 +230,8 @@ class CallContext:
             "identity_step": self.identity_step,
             "claimed_name": self.claimed_name,
             "claimed_dob": self.claimed_dob.isoformat() if self.claimed_dob else None,
+            "identity_retries": dict(self.identity_retries),
+            "business_write_blocked": self.business_write_blocked,
             "identity_lookup": self.identity_lookup,
             "identity_reference": [dict(item) for item in self.identity_reference],
             "patient_id": self.patient_id,
@@ -269,6 +273,8 @@ class CallContext:
             identity_step=data["identity_step"],
             claimed_name=data["claimed_name"],
             claimed_dob=date.fromisoformat(data["claimed_dob"]) if data["claimed_dob"] else None,
+            identity_retries=dict(data.get("identity_retries", {})),
+            business_write_blocked=bool(data.get("business_write_blocked", False)),
             # Hai khóa thêm ở T-01, đọc bằng .get để phiên lưu trước đó (schema 1 cũ) vẫn mở được
             identity_lookup=data.get("identity_lookup", "PENDING"),
             identity_reference=[dict(item) for item in data.get("identity_reference", [])],

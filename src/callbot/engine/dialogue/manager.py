@@ -36,9 +36,7 @@ from callbot.engine.extraction.agreement import (
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
-    is_greeting,
     is_hold_request,
-    is_identity_question,
     is_return_signal,
 )
 from callbot.engine.extraction.schema import (
@@ -46,7 +44,10 @@ from callbot.engine.extraction.schema import (
     Agreement,
     ExtractionResult,
     Field,
+    IdentityStatus,
+    IdentityValue,
     Intent,
+    Provenance,
     QuestionId,
     SlotChoice,
     SlotCriteria,
@@ -71,6 +72,7 @@ from callbot.engine.types import (
     UnreachableReason,
 )
 from callbot.engine.verification.identity import IdentityVerifier, VerificationStatus
+from callbot.engine.verification.names import NameMatch
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +80,6 @@ logger = logging.getLogger(__name__)
 MAX_SLOTS_PRESENTED = 2
 # R-29: người gọi nêu tối đa 2 ngày / khoảng thời gian; ngày thứ ba -> giữ lịch cũ, PATIENT_REQUEST (D-5)
 MAX_SLOT_ROUNDS = 2
-# Lời chào ("alo", "hi em") ở bước danh tính không tính §1.1.5 tới mức này: đường truyền kém hay bot
-# nói chồng làm người nghe chào lại nhiều lần. Quá mức thì mới là chưa hiểu, để bước này không lặp mãi.
-MAX_NEUTRAL_GREETINGS = 2
-# Nhu cầu người gọi nói ở bước danh tính: chỉ để trả lời "cần xác minh trước", không dùng sau xác minh
-_BUSINESS_INTENTS = frozenset({Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK})
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -178,6 +175,18 @@ class DialogueManager:
     # --- Điều phối theo câu hỏi đang chờ -------------------------------------------
 
     def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
+        if extraction.model_failed:
+            ctx.business_write_blocked = True
+            if ctx.pending_action == "CANCEL" and extraction.cancel_reason.provenance in (
+                Provenance.EXACT,
+                Provenance.NORMALIZED,
+            ):
+                self._update_cancel_reason(ctx, extraction)
+            return self._reask_confirmation(ctx, failed=True)
+        if extraction.confirmation_conflict:
+            if ctx.pending_action == "CANCEL":
+                self._update_cancel_reason(ctx, extraction)
+            return self._reask_confirmation(ctx)
         if is_hold_request(extraction.transcript):
             return Reply(BotAction(t.choose_static(ctx, t.HOLD), ctx.state), "NEUTRAL")
         if is_return_signal(extraction.transcript) and ctx.question is not None:
@@ -207,72 +216,94 @@ class DialogueManager:
             return self._cancel_reconfirm(ctx, extraction, now)
         return self._not_understood(ctx)
 
+    def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
+        question = ctx.question
+        if question is not None and question.question_id in (
+            QuestionId.ASK_NAME,
+            QuestionId.ASK_DOB,
+        ):
+            return self._retry_identity(ctx, question.question_id)
+        if question is not None and question.action is not None:
+            text = (
+                t.CANCEL_CONFLICT
+                if question.action == "CANCEL"
+                else t.CONFIRM_CONFLICT
+                if question.action == "CONFIRM"
+                else t.SLOT_CONFLICT
+            )
+            return Reply(
+                ask(
+                    ctx,
+                    question.question_id,
+                    text,
+                    ctx.state,
+                    action=question.action,
+                    slot_id=question.slot_id,
+                ),
+                "NOT_UNDERSTOOD" if failed else "UNCLEAR",
+            )
+        return self._not_understood(ctx)
+
     # --- Danh tính ---------------------------------------------------------------------
 
     def _identity(self, ctx: CallContext, ex: ExtractionResult) -> Reply:
-        """Hỏi mở tên, ngày sinh (§1.1.2); nhận phần còn thiếu, kể cả khi người gọi nói gộp hai thứ.
-
-        Chỉ tính là hiểu khi điền được trường CÒN THIẾU — nhắc lại điều đã có không reset bộ đếm §1.1.5,
-        nên bước này không lặp vô hạn. Đủ hai trường thì đối chiếu một lần; không khớp thì chuyển ngay.
-        """
+        """R-40: only PRESENT values reach the verifier; each identifier gets one open retry."""
+        name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
+        dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
+        name_suspicious = False
         progressed = False
-        if ctx.claimed_name is None and ex.full_name.found and ex.full_name.value:
-            # Lưu đúng điều người gọi nói — không "sửa" theo hồ sơ; Verifier đối chiếu riêng
-            ctx.claimed_name = ex.full_name.value
-            progressed = True
-        if ctx.claimed_dob is None and isinstance(ex.dob.value, date):
-            ctx.claimed_dob = ex.dob.value
+        if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
+            match = self._verifier.compare_name(ctx, name.value)
+            if match is NameMatch.MISMATCH:
+                return Reply(self.transfer(ctx, self._identity_failure_reason(ctx)))
+            if match is NameMatch.SUSPICIOUS:
+                name_suspicious = True
+            else:
+                ctx.claimed_name = name.value
+                progressed = True
+        if ctx.claimed_dob is None and dob.status is IdentityStatus.PRESENT:
+            if not self._verifier.compare_dob(ctx, dob.value):
+                return Reply(self.transfer(ctx, self._identity_failure_reason(ctx)))
+            ctx.claimed_dob = dob.value
             progressed = True
         if ctx.claimed_name is not None and ctx.claimed_dob is not None:
             return self._verify(ctx)
-
-        ask_name = ctx.claimed_name is None
-        ctx.identity_step = "ASK_NAME" if ask_name else "ASK_DOB"
-        question = QuestionId.ASK_NAME if ask_name else QuestionId.ASK_DOB
-        dob_invalid = ex.dob.value == INVALID
-        if progressed:
-            text = (
-                t.ASK_NAME_AFTER_DOB
-                if ask_name
-                else t.ASK_DOB_INVALID
-                if dob_invalid
-                else t.ASK_DOB
-            )
+        question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
+        ctx.identity_step = question.value
+        if name_suspicious:
+            return self._retry_identity(ctx, QuestionId.ASK_NAME, suspicious=True)
+        expected = ex.question_id or question
+        if progressed and question is not expected:
+            if question is QuestionId.ASK_DOB and dob.status in (
+                IdentityStatus.UNCERTAIN,
+                IdentityStatus.MULTIPLE,
+            ):
+                return self._retry_identity(ctx, question)
+            text = t.ASK_NAME_AFTER_DOB if question is QuestionId.ASK_NAME else t.ASK_DOB
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))
+        return self._retry_identity(ctx, question)
 
-        if is_greeting(ex.transcript) and ctx.neutral_greetings < MAX_NEUTRAL_GREETINGS:
-            # "Alo" chưa nghe rõ: hỏi lại, không tính §1.1.5. Đáp câu chào mở đầu (kể cả khi câu chào
-            # được nhắc lại sau im lặng) thì chào lại một lần. Hỏi "ai đấy" vẫn được giới thiệu lại.
-            ctx.neutral_greetings += 1
-            opening = ctx.question is not None and ctx.question.text in t.static_choices(
-                t.greeting(ctx.call.direction)
-            )
-            if is_identity_question(ex.transcript):
-                # "Ai đấy?" là câu hỏi cần trả lời, kể cả sau reprompt / đã nhận tên.
-                text = (
-                    t.greeting_back(ctx.call.direction) if ask_name else t.INTRODUCE_AGAIN_ASK_DOB
-                )
-            elif not ask_name:
-                text = t.ASK_DOB_AGAIN
-            elif opening:
-                text = t.greeting_back(ctx.call.direction)
-            else:
-                text = t.ASK_NAME_AGAIN
-            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
-        if not ask_name and dob_invalid:
-            # Người gọi đã cố đọc ngày sinh: câu hỏi lại cụ thể hữu ích hơn, dù câu có kèm nhu cầu khác
-            return self._not_understood(ctx, question, t.ASK_DOB_INVALID)
-        intent = ex.intent.value
-        if intent is Intent.CANNOT_PROVIDE:
-            text = t.ASK_NAME_DECLINED if ask_name else t.ASK_DOB_DECLINED
-            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "DECLINED")
-        if intent in _BUSINESS_INTENTS:
-            # Nói nhu cầu trước khi xác minh: lần đầu không tính là không hiểu, không dùng nhu cầu này
-            text = t.ASK_NAME_FOR_REQUEST if ask_name else t.ASK_DOB_FOR_REQUEST
-            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "UNCLEAR")
-        return self._not_understood(
-            ctx, question, t.ASK_NAME_AGAIN if ask_name else t.ASK_DOB_AGAIN
-        )
+    @staticmethod
+    def _legacy_identity(item: Field, transcript: str) -> IdentityValue:
+        # Compatibility for explicitly injected extraction stubs; INVALID is never compared.
+        if item.found and item.value not in (None, INVALID) and transcript:
+            return IdentityValue(IdentityStatus.PRESENT, item.value, transcript)
+        return IdentityValue(IdentityStatus.UNCERTAIN if item.found else IdentityStatus.ABSENT)
+
+    @staticmethod
+    def _identity_failure_reason(ctx: CallContext) -> TransferReason:
+        return "PATIENT_NOT_FOUND" if ctx.call.direction == "inbound" else "IDENTITY_FAILED"
+
+    def _retry_identity(
+        self, ctx: CallContext, question: QuestionId, *, suspicious: bool = False
+    ) -> Reply:
+        key = question.value
+        if ctx.identity_retries.get(key, 0) >= 1:
+            reason = self._identity_failure_reason(ctx) if suspicious else "NOT_UNDERSTOOD"
+            return Reply(self.transfer(ctx, reason))
+        ctx.identity_retries[key] = 1
+        text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
+        return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
 
     def _verify(self, ctx: CallContext) -> Reply:
         result = self._verifier.verify(ctx)
@@ -305,7 +336,7 @@ class DialogueManager:
     def _attendance(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         """§1.1.3: chỉ ghi CONFIRMED khi người gọi đồng ý đúng câu đọc lại ngày, giờ, cơ sở (T-04).
 
-        AGREE gồm cả "vâng / dạ / ừ" và câu khẳng định sẽ đến ("tôi sẽ đến" — Bảng 1); IE đã hạ câu
+        AGREE gồm "vâng / ừ" và câu khẳng định sẽ đến ("tôi sẽ đến" — Bảng 1); "dạ" không đủ. IE đã hạ câu
         ngập ngừng, câu hỏi đuôi, "nhưng ..." xuống UNCLEAR.
         """
         intent = ex.intent.value

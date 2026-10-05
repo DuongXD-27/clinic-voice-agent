@@ -44,6 +44,10 @@ class SourceRegistry:
         found = self._appointments.get(appointment_id or "")
         return deepcopy(found) if found is not None else None
 
+    @property
+    def appointments(self) -> list[dict[str, Any]]:
+        return deepcopy(list(self._appointments.values()))
+
     def slots_intact(self, ctx: CallContext) -> bool:
         return ctx.slots == self._slots
 

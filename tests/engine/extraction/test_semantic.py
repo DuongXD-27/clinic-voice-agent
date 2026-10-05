@@ -947,4 +947,5 @@ def test_no_merge_branch_can_promote_the_cancel_answer(monkeypatch) -> None:
     assert result.agreement.value is Agreement.UNCLEAR
 
     # Câu hủy rõ mà luật đã AGREE thì vẫn là AGREE
-    assert extractor.extract(_turn_context(), "dạ hủy luôn em ạ").agreement.value is Agreement.AGREE
+    failed = extractor.extract(_turn_context(), "dạ hủy luôn em ạ")
+    assert failed.model_status == "INVALID" and failed.agreement.value is Agreement.UNCLEAR

@@ -44,9 +44,9 @@ SCENARIOS = [
         [None, None, None],
         "TRANSFERRED",
     ),
-    ("wrong_identity", {}, ["Nguyễn Văn B", "14/03/1978"], "TRANSFERRED"),
+    ("wrong_identity", {}, ["Nguyễn Văn B"], "TRANSFERRED"),
     ("not_understood", {}, ["xyz", "xyz"], "TRANSFERRED"),
-    ("spoken_busy", {}, ["đường dây bận", "không có người trả lời"], None),
+    ("spoken_busy", {}, ["đường dây bận"], "TRANSFERRED"),
 ]
 
 

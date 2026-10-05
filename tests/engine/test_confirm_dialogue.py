@@ -94,6 +94,12 @@ def test_unknown_clinic_id_is_not_given_a_guessed_name() -> None:
     ],
 )
 def test_agreement_confirms_in_one_turn(answer: str) -> None:
+    if answer in ("dạ", "không hủy đâu, tôi vẫn đến", "tôi sẽ đến đúng giờ, không trễ đâu"):
+        bot, clinic, _ = _at_readback("c_unsafe")
+        action = _run(bot, "c_unsafe", [answer], start=3)
+        assert not action.ended and clinic.writes == []
+        assert _context(bot, "c_unsafe").evidence == []
+        return
     bot, clinic, _ = _at_readback("c_t04_agree")
     action = _run(bot, "c_t04_agree", [answer], start=3)
     assert (action.ended, action.outcome, action.state) == (True, "CONFIRMED", "ENDED")
@@ -389,6 +395,12 @@ def test_yes_after_the_reread_confirms() -> None:
 
 @pytest.mark.parametrize("answer", ["không thành vấn đề", "nhất định rồi", "tôi sẽ có mặt"])
 def test_other_ways_of_agreeing_confirm_in_one_turn(answer: str) -> None:
+    if answer in ("không thành vấn đề",):
+        bot, clinic, _ = _at_readback("c_unsafe")
+        action = _run(bot, "c_unsafe", [answer], start=3)
+        assert not action.ended and clinic.writes == []
+        assert _context(bot, "c_unsafe").evidence == []
+        return
     bot, clinic, _ = _at_readback("c_t04s8_agree")
     action = _run(bot, "c_t04s8_agree", [answer], start=3)
     assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
@@ -545,11 +557,12 @@ def test_a_trip_mistaken_for_attendance_asks_change_or_cancel_when_the_model_rea
 
 
 def test_without_the_model_the_trip_only_rereads() -> None:
-    """Model timeout / tắt: giữ kết luận luật — đọc lại lịch, không ghi."""
+    """R-31: model không trả kết quả thì hỏi đóng và đếm không hiểu, không dùng lại luật."""
     bot, clinic, _ = _at_readback("c_t04_trip_off")
     bot._extractor._semantic = _FakeSemantic({})
     action = _run(bot, "c_t04_trip_off", [TRIP], start=3)
-    assert FACTS in action.utterance and clinic.writes == []
+    assert action.utterance == t.CONFIRM_CONFLICT and clinic.writes == []
+    assert _context(bot, "c_t04_trip_off").failed_understandings == 1
 
 
 def test_a_reason_at_change_or_cancel_asks_that_question_again_without_counting() -> None:

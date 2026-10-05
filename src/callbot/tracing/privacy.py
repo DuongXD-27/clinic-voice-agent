@@ -42,6 +42,7 @@ OPERATIONS = frozenset(
     }
 )
 EVENT_FIELDS: dict[str, frozenset[str]] = {
+    "ie.model": frozenset({"model", "latency_ms", "model_result"}),
     "session.admitted": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.replayed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.committed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
@@ -168,6 +169,7 @@ SPAN_FIELDS = frozenset(
         "confirmation_result",
         "released_fields",
         "provider_error_code",
+        "model_result",
     }
 )
 _ROUTES = frozenset({"/v1/calls", "/v1/calls/{call_id}/turn"})
@@ -273,6 +275,8 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             raise UnsafeTraceData("unknown trace error code")
         if key == "result_code" and value not in RESULT_CODES:
             raise UnsafeTraceData("unknown trace result code")
+        if key == "model_result" and value not in {"OK", "TIMEOUT", "ERROR", "INVALID"}:
+            raise UnsafeTraceData("unknown IE model result")
         if key == "route_template" and value not in _ROUTES:
             raise UnsafeTraceData("unknown HTTP route template")
         if key == "endpoint_template" and value not in _ENDPOINTS:

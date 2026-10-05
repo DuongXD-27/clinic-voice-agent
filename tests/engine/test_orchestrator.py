@@ -45,7 +45,7 @@ def _context(bot, call_id: str) -> CallContext:
 
 
 def test_name_normalizer_moved_to_verification() -> None:
-    assert normalize_name("Nguyễn  Văn A") == "nguyen van a"
+    assert normalize_name("Nguyễn  Văn A") == "nguyễn văn a"
 
 
 def test_identity_match() -> None:
@@ -395,7 +395,7 @@ def test_extractor_never_sees_patient_identity() -> None:
     bot._extractor = spy
     bot.start_call(_outbound("c_private"))
     # Người gọi nói sai tên: không được "sửa" theo hồ sơ
-    _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
+    _run(bot, "c_private", ["Nguyễn Văn Bê"])
 
     # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
     # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
@@ -411,6 +411,7 @@ def test_extractor_never_sees_patient_identity() -> None:
         "pending_action",
         "question_turn",
         "question_text",
+        "asr_confidence",
     }
     verify = clinic.appointments["apt_00417"]["patient"]["verify"]
     for seen in spy.contexts:
@@ -420,7 +421,6 @@ def test_extractor_never_sees_patient_identity() -> None:
     # Câu mở đầu outbound tới IE; bước ngày sinh không mang nội dung câu hỏi
     assert [(c.question_id, c.question_text) for c in spy.contexts] == [
         (QuestionId.ASK_NAME, t.GREETING_OUTBOUND),
-        (QuestionId.ASK_DOB, None),
     ]
     session = bot.sessions.store.get_session("c_private")
     assert session.context == {} and session.ended

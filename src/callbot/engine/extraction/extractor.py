@@ -21,7 +21,11 @@ import logging
 from dataclasses import replace
 from typing import Optional
 
-from callbot.engine.extraction.agreement import extract_agreement
+from callbot.engine.extraction.agreement import (
+    confirmation_veto,
+    conflicting_confirmation,
+    extract_agreement,
+)
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
@@ -40,9 +44,15 @@ from callbot.engine.extraction.full_name import (
     valid_name_span,
 )
 from callbot.engine.extraction.honorific import strip_honorific
-from callbot.engine.extraction.identity import Reason
+from callbot.engine.extraction.identity import Reading, Reason, identity_value
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
+from callbot.engine.extraction.model_budget import (
+    invoke_model,
+    model_turn,
+    model_used,
+    report_model_status,
+)
 from callbot.engine.extraction.schema import (
     CONFIRMATION_QUESTIONS,
     IDENTITY_QUESTIONS,
@@ -66,6 +76,7 @@ from callbot.engine.extraction.semantic_router import (
 from callbot.engine.extraction.slot_choice import extract_slot_choice
 from callbot.engine.extraction.text import clean
 from callbot.engine.types import CancelReason
+from callbot.tracing import trace_event
 
 # Ở bước hỏi tên / ngày sinh không chạy intent nghiệp vụ: "Lê Văn Thôi", "Trần Văn Được" không được
 # thành REFUSE / CONFIRM. Chỉ giữ nhãn cần cho an toàn hoặc để không đọc nhầm câu thành tên:
@@ -221,6 +232,35 @@ class InformationExtractor:
     def extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
     ) -> ExtractionResult:
+        with model_turn() as budget:
+            result = self._extract(ctx, transcript, silence_ms=silence_ms)
+            if budget.used:
+                trace_event(
+                    "ie.model",
+                    model=budget.model,
+                    latency_ms=budget.latency_ms,
+                    model_result=budget.status,
+                )
+            if budget.status in {"TIMEOUT", "ERROR", "INVALID"}:
+                result = replace(
+                    result,
+                    intent=Field.nothing(Intent.NONE),
+                    agreement=Field.nothing(Agreement.UNCLEAR),
+                )
+            conflict = ctx.question_id in CONFIRMATION_QUESTIONS and conflicting_confirmation(
+                transcript, ctx.question_id
+            )
+            if conflict or (
+                result.agreement.value is Agreement.AGREE and confirmation_veto(transcript)
+            ):
+                result = replace(
+                    result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
+                )
+            return replace(result, model_status=budget.status, confirmation_conflict=conflict)
+
+    def _extract(
+        self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
+    ) -> ExtractionResult:
         """`silence_ms` lấy nguyên từ lượt harness (Listing 2).
 
         Im lặng xác định bằng `silence_ms > 0` (Phụ lục A), không bằng transcript rỗng: người gọi có nói
@@ -247,6 +287,7 @@ class InformationExtractor:
         dob = dob_reading.field if dob_reading is not None else skipped
 
         full_name: Field[str] = skipped
+        name_reading = Reading(Field.nothing(), Reason.NO_SIGNAL)
         if (
             question is QuestionId.ASK_NAME
             and intent.value is Intent.NONE
@@ -258,9 +299,10 @@ class InformationExtractor:
                 # 31/02/1978" -> giữ tên, hỏi lại ngày), nhưng câu chỉ tình cờ có chữ số
                 # ("bảo hiểm có chi trả 80% không") thì không có vùng nào để cắt.
                 zone = name_before_dob(transcript) or name_after_dob(transcript)
-                full_name = self._full_name(zone, transcript, ctx) if zone else Field.nothing()
+                name_reading = self._full_name(zone, transcript, ctx) if zone else name_reading
             else:
-                full_name = self._full_name(transcript, transcript, ctx)
+                name_reading = self._full_name(transcript, transcript, ctx)
+            full_name = name_reading.field
 
         if (
             question in IDENTITY_QUESTIONS
@@ -319,10 +361,16 @@ class InformationExtractor:
             slot_choice=slot_choice,
             cancel_reason=cancel_reason,
             line_signal=line_signal,
+            name_identity=identity_value(name_reading, transcript, confidence=ctx.asr_confidence),
+            dob_identity=(
+                identity_value(dob_reading, transcript, confidence=ctx.asr_confidence)
+                if dob_reading is not None
+                else None
+            ),
         )
         if route_reason is None:
             return result
-        if self._semantic is None:
+        if self._semantic is None or model_used():
             if route_reason is RouteReason.CLINICAL_UNRESOLVED:
                 return merge_semantic(result, None, route_reason, ())
             return result
@@ -340,7 +388,7 @@ class InformationExtractor:
         assert self._semantic is not None
         context = build_semantic_context(ctx, result, route_reason)
         try:
-            outcome = self._semantic.analyze(context)
+            outcome = invoke_model(self._semantic, lambda: self._semantic.analyze(context))
         except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
             logger.warning("Tầng ngữ nghĩa lỗi, dùng kết quả thận trọng", exc_info=False)
             outcome = None
@@ -352,78 +400,70 @@ class InformationExtractor:
         identity_step = ctx.question_id in IDENTITY_QUESTIONS
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
-        if result.found or identity_step or self._fallback is None:
+        if result.found or identity_step or self._fallback is None or self._name_fallback:
             return result
         allowed_here = frozenset(i for i in allowed if allowed_in_direction(i, ctx.direction))
         guarded = guard_fallback(
-            self._fallback.intent(transcript, allowed_here), transcript, Intent.NONE
+            invoke_model(self._fallback, lambda: self._fallback.intent(transcript, allowed_here)),
+            transcript,
+            Intent.NONE,
         )
         if guarded.found and guarded.value not in allowed_here:
+            report_model_status("invalid_response")
             return Field.nothing(Intent.NONE)
         return guarded
 
-    def _full_name(self, zone: str, transcript: str, ctx: TurnContext) -> Field[str]:
-        """`zone`: đoạn được phép chứa tên. `transcript`: cả câu, để mô hình còn ngữ cảnh.
-
-        Slot filling nhận thêm câu hỏi bot đang chờ (`ctx.question_text`) — chỉ để hiểu câu trả lời;
-        không gửi lịch sử hội thoại hay hồ sơ đối chiếu.
-        """
+    def _full_name(self, zone: str, transcript: str, ctx: TurnContext) -> Reading[str]:
+        """Preserve rule evidence and never restore a name after a failed model operation."""
         reading = read_full_name(zone)
-        # "Luật chưa hiểu" mới được hỏi mô hình. Câu đã bị luật xác định là phủ định, phân vân,
-        # mơ hồ hay câu nghiệp vụ thì mô hình không được lật lại — nếu không, "không phải
-        # Nguyễn Văn A" quay về thành "Nguyễn Văn A" và đi thẳng vào Verifier.
         if reading.field.found or reading.reason not in (
             Reason.NO_SIGNAL,
             Reason.UNRESOLVED_BOUNDARY,
             Reason.UNANCHORED,
         ):
-            return reading.field
-        # UNANCHORED: câu đúng hình dạng tên nhưng thiếu dấu hiệu họ tên. Bỏ yêu cầu dấu hiệu là
-        # đúng đường luật cũ, nên tên ra đã bỏ lời dẫn / hậu tố ("dạ tôi tên Lê Na ạ" -> "lê na").
-        rule_name: Field[str] = Field.nothing()
-        if reading.reason is Reason.UNANCHORED:
-            loose = read_full_name(zone, require_anchor=False)
-            if loose.reason is Reason.OK:
-                rule_name = loose.field
+            return reading
+        if not self._name_fallback or self._fallback is None:
+            if reading.reason is Reason.UNANCHORED:
+                return read_full_name(zone, require_anchor=False)
+            return reading
         result = self._slot_fill(reading.reason, zone, transcript, ctx)
         if result.status is SlotFillingStatus.ACCEPTED:
-            return result.field
-        # Chỉ câu trả lời khẳng định "không có tên" của mô hình mới lật được tên của luật. Mô hình
-        # không trả lời được, trả lời không dùng được hoặc không được cấu hình: giữ tên của luật.
+            return Reading(result.field, Reason.OK, zone)
         if result.status is SlotFillingStatus.NO_NAME:
-            return Field.nothing()
-        return rule_name
+            return Reading(Field.nothing(), Reason.NO_SIGNAL, zone)
+        report_model_status("invalid_response")
+        return Reading(Field.nothing(), Reason.UNCERTAIN, zone)
 
     def _slot_fill(
         self, reason: Reason, zone: str, transcript: str, ctx: TurnContext
     ) -> SlotFillingResult:
         unavailable = SlotFillingResult(SlotFillingStatus.UNAVAILABLE, Field.nothing())
-        if not self._name_fallback or self._fallback is None:
-            return unavailable
         logger.info("Name fallback route: %s", reason.value)
         try:
-            proposed = self._fallback.full_name(
-                transcript,
-                question_id=QuestionId.ASK_NAME,
-                bot_question=ctx.question_text,
+            proposed = invoke_model(
+                self._fallback,
+                lambda: self._fallback.full_name(
+                    transcript,
+                    question_id=QuestionId.ASK_NAME,
+                    bot_question=ctx.question_text,
+                ),
             )
-        except Exception:  # adapter lỗi cũng không được khôi phục ứng viên tên đáng ngờ
-            logger.warning("Name fallback failed", exc_info=False)
+        except Exception:
+            logger.warning("Name fallback failed; requesting the name again", exc_info=False)
             return unavailable
         if proposed is None:
+            return unavailable
+        if not isinstance(proposed, SlotFillingResult):
+            report_model_status("invalid_response")
             return unavailable
         if proposed.status is not SlotFillingStatus.ACCEPTED:
             return SlotFillingResult(proposed.status, Field.nothing(), proposed.elapsed_ms)
         rejected = SlotFillingResult(
             SlotFillingStatus.REJECTED, Field.nothing(), proposed.elapsed_ms
         )
-        # Span đối chiếu với câu trả lời của khách, không với câu hỏi của bot
         guarded = guard_fallback(proposed.field, transcript, None)
-        # Tên do slot filling trả về phải nằm nguyên văn trong vùng tên, không chỉ trong transcript:
-        # ở câu gộp, mô hình không được lấy chữ từ phần ngày sinh.
         if not guarded.found or not guarded.value or not _contains(zone, clean(guarded.value)):
             return rejected
-        # Danh xưng mô hình chép theo ("ông nguyễn văn a") không thuộc họ tên
         name = strip_honorific(clean(guarded.value), MIN_WORDS_AFTER_HONORIFIC)
         if not valid_name_span(name):
             return rejected
@@ -443,10 +483,19 @@ class InformationExtractor:
         # "tôi sẽ đến", "xác nhận" ở câu hỏi đến khám là đồng ý tham dự (T-04); agreement tự bỏ qua ở câu khác
         attendance = intent.span if intent.value is Intent.CONFIRM else None
         result = extract_agreement(transcript, question, attendance=attendance)
-        if not result.found and self._fallback is not None:
+        if (
+            not result.found
+            and self._fallback is not None
+            and not self._name_fallback
+            and not model_used()
+        ):
             # Tuyến sau chỉ xét câu nói vòng không có tín hiệu nào ("hôm đó tôi bận mất rồi").
             result = guard_fallback(
-                self._fallback.agreement(transcript, question), transcript, Agreement.UNCLEAR
+                invoke_model(
+                    self._fallback, lambda: self._fallback.agreement(transcript, question)
+                ),
+                transcript,
+                Agreement.UNCLEAR,
             )
             if question is QuestionId.CANCEL_RECONFIRM and result.value is Agreement.AGREE:
                 # SF-05: hủy lịch cần động từ hủy tường minh — luật đã không thấy thì mô hình không được mở khóa

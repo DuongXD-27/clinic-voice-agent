@@ -513,6 +513,15 @@ class _RecordingVerifier:
     def prepare(self, context: CallContext) -> PrepareResult:
         return PrepareResult(LookupStatus.LOADED)
 
+    def compare_name(self, ctx, value):
+        # Boundary spy accepts a PRESENT name; real matching is tested separately.
+        from callbot.engine.verification.names import NameMatch
+
+        return NameMatch.MATCH
+
+    def compare_dob(self, ctx, value):
+        return True
+
     def verify(self, context: CallContext) -> VerificationResult:
         assert context.claimed_name is not None and context.claimed_dob is not None
         self.calls.append((context.claimed_name, context.claimed_dob))

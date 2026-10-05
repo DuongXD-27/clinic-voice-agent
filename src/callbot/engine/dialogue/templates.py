@@ -102,6 +102,15 @@ HOLD = static("HOLD", "Dạ, em chờ anh chị ạ.")
 CANCEL_RECONFIRM = static(
     "CANCEL_RECONFIRM", "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?"
 )
+CONFIRM_CONFLICT = static(
+    "CONFIRM_CONFLICT", "Dạ, anh chị có đồng ý xác nhận đến khám theo lịch vừa đọc không ạ?"
+)
+CANCEL_CONFLICT = static(
+    "CANCEL_CONFLICT",
+    "Dạ, anh chị có chắc chắn muốn hủy lịch khám này không ạ? "
+    "Nếu đồng ý, anh chị nói “hủy lịch” giúp em ạ.",
+)
+SLOT_CONFLICT = static("SLOT_CONFLICT", "Dạ, anh chị có đồng ý với khung giờ vừa đọc không ạ?")
 # Câu lựa chọn A/B khi agreement UNCLEAR (thiết kế §5.6): từ đáp lễ không còn là câu trả lời hợp lệ.
 # Nói luôn cụm cần nói, vì ngưỡng AGREE ở đây đòi động từ hủy tường minh (SF-05).
 CANCEL_CHOICE = static(
