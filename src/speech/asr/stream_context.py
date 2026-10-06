@@ -17,11 +17,16 @@ class ASRStreamContext:
     def __init__(self) -> None:
         self.generation = 0
         self.segment_id = 0
+        self.turn_first_segment_id = 0
         self.invalidated = asyncio.Event()
         self.pending: set[tuple[int, int]] = set()
 
-    def start_utterance(self) -> None:
+    def start_utterance(self, *, continues_turn: bool = False) -> None:
+        """Mở đoạn mới. `continues_turn`: đoạn thuộc cùng lượt với đoạn trước (TurnController
+        nối các đoạn), nên final tới muộn của đoạn trước vẫn được nhận."""
         self.segment_id += 1
+        if not continues_turn:
+            self.turn_first_segment_id = self.segment_id
 
     def invalidate(self) -> None:
         self.invalidated.set()
@@ -30,4 +35,8 @@ class ASRStreamContext:
         self.pending.clear()
 
     def accepts(self, event: TranscriptEvent) -> bool:
-        return event.generation == self.generation and event.segment_id == self.segment_id
+        return (
+            event.generation == self.generation
+            and event.segment_id is not None
+            and self.turn_first_segment_id <= event.segment_id <= self.segment_id
+        )

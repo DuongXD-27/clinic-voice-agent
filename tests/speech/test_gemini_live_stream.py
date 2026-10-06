@@ -87,10 +87,13 @@ class _Connector:
         return self.sockets[len(self.calls) - 1]
 
 
-def _provider(*sockets, **config):
+def _provider(*sockets, fallback=None, **config):
     connector = _Connector(*sockets)
+    config.setdefault("fallback_provider", None)
     provider = GeminiLiveASR(
-        GeminiLiveASRConfig(api_key="test-key", _env_file=None, **config), connect=connector
+        GeminiLiveASRConfig(api_key="test-key", _env_file=None, **config),
+        connect=connector,
+        fallback=fallback,
     )
     return provider, connector
 
@@ -197,6 +200,61 @@ async def test_missing_final_raises_instead_of_committing_partial():
     assert socket.closed
 
 
+class _FakeFallback:
+    input_sample_rate = 16_000
+
+    def __init__(self, text="tôi muốn hủy lịch"):
+        self.text = text
+        self.calls = []
+
+    def transcribe(self, pcm):
+        from inference.asr.base import ASRResult
+
+        self.calls.append(pcm)
+        return ASRResult(text=self.text, confidence=0.9)
+
+
+async def test_missing_final_is_recovered_by_local_fallback_with_the_whole_segment():
+    socket = _Socket(final_gate=asyncio.Event())
+    fallback = _FakeFallback()
+    provider, _ = _provider(socket, fallback=fallback, final_timeout_s=0.01)
+
+    events = await _collect(provider.stream(_frames([_VOICE] * 4)))
+
+    assert [(event.text, event.is_final) for event in events][-1] == ("tôi muốn hủy lịch", True)
+    assert fallback.calls == [_VOICE * 4]
+    assert socket.closed
+
+
+async def test_setup_failure_is_recovered_by_local_fallback_and_next_segment_retries():
+    rejected = _Socket(setup_error={"error": {"code": 503}})
+    healthy = _Socket(text="đồng ý")
+    fallback = _FakeFallback()
+    provider, connector = _provider(rejected, healthy, fallback=fallback)
+    frames = _frames([_VOICE] * 4 + [_SILENCE] * 3 + [_VOICE] * 4 + [_SILENCE] * 3)
+
+    events = await _collect(provider.stream(frames, end_silence_ms=60))
+
+    finals = [event.text for event in events if event.is_final]
+    assert finals[0] == "tôi muốn hủy lịch"
+    assert finals[-1] == "đồng ý"
+    assert len(connector.calls) == 2
+    assert rejected.closed and healthy.closed
+
+
+def test_prewarm_loads_the_local_fallback_without_calling_gemini():
+    from speech.bundle import warm_up
+
+    fallback = _FakeFallback()
+    provider, connector = _provider(fallback=fallback)
+    gateway = ASRGateway(provider, provider_name="gemini_live")
+
+    warm_up(SpeechRecognizer(gateway))
+
+    assert len(fallback.calls) == 1
+    assert connector.calls == []
+
+
 async def test_setup_rejection_is_explicit_and_does_not_leak_payload():
     socket = _Socket(setup_error={"error": {"code": 404, "message": "secret caller text"}})
     provider, _ = _provider(socket)
@@ -265,7 +323,9 @@ async def test_pipeline_waits_for_remote_final_after_local_queue_is_empty():
         await stream.aclose()
 
 
-async def test_late_final_cannot_be_attached_to_next_vad_segment():
+async def test_late_final_of_previous_segment_stays_in_the_same_turn():
+    """Đoạn sau bắt đầu trước khi final của đoạn trước tới: final đó vẫn thuộc lượt, đứng
+    trước đoạn sau (bug 06/10: bỏ final này làm mất tên người gọi)."""
     release = asyncio.Event()
     first, second = _Socket(text="hủy lịch", final_gate=release), _Socket(text="tôi giữ lịch")
     provider, _ = _provider(first, second)
@@ -284,7 +344,7 @@ async def test_late_final_cannot_be_attached_to_next_vad_segment():
     turns = await asyncio.wait_for(
         _collect(_pipeline(provider).stream(input_frames(), turn_controller=controller)), timeout=2
     )
-    assert [turn.text for turn in turns] == ["tôi giữ lịch"]
+    assert [turn.text for turn in turns] == ["hủy lịch tôi giữ lịch"]
 
 
 def test_factory_and_livekit_override_keep_batch_provider_separate(monkeypatch):
@@ -382,6 +442,8 @@ def test_livekit_prewarm_uses_override_without_batch_call(monkeypatch):
     monkeypatch.setenv("ASR_PROVIDER", "zipformer")
     monkeypatch.setenv("LIVEKIT_ASR_PROVIDER", "gemini_live")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    # CI không có model ZipFormer; nạp sẵn fallback có test riêng (fake).
+    monkeypatch.setenv("GEMINI_LIVE_FALLBACK_PROVIDER", "")
     proc = SimpleNamespace(userdata={})
     worker.prewarm(proc)
     recognizer = proc.userdata[worker._PREWARMED_ASR]

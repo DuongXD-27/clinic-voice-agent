@@ -25,7 +25,8 @@ docker compose up -d --build livekit-worker
 
 ## Hợp đồng streaming
 
-- PCM16 mono 8/16 kHz; giữ 300 ms trước onset như baseline của main.
+- PCM16 mono 8/16 kHz; giữ `pre_speech_ms` (mặc định 300 ms) trước onset, cùng nghĩa với
+  `pre_speech_ms` của ZipFormer.
   Resample 8k → 16k có trạng thái, gửi chunk 100 ms và flush phần dư trước end.
 - WebSocket BidiGenerateContent, TEXT, `vi-VN`, `VERBATIM`; automatic VAD tắt.
   Ranh giới `activityStart`/`activityEnd` theo classifier/endpoint local.
@@ -33,10 +34,15 @@ docker compose up -d --build livekit-worker
   Có chi phí handshake mỗi segment; chưa tối ưu reuse session.
 - Interim là partial, transcription sau end là final; confidence là `None`.
   Engine chỉ nhận final ở đường này; không tự chốt partial khi thiếu final.
-- Generation/segment ID ngăn final đến muộn ghép vào câu sau.
-  Controller vẫn chỉ giữ một candidate: nhiều đoạn nói sát nhau cần đánh giá thêm.
+- Generation/segment ID ngăn final đến muộn ghép vào câu sau. Trong CÙNG một lượt
+  (TurnController nối đoạn khi người gọi nói tiếp lúc lượt còn dở), final của đoạn trước tới
+  muộn vẫn được nhận và ghép đúng thứ tự đoạn; lượt chỉ chốt khi mọi đoạn đã có final.
 - Timeout setup/send 10 s, final 3 s; speech liên tục tối đa 15 s.
-  Thiếu final báo lỗi, không tự fallback sang provider khác.
+- Đoạn lỗi (setup bị từ chối, mất kết nối, hết credit, thiếu final sau 3 s) được decode lại
+  bằng `fallback_provider` (mặc định `zipformer`) trên PCM của chính đoạn đó; log WARNING ghi
+  số segment và loại lỗi, đoạn sau mở socket mới. Worker nạp sẵn ZipFormer lúc prewarm, nên
+  cần asset `zipformer` như khi chạy `ASR_PROVIDER=zipformer`. Đặt
+  `GEMINI_LIVE_FALLBACK_PROVIDER=` (rỗng) để tắt: khi đó lỗi làm hỏng luồng STT như trước.
 
 Dùng WebSocket trực tiếp vì SDK local `google-genai` 2.16.0 thiếu trường `mode`;
 không thêm dependency. Nguồn hợp đồng:

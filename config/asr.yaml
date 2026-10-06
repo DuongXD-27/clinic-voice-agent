@@ -12,6 +12,12 @@ gemini_live: # GEMINI_API_KEY
   final_timeout_s: 3.0 # GEMINI_LIVE_FINAL_TIMEOUT_S
   chunk_ms: 100 # GEMINI_LIVE_CHUNK_MS
   max_turn_speech_ms: 15000 # GEMINI_LIVE_MAX_TURN_SPEECH_MS
+  # Audio trước frame đầu tiên được báo là tiếng nói, gửi kèm khi mở đoạn (xem zipformer).
+  pre_speech_ms: 300 # GEMINI_LIVE_PRE_SPEECH_MS
+  # Đoạn lỗi (hết hạn chờ final, mất kết nối, hết credit) decode lại bằng model cục bộ thay vì
+  # làm hỏng cả luồng STT của cuộc gọi. Worker nạp thêm ZipFormer (section zipformer bên dưới).
+  # null hoặc rỗng = tắt.
+  fallback_provider: zipformer # GEMINI_LIVE_FALLBACK_PROVIDER
 
 phowhisper:
   model: vinai/PhoWhisper-large # PHOWHISPER_MODEL
@@ -50,3 +56,10 @@ zipformer:
   # Giãn nhịp decode partial cho câu dài: max(300 ms, tỉ lệ x độ dài buffer). 0 = tắt.
   # Chỉ bật sau khi đo CPU trên máy production.
   partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO
+  # Audio giữ lại trước frame đầu tiên được báo là tiếng nói (bù độ trễ nhận ra đầu câu của
+  # Silero, mặc định 0,25 s).
+  # Đo 06/10 (eval/noise-bench): 1000 ms giảm WER có nhãn của bộ golden (8 kHz điện thoại) ở
+  # mọi mức nhiễu văn phòng (vd. office@8 0,193 -> 0,130) nhưng trên bộ web (LiveKit 16 kHz,
+  # đường production hiện tại) trái chiều — sửa 5 câu, hỏng 5 câu ("ĐÚNG KHÔNG" -> "ĐÚNG"),
+  # 600 ms cũng vậy. Giữ 300 cho web; ứng viên cho profile điện thoại khi có SIP.
+  pre_speech_ms: 300 # ZIPFORMER_PRE_SPEECH_MS

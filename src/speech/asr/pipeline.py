@@ -281,10 +281,12 @@ class _CallStream:
     async def _drain_vad(self) -> None:
         async for event in self._pipeline.vad.process(_dequeue(self._vad_queue)):
             if event.kind == "speech_start" and self._context is not None:
-                self._context.start_utterance()
+                self._context.start_utterance(continues_turn=self._controller.continues_turn())
             if event.kind != "speech":
                 logger.debug("main_vad: %s", event.kind)
             await self._controller.on_vad_event(event)
+            if event.kind == "speech_start" and self._context is not None:
+                self._controller.expect_final(self._context.segment_id)
             if self._interruption is not None:
                 if event.kind == "speech_start":
                     await self._interruption.on_speech_started(event)

@@ -280,6 +280,41 @@ async def test_echo_of_bot_greeting_does_not_confirm_barge_in() -> None:
     assert tts.cancel_calls == 0
 
 
+@pytest.mark.parametrize("partials", [["Anh", "Anh muốn"], ["ANH MUỐN", "ANH MUỐN EM"]])
+async def test_short_caller_partials_are_not_mistaken_for_bot_echo(partials) -> None:
+    """Đo 06/10: partial thật "Anh", "Anh muốn", "ANH MUỐN EM" khớp mờ một khúc câu bot nên bị
+    coi là echo, 0/12 lần ngắt lời được xác nhận."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking("Alo, anh chị còn nghe máy không ạ?")
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    results = [
+        await controller.on_partial_transcript(TranscriptEvent(text=text, is_final=False))
+        for text in partials
+    ]
+
+    assert any(results)
+    assert tts.cancel_calls == 1
+
+
+async def test_exact_short_fragment_of_bot_text_is_still_echo() -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking("Alo, anh chị còn nghe máy không ạ?")
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="anh chị", is_final=False)
+    )
+
+    assert confirmed is False
+
+
 async def test_no_bot_text_keeps_old_behavior_for_echo_check() -> None:
     """`on_bot_started_speaking()` không truyền bot_text (caller cũ chưa cập nhật) -> tắt
     hẳn echo check, không đổi hành vi barge-in thật."""

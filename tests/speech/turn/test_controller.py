@@ -79,7 +79,7 @@ async def test_empty_partial_does_not_emit_turn() -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["à", "ừ", "ờm", "Dạ", " ờ ", "...", "?!", "---", "  ,  "],
+    ["à", "ừ", "ờm", "Dạ", " ờ ", "Ừ.", "Dạ,", "...", "?!", "---", "  ,  "],
 )
 async def test_filler_word_or_punctuation_only_is_not_meaningful(text: str) -> None:
     assert is_meaningful_text(text) is False
@@ -414,6 +414,33 @@ async def test_silence_elapsed_counts_from_bot_stop_and_last_vad_activity() -> N
     await asyncio.sleep(0.05)  # 100 ms < min_speech_ms: câu bị huỷ sau timeout
     clock.advance(1.0)
     assert controller.silence_elapsed_s() == pytest.approx(1.0)
+
+
+async def test_remote_final_for_earlier_segment_waits_for_later_segment() -> None:
+    """ASR remote: final của đoạn 1 tới khi đoạn 2 đã mở; lượt chờ cả final của đoạn 2 rồi
+    ghép theo thứ tự đoạn."""
+    controller = TurnController(min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    await controller.on_vad_event(VadEvent("speech_end"))
+    assert controller.continues_turn() is True  # đoạn 1 chưa có final
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(2)
+    await controller.on_transcript_event(
+        TranscriptEvent(text="sinh ngày", is_final=False, segment_id=2)
+    )
+    await controller.on_transcript_event(
+        TranscriptEvent(text="Anh tên là A.", is_final=True, segment_id=1)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await asyncio.sleep(0.02)
+    assert controller._queue.empty()
+
+    await controller.on_transcript_event(
+        TranscriptEvent(text="sinh ngày 14.", is_final=True, segment_id=2)
+    )
+    assert (await _next_turn(controller)).text == "Anh tên là A. sinh ngày 14."
 
 
 if __name__ == "__main__":

@@ -24,8 +24,6 @@ from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
 from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
 
-_PRE_SPEECH_PREROLL_MS = 300
-
 logger = logging.getLogger(__name__)
 
 
@@ -85,7 +83,7 @@ class ZipFormerASR:
 
         - Câu có ít hơn `min_decode_ms` tiếng nói không bao giờ được decode: ZipFormer bịa cả
           cụm từ từ "à"/"ờm" quá ngắn.
-        - Giữ 300 ms trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
+        - Giữ `pre_speech_ms` (config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
         - `AsrSegmentEnd.DISCARD`: bỏ câu dở, không phát event.
         """
         if min_decode_ms is None:
@@ -99,7 +97,7 @@ class ZipFormerASR:
         if audio_sample_rate not in (8_000, 16_000):
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
-        utterance = _Utterance(audio_sample_rate)
+        utterance = _Utterance(audio_sample_rate, self._config.pre_speech_ms)
 
         async def decode() -> _Decoded:
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
@@ -175,10 +173,10 @@ class ZipFormerASR:
 class _Utterance:
     """Câu đang nghe trong `stream()`: audio (kèm pre-roll) và các bộ đếm thời gian."""
 
-    def __init__(self, sample_rate: int) -> None:
+    def __init__(self, sample_rate: int, pre_speech_ms: int) -> None:
         self._rate = sample_rate
         self._pre_speech = bytearray()
-        self._pre_speech_max = sample_rate * _PRE_SPEECH_PREROLL_MS // 1000 * 2
+        self._pre_speech_max = sample_rate * pre_speech_ms // 1000 * 2
         self.pcm = bytearray()
         self.in_speech = False
         # Chỉ đếm frame có tiếng nói: đuôi im lặng không được giúp câu "à" vượt min_decode_ms.

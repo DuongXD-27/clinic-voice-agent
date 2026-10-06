@@ -186,7 +186,9 @@ def build_streaming_bundle(
         )
     stt_pipeline = STTPipeline(
         asr,
-        AsyncStreamingVAD(detector.view(), end_silence_ms=settings.vad_end_silence_ms),
+        AsyncStreamingVAD(
+            detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
+        ),
         sample_rate=sample_rate,
         detector=detector,
         evidence=evidence,
@@ -247,4 +249,6 @@ def warm_up(asr: Recognizer) -> None:
     try:
         asr.transcribe(AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=asr.input_sample_rate))
     except NotImplementedError:
-        pass
+        warm_up_streaming = getattr(asr, "warm_up_streaming", None)
+        if warm_up_streaming is not None:
+            warm_up_streaming()

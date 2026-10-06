@@ -8,7 +8,8 @@ Gate (`_passes_gate`) — mọi điều kiện đều phải qua; thà bỏ lỡ
 bot sai:
 1. Ứng viên kéo dài đủ `min_speech_ms` — chặn tiếng ho, "ừ".
 2. Có chữ có nghĩa (`is_meaningful_text`) — không xác nhận chỉ bằng thời lượng (quạt máy).
-3. Không phải tiếng bot vọng lại: so khớp mờ với câu bot đang đọc.
+3. Không phải tiếng bot vọng lại: các từ của partial trùng một đoạn từ liên tiếp trong câu bot
+   (khớp đúng khi partial ngắn, khớp mờ khi dài — xem `_is_echo_of_bot`).
 4. SNR >= `min_snr_db` (áp cho mọi độ dài câu) — tiếng vọng qua loa/mic có SNR rất thấp.
 5. TurnValidator trả ACCEPT; WAIT cũng bị chặn (chưa đủ bằng chứng ở lần này).
 """
@@ -21,12 +22,14 @@ from typing import Optional, Protocol
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
 from speech.audio.noise_tracker import NoiseEvidence
-from speech.turn.controller import is_meaningful_text
+from speech.turn.controller import is_meaningful_text, spoken_words
 from speech.turn.validator import TurnValidator, ValidationDecision
 from speech.types import TranscriptEvent
 
 logger = logging.getLogger(__name__)
 
+# Partial từ chừng này từ trở lên mới so khớp mờ với câu bot; ngắn hơn thì phải trùng nguyên văn.
+_ECHO_FUZZY_MIN_WORDS = 3
 _ECHO_SIMILARITY_THRESHOLD = 70.0
 
 
@@ -162,10 +165,23 @@ class InterruptionController:
         return True
 
     def _is_echo_of_bot(self, candidate_text: str) -> bool:
-        """`partial_ratio`: ASR thường chỉ nghe được một đoạn của câu bot đang đọc dở."""
-        if not self._bot_text or not candidate_text.strip():
+        """ASR thường chỉ nghe được một đoạn của câu bot đang đọc dở, nên so với từng cửa sổ
+        từ liên tiếp cùng độ dài trong câu bot.
+
+        Không so ở mức ký tự (`partial_ratio` cũ): partial ngắn của người gọi như "Anh",
+        "Anh muốn" luôn khớp một khúc nào đó của câu bot ("...anh chị...") — đo 06/10, cả 15
+        partial thật bị coi là echo, 0/12 lần ngắt lời được xác nhận. Partial dưới
+        `_ECHO_FUZZY_MIN_WORDS` từ chỉ là echo khi trùng nguyên văn một đoạn câu bot."""
+        candidate = spoken_words(candidate_text).split()
+        bot = spoken_words(self._bot_text).split()
+        if not candidate or len(candidate) > len(bot):
             return False
+        windows = [
+            " ".join(bot[i : i + len(candidate)]) for i in range(len(bot) - len(candidate) + 1)
+        ]
+        joined = " ".join(candidate)
+        if len(candidate) < _ECHO_FUZZY_MIN_WORDS:
+            return joined in windows
         from rapidfuzz import fuzz
 
-        similarity = fuzz.partial_ratio(candidate_text.strip().lower(), self._bot_text.lower())
-        return similarity >= _ECHO_SIMILARITY_THRESHOLD
+        return max(fuzz.ratio(joined, window) for window in windows) >= _ECHO_SIMILARITY_THRESHOLD

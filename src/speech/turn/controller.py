@@ -16,13 +16,17 @@ Quy tắc chốt turn (UserTurnCompleted):
    tiếng động ngắn lọt qua VAD. Bắt đầu sát lúc bot vừa dứt lời thì phải dài thêm phần còn
    thiếu của `post_bot_guard_ms` (chống tiếng vọng).
 5. Text phải có nghĩa (`is_meaningful_text`) và TurnValidator (nếu có) không DROP.
+6. Một lượt gồm một hay nhiều đoạn ASR: `speech_start` khi lượt đang dở (đã có chữ, hoặc VAD
+   hết đoạn mà ASR còn chưa trả final) mở đoạn mới trong cùng lượt, không bỏ đoạn trước.
+   Bug thật 06/10 (Gemini): người gọi ngừng giữa "...Nguyễn Văn A" và "sinh ngày...", đoạn
+   mới bắt đầu trước khi final có tên tới -> final đó bị bỏ, mất tên.
 """
 
 import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from speech.asr.evidence import StabilityVerdict
@@ -36,34 +40,57 @@ logger = logging.getLogger(__name__)
 
 # Từ đệm không mang nội dung — gửi lên core thì bot hỏi lại, tệ hơn bỏ qua. Chỉ gồm các từ
 # đã gặp trong log.
+#
+# "ừ"/"ờ"/"dạ" vẫn bị bỏ dù engine dùng được ("ừ/ờ" = đồng ý, "dạ" = hỏi lại): đo 06/10
+# (eval/noise-bench, docs/evidence/stt-turn-segments-backchannel-fallback-2026-10-06.md) cho
+# chúng qua theo SNR đoạn nói thì ở mọi ngưỡng đã thử (6/10/15 dB) nhiễu văn phòng thuần vẫn
+# thành lượt "Ừ" — đồng ý giả; confidence ZipFormer của "Ừ" giả và thật cũng chồng lấn.
 _FILLER_WORDS = frozenset(
     {"à", "ừ", "ờ", "ạ", "ơ", "ừm", "ờm", "à ừ", "dạ", "ừa", "ơ kìa", "hửm", "hử"}
 )
 _PUNCTUATION_ONLY_RE = re.compile(r"^[\W_]+$", re.UNICODE)
+# Gemini trả "Ừ." còn ZipFormer trả "Ừ": bỏ dấu câu trước khi so với các tập từ ở trên.
+_PUNCTUATION_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _ASR_POLL_S = 0.05
 
 
+def spoken_words(text: str) -> str:
+    """Chữ thường, bỏ dấu câu, một khoảng trắng giữa các từ."""
+    return " ".join(_PUNCTUATION_RE.sub(" ", text.lower()).split())
+
+
 def is_meaningful_text(text: str) -> bool:
-    """False cho text rỗng, chỉ có dấu câu, hoặc chỉ là từ đệm. Không lọc theo độ dài:
-    "có"/"không" là câu trả lời hợp lệ."""
+    """False cho text rỗng, chỉ có dấu câu, hoặc chỉ là từ đệm (kể cả có dấu câu như "Ừ." của
+    Gemini). Không lọc theo độ dài: "có"/"không" là câu trả lời hợp lệ."""
     normalized = text.strip().lower()
     if not normalized:
         return False
     if _PUNCTUATION_ONLY_RE.match(normalized):
         return False
-    if normalized in _FILLER_WORDS:
-        return False
-    return True
+    return spoken_words(normalized) not in _FILLER_WORDS
+
+
+@dataclass
+class _Segment:
+    """Một đoạn ASR trong lượt. `key`: segment_id của ASR remote (Gemini, final có thể tới sau
+    khi đoạn sau đã bắt đầu); None với ASR cục bộ (ZipFormer, event tới đúng thứ tự)."""
+
+    key: Optional[int]
+    text: str = ""
+    final: bool = False
 
 
 @dataclass
 class _Candidate:
-    """Turn đang hình thành: text/confidence tốt nhất đã biết, chờ điều kiện chốt."""
+    """Turn đang hình thành: các đoạn ASR đã nghe, chờ điều kiện chốt."""
 
-    text: str = ""
+    segments: list[_Segment] = field(default_factory=list)
     confidence: Optional[float] = None
-    has_final_transcript: bool = False
     vad_ended: bool = False
+    # VAD đang trong một đoạn nói của lượt này.
+    vad_speaking: bool = False
+    # Lượt có từ hai đoạn VAD trở lên (quy tắc 6).
+    continued: bool = False
     finalized: bool = False
     started_at: Optional[float] = None
     vad_ended_at: Optional[float] = None
@@ -75,6 +102,28 @@ class _Candidate:
     # Bằng chứng mới nhất cho TurnValidator (on_evidence_updated).
     noise_evidence: Optional[NoiseEvidence] = None
     stability: StabilityVerdict = StabilityVerdict.UNKNOWN
+
+    @property
+    def text(self) -> str:
+        return " ".join(seg.text.strip() for seg in self.segments if seg.text.strip())
+
+    @property
+    def has_final_transcript(self) -> bool:
+        """Mọi đoạn đã nghe (hoặc đã mở ở ASR remote, xem `expect_final`) đều có final."""
+        return bool(self.segments) and all(seg.final for seg in self.segments)
+
+    def segment_for(self, key: Optional[int]) -> _Segment:
+        if key is not None:
+            for seg in self.segments:
+                if seg.key == key:
+                    return seg
+            self.segments.append(_Segment(key))
+            self.segments.sort(key=lambda seg: seg.key)
+            return next(seg for seg in self.segments if seg.key == key)
+        # ASR cục bộ: final đóng đoạn hiện tại, event sau đó thuộc đoạn ASR kế tiếp.
+        if not self.segments or self.segments[-1].final:
+            self.segments.append(_Segment(None))
+        return self.segments[-1]
 
 
 class TurnController:
@@ -159,10 +208,31 @@ class TurnController:
             return None
         return self._clock() - max(marks)
 
+    def continues_turn(self) -> bool:
+        """`speech_start` lúc này mở đoạn mới trong lượt đang dở thay vì bắt đầu lượt mới:
+        lượt chưa chốt và đã có chữ, hoặc còn đoạn ASR remote chưa trả final.
+        STTPipeline hỏi trước khi báo cho ASR remote để giữ lại final của đoạn trước."""
+        candidate = self._candidate
+        if candidate.started_at is None or candidate.finalized or self._bot_speaking:
+            return False
+        return bool(candidate.text.strip()) or not candidate.has_final_transcript
+
+    def expect_final(self, segment_id: int) -> None:
+        """ASR remote vừa mở đoạn `segment_id` cho `speech_start` vừa báo: lượt chỉ chốt khi
+        đoạn này đã có final (kể cả final rỗng), dù final tới sau khi VAD đã hết đoạn."""
+        self._candidate.segment_for(segment_id)
+
     async def on_vad_event(self, event: VadEvent) -> None:
         self._last_vad_activity_at = self._clock()
-        if event.kind == "speech_start":
+        if event.kind == "speech_start" and self.continues_turn():
+            self._cancel_timeout()
+            candidate = self._candidate
+            candidate.vad_speaking = True
+            candidate.vad_ended = False
+            candidate.continued = True
+        elif event.kind == "speech_start":
             self._reset_candidate()
+            self._candidate.vad_speaking = True
             now = self._clock()
             self._candidate.started_at = now
             if self._bot_stopped_at is not None:
@@ -174,6 +244,7 @@ class TurnController:
                         self._post_bot_guard_s - elapsed_since_bot_stopped
                     )
         elif event.kind == "speech_end":
+            self._candidate.vad_speaking = False
             self._candidate.vad_ended = True
             self._candidate.vad_ended_at = self._clock()
             # Final có thể đã tới trước speech_end; nếu chưa thì chờ final, chưa dùng partial.
@@ -182,14 +253,19 @@ class TurnController:
             self._start_timeout()
 
     async def on_transcript_event(self, event: TranscriptEvent) -> None:
-        self._candidate.text = event.text
-        self._candidate.confidence = event.confidence
+        segment = self._candidate.segment_for(event.segment_id)
         now = self._clock()
         if event.is_final:
+            segment.text = event.text
+            segment.final = True
+            self._candidate.confidence = event.confidence
             self._candidate.final_at = now
-            self._candidate.has_final_transcript = True
             self._try_emit(allow_partial=True, is_last_chance=True)
         else:
+            if segment.final:
+                return  # partial tới muộn của đoạn đã có final
+            segment.text = event.text
+            self._candidate.confidence = event.confidence
             self._candidate.partial_count += 1
             if self._candidate.first_partial_at is None:
                 self._candidate.first_partial_at = now
@@ -218,6 +294,8 @@ class TurnController:
             return False
         if candidate.finalized or self._bot_speaking:
             return False
+        if candidate.continued and candidate.vad_speaking:
+            return False  # đoạn sau của lượt còn đang nói
         if not candidate.has_final_transcript:
             if not allow_partial or not candidate.vad_ended:
                 return False

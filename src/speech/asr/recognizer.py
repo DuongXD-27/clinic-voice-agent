@@ -41,6 +41,13 @@ class SpeechRecognizer:
         text = result.text.strip()
         return Transcript(text=text, confidence=result.confidence, is_silence=not text)
 
+    def warm_up_streaming(self) -> None:
+        """Provider chỉ có `stream()` (không warm-up được bằng `transcribe()`): nạp sẵn phần
+        cục bộ của nó, vd. model fallback của Gemini Live."""
+        warm_up = getattr(self._gateway.provider, "warm_up", None)
+        if warm_up is not None:
+            warm_up()
+
     def stream(
         self, frames: AsyncIterator[bytes | StreamingFrame | AsrSegmentEnd], **kwargs
     ) -> AsyncIterator[TranscriptEvent]:
