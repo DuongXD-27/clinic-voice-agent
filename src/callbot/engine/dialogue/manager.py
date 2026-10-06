@@ -267,6 +267,7 @@ class DialogueManager:
         """R-40: only PRESENT values reach the verifier; each identifier gets one open retry."""
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
+        self._keep_early_cancel(ctx, ex)
         name_suspicious = False
         progressed = False
         if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
@@ -309,6 +310,27 @@ class DialogueManager:
         return self._retry_identity(ctx, question)
 
     @staticmethod
+    def _keep_early_cancel(ctx: CallContext, ex: ExtractionResult) -> None:
+        """Yêu cầu hủy nói cùng lượt danh tính (QC qc-cn-08): chỉ GIỮ lại, chưa phải hành động chờ và
+        không đổi bộ đếm R-40. `_verify` dùng nó sau khi xác minh xong. Lượt sau thay lượt trước."""
+        if ex.deferred_intent.value is not Intent.CANCEL:
+            return
+        ctx.early_cancel = ActionEvidence(
+            kind="REQUEST",
+            action="CANCEL",
+            slot_id=None,
+            turn=ex.turn,
+            question_id=ex.question_id,
+            question_turn=ctx.question.turn if ctx.question else None,
+            transcript=ex.transcript,
+            label=Intent.CANCEL.value,
+            provenance=ex.deferred_intent.provenance.value,
+            span=ex.deferred_intent.span,
+        )
+        reason = ex.deferred_cancel_reason
+        ctx.early_cancel_reason = reason.value if reason.found else None
+
+    @staticmethod
     def _legacy_identity(item: Field, transcript: str) -> IdentityValue:
         # Compatibility for explicitly injected extraction stubs; INVALID is never compared.
         if item.found and item.value not in (None, INVALID) and transcript:
@@ -343,6 +365,15 @@ class DialogueManager:
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
+        if ctx.early_cancel is not None:
+            # Đã nói muốn hủy cùng lúc khai tên / ngày sinh: đó là lượt yêu cầu (§1.1.4 lần một).
+            # Đọc lại lịch sắp hủy và hỏi xác nhận lần hai ngay, không hỏi "có đến được không".
+            request, reason = ctx.early_cancel, ctx.early_cancel_reason
+            ctx.early_cancel = ctx.early_cancel_reason = None
+            ctx.set_pending("CANCEL")
+            ctx.cancel_reason = reason
+            ctx.add_evidence(request)
+            return Reply(self._ask_cancel_readback(ctx))
         appointment = self._reads.get_actionable_appointment(ctx)
         return Reply(
             ask(

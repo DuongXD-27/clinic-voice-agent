@@ -679,20 +679,28 @@ def test_cancel_request_before_verification_neither_discloses_nor_writes() -> No
     assert (ctx.pending_action, ctx.cancel_reason) == (None, None)
 
 
-def test_intent_said_at_the_identity_step_does_not_replace_the_request_after_verification() -> None:
-    """T-02: "tôi muốn hủy" nói lúc đọc tên không tạo REQUEST — sau xác minh vẫn phải nêu lại."""
+def test_cancel_said_at_the_identity_step_is_used_only_after_verification() -> None:
+    """QC qc-cn-08 (thay quy tắc T-02 cũ): "tôi muốn hủy" lúc đọc tên là lượt yêu cầu, giữ đến khi
+    xác minh xong; sau đó hỏi thẳng câu xác nhận hủy, vẫn cần xác nhận lần hai mới ghi."""
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(
         CallStart(call_id="c_t05_early2", direction="outbound", appointment_id="apt_00417")
     )
-    _run(bot, "c_t05_early2", ["Tôi muốn hủy lịch vì bận", "Nguyễn Văn A", "14/03/1978"])
-    ctx = _context(bot, "c_t05_early2")
-    assert (ctx.pending_action, ctx.cancel_reason, ctx.evidence) == (None, None, [])
-    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
+    before = _run(bot, "c_t05_early2", ["Tôi muốn hủy lịch vì bận", "Nguyễn Văn A"])
+    assert before.state == "AWAITING_IDENTITY" and FACTS not in before.utterance
+    assert _context(bot, "c_t05_early2").pending_action is None
 
-    action = _run(bot, "c_t05_early2", ["Hủy giúp tôi"], start=4)
-    assert not action.ended and clinic.writes == []
+    asked = _run(bot, "c_t05_early2", ["14/03/1978"], start=3)
+    assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
+    ctx = _context(bot, "c_t05_early2")
+    assert (ctx.pending_action, ctx.cancel_reason) == ("CANCEL", "PATIENT_UNAVAILABLE")
+    assert [(e.kind, e.turn) for e in ctx.evidence] == [("REQUEST", 1)]
+    assert ctx.early_cancel is None and clinic.writes == []
+
+    done = _run(bot, "c_t05_early2", ["Hủy giúp tôi"], start=4)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
 
 
 def test_inbound_cancel_request_is_out_of_scope_and_writes_nothing() -> None:
@@ -1332,3 +1340,72 @@ def test_a_real_conflict_without_another_need_is_still_asked_again(line: str) ->
     action = _run(bot, "c_real_conflict", [line], start=3)
     assert action.utterance == t.CONFIRM_CONFLICT and clinic.writes == []
     assert _context(bot, "c_real_conflict").pending_action is None
+
+
+# --- Yêu cầu hủy nói gộp ở lượt danh tính (QC qc-cn-08-stress-max4) ---------------------------------
+
+
+def _outbound_call(call_id: str, clinic: Optional[FakeClinicAPI] = None):
+    clinic = clinic or FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
+    return bot, clinic
+
+
+def test_qc_cn_08_front_loaded_cancel_is_cancelled_in_two_turns() -> None:
+    bot, clinic = _outbound_call("c_qc_cn_08")
+    asked = _run(
+        bot,
+        "c_qc_cn_08",
+        [
+            "Alo, tôi là Nguyễn Văn A, sinh 14/3/1978, gọi để hủy lịch khám vì tuần đó tôi đi công tác"
+        ],
+    )
+    assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
+    assert clinic.writes == []
+    done = _run(bot, "c_qc_cn_08", ["Vâng, tôi xác nhận hủy"], start=2)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
+
+
+def test_front_loaded_cancel_with_a_wrong_dob_transfers_without_disclosure() -> None:
+    bot, clinic = _outbound_call("c_early_wrong_dob")
+    action = _run(
+        bot, "c_early_wrong_dob", ["Tôi là Nguyễn Văn A, sinh 15/3/1978, hủy lịch giúp tôi"]
+    )
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "IDENTITY_FAILED")
+    assert FACTS not in action.utterance and "Nội tổng quát" not in action.utterance
+    assert _cancel_writes(clinic) == []
+
+
+def test_front_loaded_cancel_still_needs_an_explicit_second_confirmation() -> None:
+    bot, clinic = _outbound_call("c_early_vang")
+    _run(bot, "c_early_vang", ["Nguyễn Văn A, sinh 14/3/1978, tôi muốn hủy lịch"])
+    action = _run(bot, "c_early_vang", ["vâng"], start=2)
+    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+
+
+def test_front_loaded_cancel_can_be_withdrawn_at_the_confirmation() -> None:
+    bot, clinic = _outbound_call("c_early_keep")
+    _run(bot, "c_early_keep", ["Nguyễn Văn A, sinh 14/3/1978, tôi muốn hủy lịch"])
+    action = _run(bot, "c_early_keep", ["Không hủy nữa"], start=2)
+    assert action.state == "AWAITING_INTENT" and clinic.writes == []
+    ctx = _context(bot, "c_early_keep")
+    assert (ctx.pending_action, ctx.cancel_reason, ctx.evidence) == (None, None, [])
+
+
+def test_refusing_to_cancel_at_the_identity_step_keeps_the_usual_readback() -> None:
+    bot, clinic = _outbound_call("c_early_none")
+    action = _run(bot, "c_early_none", ["Nguyễn Văn A, sinh 14/3/1978, tôi không muốn hủy đâu"])
+    assert action.state == "AWAITING_INTENT" and clinic.writes == []
+    ctx = _context(bot, "c_early_none")
+    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
+    assert (ctx.pending_action, ctx.early_cancel) == (None, None)
+
+
+def test_early_cancel_survives_a_session_reload_between_identity_turns() -> None:
+    bot, clinic = _outbound_call("c_early_reload")
+    _run(bot, "c_early_reload", ["Tôi muốn hủy lịch vì bận"])
+    restarted = create_orchestrator(clinic, store=bot.sessions.store)
+    asked = _run(restarted, "c_early_reload", ["Nguyễn Văn A, sinh 14/3/1978"], start=2)
+    assert asked.utterance == CANCEL_READBACK and clinic.writes == []

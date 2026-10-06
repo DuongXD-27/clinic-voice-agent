@@ -226,6 +226,11 @@ class ExtractionResult:
     dob_identity: Optional[IdentityValue[date]] = None
     model_status: Optional[str] = None
     confirmation_conflict: bool = False
+    # Outbound, bước danh tính: ý định hủy (và lý do) nói gộp với tên / ngày sinh — "tôi là Nguyễn Văn A,
+    # sinh ..., gọi để hủy lịch vì đi công tác" (QC qc-cn-08). Không phải `intent`: Policy và Dialogue
+    # không dùng trước khi xác minh xong; Dialogue chỉ giữ lại để hỏi xác nhận hủy sau VERIFIED.
+    deferred_intent: Field[Intent] = field(default_factory=Field.skipped)
+    deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
 
     @property
     def model_failed(self) -> bool:
@@ -269,6 +274,8 @@ class ExtractionResult:
             "slot_choice",
             "cancel_reason",
             "line_signal",
+            "deferred_intent",
+            "deferred_cancel_reason",
         )
         return {
             "turn": self.turn,

@@ -102,6 +102,10 @@ class CallContext:
     selected_slot_id: Optional[str] = None
     evidence: list[ActionEvidence] = field(default_factory=list)
     cancel_reason: Optional[CancelReason] = None
+    # Yêu cầu hủy nói ở bước danh tính (bằng chứng REQUEST đã dựng sẵn) và lý do kèm theo. Chỉ dùng
+    # sau khi xác minh xong, để hỏi thẳng câu xác nhận hủy (QC qc-cn-08); không phải hành động đang chờ.
+    early_cancel: Optional[ActionEvidence] = None
+    early_cancel_reason: Optional[CancelReason] = None
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
@@ -242,6 +246,8 @@ class CallContext:
             "selected_slot_id": self.selected_slot_id,
             "evidence": [_evidence_to_dict(item) for item in self.evidence],
             "cancel_reason": self.cancel_reason,
+            "early_cancel": _evidence_to_dict(self.early_cancel) if self.early_cancel else None,
+            "early_cancel_reason": self.early_cancel_reason,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
@@ -286,6 +292,11 @@ class CallContext:
             selected_slot_id=data["selected_slot_id"],
             evidence=[_evidence_from_dict(item) for item in data["evidence"]],
             cancel_reason=data["cancel_reason"],
+            # Khóa thêm ở QC qc-cn-08: phiên lưu trước đó chưa có
+            early_cancel=(
+                _evidence_from_dict(data["early_cancel"]) if data.get("early_cancel") else None
+            ),
+            early_cancel_reason=data.get("early_cancel_reason"),
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có

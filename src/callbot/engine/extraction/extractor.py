@@ -9,6 +9,8 @@ Thứ tự trong một lượt:
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
 4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
 5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
+   Outbound: ý định hủy nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm trên phần
+   NGOÀI tên — Dialogue chỉ dùng sau khi xác minh xong.
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
    trả lời không phải tên / ngày sinh.
 6. slot_choice  — câu hỏi chọn slot: OFFER_SLOTS, SLOT_READBACK, SLOT_REFUSE_CHOICE, ASK_SLOT_PREFERENCE.
@@ -19,6 +21,7 @@ Thứ tự trong một lượt:
 """
 
 import logging
+import re
 from dataclasses import replace
 from typing import Optional
 
@@ -358,6 +361,10 @@ class InformationExtractor:
             direction=ctx.direction,
             cancel_promotion=self._cancel_semantic_confirm and self._semantic is not None,
         )
+        name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
+        deferred_intent, deferred_reason = skipped, skipped
+        if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
+            deferred_intent, deferred_reason = _deferred_cancel(transcript, full_name)
         result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
@@ -370,7 +377,9 @@ class InformationExtractor:
             slot_choice=slot_choice,
             cancel_reason=cancel_reason,
             line_signal=line_signal,
-            name_identity=identity_value(name_reading, transcript, confidence=ctx.asr_confidence),
+            deferred_intent=deferred_intent,
+            deferred_cancel_reason=deferred_reason,
+            name_identity=name_identity,
             dob_identity=(
                 identity_value(dob_reading, transcript, confidence=ctx.asr_confidence)
                 if dob_reading is not None
@@ -530,6 +539,21 @@ class InformationExtractor:
         if result.value is Agreement.AGREE and contradicted:
             return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
         return result
+
+
+def _deferred_cancel(
+    transcript: str, full_name: Field[str]
+) -> tuple[Field[Intent], Field[CancelReason]]:
+    """Yêu cầu hủy nói cùng lượt định danh (QC qc-cn-08). Tìm trên phần ngoài tên đã trích: "Trần Văn
+    Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent rồi chỉ nhận CANCEL: "không đi được,
+    đổi sang chiều" là đổi lịch, không phải hủy."""
+    text = clean(transcript)
+    if full_name.found and isinstance(full_name.value, str) and full_name.value:
+        text = re.sub(rf"(?<!\w){re.escape(clean(full_name.value))}(?!\w)", " ", text)
+    intent = extract_intent(text, "outbound", PRIORITY)
+    if intent.value is not Intent.CANCEL:
+        return Field.skipped(), Field.skipped()
+    return intent, extract_cancel_reason(text)
 
 
 def _contains(text: str, words: str) -> bool:

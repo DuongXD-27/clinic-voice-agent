@@ -134,3 +134,42 @@ def test_only_outbound_reading_steps_promote(question: QuestionId, direction: st
 )
 def test_clinical_content_is_not_promoted(text: str) -> None:
     assert _extract(text, QuestionId.CONFIRM_READBACK).intent.value is not Intent.CANCEL
+
+
+# --- Yêu cầu hủy nói gộp ở lượt danh tính (QC qc-cn-08): `deferred_intent` -----------------------
+
+
+def _identity_turn(text: str, question=QuestionId.ASK_NAME, direction: str = "outbound"):
+    turn = TurnContext(turn=1, question_id=question, direction=direction, now=NOW)
+    return InformationExtractor().extract(turn, text)
+
+
+@pytest.mark.parametrize(
+    "text, question, reason",
+    [
+        (
+            "Alo, tôi là Nguyễn Văn A, sinh 14/3/1978, gọi để hủy lịch khám vì tuần đó tôi đi công tác",
+            QuestionId.ASK_NAME,
+            "PATIENT_UNAVAILABLE",
+        ),
+        ("tôi muốn hủy lịch", QuestionId.ASK_NAME, "UNSPECIFIED"),
+        ("14/3/1978, tôi gọi để hủy lịch", QuestionId.ASK_DOB, "UNSPECIFIED"),
+    ],
+)
+def test_cancel_said_with_identity_is_kept_aside(text, question, reason) -> None:
+    result = _identity_turn(text, question)
+    assert result.deferred_intent.value is Intent.CANCEL
+    assert result.deferred_cancel_reason.value == reason
+
+
+@pytest.mark.parametrize(
+    "text, direction",
+    [
+        ("Tôi là Trần Văn Hủy, sinh 14/3/1978", "outbound"),  # "Hủy" thuộc tên đã trích
+        ("Nguyễn Văn A, tôi không muốn hủy đâu", "outbound"),
+        ("Nguyễn Văn A, không đi được, đổi sang chiều nhé", "outbound"),  # đổi lịch thắng hủy
+        ("Nguyễn Văn A, sinh 14/3/1978, tôi muốn hủy lịch", "inbound"),
+    ],
+)
+def test_identity_turn_without_an_outbound_cancel_request(text: str, direction: str) -> None:
+    assert _identity_turn(text, direction=direction).deferred_intent.found is False

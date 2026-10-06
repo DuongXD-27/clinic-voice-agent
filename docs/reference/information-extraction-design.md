@@ -238,6 +238,7 @@ REQUEST_HUMAN > NOT_PATIENT > OUT_OF_SCOPE (chủ đề) > RESCHEDULE > CANCEL >
 **Ở bước danh tính** (`ASK_NAME`, `ASK_DOB`) không chạy nhãn nghiệp vụ — tên "Lê Văn Thôi", "Trần Văn Được" không được thành từ chối / xác nhận:
 - Luôn chạy: `REQUEST_HUMAN`, `NOT_PATIENT`, `REPEAT_REQUEST` (câu này không được đọc thành tên).
 - Chạy **sau** khi trích tên / ngày sinh thất bại: `OUT_OF_SCOPE`. Tên hợp lệ luôn thắng, vì "thanh toan" trùng tên "Thanh Toàn" khi mất dấu.
+- Outbound: ý định `CANCEL` nói gộp với tên / ngày sinh được trả riêng trong `deferred_intent` (kèm `deferred_cancel_reason`), tìm trên phần transcript **ngoài tên đã trích** ("Trần Văn Hủy" không phải yêu cầu hủy) và xét đủ thứ tự ưu tiên ("không đi được, đổi sang chiều" là đổi lịch). `intent` của lượt danh tính không đổi; Dialogue chỉ dùng `deferred_intent` sau khi xác minh xong.
 
 **Tuyến sau:** LLM với tập nhãn đóng, chỉ gọi khi luật cho `NONE`. Không đưa thông tin lịch hẹn hay hồ sơ vào prompt. Lỗi ở tầng này sửa được nhờ bước đọc lại và xác nhận (§1.1.3, §1.1.4, §1.1.10).
 
