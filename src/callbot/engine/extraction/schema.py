@@ -233,6 +233,9 @@ class ExtractionResult:
     # Câu đọc lịch mâu thuẫn mà model đọc là nhu cầu đổi / hủy (route NEED_CONFLICT): Dialogue đi nhánh
     # nhu cầu thay vì hỏi lại có/không.
     need_over_conflict: bool = False
+    # Bước danh tính, lượt không có tên / ngày sinh: model đọc là người gọi HỎI (route IDENTITY_TURN) —
+    # "lịch khám của tôi mấy giờ?", "bên nào gọi?". Dialogue trả lời cần xác minh trước.
+    caller_question: bool = False
     # Outbound, bước danh tính: ý định hủy (và lý do) nói gộp với tên / ngày sinh — "tôi là Nguyễn Văn A,
     # sinh ..., gọi để hủy lịch vì đi công tác" (QC qc-cn-08). Không phải `intent`: Policy và Dialogue
     # không dùng trước khi xác minh xong; Dialogue chỉ giữ lại để hỏi xác nhận hủy sau VERIFIED.

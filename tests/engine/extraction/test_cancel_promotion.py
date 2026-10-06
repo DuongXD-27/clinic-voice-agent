@@ -55,6 +55,7 @@ from inference.llm.prompt.semantic import (
     PROMPT_VERSION_CANCEL_CONFIRM,
     PROMPT_VERSION_LUNA,
     PROMPT_VERSION_LUNA_V7,
+    PROMPT_VERSION_LUNA_V8,
     build_messages,
 )
 from tests.engine.extraction.test_agreement import (
@@ -508,7 +509,7 @@ def test_luna_prompt_is_smaller_and_keeps_the_runtime_contract() -> None:
 def test_compact_luna_prompt_preserves_examples_and_runtime_context() -> None:
     context = _prompt_context()
     previous = build_messages(context, version=PROMPT_VERSION_LUNA_V7)
-    compact = build_messages(context, version=PROMPT_VERSION_LUNA)
+    compact = build_messages(context, version=PROMPT_VERSION_LUNA_V8)
     assert compact[0]["content"].startswith(previous[0]["content"])
     assert compact[-1] == previous[-1]
     assert len(compact) == len(previous)
@@ -551,3 +552,14 @@ def _memory_store():
     from callbot.engine.session import RedisSessionStore
 
     return RedisSessionStore(fakeredis.FakeRedis(decode_responses=True), key_prefix="promo")
+
+
+def test_v9_prompt_extends_v8_without_changing_it() -> None:
+    from inference.llm.prompt.semantic import LUNA_V9_RULES
+
+    context = _prompt_context()
+    v8 = build_messages(context, version=PROMPT_VERSION_LUNA_V8)
+    v9 = build_messages(context, version=PROMPT_VERSION_LUNA)
+    assert LUNA_V9_RULES in v9[0]["content"] and LUNA_V9_RULES not in v8[0]["content"]
+    assert v9[1 : len(v8) - 1] == v8[1:-1]  # ví dụ v8 giữ nguyên, v9 chỉ thêm
+    assert v9[-1] == v8[-1]

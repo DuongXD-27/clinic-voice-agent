@@ -31,6 +31,7 @@ from callbot.engine.extraction.agreement import (
     conflicting_confirmation,
     corrected_tail,
     extract_agreement,
+    has_question_cue,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
@@ -49,6 +50,7 @@ from callbot.engine.extraction.full_name import (
     read_full_name,
     valid_name_span,
 )
+from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reading, Reason, identity_value
 from callbot.engine.extraction.implied_cancel import implied_cancel
@@ -96,6 +98,17 @@ from callbot.tracing import trace_event
 # - NOT_PATIENT:   "tôi là vợ anh ấy" không phải tên; outbound phải chuyển máy, không tiết lộ.
 # - REPEAT_REQUEST: "gì cơ" không phải tên, và không tính vào §1.1.5.
 IDENTITY_SAFE_INTENTS = frozenset({Intent.REQUEST_HUMAN, Intent.NOT_PATIENT, Intent.REPEAT_REQUEST})
+# Nhãn ở bước danh tính đã có cách xử lý riêng (chuyển máy, xin nhắc lại, không cung cấp được):
+# không gửi tầng ngữ nghĩa
+IDENTITY_POLICY_INTENTS = frozenset(
+    {
+        Intent.REQUEST_HUMAN,
+        Intent.NOT_PATIENT,
+        Intent.REPEAT_REQUEST,
+        Intent.OUT_OF_SCOPE,
+        Intent.CANNOT_PROVIDE,
+    }
+)
 # Nhãn ở bước danh tính chỉ xét SAU khi không trích được tên / ngày sinh — tên hợp lệ luôn thắng
 # ("thanh toan" trùng tên "Thanh Toàn" khi mất dấu; "Lê Văn Thôi", "Trần Văn Được"):
 # - OUT_OF_SCOPE: §1.1.5, §1.2.3 bắt chuyển máy OUT_OF_SCOPE, không phải NOT_UNDERSTOOD sau 2 lần hỏi lại.
@@ -201,8 +214,15 @@ def _keep_cancel_threshold(
         )
     if rejection is None:
         return result
+    # Không nâng được thì model chỉ còn là Ý ĐỊNH hủy: Dialogue hỏi đúng câu xác nhận hủy
+    intent = (
+        Field(Intent.CANCEL, Provenance.FALLBACK, span=outcome.reply_span)
+        if outcome is not None and outcome.reply_kind is ReplyKind.CONFIRM_ACTION
+        else result.intent
+    )
     return replace(
         result,
+        intent=intent,
         agreement=Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=result.agreement.span),
     )
 
@@ -373,6 +393,10 @@ class InformationExtractor:
             direction=ctx.direction,
             cancel_promotion=self._cancel_semantic_confirm and self._semantic is not None,
         )
+        if route_reason is None and _identity_turn_to_read(
+            question, transcript, intent, full_name, dob_reading
+        ):
+            route_reason = RouteReason.IDENTITY_TURN
         name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
         deferred_intent, deferred_reason = skipped, skipped
         if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
@@ -472,6 +496,11 @@ class InformationExtractor:
             Reason.UNRESOLVED_BOUNDARY,
             Reason.UNANCHORED,
         ):
+            return reading
+        if _talks_about_the_booking(transcript):
+            # Câu hỏi / đòi thông tin, không phải lời khai tên ("tôi khám hôm nào vậy em?", "cứ đọc lịch
+            # trước đi"): dành lượt gọi model duy nhất cho tầng ngữ nghĩa (route IDENTITY_TURN) thay vì
+            # slot filling tên. Chỉ chọn model nào đọc câu, không quyết câu là gì.
             return reading
         if not self._name_fallback or self._fallback is None:
             if reading.reason is Reason.UNANCHORED:
@@ -628,6 +657,39 @@ def _spoken_names(transcript: str, full_name: Field[str], dob_zone: Optional[str
         if reading is not None and reading.field.found and isinstance(reading.field.value, str):
             names.append(reading.field.value)
     return [name for name in names if name]
+
+
+def _identity_turn_to_read(
+    question: Optional[QuestionId],
+    transcript: str,
+    intent: Field[Intent],
+    full_name: Field[str],
+    dob_reading: Optional[Reading],
+) -> bool:
+    """Lượt định danh không có tên, ngày sinh, lời chào hay nhãn chính sách: để model xem người gọi có
+    đang hỏi không. Nhãn nghiệp vụ dự phòng của luật ("xác nhận", "hủy") không chặn: "cứ đọc lịch trước
+    rồi tôi xác nhận tên sau" là đòi thông tin. Lời chào / "ai đấy?" / nhãn chính sách có cách xử lý
+    riêng."""
+    return (
+        question in IDENTITY_QUESTIONS
+        and bool(clean(transcript))
+        and not full_name.found
+        and (dob_reading is None or not dob_reading.zone)
+        and intent.value not in IDENTITY_POLICY_INTENTS
+        and not is_greeting(transcript)
+    )
+
+
+# Nhắc tới lịch hẹn: lượt định danh này không phải lời khai tên
+_BOOKING_TOPIC = re.compile(
+    r"(?<!\w)(?:lich|hen|gio kham|ngay kham|kham o|kham luc|co so|bac si|phong kham)(?!\w)"
+)
+
+
+def _talks_about_the_booking(transcript: str) -> bool:
+    return has_question_cue(transcript) or (
+        _BOOKING_TOPIC.search(strip_diacritics(clean(transcript))) is not None
+    )
 
 
 def _read_zone(reading: Optional[Reading]) -> Optional[str]:

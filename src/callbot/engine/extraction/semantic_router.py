@@ -71,6 +71,10 @@ class RouteReason(str, Enum):
     # tôi bận thì hủy nhé", "vợ tôi bảo hủy nhưng tôi chưa quyết", "đổi lịch, à thôi hủy đi"). Model
     # xác nhận nhu cầu thì theo model; còn lại (kể cả không có model) bỏ nhãn luật, hỏi lại.
     INTENT_HEDGED = "INTENT_HEDGED"
+    # Bước tên / ngày sinh, lượt không có định danh, không phải lời chào hay nhãn chính sách: người gọi
+    # có thể đang hỏi điều bot phải trả lời ("lịch khám của tôi mấy giờ?"). Model chỉ được nói đó có phải
+    # câu hỏi không; không đổi intent, không đọc định danh.
+    IDENTITY_TURN = "IDENTITY_TURN"
 
 
 # Câu rõ ràng khi khớp TOÀN CÂU — rule đã đủ, không làm chậm đường rõ bằng một request model.
@@ -251,6 +255,8 @@ def merge_semantic(
     """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật."""
     if outcome is None:
         return _without_model(result, route_reason)
+    if route_reason is RouteReason.IDENTITY_TURN:
+        return _replace(result, caller_question=outcome.reply_kind is ReplyKind.QUESTION)
     if outcome.clinical in _TRANSFER_CLINICAL:
         return _replace(
             result,
@@ -335,6 +341,14 @@ def merge_semantic(
             # Model thấy đồng ý mà luật không: đọc lại lịch để nhận xác nhận ở lượt sau, thay vì
             # "em chưa hiểu". Vẫn không nâng lên AGREE.
             agreement = _unclear(outcome.reply_span or result.transcript)
+        if (
+            result.question_id is QuestionId.CANCEL_RECONFIRM
+            and agreement.value is not Agreement.AGREE
+        ):
+            # Model chỉ cho biết Ý ĐỊNH: người gọi muốn hủy ("thôi hủy giúp tôi") dù luật không xác
+            # nhận được. Không mở khóa ghi; Dialogue hỏi lại đúng trọng tâm "hủy lịch đúng không" thay
+            # vì "hủy hay giữ", và lệnh hủy vẫn chỉ đến từ một lượt xác nhận luật đọc được.
+            intent = Field(Intent.CANCEL, Provenance.FALLBACK, span=outcome.reply_span)
 
     if (
         result.question_id is QuestionId.ASK_INTENT

@@ -415,13 +415,21 @@ Hai chốt chặn ở **tầng luật** (chạy cả khi tắt model, `extractio
 
 | Tình huống | Gọi model? |
 |---|---|
-| Im lặng, transcript rỗng, bước tên / ngày sinh, `OFFER_SLOTS`, `SLOT_READBACK` | Không |
+| Im lặng, transcript rỗng, `OFFER_SLOTS`, `SLOT_READBACK` | Không |
+| Bước tên / ngày sinh có định danh, lời chào, "ai đấy?" hoặc nhãn chính sách | Không |
+| Bước tên / ngày sinh, lượt không có định danh nào (06/10/2026, QC qc-id-05) | `IDENTITY_TURN` — model chỉ cho biết người gọi có đang HỎI không (`caller_question`); không đổi intent, không đọc định danh |
 | Lâm sàng, xin người thật, sai danh tính, ngoài phạm vi, xin nhắc lại | Không — Policy đã đủ căn cứ |
 | Câu khớp **toàn câu** trong tập rõ ("hủy giúp tôi", "không hủy nữa", "vâng") | Không |
 | `CANCEL_RECONFIRM`, từ chối kèm lý do | `CANCEL_REFUSAL_WITH_REASON` |
 | `CANCEL_RECONFIRM`, tín hiệu ngược nhau / ngập ngừng | `CANCEL_CONTRADICTION` |
 | `CANCEL_RECONFIRM`, các câu còn lại | `CANCEL_UNRESOLVED` |
 | `ASK_INTENT` / `CONFIRM_READBACK`, không có ý định dùng được và cũng không có có/không dứt khoát | `INTENT_UNCLEAR` |
+| `CONFIRM_READBACK` outbound, câu mâu thuẫn có ý định `CANCEL` / `RESCHEDULE` | `NEED_CONFLICT` |
+| `CONFIRM_READBACK` / `ASK_INTENT` outbound, `CANCEL` / `RESCHEDULE` trong câu chưa phải quyết định | `INTENT_HEDGED` |
+
+Ở `ASK_NAME`, slot filling tên và tầng ngữ nghĩa dùng chung một lần gọi model mỗi lượt (stage 1). Lượt luật không đọc ra tên mà có dấu hiệu hỏi hoặc nhắc tới lịch hẹn ("tôi khám hôm nào vậy em?", "cứ đọc lịch trước đi") nhường lần gọi đó cho tầng ngữ nghĩa thay vì slot filling tên — chỉ là chọn model nào đọc câu.
+
+**Prompt `semantic_v9_luna`** (06/10/2026) = v8 + nguyên tắc chung, không bám câu cụ thể: (5) phân loại theo quyết định sau cùng — tiếng đệm / ngập ngừng / tự sửa trước một quyết định rõ không làm câu thành `AMBIGUOUS`; hai ý trái ngược đứng cạnh nhau không có lời tự sửa ("không, hủy đi") vẫn là `AMBIGUOUS`; (6) ở `CANCEL_RECONFIRM`, mọi cách nói giữ lịch là `DECLINE_ACTION`; (7) ở `ASK_NAME` / `ASK_DOB`, hỏi / đòi thông tin là `QUESTION`. Ví dụ đi kèm cố ý khác câu QC. v7, v8 giữ nguyên để rollback.
 
 **Kết quả** `SemanticReading` (Structured Outputs, schema đóng): `intent`, `intent_span`, `reply_kind`, `reply_span`, `cancel_reason`, `reason_span`. Không có `outcome`, `appointment_id`, `slot_id`, lời thoại hay trường "được phép ghi". `reply_kind` ∈ {`CONFIRM_ACTION`, `DECLINE_ACTION`, `INFORM_REASON`, `CHANGE_INTENT`, `QUESTION`, `AMBIGUOUS`}.
 
@@ -436,7 +444,7 @@ Span được đối chiếu trên bản **còn dấu câu** (`normalize`), ph�
 | `CHANGE_INTENT` | Đổi ý định (trong tập cho phép); nhu cầu mới cần xác nhận riêng |
 | `intent = OUT_OF_SCOPE` (mọi `reply_kind`, span có trong câu) | `intent = OUT_OF_SCOPE` (`FALLBACK`), bỏ tín hiệu đồng ý → Policy chuyển máy. Chỉ dẫn tới chuyển máy, không mở khóa ghi; dùng cho câu diễn đạt vòng mà luật không bắt được ("lịch này tôi có đặt đâu em") |
 | `QUESTION` / `AMBIGUOUS` | `UNCLEAR`, hỏi lại, Policy đếm như thường |
-| `CONFIRM_ACTION` | **Giữ nguyên kết luận luật.** Model không nâng `NONE`/`UNCLEAR`/`REFUSE` thành `AGREE`; câu đã bị router đánh dấu mâu thuẫn thì hạ `UNCLEAR` |
+| `CONFIRM_ACTION` | **Giữ nguyên kết luận luật.** Model không nâng `NONE`/`UNCLEAR`/`REFUSE` thành `AGREE`; câu đã bị router đánh dấu mâu thuẫn thì hạ `UNCLEAR`. Ở `CANCEL_RECONFIRM` mà luật chưa xác nhận được ("thôi hủy giúp tôi"), model chỉ cho biết **ý định**: `intent = CANCEL` (`FALLBACK`) → Dialogue hỏi `CANCEL_CONFLICT` ("có chắc chắn muốn hủy… nói 'hủy lịch'") thay vì `CANCEL_CHOICE`; không ghi gì, lệnh hủy chỉ đến từ lượt xác nhận luật đọc được |
 | Không có kết quả dùng được (tắt, timeout, lỗi, span không có căn cứ) | Giữ luật rõ; `AGREE` trong câu mâu thuẫn hạ `UNCLEAR` |
 
 **Ranh giới prompt** (`SemanticContext`): transcript, `question_id`, hướng gọi, hành động đang chờ, câu hỏi có ở lượt ngay trước không, tập ý định cho phép, và nhãn luật của chính lượt này (ghi rõ "có thể sai"). **Không** gửi tên / ngày sinh chuẩn, `identity_reference`, object patient / appointment / slot, câu bot đọc lịch, hay lịch sử cuộc gọi. Mục đích câu hỏi được mô tả bằng `QUESTION_PURPOSE`, không gửi nguyên văn.

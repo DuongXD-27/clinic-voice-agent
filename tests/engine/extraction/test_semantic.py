@@ -1074,3 +1074,19 @@ def test_only_the_model_puts_an_undecided_need_back(outcome, intent) -> None:
     allowed = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.OUT_OF_SCOPE)
     merged = merge_semantic(result, outcome, RouteReason.INTENT_HEDGED, allowed)
     assert merged.intent.value is intent
+
+
+def test_identity_turn_reads_only_whether_the_caller_asks() -> None:
+    result = _result("tôi khám hôm nào vậy em?", question_id=QuestionId.ASK_NAME)
+    asked = merge_semantic(
+        result,
+        SemanticOutcome(ReplyKind.QUESTION, intent=Intent.OUT_OF_SCOPE, intent_span="x"),
+        RouteReason.IDENTITY_TURN,
+        (),
+    )
+    assert asked.caller_question is True and asked.intent == result.intent
+    other = merge_semantic(
+        result, SemanticOutcome(ReplyKind.AMBIGUOUS), RouteReason.IDENTITY_TURN, ()
+    )
+    assert other.caller_question is False
+    assert merge_semantic(result, None, RouteReason.IDENTITY_TURN, ()).caller_question is False

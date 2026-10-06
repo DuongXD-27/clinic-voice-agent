@@ -1056,12 +1056,10 @@ def test_without_the_flag_or_a_usable_model_the_leftover_answer_is_asked_again(
     status_before = clinic.appointments["apt_00417"]["status"]
     action = _run(bot, "c_promo_off", ["Thôi thì hủy giúp tôi vậy"], start=4)
 
-    assert not action.ended and action.utterance == (
-        t.CANCEL_CONFLICT
-        if isinstance(adapter, BrokenSemantic)
-        or (isinstance(adapter, FakeSemantic) and not adapter._replies)
-        else t.CANCEL_CHOICE
-    )
+    # Model lỗi / không có kết quả: hỏi xác nhận hủy. Flag tắt mà model đọc ra ý định hủy: cũng hỏi
+    # đúng câu xác nhận hủy (model chỉ cho biết ý định, không mở khóa ghi). Model tắt: hỏi hủy hay giữ.
+    expected = t.CANCEL_CHOICE if adapter is None else t.CANCEL_CONFLICT
+    assert not action.ended and action.utterance == expected
     _assert_nothing_cancelled(bot, clinic, "c_promo_off", status_before)
 
 
@@ -1633,3 +1631,68 @@ def test_an_undecided_cancel_without_a_model_is_not_a_request(line: str) -> None
     action = _run(bot, "c_undecided_cancel", [line], start=3)
     assert not action.ended and t.CANCEL_RECONFIRM not in action.utterance
     assert _context(bot, "c_undecided_cancel").pending_action is None and clinic.writes == []
+
+
+# --- Bước danh tính: câu hỏi của người gọi do model nhận ra (QC qc-id-05) -----------------------
+
+
+def _identity_with(semantic, call_id: str):
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot._extractor._semantic = semantic
+    bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
+    return bot, clinic
+
+
+def test_a_question_before_verification_is_answered_without_spending_the_retry() -> None:
+    """ "Alo" đã dùng lượt hỏi lại; câu hỏi lịch khám (model: QUESTION) được trả lời là cần xác minh
+    trước, không đọc gì về lịch, không chuyển máy."""
+    line = "Lịch khám của tôi mấy giờ thế em? Nói luôn đi"
+    semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.QUESTION, reply_span=line)})
+    bot, clinic = _identity_with(semantic, "c_id_question")
+    _run(bot, "c_id_question", ["Alo"])
+    action = _run(bot, "c_id_question", [line], start=2)
+    assert [c.route_reason for c in semantic.seen] == ["IDENTITY_TURN"]
+    assert (action.state, action.utterance) == ("AWAITING_IDENTITY", t.ASK_NAME_FOR_REQUEST)
+    assert FACTS not in action.utterance and clinic.writes == []
+
+    done = _run(bot, "c_id_question", ["Nguyễn Văn A", "14/03/1978", "Vâng, đúng giờ đó"], start=3)
+    assert done.outcome == "CONFIRMED"
+
+
+@pytest.mark.parametrize(
+    "semantic",
+    [
+        None,
+        BrokenSemantic(),
+        FakeSemantic({"tôi khám hôm nào vậy em?": SemanticOutcome(ReplyKind.AMBIGUOUS)}),
+    ],
+    ids=["off", "error", "not-a-question"],
+)
+def test_without_a_model_question_the_identity_turn_spends_the_retry(semantic) -> None:
+    bot, clinic = _identity_with(semantic, "c_id_no_question")
+    _run(bot, "c_id_no_question", ["Alo"])
+    action = _run(bot, "c_id_no_question", ["Tôi khám hôm nào vậy em?"], start=2)
+    assert action.outcome == "TRANSFERRED" and FACTS not in action.utterance
+
+
+def test_only_one_free_question_per_call() -> None:
+    questions = ["Tôi khám hôm nào vậy em?", "Thế khám ở cơ sở nào?"]
+    semantic = FakeSemantic({q.lower(): SemanticOutcome(ReplyKind.QUESTION) for q in questions})
+    bot, _ = _identity_with(semantic, "c_id_two_questions")
+    _run(bot, "c_id_two_questions", ["Alo", questions[0]])
+    action = _run(bot, "c_id_two_questions", [questions[1]], start=3)
+    assert action.outcome == "TRANSFERRED"
+
+
+@pytest.mark.parametrize("line", ["thôi hủy giúp tôi", "ừm khoan, hủy đi em"])
+def test_model_cancel_intent_gets_a_targeted_reconfirmation_and_no_write(line: str) -> None:
+    """LLM chỉ cho biết ý định hủy; lệnh hủy vẫn cần một lượt xác nhận luật đọc được."""
+    semantic = FakeSemantic({line: SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span=line)})
+    bot, clinic = _requesting_with(semantic, "c_model_intent")
+    asked = _run(bot, "c_model_intent", [line], start=4)
+    assert asked.utterance == t.CANCEL_CONFLICT and clinic.writes == []
+
+    semantic._replies["hủy lịch"] = SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="hủy lịch")
+    done = _run(bot, "c_model_intent", ["Hủy lịch"], start=5)
+    assert done.outcome == "CANCELLED"

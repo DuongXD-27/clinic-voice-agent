@@ -18,11 +18,14 @@ PROMPT_VERSION_CANCEL_CONFIRM = "semantic_v6"
 # Giữ nguyên v5/v6 để có thể rollback và so sánh eval theo đúng version lịch sử.
 PROMPT_VERSION_LUNA_V7 = "semantic_v7_luna"
 # v8 giữ quy tắc và ví dụ v7, gom ngữ cảnh ví dụ lặp lại vào system một lần.
-PROMPT_VERSION_LUNA = "semantic_v8_luna"
+PROMPT_VERSION_LUNA_V8 = "semantic_v8_luna"
+# v9 = v8 + nguyên tắc "quyết định sau cùng" và bước xác minh danh tính (QC qc-cn-06, qc-id-05).
+PROMPT_VERSION_LUNA = "semantic_v9_luna"
 PROMPT_VERSIONS = (
     PROMPT_VERSION,
     PROMPT_VERSION_CANCEL_CONFIRM,
     PROMPT_VERSION_LUNA_V7,
+    PROMPT_VERSION_LUNA_V8,
     PROMPT_VERSION_LUNA,
 )
 
@@ -444,6 +447,44 @@ LUNA_FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# v9: nguyên tắc chung, không bám câu cụ thể. Ví dụ đi kèm cố ý khác câu trong bộ QC.
+LUNA_V9_RULES = """
+Nguyên tắc bổ sung:
+5. Quyết định sau cùng: người gọi hay ngập ngừng, nói tiếng đệm hoặc tự sửa trước khi chốt
+   ("ừm", "khoan", "để xem", "à thôi", "à nhầm", "nghĩ lại thì"). Phân loại theo điều người gọi CHỐT
+   ở cuối câu. Chỉ AMBIGUOUS khi câu kết thúc mà vẫn chưa chốt, hoặc hai ý trái ngược cùng được giữ mà
+   không có lời tự sửa ("không, hủy đi").
+6. Với CANCEL_RECONFIRM, mọi cách nói giữ lịch là DECLINE_ACTION, kể cả khi không có chữ "không": vẫn
+   đi / vẫn đến khám, giữ lịch, để nguyên, thôi khỏi hủy, đổi ý không hủy nữa.
+7. Với ASK_NAME / ASK_DOB (bot đang xin định danh, chưa được nói gì về lịch): người gọi hỏi hoặc đòi
+   thông tin (giờ / ngày / nơi khám, ai gọi, gọi việc gì, vì sao phải cung cấp) là QUESTION; nêu nhu
+   cầu (hủy, đổi, xác nhận lịch) là CHANGE_INTENT; còn lại AMBIGUOUS. Không trích tên hay ngày sinh.
+"""
+
+LUNA_V9_FEW_SHOTS: tuple[tuple[str, str, str], ...] = (
+    (
+        "CANCEL_RECONFIRM",
+        "để em nghĩ đã… à thôi, cứ để nguyên lịch đó cho tôi",
+        _reading(reply_kind="DECLINE_ACTION", reply_span="cứ để nguyên lịch đó cho tôi"),
+    ),
+    (
+        "CANCEL_RECONFIRM",
+        "ờ khoan, đúng rồi, hủy đi em",
+        _reading(reply_kind="CONFIRM_ACTION", reply_span="hủy đi em"),
+    ),
+    (
+        "CANCEL_RECONFIRM",
+        "để tôi nghĩ thêm đã",
+        _reading(reply_kind="AMBIGUOUS", reply_span="để tôi nghĩ thêm đã"),
+    ),
+    (
+        "ASK_NAME",
+        "khoan, em cho chị biết hôm nào chị khám đã",
+        _reading(reply_kind="QUESTION", reply_span="em cho chị biết hôm nào chị khám đã"),
+    ),
+)
+
+
 def build_messages(
     context: "SemanticContext", version: str = PROMPT_VERSION
 ) -> list[dict[str, str]]:
@@ -453,8 +494,10 @@ def build_messages(
         system, shots = SYSTEM_PROMPT_CANCEL_CONFIRM, FEW_SHOTS_CANCEL_CONFIRM
     elif version == PROMPT_VERSION_LUNA_V7:
         return _build_luna_messages(context)
-    elif version == PROMPT_VERSION_LUNA:
+    elif version == PROMPT_VERSION_LUNA_V8:
         return _build_luna_messages(context, compact=True)
+    elif version == PROMPT_VERSION_LUNA:
+        return _build_luna_messages(context, compact=True, v9=True)
     else:
         raise ValueError(f"prompt version không hỗ trợ: {version}")
     messages = [{"role": "system", "content": system}]
@@ -478,11 +521,13 @@ CONFIRM_READBACK hỏi có đến khám theo lịch không. Lượt cuối dùng
 
 
 def _build_luna_messages(
-    context: "SemanticContext", *, compact: bool = False
+    context: "SemanticContext", *, compact: bool = False, v9: bool = False
 ) -> list[dict[str, str]]:
-    system = LUNA_SYSTEM_PROMPT + (_LUNA_EXAMPLE_CONTEXT if compact else "")
+    system = LUNA_SYSTEM_PROMPT + (LUNA_V9_RULES if v9 else "")
+    system += _LUNA_EXAMPLE_CONTEXT if compact else ""
+    shots = LUNA_FEW_SHOTS + (LUNA_V9_FEW_SHOTS if v9 else ())
     messages = [{"role": "system", "content": system}]
-    for question_id, transcript, reading in LUNA_FEW_SHOTS:
+    for question_id, transcript, reading in shots:
         user = (
             json.dumps(
                 {"question_id": question_id, "transcript": transcript},

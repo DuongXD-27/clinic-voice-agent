@@ -311,6 +311,7 @@ _CANCEL_AFFIRM = compile_phrases(
         "đồng ý",
         "xác nhận",
         "chắc chắn",
+        "chắc chắn rồi",
         "ok",
         "oke",
         "okay",
@@ -817,6 +818,17 @@ def undecided_request(transcript: str, span: Optional[str]) -> bool:
     reported = find_phrase(text, _REPORTED, unaccented=unaccented)
     at = text.find(span) if span else -1
     return reported is not None and at >= 0 and reported.start() < at
+
+
+def has_question_cue(transcript: str) -> bool:
+    """Câu có dấu hiệu hỏi ("?" hoặc từ để hỏi). Chỉ để chọn model nào đọc câu, không quyết."""
+    text = clean(transcript)
+    if not text:
+        return False
+    if "?" in transcript:
+        return True
+    # Không dấu chỉ tin dấu "?": "nguyen van a" kết thúc bằng "a" trùng câu hỏi đuôi "à"
+    return not is_unaccented(text) and find_phrase(text, _QUESTION_WORDS) is not None
 
 
 def mentions_cancel(transcript: str) -> bool:
