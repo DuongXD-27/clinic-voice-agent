@@ -187,7 +187,7 @@ class DialogueManager:
             ):
                 self._update_cancel_reason(ctx, extraction)
             return self._reask_confirmation(ctx, failed=True)
-        if extraction.confirmation_conflict:
+        if extraction.confirmation_conflict and not self._states_other_need(ctx, extraction):
             if ctx.pending_action == "CANCEL":
                 self._update_cancel_reason(ctx, extraction)
             return self._reask_confirmation(ctx)
@@ -219,6 +219,19 @@ class DialogueManager:
         if question is QuestionId.CANCEL_RECONFIRM:
             return self._cancel_reconfirm(ctx, extraction, now)
         return self._not_understood(ctx)
+
+    @staticmethod
+    def _states_other_need(ctx: CallContext, ex: ExtractionResult) -> bool:
+        """Câu đọc lịch outbound: người gọi nói không đến được / muốn đổi giờ ("đúng rồi, không đi
+        được", "…không đi được, dời lịch giúp tôi") là kịch bản Cancel / Reschedule (contract Table 1),
+        không phải câu trả lời có/không lẫn lộn cho việc đến khám. Đi nhánh ý định: nhánh này không
+        ghi gì, vẫn cần xác nhận hủy / chốt khung ở lượt sau; AGREE của lượt đã bị hạ UNCLEAR."""
+        return (
+            ctx.call.direction == "outbound"
+            and ctx.question is not None
+            and ctx.question.question_id is QuestionId.CONFIRM_READBACK
+            and ex.intent.value in (Intent.CANCEL, Intent.RESCHEDULE)
+        )
 
     def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
         question = ctx.question

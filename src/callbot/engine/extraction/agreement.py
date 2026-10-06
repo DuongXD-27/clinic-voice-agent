@@ -486,14 +486,30 @@ def conflicting_confirmation(
     positive_text = re.sub(
         r"\b(?:không|khong|chưa|chua)\s+(?:\w+\s+){0,4}(?:được|duoc)\b", "", text
     )
-    cues = _find_cues(positive_text, is_unaccented(text), question_id in _ATTENDANCE_QUESTIONS)
+    unaccented = is_unaccented(text)
+    cues = _find_cues(positive_text, unaccented, question_id in _ATTENDANCE_QUESTIONS)
     return bool(
-        cues.affirm
+        _answers_affirmatively(positive_text, cues.affirm, unaccented)
         or cues.idiom
         or (cues.cancel_verb and question_id is QuestionId.CANCEL_RECONFIRM)
         or (cues.slot_action and question_id is QuestionId.SLOT_READBACK)
         or cues.polite in _POLITE_AGREE
     )
+
+
+def _answers_affirmatively(text: str, affirm: Optional[str], unaccented: bool) -> bool:
+    """Từ khẳng định chỉ là lời đáp khi mở đầu câu trả lời ("có, à không", "vâng, đúng rồi, không
+    đi được"). Ở giữa câu kể nó là từ thường: "tôi PHẢI đi làm", "tôi CÓ việc", "đến ĐÚNG giờ" —
+    câu kể không đến được là kịch bản Cancel (contract Table 1), không phải đồng ý lẫn từ chối.
+    "giữ lịch", "đến chứ" vẫn tính ở mọi vị trí."""
+    if affirm is None:
+        return False
+    if find_phrase(affirm, _AFFIRM, unaccented=unaccented) is None:
+        return True
+    answer = " ".join(text.split())
+    polite = _leading_phrase(answer, _POLITE, unaccented)
+    body = answer[polite.end() :].strip() if polite else answer
+    return _leading_phrase(body, _AFFIRM, unaccented) is not None
 
 
 # "thôi thì" mở câu là dấu nối cam chịu ("thôi thì hủy giúp tôi vậy"), không phải lời từ chối. Chỉ

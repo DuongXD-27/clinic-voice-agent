@@ -178,3 +178,10 @@ holdout,reschedule,ASK_INTENT,tuần sau tôi mới rảnh,RESCHEDULE,yes,
 holdout,out_of_scope,ASK_INTENT,địa chỉ phòng khám ở đâu vậy em,TRANSFER,no,OUT_OF_SCOPE
 holdout,out_of_scope,ASK_INTENT,để con tôi đi khám thay,TRANSFER,no,OUT_OF_SCOPE
 holdout,out_of_scope,ASK_INTENT,tôi có hẹn gì bên mình đâu em,TRANSFER,yes,OUT_OF_SCOPE
+holdout,cannot_attend_statement,CONFIRM_READBACK,tôi phải đi làm nên không đến được,CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,"hôm đó tôi có việc phải về quê, không đi được",CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,nhà tôi có đám cưới nên không đi được,CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,tôi phải trực ca nên không đi khám được,CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,Hôm đó tôi phải đưa con đi viện nên chắc không đi được,CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,"đúng rồi, không đi được",CANCEL,no,
+holdout,cannot_attend_statement,CONFIRM_READBACK,"phải đi công tác, không đi được, dời lịch giúp tôi",RESCHEDULE,no,

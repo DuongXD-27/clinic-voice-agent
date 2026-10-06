@@ -1277,3 +1277,58 @@ def test_planned_or_negated_went_elsewhere_is_not_a_cancel_request(line: str) ->
     action = _run(bot, "c_went_elsewhere_no", [line], start=3)
     assert action.state != "AWAITING_CONFIRMATION" and clinic.writes == []
     assert _context(bot, "c_went_elsewhere_no").pending_action is None
+
+
+# --- Câu kể không đến được ở câu đọc lịch là kịch bản Cancel (contract Table 1) ------------------
+
+
+def test_qc_w6_03_long_realistic_cancel_is_cancelled() -> None:
+    """Nguyên văn qc-w6-03: "phải" trong câu kể không làm câu thành đồng ý lẫn từ chối."""
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(
+        CallStart(call_id="c_qc_w6_03", direction="outbound", appointment_id="apt_00417")
+    )
+    lines = [
+        "Alo, ai đấy?",
+        "À phòng khám à, ừ tôi đây",
+        "Nguyễn Văn A",
+        "Sao phải hỏi ngày sinh?",
+        "Mười bốn tháng ba năm một nghìn chín trăm bảy mươi tám",
+    ]
+    assert _run(bot, "c_qc_w6_03", lines).state == "AWAITING_INTENT"
+    asked = _run(
+        bot,
+        "c_qc_w6_03",
+        ["Hôm đó tôi phải đưa con đi viện nên chắc không đi được"],
+        start=6,
+    )
+    assert asked.utterance == CANCEL_READBACK and clinic.writes == []
+    done = _run(bot, "c_qc_w6_03", ["Ừ, hủy giúp tôi"], start=7)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
+
+
+@pytest.mark.parametrize("line", ["tôi phải đi làm nên không đến được", "đúng rồi, không đi được"])
+def test_cannot_attend_at_the_readback_goes_to_the_cancel_question(line: str) -> None:
+    """Kể cả khi câu mở đầu bằng "đúng rồi": nói không đến được là yêu cầu hủy, không ghi gì."""
+    bot, clinic, _ = _verified("c_cannot_attend")
+    action = _run(bot, "c_cannot_attend", [line], start=3)
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
+    assert _context(bot, "c_cannot_attend").pending_action == "CANCEL"
+
+
+def test_cannot_attend_and_asks_to_move_goes_to_reschedule() -> None:
+    bot, clinic, _ = _verified("c_cannot_attend_move")
+    action = _run(
+        bot, "c_cannot_attend_move", ["phải đi công tác, không đi được, dời lịch giúp tôi"], start=3
+    )
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+
+
+@pytest.mark.parametrize("line", ["có đến, à không đâu", "vâng, không"])
+def test_a_real_conflict_without_another_need_is_still_asked_again(line: str) -> None:
+    bot, clinic, _ = _verified("c_real_conflict")
+    action = _run(bot, "c_real_conflict", [line], start=3)
+    assert action.utterance == t.CONFIRM_CONFLICT and clinic.writes == []
+    assert _context(bot, "c_real_conflict").pending_action is None
