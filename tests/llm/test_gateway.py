@@ -100,6 +100,28 @@ def test_gpt_6_omits_unsupported_temperature(model, effort):
     assert payload["store"] is False
 
 
+@pytest.mark.parametrize("tier", ["fast", "default", "auto"])
+def test_openai_sends_the_service_tier_selected_by_environment(monkeypatch, tier):
+    monkeypatch.setenv("OPENAI_SERVICE_TIER", tier)
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json=response_body("openai"))
+
+    gateway, _ = mocked_gateway("openai", handle, model="gpt-6-luna")
+    assert generate(gateway).status == "completed"
+    payload = json.loads(requests[0].content)
+    assert payload["service_tier"] == tier
+    assert payload["reasoning_effort"] == "none"
+
+
+def test_openai_defaults_to_fast_mode(monkeypatch):
+    monkeypatch.setenv("OPENAI_SERVICE_TIER", "")
+    config = OpenAIConfig(api_key=SECRET, _env_file=None)
+    assert config.service_tier == "fast"
+
+
 @pytest.mark.parametrize("provider", CONFIGS)
 def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
     requests = []
@@ -152,6 +174,7 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
             assert payload["store"] is False
         else:
             assert "store" not in payload
+            assert "service_tier" not in payload
         if provider == "groq":
             assert payload["max_completion_tokens"] == CONFIGS["groq"][2]
             assert payload["reasoning_effort"] == "low"
