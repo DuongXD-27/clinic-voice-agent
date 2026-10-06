@@ -202,7 +202,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T2 05/10 · Đường B — Chốt phối hợp STT / Engine / TTS
 
-**Gửi PM:** Chốt interface realtime giữa STT (Việt), Engine (Hoàn) và TTS: các event khi bot bắt đầu nói, phát xong hoặc bị ngắt. Phân vai rõ 4 thao tác barge-in (dừng phát TTS, dừng generation, giữ partial turn, reset turn) để ba phần không chờ nhau khi tích hợp.
+**Gửi PM:** Chốt interface realtime giữa STT, Engine và TTS: các event khi bot bắt đầu nói, phát xong hoặc bị ngắt. Phân vai rõ 4 thao tác barge-in (dừng phát TTS, dừng generation, giữ partial turn, reset turn) để ba phần không chờ nhau khi tích hợp.
 
 **Nội dung:**
 1. **Sự kiện TTS phát ra** (mỗi sự kiện kèm `call_id`, số lượt, thời điểm):
