@@ -81,8 +81,9 @@ logger = logging.getLogger(__name__)
 MAX_SLOTS_PRESENTED = 2
 # R-29: người gọi nêu tối đa 2 ngày / khoảng thời gian; ngày thứ ba -> giữ lịch cũ, PATIENT_REQUEST (D-5)
 MAX_SLOT_ROUNDS = 2
-# "Ai đấy?" ở bước danh tính là câu hỏi phải trả lời (R-26), không phải câu thiếu định danh: giới thiệu
-# lại mà không dùng lượt hỏi lại R-40. Chỉ một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
+# Câu hỏi của người gọi ở bước danh tính phải được trả lời, không phải câu thiếu định danh: "ai đấy?"
+# (R-26, giới thiệu lại) và câu hỏi khác model nhận ra (SF-03: cần xác minh trước). Không dùng lượt hỏi
+# lại R-40. Chung một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
 MAX_IDENTITY_QUESTIONS = 1
 # Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
 _REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
@@ -309,6 +310,14 @@ class DialogueManager:
                 t.greeting_back(ctx.call.direction)
                 if question is QuestionId.ASK_NAME
                 else t.INTRODUCE_AGAIN_ASK_DOB
+            )
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+        if ex.caller_question and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
+            # Người gọi hỏi trước khi xác minh ("lịch khám của tôi mấy giờ?", model đọc là QUESTION):
+            # trả lời cần xác minh trước (SF-03), không đọc gì về lịch, không dùng lượt hỏi lại.
+            ctx.identity_questions += 1
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
             )
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         # Nhu cầu không kèm định danh vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40); chỉ đổi lời
@@ -775,6 +784,10 @@ class DialogueManager:
         # Chưa xác nhận: lý do vẫn được ghi nhận ở mọi lượt, nhưng ghi nhận lý do không phải đồng ý hủy
         had_reason = ctx.cancel_reason not in (None, DEFAULT_CANCEL_REASON)
         noted = self._update_cancel_reason(ctx, ex)
+        if ex.intent.value is Intent.CANCEL and ex.intent.provenance is Provenance.FALLBACK:
+            # Tầng ngữ nghĩa đọc ra người gọi muốn hủy, nhưng luật chưa xác nhận được: hỏi đúng câu
+            # xác nhận hủy, không hỏi "hủy hay giữ". Không ghi gì ở lượt này.
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CONFLICT), "UNCLEAR")
         if ex.agreement.found:
             # Có tín hiệu đồng ý / mâu thuẫn / ngập ngừng nhưng dưới ngưỡng hủy: hỏi lại bằng câu
             # lựa chọn, kể cả khi lượt đó có nêu lý do (§3.2.6)
