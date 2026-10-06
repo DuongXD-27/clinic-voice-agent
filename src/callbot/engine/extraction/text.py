@@ -165,6 +165,11 @@ def remove_phrases(text: str, phrases: PhraseSet, unaccented: Optional[bool] = N
     return " ".join(text.split())
 
 
+def negators(unaccented: bool) -> frozenset[str]:
+    """Các từ phủ định đứng riêng ("không", "chưa"...), cho chỗ cần xét cả mệnh đề thay vì sát cụm."""
+    return _NEGATORS_UNACCENTED if unaccented else _NEGATORS
+
+
 def is_negated(text: str, start: int, unaccented: Optional[bool] = None) -> bool:
     """Có từ phủ định ngay trước vị trí `start` không: "không hủy", "không muốn hủy", "chưa cần đổi"."""
     if unaccented is None:

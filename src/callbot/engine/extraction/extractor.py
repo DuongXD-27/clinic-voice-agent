@@ -14,7 +14,8 @@ Thứ tự trong một lượt:
 6. slot_choice  — câu hỏi chọn slot: OFFER_SLOTS, SLOT_READBACK, SLOT_REFUSE_CHOICE, ASK_SLOT_PREFERENCE.
 7. agreement    — câu hỏi xác nhận; ở các câu hỏi chọn slot khác chỉ khi không rút ra tiêu chí slot
    (chỉ ra REFUSE/UNCLEAR).
-8. cancel_reason — khi đang hủy.
+8. cancel_reason — khi đang hủy; và ở CONFIRM_READBACK / ASK_INTENT outbound, nơi lý do "đã khám
+   chỗ khác rồi" tự nó là yêu cầu hủy (`implied_cancel`, xét ở bước 3 trước tuyến model).
 """
 
 import logging
@@ -45,6 +46,7 @@ from callbot.engine.extraction.full_name import (
 )
 from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reading, Reason, identity_value
+from callbot.engine.extraction.implied_cancel import implied_cancel
 from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
 from callbot.engine.extraction.line_signal import extract_line_signal
 from callbot.engine.extraction.model_budget import (
@@ -116,6 +118,9 @@ _CONSISTENT_INTENTS: dict[QuestionId, frozenset[Intent]] = {
     QuestionId.CANCEL_RECONFIRM: frozenset({Intent.NONE, Intent.CANCEL}),
 }
 _CANCEL_QUESTIONS = frozenset({QuestionId.CANCEL_RECONFIRM, QuestionId.ASK_CANCEL_REASON})
+# Outbound: câu đọc lịch và câu "đổi hay hủy". Lý do ở đây được ghi nhận, và lý do "đã khám chỗ khác
+# rồi" là yêu cầu hủy (`implied_cancel`). Không gồm câu xác nhận hủy: ở đó lý do có luồng riêng (T-05).
+_REASON_AS_REQUEST_QUESTIONS = frozenset({QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT})
 # Câu hỏi mà người gọi có thể trả lời bằng khung / tiêu chí thời gian / "khung khác" (T-10)
 _SLOT_QUESTIONS = frozenset(
     {
@@ -281,7 +286,9 @@ class InformationExtractor:
                 )
 
         clinical = extract_clinical(transcript)
-        intent = self._intent(ctx, transcript)
+        reason_as_request = ctx.direction == "outbound" and question in _REASON_AS_REQUEST_QUESTIONS
+        early_reason = extract_cancel_reason(transcript) if reason_as_request else None
+        intent = self._intent(ctx, transcript, clinical, early_reason)
 
         dob_reading = read_dob(transcript, ctx.today) if question in IDENTITY_QUESTIONS else None
         dob = dob_reading.field if dob_reading is not None else skipped
@@ -334,7 +341,9 @@ class InformationExtractor:
             agreement = extract_agreement(transcript, question)
 
         cancel_reason = skipped
-        if question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
+        if early_reason is not None:
+            cancel_reason = early_reason
+        elif question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
             cancel_reason = extract_cancel_reason(transcript)
 
         # Rule của mọi trường liên quan đã chạy xong: giờ mới thấy được xung đột giữa chúng.
@@ -396,11 +405,24 @@ class InformationExtractor:
 
     # --- Từng trường có tuyến sau ------------------------------------------------
 
-    def _intent(self, ctx: TurnContext, transcript: str) -> Field[Intent]:
+    def _intent(
+        self,
+        ctx: TurnContext,
+        transcript: str,
+        clinical: Field[ClinicalLevel],
+        reason: Optional[Field[CancelReason]],
+    ) -> Field[Intent]:
         identity_step = ctx.question_id in IDENTITY_QUESTIONS
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
-        if result.found or identity_step or self._fallback is None or self._name_fallback:
+        if result.found or identity_step:
+            return result
+        if reason is not None and clinical.value is ClinicalLevel.NONE:
+            # Chỉ khi luật không ra nhãn nào: CONFIRM / RESCHEDULE / ngoài phạm vi vẫn thắng
+            span = implied_cancel(transcript, reason)
+            if span is not None:
+                return Field(Intent.CANCEL, reason.provenance, span=span)
+        if self._fallback is None or self._name_fallback:
             return result
         allowed_here = frozenset(i for i in allowed if allowed_in_direction(i, ctx.direction))
         guarded = guard_fallback(

@@ -71,7 +71,7 @@ holdout,cannot_attend,CONFIRM_READBACK,"vâng, hôm đó tôi phải đi công t
 holdout,cannot_attend,CONFIRM_READBACK,tôi sẽ đi du lịch hôm đó,ASK_CHANGE_OR_CANCEL,yes,
 holdout,unclear,CONFIRM_READBACK,tôi đang chuẩn bị đi xa,REREAD,yes,
 holdout,cannot_attend,CONFIRM_READBACK,hôm đó đúng ngày giỗ nhà tôi,ASK_CHANGE_OR_CANCEL,yes,
-holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,ASK_CHANGE_OR_CANCEL,yes,
+holdout,cannot_attend,CONFIRM_READBACK,dạ tôi khám ở chỗ khác rồi,CANCEL,yes,
 prompt,cannot_attend,CONFIRM_READBACK,tôi sẽ đi khám chỗ khác,ASK_CHANGE_OR_CANCEL,yes,
 holdout,cannot_attend,CONFIRM_READBACK,giờ đó tôi có lịch khám ở bệnh viện khác,ASK_CHANGE_OR_CANCEL,yes,
 holdout,cannot_attend,CONFIRM_READBACK,"vâng, tôi khỏi bệnh rồi",ASK_CHANGE_OR_CANCEL,yes,
@@ -169,7 +169,7 @@ holdout,reason,ASK_INTENT,tôi đi công tác cả tuần,ASK_CHANGE_OR_CANCEL,y
 holdout,reason,ASK_INTENT,tôi vẫn đi làm hôm đó,ASK_CHANGE_OR_CANCEL,yes,
 holdout,reason,ASK_INTENT,tối đó tôi đến viện khác rồi,ASK_CHANGE_OR_CANCEL,yes,
 holdout,reason,ASK_INTENT,nhà tôi có việc hiếu,ASK_CHANGE_OR_CANCEL,yes,
-holdout,reason,ASK_INTENT,tôi khỏi rồi em,ASK_CHANGE_OR_CANCEL,yes,
+holdout,reason,ASK_INTENT,tôi khỏi rồi em,CANCEL,yes,
 holdout,out_of_scope,ASK_INTENT,vợ tôi sẽ đến thay,TRANSFER,no,OUT_OF_SCOPE
 holdout,cancel,ASK_INTENT,hủy đi,CANCEL,no,
 holdout,cancel,ASK_INTENT,lịch đó em xóa đi,CANCEL,yes,

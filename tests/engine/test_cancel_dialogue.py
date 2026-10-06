@@ -1224,3 +1224,56 @@ def test_a_semantic_timeout_asks_again_instead_of_a_contradiction() -> None:
     action = _run(bot, "c_sem_ket_tien_timeout", ["Hủy giúp tôi"], start=5)
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
+
+
+# --- Lý do "đã khám chỗ khác rồi" là yêu cầu hủy (QC qc-cn-03-went-elsewhere) ---------------------
+
+
+def test_went_elsewhere_at_the_readback_goes_straight_to_the_second_confirmation() -> None:
+    """Nguyên văn qc-cn-03: không hỏi "đổi hay hủy"; câu xác nhận đọc lại lịch sắp hủy."""
+    bot, clinic, _ = _verified("c_went_elsewhere")
+    asked = _run(bot, "c_went_elsewhere", ["Tôi khám ở bệnh viện khác rồi em ạ"], start=3)
+    assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
+    assert clinic.writes == []
+    ctx = _context(bot, "c_went_elsewhere")
+    assert (ctx.pending_action, ctx.cancel_reason) == ("CANCEL", "WENT_ELSEWHERE")
+    assert [e.kind for e in ctx.evidence] == ["REQUEST"]
+
+    done = _run(bot, "c_went_elsewhere", ["Vâng, tôi chắc chắn muốn hủy"], start=4)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "WENT_ELSEWHERE")]
+
+
+def test_went_elsewhere_still_needs_an_explicit_cancel_on_the_next_turn() -> None:
+    bot, clinic, _ = _verified("c_went_elsewhere_vang")
+    _run(bot, "c_went_elsewhere_vang", ["tôi đi viện khác rồi"], start=3)
+    action = _run(bot, "c_went_elsewhere_vang", ["vâng"], start=4)
+    assert action.utterance == t.CANCEL_CHOICE and clinic.writes == []
+
+
+def test_went_elsewhere_then_asking_to_reschedule_drops_the_cancel() -> None:
+    bot, clinic, _ = _verified("c_went_elsewhere_resched")
+    _run(bot, "c_went_elsewhere_resched", ["Tôi khám chỗ khác rồi"], start=3)
+    action = _run(bot, "c_went_elsewhere_resched", ["Không hủy nữa, tôi muốn đổi lịch"], start=4)
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+    ctx = _context(bot, "c_went_elsewhere_resched")
+    assert (ctx.pending_action, ctx.cancel_reason, ctx.evidence) == ("RESCHEDULE", None, [])
+
+
+def test_went_elsewhere_at_the_change_or_cancel_question_is_a_cancel_request() -> None:
+    bot, clinic, _ = _verified("c_went_elsewhere_ask")
+    choice = _run(bot, "c_went_elsewhere_ask", ["Không"], start=3)
+    assert choice.utterance == t.ASK_CHANGE_OR_CANCEL
+    asked = _run(bot, "c_went_elsewhere_ask", ["tôi đi viện khác rồi"], start=4)
+    assert asked.utterance == CANCEL_READBACK and clinic.writes == []
+    done = _run(bot, "c_went_elsewhere_ask", ["hủy lịch giúp tôi"], start=5)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "WENT_ELSEWHERE")]
+
+
+@pytest.mark.parametrize("line", ["tôi định khám chỗ khác", "Tôi không khám ở bệnh viện khác đâu"])
+def test_planned_or_negated_went_elsewhere_is_not_a_cancel_request(line: str) -> None:
+    bot, clinic, _ = _verified("c_went_elsewhere_no")
+    action = _run(bot, "c_went_elsewhere_no", [line], start=3)
+    assert action.state != "AWAITING_CONFIRMATION" and clinic.writes == []
+    assert _context(bot, "c_went_elsewhere_no").pending_action is None

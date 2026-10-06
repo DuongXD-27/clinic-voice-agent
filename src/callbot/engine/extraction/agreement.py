@@ -710,6 +710,23 @@ def is_bare_da(transcript: str) -> bool:
     return clean(transcript) in (_BARE_DA, clean("dạ ạ"), "da", "da a")
 
 
+def asks_or_hesitates(transcript: str) -> bool:
+    """Câu hỏi ("?", câu hỏi đuôi, từ để hỏi), câu có "nhưng" hoặc ngập ngừng: không phải lời kể dứt
+    khoát. Cùng các tập và thứ tự với các luật đầu của `_read_agreement`."""
+    text = clean(transcript)
+    if not text:
+        return False
+    if "?" in transcript:
+        return True
+    unaccented = is_unaccented(text)
+    if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
+        return True
+    return any(
+        find_phrase(text, phrases, unaccented=unaccented) is not None
+        for phrases in (_QUESTION_WORDS, _CONTRAST, _HEDGE)
+    )
+
+
 def mentions_cancel(transcript: str) -> bool:
     """Có động từ "hủy": "không đi được, hủy đi" là muốn hủy, không chỉ là bận."""
     return find_phrase(clean(transcript), _CANCEL_VERB) is not None

@@ -230,6 +230,11 @@ REQUEST_HUMAN > NOT_PATIENT > OUT_OF_SCOPE (chủ đề) > RESCHEDULE > CANCEL >
 - "Không đến được, đổi sang chiều được không" → `RESCHEDULE` (có phương án thay thế).
 - Cụm phủ định đứng trước từ khoá phải được xử lý trước: "không hủy", "đừng hủy", "không đổi", "giữ nguyên lịch" → **không** là `CANCEL` / `RESCHEDULE`.
 
+**Lý do hủy là yêu cầu hủy** (06/10/2026, QC `qc-cn-03-went-elsewhere`, `extraction/implied_cancel.py`). Ở `CONFIRM_READBACK` / `ASK_INTENT` outbound, `cancel_reason` được trích bằng luật. Khi luật intent ra `NONE` và không có nội dung lâm sàng, lý do dưới đây là `CANCEL` (span = cụm lý do), không gọi model:
+- `WENT_ELSEWHERE` có dấu hiệu đã xảy ra ("khám chỗ khác **rồi**", "**đã** khám ở nơi khác"); hoặc cụm `NO_LONGER_NEEDED` dứt khoát ("khỏi rồi", "khỏe rồi", "không cần nữa"; "hết đau rồi" có chữ "đau" nên vẫn đi tuyến lâm sàng). "Đỡ rồi", "định / sẽ khám chỗ khác", "giờ đó có lịch khám ở bệnh viện khác" vẫn hỏi "đổi hay hủy".
+- Không nâng khi: có phủ định trong cùng mệnh đề ("tôi không khám ở bệnh viện khác"), câu hỏi / câu hỏi đuôi, có "nhưng", ngập ngừng, nhiều lý do, hoặc luật đã ra nhãn khác (`RESCHEDULE`, `CONFIRM`, `REQUEST_HUMAN`...).
+- Chỉ là lượt yêu cầu: lệnh ghi vẫn cần lượt xác nhận sau có động từ "hủy" (§1.1.4, SF-05).
+
 **Ở bước danh tính** (`ASK_NAME`, `ASK_DOB`) không chạy nhãn nghiệp vụ — tên "Lê Văn Thôi", "Trần Văn Được" không được thành từ chối / xác nhận:
 - Luôn chạy: `REQUEST_HUMAN`, `NOT_PATIENT`, `REPEAT_REQUEST` (câu này không được đọc thành tên).
 - Chạy **sau** khi trích tên / ngày sinh thất bại: `OUT_OF_SCOPE`. Tên hợp lệ luôn thắng, vì "thanh toan" trùng tên "Thanh Toàn" khi mất dấu.
