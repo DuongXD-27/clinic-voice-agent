@@ -25,7 +25,7 @@ from callbot.engine.extraction.agreement import (
     confirmation_veto,
     conflicting_confirmation,
     extract_agreement,
-    without_fallback_lead,
+    slot_answer,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
@@ -76,7 +76,7 @@ from callbot.engine.extraction.semantic_router import (
     route_semantic,
 )
 from callbot.engine.extraction.slot_choice import extract_slot_choice, without_corrected_part
-from callbot.engine.extraction.text import clean
+from callbot.engine.extraction.text import clean, remove_words
 from callbot.engine.types import CancelReason
 from callbot.tracing import trace_event
 
@@ -217,15 +217,14 @@ def _without_identity(
     transcript: str, full_name: Field[str], dob_reading: Optional[Reading[DobValue]]
 ) -> str:
     """Lời yêu cầu nói cùng lượt danh tính, đã bỏ vùng ngày sinh và tên (R-43): ngày sinh không được
-    thành tiêu chí thời gian của việc đổi, dù khách nói ý định trước hay sau danh tính."""
-    text = clean(transcript)
+    thành tiêu chí thời gian của việc đổi, dù khách nói ý định trước hay sau danh tính.
+
+    Cắt trên bản còn dấu câu: bộ parse cần "/" và ":" để đọc "20/10", "9:00" (`clean` tách thành hai số).
+    """
     spans = [dob_reading.zone if dob_reading is not None else None]
     if full_name.found and full_name.value:
         spans.append(clean(full_name.value))
-    for span in spans:
-        if span:
-            text = text.replace(span, " ", 1)
-    return " ".join(text.split())
+    return remove_words(transcript, spans)
 
 
 def _within(outer: str, inner: str) -> bool:
@@ -347,10 +346,10 @@ class InformationExtractor:
 
         slot_choice = skipped
         if question in _SLOT_QUESTIONS:
-            # "Nếu không còn 5 giờ thì 3 giờ cũng được": giờ ở vế điều kiện là giờ vừa không có, khung
-            # được chọn nằm ở vế sau
+            # "Nếu không còn 5 giờ thì 3 giờ cũng được", "3 giờ chiều thì thôi, lấy khung 2": giờ ở vế
+            # điều kiện / vế bị bỏ không phải khung được chọn; khung nằm ở vế sau
             slot_choice = extract_slot_choice(
-                without_fallback_lead(transcript), ctx.slots, ctx.presented_slot_ids, ctx.now
+                slot_answer(transcript), ctx.slots, ctx.presented_slot_ids, ctx.now
             )
 
         agreement: Field[Agreement] = skipped

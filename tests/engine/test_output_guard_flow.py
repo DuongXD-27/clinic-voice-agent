@@ -154,7 +154,7 @@ def test_render_error_after_confirm_retried_once_keeps_confirmed(monkeypatch) ->
 def test_reschedule_with_wrong_status_requires_reconciliation() -> None:
     """(b) 2xx sai trạng thái đích: đối soát, không /transfer, không nói RESCHEDULED_DONE."""
     bot, clinic = _offering("c_r01_b")
-    _run(bot, "c_r01_b", ["khung 1"], start=4)
+    _run(bot, "c_r01_b", ["khung 1 được không"], start=4)
     clinic.after_next("reschedule_appointment", lambda body: body.update(status="SCHEDULED"))
 
     with pytest.raises(ReconciliationRequired):

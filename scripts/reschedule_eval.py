@@ -11,6 +11,7 @@ Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator th
 (`direction`, `question_id`, `page_size`) — bảng `SETUP`:
 
     outbound OFFER_SLOTS 2          "Tôi muốn đổi lịch"            -> trang [14/10 15:00, 15/10 10:30]
+    outbound OFFER_SLOTS 2-trang2   + "khung khác"                  -> trang [15/10 15:30, 16/10 9:00]
     outbound SLOT_READBACK 1        "đổi sang ngày 14 tháng 10"    -> câu có/không khung duy nhất 14/10 15:00
     outbound SLOT_READBACK 2        + "khung nào cũng được"         -> câu chốt 14/10 15:00, trang 2 khung
     outbound SLOT_REFUSE_CHOICE 2   + "không"                       -> "nghe khung khác hay giữ lịch cũ"
@@ -95,6 +96,7 @@ PHONE = "0901234501"
 VERIFIED = ["Trần Thị Bình", "21 tháng 6 năm 1990"]
 SETUP: dict[tuple[str, str, str], list[str]] = {
     ("outbound", "OFFER_SLOTS", "2"): ["Tôi muốn đổi lịch"],
+    ("outbound", "OFFER_SLOTS", "2-trang2"): ["Tôi muốn đổi lịch", "khung khác"],
     ("outbound", "SLOT_READBACK", "1"): ["đổi sang ngày 14 tháng 10"],
     ("outbound", "SLOT_READBACK", "2"): ["Tôi muốn đổi lịch", "khung nào cũng được"],
     ("outbound", "SLOT_REFUSE_CHOICE", "2"): ["Tôi muốn đổi lịch", "không"],

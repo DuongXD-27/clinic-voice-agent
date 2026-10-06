@@ -528,7 +528,7 @@ def test_giving_up_a_reschedule_keeps_the_appointment_and_transfers() -> None:
 def test_a_statement_at_the_slot_readback_does_not_reschedule() -> None:
     """Cùng lỗi ở câu đọc lại slot: "tôi có việc bận" từng ghi RESCHEDULED."""
     bot, clinic, _ = _at_readback("c_t04s8_slot")
-    action = _run(bot, "c_t04s8_slot", ["tôi muốn đổi lịch", "khung 1"], start=3)
+    action = _run(bot, "c_t04s8_slot", ["tôi muốn đổi lịch", "khung 1 được không"], start=3)
     assert _context(bot, "c_t04s8_slot").question.question_id is QuestionId.SLOT_READBACK
     action = _run(bot, "c_t04s8_slot", ["hôm đó tôi có việc bận"], start=5)
     assert not action.ended and clinic.writes == []

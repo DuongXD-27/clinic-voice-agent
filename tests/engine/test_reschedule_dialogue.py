@@ -145,7 +145,7 @@ def test_ordinal_on_the_next_page_picks_from_that_page() -> None:
     _, bot, _ = _call("c_page2", "Tôi đổi sang buổi chiều được không?")
     _say(bot, "c_page2", "khung khác")
 
-    _say(bot, "c_page2", "khung 1")
+    _say(bot, "c_page2", "khung 1 được không")
     assert _context(bot, "c_page2").selected_slot_id == "slot_b504"
 
 
@@ -160,7 +160,7 @@ def test_ordinal_beyond_the_page_is_not_guessed() -> None:
 
 def test_refusing_the_read_back_offers_the_remaining_slot_not_the_refused_one() -> None:
     clinic, bot, _ = _call("c_other", "Tôi muốn đổi sang ngày 15 tháng 10")
-    _say(bot, "c_other", "khung 1")
+    _say(bot, "c_other", "khung 1 được không")
 
     action = _say(bot, "c_other", "không, khung khác")
     ctx = _context(bot, "c_other")
@@ -171,7 +171,7 @@ def test_refusing_the_read_back_offers_the_remaining_slot_not_the_refused_one() 
 def test_repeated_refusals_end_instead_of_looping() -> None:
     """V-9: trước đây đọc lại cả danh sách, gồm khung vừa từ chối, và lặp mãi."""
     clinic, bot, _ = _call("c_loop", "Tôi muốn đổi sang ngày 15 tháng 10")
-    _say(bot, "c_loop", "khung 1", "không, tôi muốn đổi khung khác")
+    _say(bot, "c_loop", "khung 1 được không", "không, tôi muốn đổi khung khác")
     assert _context(bot, "c_loop").selected_slot_id == "slot_b502"
 
     action = _say(bot, "c_loop", "không, tôi muốn đổi khung khác")
@@ -191,7 +191,7 @@ def test_a_new_day_at_the_read_back_starts_a_new_request() -> None:
 
 def test_changing_to_another_read_slot_needs_a_new_confirmation() -> None:
     clinic, bot, _ = _call("c_switch", "Tôi muốn đổi sang ngày 15 tháng 10")
-    _say(bot, "c_switch", "khung 1")
+    _say(bot, "c_switch", "khung 1 được không")
 
     _say(bot, "c_switch", "thôi lấy khung 2")
     ctx = _context(bot, "c_switch")
@@ -342,8 +342,9 @@ def test_never_offers_more_than_two_slots_or_a_slot_outside_get_slots() -> None:
 
 
 def _at_read_back(call_id: str):
+    # "khung 2" là chọn rõ nên ghi ngay (R-29 v2.1); hỏi lại "khung 2 được không" để tới câu chốt
     clinic, bot, _ = _call(call_id, "Tôi muốn đổi sang ngày 15 tháng 10")
-    _say(bot, call_id, "khung 2")
+    _say(bot, call_id, "khung 2 được không")
     return clinic, bot
 
 
@@ -534,10 +535,11 @@ def test_week_after_next_reads_that_week() -> None:
 
 
 def test_nearest_and_latter_pick_from_the_page() -> None:
-    _, bot, _ = _call("c_near", "Tôi muốn đổi lịch")
+    """ "cái sau" là khung 2 của trang; chọn rõ như "cái đầu tiên" nên ghi ngay (R-29 v2.1)."""
+    clinic, bot, _ = _call("c_near", "Tôi muốn đổi lịch")
     action = _say(bot, "c_near", "lấy cái sau đi")
-    assert action.state == "AWAITING_CONFIRMATION"
-    assert _context(bot, "c_near").selected_slot_id == "slot_b501"
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_b501"})]
 
 
 def test_busy_at_the_offer_asks_other_slots_or_keep() -> None:
@@ -549,7 +551,7 @@ def test_busy_at_the_offer_asks_other_slots_or_keep() -> None:
 
 def test_busy_at_the_read_back_drops_that_slot_without_writing() -> None:
     clinic, bot, _ = _call("c_busy_rb", "Tôi muốn đổi sang ngày 15 tháng 10")
-    _say(bot, "c_busy_rb", "khung 1")
+    _say(bot, "c_busy_rb", "khung 1 được không")
     action = _say(bot, "c_busy_rb", "dạ hôm đó tôi bận mất rồi")
 
     ctx = _context(bot, "c_busy_rb")
@@ -560,7 +562,7 @@ def test_busy_at_the_read_back_drops_that_slot_without_writing() -> None:
 def test_asking_back_at_the_read_back_does_not_switch_slot() -> None:
     """ "sao lại là thứ Sáu" ở câu chốt thứ Tư: hỏi lại câu có/không, không đổi sang khung thứ Sáu."""
     clinic, bot, _ = _call("c_askback", "Tôi muốn đổi lịch")
-    _say(bot, "c_askback", "khung 1")  # 3 giờ chiều thứ Tư 14/10
+    _say(bot, "c_askback", "khung 1 được không")  # 3 giờ chiều thứ Tư 14/10
     action = _say(bot, "c_askback", "sao lại là thứ Sáu")
 
     assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
@@ -585,7 +587,7 @@ def test_eval_readback_answers(answer: str) -> None:
 def test_cannot_go_at_that_time_refuses_the_slot_instead_of_cancelling() -> None:
     """R066: "không đi được giờ này" ở câu chốt không chuyển sang hủy lịch."""
     clinic, bot, _ = _call("c_eval_nogo", "Tôi muốn đổi lịch")
-    _say(bot, "c_eval_nogo", "khung 1")
+    _say(bot, "c_eval_nogo", "khung 1 được không")
     _say(bot, "c_eval_nogo", "tôi không đi được giờ này")
     ctx = _context(bot, "c_eval_nogo")
     assert ctx.pending_action == "RESCHEDULE" and clinic.writes == []
@@ -722,7 +724,7 @@ def test_a_day_off_the_page_is_a_new_request_everywhere(setup: str) -> None:
         rounds = 1
     else:
         _, bot, _ = _call("c_round_off", "Tôi muốn đổi lịch")
-        _say(bot, "c_round_off", "khung 1", "không")
+        _say(bot, "c_round_off", "khung 1 được không", "không")
         rounds = 0
     _say(bot, "c_round_off", "8 giờ sáng ngày 20")
     ctx = _context(bot, "c_round_off")
@@ -751,7 +753,7 @@ def test_refused_slot_is_not_read_again_for_a_new_request() -> None:
 
 def test_refused_slot_is_not_picked_at_the_refuse_choice() -> None:
     _, bot, _ = _call("c_v9_ab", "Tôi muốn đổi lịch")
-    _say(bot, "c_v9_ab", "khung 1", "không")  # không nhận 3 giờ chiều 14/10
+    _say(bot, "c_v9_ab", "khung 1 được không", "không")  # không nhận 3 giờ chiều 14/10
     action = _say(bot, "c_v9_ab", "3 giờ chiều ngày 14")
     assert action.utterance.startswith(t.SLOT_NO_MATCH)
     assert "slot_91d2" not in _context(bot, "c_v9_ab").presented_slot_ids
@@ -780,8 +782,13 @@ def test_taken_slot_in_the_last_round_says_it_was_taken_before_transferring() ->
 @pytest.mark.parametrize(
     ("request_text", "pick", "taken", "first_day"),
     [
-        ("Tôi muốn đổi sang 9 giờ ngày 20 tháng 10", "khung 1", "slot_b507", "20 tháng 10"),
-        ("Tôi muốn đổi sang ngày 17 tháng 10", "khung 2", "slot_b506", "19 tháng 10"),
+        (
+            "Tôi muốn đổi sang 9 giờ ngày 20 tháng 10",
+            "khung 1 được không",
+            "slot_b507",
+            "20 tháng 10",
+        ),
+        ("Tôi muốn đổi sang ngày 17 tháng 10", "khung 2 được không", "slot_b506", "19 tháng 10"),
     ],
 )
 def test_taken_slot_searches_again_from_the_requested_day(

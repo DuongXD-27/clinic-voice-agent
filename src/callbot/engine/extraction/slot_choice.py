@@ -287,15 +287,105 @@ _NOT_IMPERATIVE_HEAD = frozenset(
 )  # fmt: skip
 
 
+# Từ được phép còn lại trong câu xin giờ, sau khi bỏ cụm thời gian (`strip_slot_phrases`): lời xin, khung
+# hỏi chỗ "có / còn … không", động từ dời, mức "sớm / muộn hơn", tiểu từ và xưng hô. Còn từ nào khác ("hỏi",
+# "nhịn ăn", "mang theo", "gọi lại") thì câu nói việc khác, không phải xin giờ (§1.1.5: không đoán). Thêm một
+# từ ở đây là nới cửa vào luồng đổi lịch: mỗi từ mới cần một câu âm tính trong test.
+_TIME_REQUEST_WORDS = [
+    # lời xin
+    "được", "không", "chứ", "cho", "xin", "lấy", "muốn", "rảnh", "tiện", "đi", "đến", "khám", "thử",
+    "giúp", "hộ", "cũng", "thì", "vậy", "thế",
+    # hỏi chỗ
+    "có", "còn", "nào", "khung", "chỗ", "trống", "lịch",
+    # dời lịch
+    "đổi", "dời", "chuyển", "lùi", "hoãn", "sang", "qua", "để",
+    # mốc giờ
+    "khoảng", "tầm", "sớm", "muộn", "trễ", "hơn", "chút", "một",
+    # tiểu từ, xưng hô
+    "ạ", "nhé", "nha", "nhá", "luôn", "đó", "ơi", "tôi", "em", "anh", "chị", "mình", "tớ", "cháu", "con",
+    "bác", "cô", "chú", "ông", "bà", "chúng",
+]  # fmt: skip
+_TIME_REQUEST_ALLOWED = frozenset(clean(w) for w in _TIME_REQUEST_WORDS) | frozenset(
+    strip_diacritics(clean(w)) for w in _TIME_REQUEST_WORDS
+)
+
+
 def requests_time(transcript: str) -> bool:
-    """Câu xin một thời điểm (để đổi lịch), không phải hỏi lại / thắc mắc về giờ."""
-    text = clean(transcript)
+    """Câu xin một thời điểm (để đổi lịch), không phải hỏi lại / thắc mắc về giờ.
+
+    Cần lời xin, và CẢ CÂU chỉ gồm cụm thời gian, lời xin và từ đệm (danh sách cho phép): "ngày mai tôi có
+    phải nhịn ăn không" có "có … không" nhưng còn "phải nhịn ăn" -> không phải xin giờ.
+    """
+    text = _prepare(transcript)
     if find_phrase(text, _TIME_DOUBT) is not None:
         return False
-    if find_phrase(text, _TIME_REQUEST) is not None or _AVAILABILITY.search(text) is not None:
-        return True
     tail = _IMPERATIVE_TAIL.search(text)
-    return tail is not None and tail.group(1) not in _NOT_IMPERATIVE_HEAD
+    asked = (
+        find_phrase(text, _TIME_REQUEST) is not None
+        or _AVAILABILITY.search(text) is not None
+        or (tail is not None and tail.group(1) not in _NOT_IMPERATIVE_HEAD)
+    )
+    return asked and all(w in _TIME_REQUEST_ALLOWED for w in strip_slot_phrases(text).split())
+
+
+# Cụm thời gian / thứ tự khung trong câu chọn khung (PRD R-23 v2.1): nhắc lại giờ, ngày hay thứ tự khung là
+# khẳng định rõ ("Đúng rồi, 15 giờ", "vâng, ba giờ chiều được", "khung hai"). Chỉ bỏ một CỤM thời gian (có
+# từ neo hoặc chữ số); khung nhắc tới có đúng là khung đang chốt hay không do Dialogue đối chiếu.
+_TIME_NUMBER_WORDS = frozenset(
+    clean(w)
+    for w in [
+        "một", "hai", "ba", "bốn", "tư", "năm", "sáu", "bảy", "tám", "chín", "mười", "mươi",
+        "mốt", "lăm", "nhăm", "linh", "lẻ",
+    ]
+)  # fmt: skip
+_TIME_ANCHORS = frozenset(
+    clean(w)
+    for w in [
+        "giờ", "h", "rưỡi", "phút", "kém", "sáng", "trưa", "chiều", "tối", "thứ", "chủ", "nhật",
+        "ngày", "tháng", "hôm", "mai", "buổi", "đầu", "tiên", "nhất", "cuối", "tuần",
+    ]
+)  # fmt: skip
+_TIME_LINKS = frozenset(clean(w) for w in ["lúc", "vào", "cái", "số", "này", "nay", "tới", "sau"])
+_ORDINAL_PHRASES = (_ORDINAL, _HOUR_ORDINAL, _FIRST, _LAST)
+
+
+def strip_slot_phrases(text: str) -> str:
+    """Bỏ các cụm thứ tự khung và cụm thời gian khỏi câu đã `clean` (chỉ nhận từ có dấu).
+
+    Cụm thứ tự lấy đúng các mẫu `extract_slot_choice` nhận ("khung hai", "cái số một", "cái đầu tiên"), để
+    mọi cách gọi khung mà IE hiểu được đều được bỏ như nhau.
+    """
+    for pattern in _ORDINAL_PHRASES:
+        text = " ".join(pattern.sub(" ", text).split())
+    words = text.split()
+    kept: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        has_anchor = any(w in _TIME_ANCHORS or w.isdigit() or _is_clock(w) for w in run)
+        if not has_anchor:
+            kept.extend(run)
+        run.clear()
+
+    for word in words:
+        if (
+            word in _TIME_ANCHORS
+            or word in _TIME_NUMBER_WORDS
+            or word in _TIME_LINKS
+            or word.isdigit()
+            or _is_clock(word)
+        ):
+            run.append(word)
+        else:
+            flush()
+            kept.append(word)
+    flush()
+    return " ".join(kept)
+
+
+def _is_clock(word: str) -> bool:
+    """ "15h", "15h30", "9g" sau khi bỏ dấu câu ("15:30" đã tách thành hai số)."""
+    return re.fullmatch(r"\d{1,2}(?:h|g)(?:\d{2})?", word) is not None
 
 
 def asks_back(transcript: str) -> bool:

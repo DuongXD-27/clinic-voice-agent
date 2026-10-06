@@ -150,3 +150,11 @@ R149,holdout,book,inbound,SLOT_READBACK,2,dạ,REREAD_YESNO,no,BOOK: dạ không
 R150,holdout,book,inbound,OFFER_SLOTS,2,thôi không đặt nữa,KEEP_OLD,no,BOOK: bỏ đặt lịch
 R151,holdout,book,inbound,SLOT_READBACK,2,vâng,WRITE,no,BOOK theo D-2; cần PM chốt §1.1.10 có nhận vâng không
 R152,holdout,book,inbound,SLOT_READBACK,2,"không, khung khác",MORE,no,BOOK
+R153,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"vâng, 9 giờ sáng ngày 20",NEW_TIME:20/10,no,Review ý 1: đồng ý kèm giờ khung khác không ghi khung đang chốt
+R154,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"ừ, ngày 20",NEW_TIME:20/10,no,Review ý 1
+R155,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"được, 8 giờ sáng ngày 20",NEW_TIME:20/10,no,Review ý 1: khớp khung chưa đọc
+R156,prompt,review_previous_page,outbound,OFFER_SLOTS,2-trang2,3 giờ chiều ngày 14,PICK_SLOT,no,Review ý 2: khung trang trước qua câu chốt, không SYSTEM_ERROR
+R157,prompt,review_previous_page,outbound,OFFER_SLOTS,2-trang2,9 giờ sáng thứ Sáu,PICK:2,no,Review ý 2: khung trang vừa đọc ghi ngay
+R158,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"3 giờ chiều thì thôi, lấy khung 2",PICK:2,no,Review ý 5: vế sau lời bỏ là câu trả lời
+R159,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"vậy thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review ý 5
+R160,prompt,review_ordinal,outbound,OFFER_SLOTS,2,lấy khung hai,PICK:2,no,Review ý 6: khung + số đọc bằng chữ

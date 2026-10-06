@@ -3,9 +3,9 @@
 from typing import Optional
 
 from callbot.engine.extraction.agreement import confirmation_veto, without_fallback_lead
-from callbot.engine.extraction.schema import Agreement, Intent, QuestionId
+from callbot.engine.extraction.schema import Agreement, Intent
 from callbot.engine.session.context import CallContext, PendingAction
-from callbot.engine.session.fsm import confirmation_questions
+from callbot.engine.session.fsm import confirmation_questions, question_offers_slot
 
 
 class SevereFailureBlocked(Exception):
@@ -46,18 +46,6 @@ def assert_no_clinical_advice(utterance: str) -> None:
         raise SevereFailureBlocked("SF-04", "Câu trả lời có dấu hiệu tư vấn lâm sàng")
 
 
-def _question_covers_slot(
-    ctx: CallContext,
-    question_id: QuestionId,
-    question_slot: Optional[str],
-    slot_id: Optional[str],
-) -> bool:
-    """Câu chốt khung hỏi đúng một khung; câu mời khung (R-29 v2.1) phải vừa đọc khung đó."""
-    if question_id is QuestionId.OFFER_SLOTS:
-        return slot_id is not None and slot_id in ctx.presented_slot_ids
-    return question_slot == slot_id
-
-
 def assert_action_confirmed(
     ctx: CallContext, action: PendingAction, slot_id: Optional[str] = None
 ) -> None:
@@ -81,7 +69,7 @@ def assert_action_confirmed(
         # trả lời câu nhắc đó, không phải câu hỏi xác nhận của vài lượt trước (T-08)
         and question.turn == item.turn - 1
         and question.action == action
-        and _question_covers_slot(ctx, question.question_id, question.slot_id, slot_id)
+        and question_offers_slot(ctx, question, slot_id)
     ]
     code = "SF-05" if action == "CANCEL" else "CONFIRMATION"
     if ctx.business_write_blocked:

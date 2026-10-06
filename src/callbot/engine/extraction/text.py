@@ -60,6 +60,49 @@ def clean(text: str) -> str:
     return strip_punctuation(normalize(text))
 
 
+def drop_leading_words(transcript: str, count: int) -> str:
+    """Bỏ `count` từ đầu câu (đếm như `clean`) khỏi bản `normalize`, giữ dấu câu của phần còn lại.
+
+    Cụm tìm trên bản `clean` nhưng phần còn lại phải giữ "20/10", "15:30": `clean` tách chúng thành hai
+    số. Một từ dính dấu câu nằm vắt qua ranh giới ("thôi,khung") được giữ lại.
+    """
+    words = normalize(transcript).split()
+    while words and count > 0:
+        size = len(strip_punctuation(words[0]).split())
+        if size > count:
+            break
+        words.pop(0)
+        count -= size
+    return " ".join(words)
+
+
+def remove_words(transcript: str, spans: Iterable[Optional[str]]) -> str:
+    """Bỏ các đoạn (dạng `clean`) khỏi bản `normalize`, giữ dấu câu của phần còn lại; căn theo từ.
+
+    Mỗi đoạn bỏ lần khớp đầu tiên. Một từ dính dấu câu ("14/3/78,") chỉ bị bỏ khi mọi từ `clean` của nó
+    ("14 3 78") nằm trong đoạn, để không mất "20/10" nằm sát vùng bị bỏ.
+    """
+    tokens = normalize(transcript).split()
+    flat = [
+        (word, i) for i, token in enumerate(tokens) for word in strip_punctuation(token).split()
+    ]
+    words = [word for word, _ in flat]
+    dropped: set[int] = set()
+    for span in spans:
+        target = span.split() if span else []
+        if not target:
+            continue
+        for start in range(len(words) - len(target) + 1):
+            if words[start : start + len(target)] != target:
+                continue
+            inside = range(start, start + len(target))
+            for _, token in (flat[k] for k in inside):
+                if all(k in inside for k, (_, owner) in enumerate(flat) if owner == token):
+                    dropped.add(token)
+            break
+    return " ".join(token for i, token in enumerate(tokens) if i not in dropped)
+
+
 def strip_diacritics(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text.replace("đ", "d").replace("Đ", "D"))
     return unicodedata.normalize(

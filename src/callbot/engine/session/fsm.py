@@ -7,7 +7,7 @@ nằm ở bản ghi lượt trong session store, không thêm vào enum HTTP.
 from typing import Optional
 
 from callbot.engine.extraction.schema import CONFIRMATION_QUESTIONS, QuestionId
-from callbot.engine.session.context import CallContext, PendingAction
+from callbot.engine.session.context import CallContext, PendingAction, Question
 from callbot.engine.types import CallState
 
 TRANSITIONS: dict[CallState, set[CallState]] = {
@@ -66,6 +66,17 @@ def confirmation_questions(action: PendingAction) -> frozenset[QuestionId]:
     direct = DIRECT_PICK_QUESTION_FOR.get(action)
     base = CONFIRMATION_QUESTION_FOR[action]
     return frozenset({base, direct}) if direct is not None else frozenset({base})
+
+
+def question_offers_slot(ctx: CallContext, question: Question, slot_id: Optional[str]) -> bool:
+    """Câu hỏi `question` có mời đúng khung `slot_id` không — guardrail và Dialogue dùng chung.
+
+    Câu chốt khung hỏi đúng một khung. Câu mời khung (R-29 v2.1: "giờ bot vừa mời") chỉ mời các khung
+    của trang vừa đọc; khung của trang trước phải qua câu chốt.
+    """
+    if question.question_id is QuestionId.OFFER_SLOTS:
+        return slot_id is not None and slot_id in ctx.presented_slot_ids
+    return question.slot_id == slot_id
 
 
 # Outbound gộp tóm tắt lịch + đọc lại + hỏi đến được không vào một lượt (Figure 0 rev 1.1),

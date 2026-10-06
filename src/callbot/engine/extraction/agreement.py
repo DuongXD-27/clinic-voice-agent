@@ -48,10 +48,13 @@ from typing import Optional
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason, reason_matches
 from callbot.engine.extraction.schema import Agreement, Field, Provenance, QuestionId
+from callbot.engine.extraction.slot_choice import strip_slot_phrases
 from callbot.engine.extraction.text import (
     PhraseSet,
     clean,
     compile_phrases,
+    drop_leading_words,
+    find_last_phrase,
     find_phrase,
     is_unaccented,
     normalize,
@@ -59,7 +62,6 @@ from callbot.engine.extraction.text import (
     remove_phrases,
     remove_spans,
     strip_diacritics,
-    strip_punctuation,
 )
 
 _AGREE_IDIOMS = compile_phrases(
@@ -720,12 +722,17 @@ def without_fallback_lead(transcript: str) -> str:
     lead = _FALLBACK_LEAD.match(clean(transcript))
     if lead is None:
         return transcript
-    skip = len(lead.group(0).split())
-    words = normalize(transcript).split()
-    while words and skip:
-        if strip_punctuation(words.pop(0)).strip():
-            skip -= 1
-    return " ".join(words)
+    return drop_leading_words(transcript, len(lead.group(0).split()))
+
+
+def slot_answer(transcript: str) -> str:
+    """Phần câu trả lời lời mời / câu chốt khung mà IE và Dialogue cùng đọc tiêu chí thời gian.
+
+    - Lời bỏ có vế sau: lấy vế sau ("3 giờ chiều thì thôi, lấy khung 2" -> "lấy khung 2", R-44: giá trị nói
+      sau cùng). Lời bỏ ở cuối câu thì giữ nguyên câu (`answer_after_give_up` trả None).
+    - Bỏ vế điều kiện ở đầu ("không có 5 giờ thì 3 giờ cũng được" -> "3 giờ cũng được").
+    """
+    return without_fallback_lead(answer_after_give_up(transcript) or transcript)
 
 
 def explicit_slot_pick(transcript: str) -> bool:
@@ -748,10 +755,12 @@ def explicit_slot_pick(transcript: str) -> bool:
         return True
     if cause not in (UnclearCause.NO_SIGNAL, UnclearCause.BELOW_THRESHOLD):
         return False
-    unaccented = is_unaccented(text)
-    if unaccented:
+    # Xét "không dấu" trên phần còn lại: "khung 1" không có chữ mang dấu nhưng không mơ hồ; "lay khung 1"
+    # thì "lay" có thể là "lấy" hay "lây" -> không coi là chọn rõ
+    rest = strip_slot_phrases(text)
+    if is_unaccented(rest):
         return False
-    return not _leaves_content(text, QuestionId.SLOT_READBACK, None, unaccented)
+    return not _leaves_content(rest, QuestionId.SLOT_READBACK, None, False)
 
 
 def mentions_busy(transcript: str) -> bool:
@@ -791,11 +800,29 @@ _DROP_CHANGE = compile_phrases(
         "không đặt nữa",
     ]
 )
+# Còn đứng sau cụm bỏ ở cuối câu mà không thành vế mới: "thì thôi thôi", "thôi khỏi đi"
+_DROP_TAIL = frozenset({"thôi", "thoi", "khỏi", "khoi"})
 
 
 def gives_up_if_unavailable(transcript: str) -> bool:
-    """Lời bỏ việc đổi / đặt lịch còn đứng vững khi câu có nhắc giờ (không tính "thôi" trần)."""
+    """Lời bỏ việc đổi / đặt lịch còn đứng vững khi câu có nhắc giờ (không tính "thôi" trần).
+
+    Chỉ là có cụm bỏ; vế sau cụm bỏ có nêu khung / giờ khác không thì Dialogue xét qua `slot_answer`.
+    """
     return find_phrase(clean(transcript), _DROP_CHANGE) is not None
+
+
+def answer_after_give_up(transcript: str) -> Optional[str]:
+    """Vế sau cụm bỏ cuối cùng, khi vế đó còn nội dung: "3 giờ chiều thì thôi, lấy khung 2" -> "lấy khung
+    2". Cụm bỏ ở cuối câu ("Không có 5 giờ thì thôi", "thế thì thôi vậy em") -> None. Giữ dấu câu."""
+    text = clean(transcript)
+    last = find_last_phrase(text, _DROP_CHANGE)
+    if last is None:
+        return None
+    filler = _FILLER_UNACCENTED if is_unaccented(text) else _FILLER
+    if all(word in filler or word in _DROP_TAIL for word in text[last.end() :].split()):
+        return None
+    return drop_leading_words(transcript, len(text[: last.end()].split()))
 
 
 def gives_up_slot_change(transcript: str) -> bool:
@@ -806,59 +833,6 @@ def gives_up_slot_change(transcript: str) -> bool:
 def mentions_keeping(transcript: str) -> bool:
     """Câu có cụm "không hủy / không (cần) đổi": từ chối THAY lịch, không phải từ chối đến khám."""
     return find_phrase(clean(transcript), _NOT_CANCEL) is not None
-
-
-# PRD R-23 (v2.1): nhắc lại giờ / ngày / thứ tự của khung là khẳng định rõ ("Đúng rồi, 15 giờ",
-# "vâng, ba giờ chiều được", "cái đầu tiên"). Chỉ bỏ một CỤM thời gian (có từ neo hoặc chữ số); khung
-# nhắc tới có đúng là khung đang chốt hay không do Dialogue đối chiếu với slot (`SlotChoice`).
-_TIME_NUMBER_WORDS = frozenset(
-    clean(w)
-    for w in [
-        "một", "hai", "ba", "bốn", "tư", "năm", "sáu", "bảy", "tám", "chín", "mười", "mươi",
-        "mốt", "lăm", "nhăm", "linh", "lẻ",
-    ]
-)  # fmt: skip
-_TIME_ANCHORS = frozenset(
-    clean(w)
-    for w in [
-        "giờ", "h", "rưỡi", "phút", "kém", "sáng", "trưa", "chiều", "tối", "thứ", "chủ", "nhật",
-        "ngày", "tháng", "hôm", "mai", "buổi", "đầu", "tiên", "nhất", "cuối", "tuần",
-    ]
-)  # fmt: skip
-_TIME_LINKS = frozenset(clean(w) for w in ["lúc", "vào", "cái", "số", "này", "nay", "tới", "sau"])
-
-
-def _strip_slot_time(text: str) -> str:
-    """Bỏ các cụm thời gian / thứ tự khung khỏi câu đã `clean` (chỉ bản có dấu)."""
-    words = text.split()
-    kept: list[str] = []
-    run: list[str] = []
-
-    def flush() -> None:
-        has_anchor = any(w in _TIME_ANCHORS or w.isdigit() or _is_clock(w) for w in run)
-        if not has_anchor:
-            kept.extend(run)
-        run.clear()
-
-    for word in words:
-        if (
-            word in _TIME_ANCHORS
-            or word in _TIME_NUMBER_WORDS
-            or word in _TIME_LINKS
-            or word.isdigit()
-            or _is_clock(word)
-        ):
-            run.append(word)
-        else:
-            flush()
-            kept.append(word)
-    flush()
-    return " ".join(kept)
-
-
-def _is_clock(word: str) -> bool:
-    """ "15h", "15h30", "9g" sau khi bỏ dấu câu ("15:30" đã tách thành hai số)."""
-    return re.fullmatch(r"\d{1,2}(?:h|g)(?:\d{2})?", word) is not None
 
 
 def _leaves_content(
@@ -887,7 +861,7 @@ def _leaves_content(
         return False
     rest = phrase_pattern(stated).sub(" ", text) if stated else text
     if question_id is QuestionId.SLOT_READBACK and not unaccented:
-        rest = _strip_slot_time(rest)
+        rest = strip_slot_phrases(rest)
     for phrases in sets:
         rest = remove_phrases(rest, phrases, unaccented)
     filler = _FILLER_UNACCENTED if unaccented else _FILLER

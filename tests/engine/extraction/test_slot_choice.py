@@ -14,6 +14,7 @@ from callbot.engine.extraction.slot_choice import (
     requested_slot_count,
     requests_time,
     resolve_request,
+    strip_slot_phrases,
 )
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)  # thứ hai
@@ -330,3 +331,35 @@ def test_anchored_relative_keeps_only_slots_on_that_side() -> None:
 def test_bare_earlier_at_a_slot_question_asks_for_other_slots() -> None:
     """T-10 R033: "sớm hơn" trần ở câu chọn khung là xin khung khác, không phải yêu cầu mới."""
     assert extract_slot_choice("có giờ nào sớm hơn không", SLOTS, [], NOW).value.kind == "MORE"
+
+
+# --- Review PR 06/10 (evidence §10): lời xin giờ phải giải thích hết câu ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Sáng mai khoảng 9 giờ có được không?", True),
+        ("Cho tôi 9h ngày 20/10", True),
+        ("Còn chỗ sáng ngày 21 không em", True),
+        ("ngày mai tôi có phải nhịn ăn không", False),
+        ("thứ Sáu tôi có cần mang thẻ bảo hiểm không", False),
+        ("tôi muốn hỏi ngày mai phòng khám mở cửa lúc mấy giờ", False),
+        ("9 giờ hả em?", False),
+    ],
+)
+def test_requests_time_needs_the_whole_sentence_to_be_a_request(text: str, expected: bool) -> None:
+    assert requests_time(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "rest"),
+    [
+        ("vâng khung hai", "vâng"),
+        ("lấy cái số một đi", "lấy đi"),
+        ("đúng rồi 3 giờ chiều ngày 14", "đúng rồi"),
+        ("khung khác", "khung khác"),
+    ],
+)
+def test_strip_slot_phrases_removes_ordinals_and_times(text: str, rest: str) -> None:
+    assert strip_slot_phrases(text) == rest
