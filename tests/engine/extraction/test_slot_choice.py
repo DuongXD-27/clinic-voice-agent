@@ -257,3 +257,34 @@ def test_bare_weekday_still_matches_listed_slots_when_choosing() -> None:
     """R-30 chỉ quy đổi thứ trần cho yêu cầu mới; chọn trong danh sách vẫn khớp thứ đó."""
     criteria = parse_slot_criteria("thứ hai", TUESDAY)
     assert criteria.weekday == 0 and criteria.date_issue is None and criteria.date_from is None
+
+
+# --- Tự sửa, loại trừ, khoảng giờ: không chọn theo lần khớp đầu tiên của cả câu -------------------
+
+_THREE = [
+    {"slot_id": "s1000", "starts_at": "2026-10-14T10:00:00+07:00"},
+    {"slot_id": "s1430", "starts_at": "2026-10-14T14:30:00+07:00"},
+    {"slot_id": "s1030", "starts_at": "2026-10-14T10:30:00+07:00"},
+]
+
+
+@pytest.mark.parametrize(
+    "text, kind, ids",
+    [
+        ("không phải khung 1 mà là khung 2", "MATCH", ("s1430",)),
+        ("khung 2 chứ không phải khung 1", "MATCH", ("s1430",)),
+        ("khung nào cũng được trừ khung 1", "MATCH", ("s1430",)),
+        ("sau 10 giờ 30", "MATCH", ("s1430",)),
+        ("từ 10 giờ 30", "AMBIGUOUS", ("s1430", "s1030")),
+        ("trước 10 giờ 30", "MATCH", ("s1000",)),
+        ("từ 2 giờ chiều trở đi", "MATCH", ("s1430",)),
+        ("10 giờ, không phải lo", "MATCH", ("s1000",)),  # phần sau "không phải" không là khung
+        ("10 giờ 30", "MATCH", ("s1030",)),
+        # phần bị loại chỉ đến hết mệnh đề; phần sau là điều người gọi muốn
+        ("trừ khung 1, 10 giờ 30", "MATCH", ("s1030",)),
+    ],
+)
+def test_corrections_exclusions_and_ranges(text: str, kind: str, ids: tuple[str, ...]) -> None:
+    now = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)
+    result = extract_slot_choice(text, _THREE, ["s1000", "s1430"], now)
+    assert (result.value.kind, result.value.slot_ids) == (kind, ids)

@@ -26,8 +26,10 @@ from dataclasses import replace
 from typing import Optional
 
 from callbot.engine.extraction.agreement import (
+    asks_or_hesitates,
     confirmation_veto,
     conflicting_confirmation,
+    corrected_tail,
     extract_agreement,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
@@ -79,7 +81,12 @@ from callbot.engine.extraction.semantic_router import (
     route_semantic,
 )
 from callbot.engine.extraction.slot_choice import extract_slot_choice
-from callbot.engine.extraction.text import clean
+from callbot.engine.extraction.text import (
+    clean,
+    is_unaccented,
+    normalize,
+    strip_diacritics,
+)
 from callbot.engine.types import CancelReason
 from callbot.tracing import trace_event
 
@@ -112,6 +119,7 @@ _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_RE
 
 # Intent không mâu thuẫn với câu hỏi xác nhận. Intent khác (vd. RESCHEDULE khi đang xác nhận hủy)
 # hạ AGREE xuống UNCLEAR: người gọi đang nói việc khác, không phải đồng ý hành động đang chờ.
+_BUSINESS_INTENTS = frozenset({Intent.CANCEL, Intent.RESCHEDULE, Intent.BOOK, Intent.CONFIRM})
 _CONSISTENT_INTENTS: dict[QuestionId, frozenset[Intent]] = {
     QuestionId.ASK_ATTENDANCE: frozenset({Intent.NONE, Intent.CONFIRM}),
     QuestionId.CONFIRM_READBACK: frozenset({Intent.NONE, Intent.CONFIRM}),
@@ -323,8 +331,12 @@ class InformationExtractor:
             # ngày (dù không dùng được) thì họ có cung cấp được — không phải CANNOT_PROVIDE.
             and (dob_reading is None or not dob_reading.zone)
         ):
+            # "tôi tên Hủy": "hủy" ngoài cụm yêu cầu rõ ràng không phải nhu cầu hủy
             fallback_intent = extract_intent(
-                transcript, ctx.direction, _IDENTITY_FALLBACK_INTENTS, business_step=False
+                _mask_unclear_huy(clean(transcript)),
+                ctx.direction,
+                _IDENTITY_FALLBACK_INTENTS,
+                business_step=False,
             )
             if fallback_intent.found:
                 intent = fallback_intent
@@ -364,7 +376,9 @@ class InformationExtractor:
         name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
         deferred_intent, deferred_reason = skipped, skipped
         if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
-            deferred_intent, deferred_reason = _deferred_cancel(transcript, full_name)
+            deferred_intent, deferred_reason = _deferred_cancel(
+                transcript, full_name, _read_zone(dob_reading)
+            )
         result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
@@ -389,7 +403,8 @@ class InformationExtractor:
         if route_reason is None:
             return result
         if self._semantic is None or model_used():
-            if route_reason is RouteReason.CLINICAL_UNRESOLVED:
+            if route_reason in (RouteReason.CLINICAL_UNRESOLVED, RouteReason.INTENT_HEDGED):
+                # Không có model: vẫn hạ trường đang nghi ngờ như khi model lỗi
                 return merge_semantic(result, None, route_reason, ())
             return result
         merged, outcome = self._apply_semantic(ctx, result, route_reason)
@@ -424,6 +439,11 @@ class InformationExtractor:
         identity_step = ctx.question_id in IDENTITY_QUESTIONS
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
+        tail = corrected_tail(transcript) if not identity_step else None
+        if tail is not None and result.value in _BUSINESS_INTENTS:
+            # "Tôi muốn đổi lịch, à thôi hủy đi": nhu cầu là phần nói sau lời tự sửa, không phải cụm
+            # khớp trước theo thứ tự ưu tiên. Phần đó không có nhu cầu thì để tuyến sau đọc cả câu.
+            result = extract_intent(tail, ctx.direction, allowed)
         if result.found or identity_step:
             return result
         if reason is not None and clinical.value is ClinicalLevel.NONE:
@@ -541,19 +561,96 @@ class InformationExtractor:
         return result
 
 
+# Ở bước danh tính "hủy" chỉ được tính là yêu cầu khi nằm trong cụm yêu cầu rõ ràng: "muốn / cần / xin
+# / để hủy", "hủy lịch / hẹn / khám", "hủy giúp". Không đoán "Hủy" là tên bằng các từ đứng quanh nó
+# ("tôi là Hủy cho em hỏi", "Hủy luôn đây", "Trần Thị Hủy, sinh ..."): chữ "hủy" ngoài các cụm này bị
+# bỏ qua. Bỏ sót một yêu cầu hủy chỉ làm bot hỏi lại nhu cầu sau khi xác minh.
+_CLEAR_CANCEL_BEFORE = frozenset(clean(w) for w in ["muốn", "cần", "xin", "để"])
+_CLEAR_CANCEL_AFTER = frozenset(
+    clean(w) for w in ["lịch", "hẹn", "cuộc", "khám", "buổi", "giúp", "giùm", "hộ"]
+)
+_CLEAR_CANCEL_BEFORE_UNACCENTED = frozenset(strip_diacritics(w) for w in _CLEAR_CANCEL_BEFORE)
+_CLEAR_CANCEL_AFTER_UNACCENTED = frozenset(strip_diacritics(w) for w in _CLEAR_CANCEL_AFTER)
+# Từ đi kèm lời khai tên / ngày sinh. Lượt định danh còn từ nào ngoài các từ này (sau khi bỏ tên và
+# vùng ngày sinh) mà không phải yêu cầu hủy rõ ràng là người gọi nói thêm điều khác: bỏ yêu cầu hủy
+# đã giữ, thay vì cố liệt kê mọi cách đổi ý ("tôi đổi ý rồi", "thôi vẫn đi khám", "để tôi nghĩ lại").
+_IDENTITY_FILLER = frozenset(
+    clean(w)
+    for w in [
+        "alo", "alô", "dạ", "vâng", "ạ", "à", "ừ", "ờ", "ơi", "nhé", "nha", "đây", "đó", "đấy",
+        "rồi", "thì", "là", "và", "của", "tên", "họ", "sinh", "ngày", "tháng", "năm",
+        "tôi", "em", "mình", "con", "cháu", "anh", "chị", "cô", "chú", "bác", "ông", "bà",
+    ]
+)  # fmt: skip
+_IDENTITY_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _IDENTITY_FILLER)
+_CLAUSE_BREAK = re.compile(r"[,;.!?…]")
+
+
 def _deferred_cancel(
-    transcript: str, full_name: Field[str]
+    transcript: str, full_name: Field[str], dob_zone: Optional[str]
 ) -> tuple[Field[Intent], Field[CancelReason]]:
-    """Yêu cầu hủy nói cùng lượt định danh (QC qc-cn-08). Tìm trên phần ngoài tên đã trích: "Trần Văn
-    Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent rồi chỉ nhận CANCEL: "không đi được,
-    đổi sang chiều" là đổi lịch, không phải hủy."""
+    """Nhu cầu nói cùng lượt định danh (QC qc-cn-08), xét trên phần ngoài tên và vùng ngày sinh:
+    "Trần Văn Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent: "không đi được, đổi sang
+    chiều" là đổi lịch.
+
+    - CANCEL: yêu cầu hủy rõ ràng — không phải câu hỏi, không có "nhưng", không ngập ngừng.
+    - NONE có span: lượt này còn nội dung khác (đổi ý, đổi lịch, hỏi han...). Dialogue bỏ yêu cầu hủy
+      đã giữ; sau xác minh bot đọc lịch và hỏi có đến được không, tức là hỏi lại nhu cầu.
+    - skipped: chỉ có tên / ngày sinh / từ đệm, giữ nguyên những gì đã giữ.
+    """
     text = clean(transcript)
-    if full_name.found and isinstance(full_name.value, str) and full_name.value:
-        text = re.sub(rf"(?<!\w){re.escape(clean(full_name.value))}(?!\w)", " ", text)
+    for part in (dob_zone, *_spoken_names(transcript, full_name, dob_zone)):
+        if part:
+            text = re.sub(rf"(?<!\w){re.escape(clean(part))}(?!\w)", " ", text, count=1)
+    text = _mask_unclear_huy(text)
     intent = extract_intent(text, "outbound", PRIORITY)
-    if intent.value is not Intent.CANCEL:
-        return Field.skipped(), Field.skipped()
-    return intent, extract_cancel_reason(text)
+    if intent.value is Intent.CANCEL and "?" not in transcript and not asks_or_hesitates(text):
+        return intent, extract_cancel_reason(text)
+    unaccented = is_unaccented(text)
+    filler = _IDENTITY_FILLER_UNACCENTED if unaccented else _IDENTITY_FILLER
+    leftover = [w for w in text.split() if w != ";" and w not in filler and not w.isdigit()]
+    if leftover:
+        provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
+        return Field(Intent.NONE, provenance, span=" ".join(leftover)), Field.skipped()
+    return Field.skipped(), Field.skipped()
+
+
+def _spoken_names(transcript: str, full_name: Field[str], dob_zone: Optional[str]) -> list[str]:
+    """Tên trong lượt định danh: tên đã trích, cộng mệnh đề nào luật đọc ra được là tên — ASK_DOB không
+    trích tên, nhưng người gọi hay nói lại ("Trần Thị Hủy, sinh ...", "14/3/1978, tôi là Nguyễn Văn
+    A"). Chỉ bỏ đoạn đã được xác nhận là tên: "Tôi muốn hủy lịch vì bận, sinh ..." không phải tên."""
+    names = [full_name.value] if full_name.found and isinstance(full_name.value, str) else []
+    for clause in _CLAUSE_BREAK.split(normalize(transcript)):
+        text = clean(clause)
+        if dob_zone:
+            text = " ".join(re.sub(rf"(?<!\w){re.escape(dob_zone)}(?!\w)", " ", text).split())
+        reading = read_full_name(text) if text else None
+        if reading is not None and reading.field.found and isinstance(reading.field.value, str):
+            names.append(reading.field.value)
+    return [name for name in names if name]
+
+
+def _read_zone(reading: Optional[Reading]) -> Optional[str]:
+    """Vùng ngày sinh chỉ khi đọc được ngày: vùng của lần đọc hỏng có thể nuốt từ khác ("1978,
+    không hủy nữa" đọc "không" thành số 0)."""
+    return reading.zone if reading is not None and reading.reason is Reason.OK else None
+
+
+def _mask_unclear_huy(text: str) -> str:
+    """Thay "hủy" nằm ngoài cụm yêu cầu rõ ràng bằng ";" (giữ ranh giới từ)."""
+    unaccented = is_unaccented(text)
+    verb = "huy" if unaccented else clean("hủy")
+    before = _CLEAR_CANCEL_BEFORE_UNACCENTED if unaccented else _CLEAR_CANCEL_BEFORE
+    after = _CLEAR_CANCEL_AFTER_UNACCENTED if unaccented else _CLEAR_CANCEL_AFTER
+    words = text.split()
+    return " ".join(
+        ";"
+        if word == verb
+        and not (i > 0 and words[i - 1] in before)
+        and not (i + 1 < len(words) and words[i + 1] in after)
+        else word
+        for i, word in enumerate(words)
+    )
 
 
 def _contains(text: str, words: str) -> bool:

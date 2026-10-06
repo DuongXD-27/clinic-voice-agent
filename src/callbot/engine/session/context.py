@@ -126,7 +126,7 @@ class CallContext:
     silent_turns: int = 0
     # Câu "ai đấy?" ở bước danh tính đã được giới thiệu lại mà không dùng lượt hỏi lại
     # (MAX_IDENTITY_QUESTIONS)
-    neutral_greetings: int = 0
+    identity_questions: int = 0
 
     outcome: Optional[Outcome] = None
     transfer_reason: Optional[TransferReason] = None
@@ -258,7 +258,7 @@ class CallContext:
             "failed_understandings": self.failed_understandings,
             "unclear_streak": self.unclear_streak,
             "silent_turns": self.silent_turns,
-            "neutral_greetings": self.neutral_greetings,
+            "identity_questions": self.identity_questions,
             "outcome": self.outcome,
             "transfer_reason": self.transfer_reason,
             "unreachable_reason": self.unreachable_reason,
@@ -308,8 +308,8 @@ class CallContext:
             failed_understandings=data["failed_understandings"],
             unclear_streak=data["unclear_streak"],
             silent_turns=data["silent_turns"],
-            # Khóa thêm sau T-05: phiên lưu trước đó chưa có
-            neutral_greetings=data.get("neutral_greetings", 0),
+            # Khóa thêm sau T-05 với tên "neutral_greetings": phiên lưu trước đó có thể còn tên cũ
+            identity_questions=data.get("identity_questions", data.get("neutral_greetings", 0)),
             outcome=data["outcome"],
             transfer_reason=data["transfer_reason"],
             unreachable_reason=data["unreachable_reason"],

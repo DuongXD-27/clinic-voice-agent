@@ -137,6 +137,10 @@ class SlotCriteria:
     date_to: Optional[date] = None
     # Có giá trị thì không khung nào khớp; PAST / TODAY kèm ngày đó ở date_from = date_to
     date_issue: Optional[DateIssue] = None
+    # Khoảng giờ trong ngày, tính bằng phút từ 0h: "từ 10 giờ 30" -> not_before = 630 ("sau" thì
+    # 631), "trước 10 giờ 30" -> before = 630. Không phải giờ chính xác.
+    not_before: Optional[int] = None
+    before: Optional[int] = None
 
     @property
     def empty(self) -> bool:
@@ -226,9 +230,14 @@ class ExtractionResult:
     dob_identity: Optional[IdentityValue[date]] = None
     model_status: Optional[str] = None
     confirmation_conflict: bool = False
+    # Câu đọc lịch mâu thuẫn mà model đọc là nhu cầu đổi / hủy (route NEED_CONFLICT): Dialogue đi nhánh
+    # nhu cầu thay vì hỏi lại có/không.
+    need_over_conflict: bool = False
     # Outbound, bước danh tính: ý định hủy (và lý do) nói gộp với tên / ngày sinh — "tôi là Nguyễn Văn A,
     # sinh ..., gọi để hủy lịch vì đi công tác" (QC qc-cn-08). Không phải `intent`: Policy và Dialogue
     # không dùng trước khi xác minh xong; Dialogue chỉ giữ lại để hỏi xác nhận hủy sau VERIFIED.
+    # NONE có span: lượt định danh còn nội dung khác ngoài tên / ngày sinh (đổi ý, đổi lịch...): bỏ
+    # yêu cầu đã giữ.
     deferred_intent: Field[Intent] = field(default_factory=Field.skipped)
     deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
 

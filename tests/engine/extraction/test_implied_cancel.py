@@ -36,6 +36,17 @@ NOT_IMPLIED = [
     "tôi sẽ đi khám chỗ khác",
     "giờ đó tôi có lịch khám ở bệnh viện khác",
     "da toi kham cho khac",
+    # "rồi" ở đây là "sau đó", hoặc dự định đi kèm "rồi"
+    "tôi sẽ khám ở bệnh viện khác rồi báo lại",
+    "tôi định khám chỗ khác rồi",
+    "giờ đó tôi có lịch khám ở bệnh viện khác rồi",
+    # không chắc đã đi hay chưa
+    "đã khám chỗ khác hay chưa thì tôi không nhớ",
+    # đặt lịch ở nơi khác là lịch tương lai, dù có "đã"
+    "Tôi đã đặt hẹn ở bệnh viện khác",
+    "tôi đặt lịch ở bệnh viện khác rồi",
+    # chữ khác nằm giữa hai cụm lý do
+    "Tôi khỏi rồi nhưng không chắc là khỏe rồi",
     # câu hỏi, "nhưng", ngập ngừng
     "khám chỗ khác có được không em",
     "bệnh viện khác có rẻ hơn không",
@@ -154,6 +165,8 @@ def _identity_turn(text: str, question=QuestionId.ASK_NAME, direction: str = "ou
         ),
         ("tôi muốn hủy lịch", QuestionId.ASK_NAME, "UNSPECIFIED"),
         ("14/3/1978, tôi gọi để hủy lịch", QuestionId.ASK_DOB, "UNSPECIFIED"),
+        # đoạn trước ngày sinh là yêu cầu, không phải tên
+        ("Tôi muốn hủy lịch vì bận, sinh 14/3/1978", QuestionId.ASK_DOB, "PATIENT_UNAVAILABLE"),
     ],
 )
 def test_cancel_said_with_identity_is_kept_aside(text, question, reason) -> None:
@@ -163,13 +176,76 @@ def test_cancel_said_with_identity_is_kept_aside(text, question, reason) -> None
 
 
 @pytest.mark.parametrize(
-    "text, direction",
+    "text, question, direction",
     [
-        ("Tôi là Trần Văn Hủy, sinh 14/3/1978", "outbound"),  # "Hủy" thuộc tên đã trích
-        ("Nguyễn Văn A, tôi không muốn hủy đâu", "outbound"),
-        ("Nguyễn Văn A, không đi được, đổi sang chiều nhé", "outbound"),  # đổi lịch thắng hủy
-        ("Nguyễn Văn A, sinh 14/3/1978, tôi muốn hủy lịch", "inbound"),
+        ("Tôi là Trần Văn Hủy, sinh 14/3/1978", QuestionId.ASK_NAME, "outbound"),  # tên đã trích
+        # "Hủy" là tên dù không trích được tên (ASK_DOB không trích tên, hoặc trích thất bại)
+        ("Trần Thị Hủy, sinh 14/3/1978", QuestionId.ASK_DOB, "outbound"),
+        ("14/3/1978, Trần Văn Hủy đây", QuestionId.ASK_DOB, "outbound"),
+        ("tôi là Hủy, sinh 14/3/1978", QuestionId.ASK_DOB, "outbound"),
+        ("tôi tên Hủy", QuestionId.ASK_NAME, "outbound"),
+        # "hủy" ngoài cụm yêu cầu rõ ràng không phải yêu cầu hủy
+        ("14/3/1978, tôi là Hủy cho em hỏi chút", QuestionId.ASK_DOB, "outbound"),
+        ("14/3/1978 nhé, Hủy luôn đây", QuestionId.ASK_DOB, "outbound"),
+        # Hỏi về việc hủy, chưa phải yêu cầu
+        ("sinh 14/3/1978, nhưng tôi muốn hủy lịch có được không", QuestionId.ASK_DOB, "outbound"),
+        ("Nguyễn Văn A, sinh 14/3/1978, tôi muốn hủy lịch", QuestionId.ASK_NAME, "inbound"),
     ],
 )
-def test_identity_turn_without_an_outbound_cancel_request(text: str, direction: str) -> None:
-    assert _identity_turn(text, direction=direction).deferred_intent.found is False
+def test_identity_turn_without_an_outbound_cancel_request(text, question, direction) -> None:
+    assert _identity_turn(text, question, direction).deferred_intent.value is not Intent.CANCEL
+
+
+def test_name_huy_does_not_hide_a_cancel_request_in_the_same_turn() -> None:
+    assert _identity_turn("tôi là Hủy, muốn hủy lịch").deferred_intent.value is Intent.CANCEL
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Nguyễn Văn A, tôi không muốn hủy đâu",
+        "14/03/1978, không hủy nữa nhé",
+        "Nguyễn Văn A, không đi được, đổi sang chiều nhé",  # đổi lịch thắng hủy
+        "14/03/1978, thôi tôi vẫn đi khám, không hủy nữa",
+        "14/03/1978, tôi đổi ý rồi",
+        "14/03/1978, để tôi nghĩ lại đã",
+        # đoạn đứng trước ngày sinh không phải tên thì không bị bỏ
+        "Tôi đổi ý rồi, sinh 14/3/1978",
+    ],
+)
+def test_identity_turn_with_other_content_drops_the_kept_cancel(text: str) -> None:
+    """Không liệt kê cách đổi ý: còn nội dung ngoài tên / ngày sinh mà không phải yêu cầu hủy rõ
+    ràng là NONE có span, Dialogue bỏ yêu cầu hủy đã giữ."""
+    result = _identity_turn(text)
+    assert result.deferred_intent.found and result.deferred_intent.value is Intent.NONE
+    assert result.deferred_cancel_reason.found is False
+
+
+@pytest.mark.parametrize(
+    "text, question",
+    [
+        ("Nguyễn Văn A", QuestionId.ASK_NAME),
+        ("dạ tôi là Nguyễn Văn A ạ", QuestionId.ASK_NAME),
+        ("14/03/1978 nhé em", QuestionId.ASK_DOB),
+        ("Trần Thị Hủy, sinh 14/3/1978", QuestionId.ASK_DOB),
+        ("tôi là Hủy, sinh 14/3/1978", QuestionId.ASK_DOB),
+        # nhắc lại tên sau ngày sinh chỉ là bổ sung danh tính
+        ("14/3/1978, tôi là Nguyễn Văn A", QuestionId.ASK_DOB),
+        ("14/3/1978, Trần Văn Hủy đây", QuestionId.ASK_DOB),
+    ],
+)
+def test_identity_only_turn_keeps_what_was_kept(text: str, question: QuestionId) -> None:
+    assert _identity_turn(text, question).deferred_intent.found is False
+
+
+@pytest.mark.parametrize(
+    "text, intent",
+    [
+        ("Tôi muốn đổi lịch, à thôi hủy đi", Intent.CANCEL),
+        ("hủy lịch, à nhầm, đổi lịch", Intent.RESCHEDULE),
+        ("Hủy đi, à không, giữ lịch giúp tôi", Intent.CONFIRM),
+        ("đổi lịch, à thôi", Intent.NONE),  # rút lại mà chưa nói nhu cầu mới: để tuyến sau đọc
+    ],
+)
+def test_the_need_after_a_self_correction_wins(text: str, intent: Intent) -> None:
+    assert (_extract(text, QuestionId.CONFIRM_READBACK).intent.value or Intent.NONE) is intent

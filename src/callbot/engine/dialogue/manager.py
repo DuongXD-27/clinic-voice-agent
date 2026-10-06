@@ -84,6 +84,8 @@ MAX_SLOT_ROUNDS = 2
 # "Ai đấy?" ở bước danh tính là câu hỏi phải trả lời (R-26), không phải câu thiếu định danh: giới thiệu
 # lại mà không dùng lượt hỏi lại R-40. Chỉ một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
 MAX_IDENTITY_QUESTIONS = 1
+# Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
+_REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -231,6 +233,8 @@ class DialogueManager:
             and ctx.question is not None
             and ctx.question.question_id is QuestionId.CONFIRM_READBACK
             and ex.intent.value in (Intent.CANCEL, Intent.RESCHEDULE)
+            # Chỉ khi model đọc câu là nhu cầu; "hủy đi, à không, giữ lịch giúp tôi" vẫn hỏi lại
+            and ex.need_over_conflict
         )
 
     def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
@@ -299,21 +303,27 @@ class DialogueManager:
                 return self._retry_identity(ctx, question)
             text = t.ASK_NAME_AFTER_DOB if question is QuestionId.ASK_NAME else t.ASK_DOB
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))
-        if is_identity_question(ex.transcript) and ctx.neutral_greetings < MAX_IDENTITY_QUESTIONS:
-            ctx.neutral_greetings += 1
+        if is_identity_question(ex.transcript) and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
+            ctx.identity_questions += 1
             text = (
                 t.greeting_back(ctx.call.direction)
                 if question is QuestionId.ASK_NAME
                 else t.INTRODUCE_AGAIN_ASK_DOB
             )
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
-        return self._retry_identity(ctx, question)
+        # Nhu cầu không kèm định danh vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40); chỉ đổi lời
+        # hỏi lại để người gọi biết bot đã nghe nhu cầu, thay vì "em chưa nghe rõ".
+        return self._retry_identity(ctx, question, request=ex.intent.value in _REQUEST_INTENTS)
 
     @staticmethod
     def _keep_early_cancel(ctx: CallContext, ex: ExtractionResult) -> None:
         """Yêu cầu hủy nói cùng lượt danh tính (QC qc-cn-08): chỉ GIỮ lại, chưa phải hành động chờ và
-        không đổi bộ đếm R-40. `_verify` dùng nó sau khi xác minh xong. Lượt sau thay lượt trước."""
+        không đổi bộ đếm R-40. `_verify` dùng nó sau khi xác minh xong. Lượt sau thay lượt trước:
+        đổi ý ("không hủy nữa", "đổi lịch sang tuần sau", "vẫn đi khám") bỏ yêu cầu đã giữ."""
+        if not ex.deferred_intent.found:
+            return
         if ex.deferred_intent.value is not Intent.CANCEL:
+            ctx.early_cancel = ctx.early_cancel_reason = None
             return
         ctx.early_cancel = ActionEvidence(
             kind="REQUEST",
@@ -327,8 +337,10 @@ class DialogueManager:
             provenance=ex.deferred_intent.provenance.value,
             span=ex.deferred_intent.span,
         )
+        # Nhắc lại yêu cầu mà không nêu lý do ("hủy lịch giúp tôi") không xóa lý do đã nói trước đó
         reason = ex.deferred_cancel_reason
-        ctx.early_cancel_reason = reason.value if reason.found else None
+        if reason.found:
+            ctx.early_cancel_reason = reason.value
 
     @staticmethod
     def _legacy_identity(item: Field, transcript: str) -> IdentityValue:
@@ -342,14 +354,24 @@ class DialogueManager:
         return "PATIENT_NOT_FOUND" if ctx.call.direction == "inbound" else "IDENTITY_FAILED"
 
     def _retry_identity(
-        self, ctx: CallContext, question: QuestionId, *, suspicious: bool = False
+        self,
+        ctx: CallContext,
+        question: QuestionId,
+        *,
+        suspicious: bool = False,
+        request: bool = False,
     ) -> Reply:
         key = question.value
         if ctx.identity_retries.get(key, 0) >= 1:
             reason = self._identity_failure_reason(ctx) if suspicious else "NOT_UNDERSTOOD"
             return Reply(self.transfer(ctx, reason))
         ctx.identity_retries[key] = 1
-        text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
+        if request:
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
+            )
+        else:
+            text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
         return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
 
     def _verify(self, ctx: CallContext) -> Reply:

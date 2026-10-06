@@ -673,10 +673,12 @@ def test_cancel_request_before_verification_neither_discloses_nor_writes() -> No
     )
     action = _run(bot, "c_t05_early", ["Tôi muốn hủy lịch khám"])
 
-    assert action.utterance == t.ASK_NAME_AGAIN and clinic.writes == []
+    # Lời hỏi lại cho biết bot đã nghe nhu cầu; vẫn dùng lượt hỏi lại (stage 1 R-40)
+    assert action.utterance == t.ASK_NAME_FOR_REQUEST and clinic.writes == []
     assert FACTS not in action.utterance
     ctx = _context(bot, "c_t05_early")
     assert (ctx.pending_action, ctx.cancel_reason) == (None, None)
+    assert ctx.identity_retries == {"ASK_NAME": 1}
 
 
 def test_cancel_said_at_the_identity_step_is_used_only_after_verification() -> None:
@@ -1317,20 +1319,68 @@ def test_qc_w6_03_long_realistic_cancel_is_cancelled() -> None:
     assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
 
 
-@pytest.mark.parametrize("line", ["tôi phải đi làm nên không đến được", "đúng rồi, không đi được"])
-def test_cannot_attend_at_the_readback_goes_to_the_cancel_question(line: str) -> None:
-    """Kể cả khi câu mở đầu bằng "đúng rồi": nói không đến được là yêu cầu hủy, không ghi gì."""
+def test_cannot_attend_at_the_readback_goes_to_the_cancel_question() -> None:
+    """Câu kể không có tín hiệu đồng ý ở đầu: luật tự đi nhánh hủy, không gọi model."""
     bot, clinic, _ = _verified("c_cannot_attend")
-    action = _run(bot, "c_cannot_attend", [line], start=3)
+    action = _run(bot, "c_cannot_attend", ["tôi phải đi làm nên không đến được"], start=3)
     assert action.utterance == CANCEL_READBACK and clinic.writes == []
     assert _context(bot, "c_cannot_attend").pending_action == "CANCEL"
 
 
+def _verified_with(semantic, call_id: str):
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot._extractor._semantic = semantic
+    bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
+    assert _run(bot, call_id, ["Nguyễn Văn A", "14/03/1978"]).state == "AWAITING_INTENT"
+    return bot, clinic
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CANCEL, intent_span="không đi được"),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="PATIENT_UNAVAILABLE",
+            reason_span="không đi được",
+        ),
+    ],
+)
+def test_conflicting_cannot_attend_read_by_the_model_as_a_need_goes_to_cancel(outcome) -> None:
+    """ "đúng rồi, không đi được" vừa đồng ý vừa phủ định: model phân xử (route NEED_CONFLICT)."""
+    line = "đúng rồi, không đi được"
+    semantic = FakeSemantic({line: outcome})
+    bot, clinic = _verified_with(semantic, "c_need_conflict")
+    action = _run(bot, "c_need_conflict", [line], start=3)
+    assert [c.route_reason for c in semantic.seen] == ["NEED_CONFLICT"]
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
+    assert _context(bot, "c_need_conflict").pending_action == "CANCEL"
+
+
+@pytest.mark.parametrize(
+    "semantic",
+    [
+        None,  # không có model
+        BrokenSemantic(),
+        FakeSemantic({"đúng rồi, không đi được": SemanticOutcome(ReplyKind.AMBIGUOUS)}),
+    ],
+)
+def test_conflicting_cannot_attend_without_a_model_verdict_is_asked_again(semantic) -> None:
+    bot, clinic = _verified_with(semantic, "c_need_conflict_nomodel")
+    action = _run(bot, "c_need_conflict_nomodel", ["đúng rồi, không đi được"], start=3)
+    assert action.utterance == t.CONFIRM_CONFLICT and clinic.writes == []
+    assert _context(bot, "c_need_conflict_nomodel").pending_action is None
+
+
 def test_cannot_attend_and_asks_to_move_goes_to_reschedule() -> None:
-    bot, clinic, _ = _verified("c_cannot_attend_move")
-    action = _run(
-        bot, "c_cannot_attend_move", ["phải đi công tác, không đi được, dời lịch giúp tôi"], start=3
+    """ "phải" mở câu có thể là lời đáp "phải" hoặc "bắt buộc": luật thấy mâu thuẫn, model phân xử."""
+    line = "phải đi công tác, không đi được, dời lịch giúp tôi"
+    outcome = SemanticOutcome(
+        ReplyKind.CHANGE_INTENT, intent=Intent.RESCHEDULE, intent_span="dời lịch giúp tôi"
     )
+    bot, clinic = _verified_with(FakeSemantic({line: outcome}), "c_cannot_attend_move")
+    action = _run(bot, "c_cannot_attend_move", [line], start=3)
     assert action.state == "OFFERING_SLOTS" and clinic.writes == []
 
 
@@ -1409,3 +1459,177 @@ def test_early_cancel_survives_a_session_reload_between_identity_turns() -> None
     restarted = create_orchestrator(clinic, store=bot.sessions.store)
     asked = _run(restarted, "c_early_reload", ["Nguyễn Văn A, sinh 14/3/1978"], start=2)
     assert asked.utterance == CANCEL_READBACK and clinic.writes == []
+
+
+# --- Yêu cầu hủy ở lượt danh tính: đổi ý, câu hỏi, lời hỏi lại ---------------------------------
+
+
+def _outbound(call_id: str):
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
+    return bot, clinic
+
+
+def test_cancel_at_the_identity_step_without_identity_still_spends_the_retry() -> None:
+    """Stage 1 R-40: nhu cầu không kèm định danh vẫn là ABSENT; chỉ đổi lời hỏi lại."""
+    bot, clinic = _outbound("c_early_retry")
+    action = _run(bot, "c_early_retry", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
+    assert (action.state, action.utterance) == ("AWAITING_IDENTITY", t.ASK_DOB_FOR_REQUEST)
+    ctx = _context(bot, "c_early_retry")
+    assert ctx.identity_retries == {"ASK_DOB": 1} and ctx.early_cancel is not None
+
+    asked = _run(bot, "c_early_retry", ["14/03/1978"], start=3)
+    assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
+    assert clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "change_of_mind",
+    [
+        "14/03/1978, thôi tôi vẫn đi khám, không hủy nữa",
+        "14/03/1978, tôi đổi ý rồi, tôi muốn đổi lịch sang tuần sau",
+    ],
+)
+def test_taking_the_cancel_back_at_the_identity_step_drops_it(change_of_mind: str) -> None:
+    bot, clinic = _outbound("c_early_revoked")
+    _run(bot, "c_early_revoked", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
+    action = _run(bot, "c_early_revoked", [change_of_mind], start=3)
+    assert action.state == "AWAITING_INTENT" and FACTS in action.utterance
+    assert t.CANCEL_RECONFIRM not in action.utterance
+    ctx = _context(bot, "c_early_revoked")
+    assert (ctx.pending_action, ctx.early_cancel, ctx.evidence) == (None, None, [])
+    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK and clinic.writes == []
+
+
+def test_asking_whether_cancelling_is_possible_is_not_kept_as_a_request() -> None:
+    bot, clinic = _outbound("c_early_question")
+    _run(bot, "c_early_question", ["Nguyễn Văn A"])
+    action = _run(
+        bot, "c_early_question", ["sinh 14/3/1978, nhưng tôi muốn hủy lịch có được không"], start=2
+    )
+    assert action.state == "AWAITING_INTENT" and FACTS in action.utterance
+    assert _context(bot, "c_early_question").pending_action is None and clinic.writes == []
+
+
+def test_repeating_the_early_cancel_without_a_reason_keeps_the_earlier_reason() -> None:
+    bot, clinic = _outbound("c_early_reason_kept")
+    _run(bot, "c_early_reason_kept", ["Nguyễn Văn A", "tôi muốn hủy vì đi công tác"])
+    asked = _run(bot, "c_early_reason_kept", ["14/03/1978, hủy lịch giúp tôi"], start=3)
+    assert asked.utterance == CANCEL_READBACK
+    assert _context(bot, "c_early_reason_kept").cancel_reason == "PATIENT_UNAVAILABLE"
+
+    done = _run(bot, "c_early_reason_kept", ["Hủy giúp tôi"], start=4)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
+
+
+def test_only_changing_mind_at_the_identity_step_drops_the_early_cancel() -> None:
+    bot, clinic = _outbound("c_early_changed_mind")
+    _run(bot, "c_early_changed_mind", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
+    action = _run(bot, "c_early_changed_mind", ["14/03/1978, tôi đổi ý rồi"], start=3)
+    assert action.state == "AWAITING_INTENT" and FACTS in action.utterance
+    ctx = _context(bot, "c_early_changed_mind")
+    assert (ctx.pending_action, ctx.early_cancel, ctx.evidence) == (None, None, [])
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        None,
+        SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CONFIRM, intent_span="giữ lịch"),
+        # "giữ lịch" trong câu: model nói hủy cũng không được bỏ qua mâu thuẫn
+        SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CANCEL, intent_span="hủy đi"),
+    ],
+)
+def test_cancel_taken_back_in_the_same_turn_at_the_readback_is_asked_again(outcome) -> None:
+    """Câu tự sửa vẫn là mâu thuẫn thật: hỏi lại có/không như main."""
+    line = "Hủy đi, à không, giữ lịch giúp tôi"
+    semantic = FakeSemantic({line.lower(): outcome})
+    bot, clinic = _verified_with(semantic, "c_cancel_taken_back")
+    action = _run(bot, "c_cancel_taken_back", [line], start=3)
+    assert action.utterance == t.CONFIRM_CONFLICT and clinic.writes == []
+    ctx = _context(bot, "c_cancel_taken_back")
+    assert (ctx.pending_action, ctx.evidence) == (None, [])
+
+
+def test_repeating_the_name_after_the_dob_keeps_the_early_cancel() -> None:
+    bot, clinic = _outbound("c_early_name_again")
+    _run(bot, "c_early_name_again", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
+    asked = _run(bot, "c_early_name_again", ["14/03/1978, tôi là Nguyễn Văn A"], start=3)
+    assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
+    assert clinic.writes == []
+
+
+# --- GC-CAN-05: cách nói lý do mà luật không biết để model đọc, không thêm cụm vào luật ----------
+
+
+@pytest.mark.parametrize(
+    "reading",
+    [
+        # Model đọc là lý do không đến được: hỏi "đổi hay hủy", giữ lý do
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON, cancel_reason="WENT_ELSEWHERE", reason_span="viện khác rồi"
+        ),
+        # Model đọc là chuyển sang hủy: vào thẳng câu xác nhận hủy
+        SemanticOutcome(
+            ReplyKind.CHANGE_INTENT,
+            intent=Intent.CANCEL,
+            intent_span="khám ở viện khác rồi",
+            cancel_reason="WENT_ELSEWHERE",
+            reason_span="viện khác rồi",
+        ),
+    ],
+)
+def test_gc_can_05_reason_the_rules_do_not_know_is_read_by_the_model(reading) -> None:
+    """Nguyên văn GC-CAN-05: bản ghi mang WENT_ELSEWHERE, không phải UNSPECIFIED."""
+    confirm = SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="hủy giúp tôi")
+    semantic = FakeSemantic(
+        {
+            "tôi khám ở viện khác rồi": reading,
+            "vâng, hủy giúp tôi": confirm,
+            "đúng rồi, hủy giúp tôi": confirm,
+        }
+    )
+    bot, clinic = _verified_with(semantic, "c_gc_can_05")
+    first = _run(bot, "c_gc_can_05", ["Tôi khám ở viện khác rồi"], start=3)
+    assert first.utterance != t.NOT_UNDERSTOOD and clinic.writes == []
+    assert _context(bot, "c_gc_can_05").cancel_reason == "WENT_ELSEWHERE"
+
+    action = first
+    for turn, line in enumerate(["vâng, hủy giúp tôi", "đúng rồi, hủy giúp tôi"], start=4):
+        if action.ended:
+            break
+        action = _run(bot, "c_gc_can_05", [line], start=turn)
+    assert action.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "WENT_ELSEWHERE")]
+
+
+@pytest.mark.parametrize("line", ["tôi tên Hủy", "toi ten huy"])
+def test_name_huy_alone_is_asked_again_as_a_name_not_as_a_request(line: str) -> None:
+    bot, clinic = _outbound("c_name_huy_retry")
+    action = _run(bot, "c_name_huy_retry", [line])
+    assert action.utterance == t.ASK_NAME_AGAIN and clinic.writes == []
+
+
+def test_a_denied_reason_is_not_written() -> None:
+    bot, clinic, _ = _verified("c_denied_reason")
+    _run(bot, "c_denied_reason", ["Tôi muốn hủy, không phải vì không đủ tiền"], start=3)
+    done = _run(bot, "c_denied_reason", ["Hủy giúp tôi"], start=4)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "UNSPECIFIED")]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Nếu tôi bận thì hủy lịch nhé",
+        "Vợ tôi bảo hủy lịch nhưng tôi chưa quyết",
+        "Hủy lịch có sao không em",
+    ],
+)
+def test_an_undecided_cancel_without_a_model_is_not_a_request(line: str) -> None:
+    bot, clinic, _ = _verified("c_undecided_cancel")
+    action = _run(bot, "c_undecided_cancel", [line], start=3)
+    assert not action.ended and t.CANCEL_RECONFIRM not in action.utterance
+    assert _context(bot, "c_undecided_cancel").pending_action is None and clinic.writes == []

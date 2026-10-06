@@ -545,3 +545,23 @@ def test_affirmative_word_inside_a_statement_is_not_a_conflict(text: str) -> Non
 )
 def test_answer_that_opens_with_agreement_then_negates_is_a_conflict(text: str) -> None:
     assert conflicting_confirmation(text, QuestionId.CONFIRM_READBACK)
+
+
+@pytest.mark.parametrize("question", [QuestionId.CONFIRM_READBACK, QuestionId.CANCEL_RECONFIRM])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Từ khẳng định mạnh không phải từ thường trong câu kể: tính ở mọi vị trí
+        "không, à vâng đúng rồi",
+        "chưa, à đồng ý",
+        "không đâu, đúng rồi tôi đến",
+        "khong, a vang dung roi",
+        "tôi đồng ý nhưng không đi được",
+    ],
+)
+def test_strong_agreement_after_a_negation_is_a_conflict(text: str, question: QuestionId) -> None:
+    assert conflicting_confirmation(text, question)
+
+
+def test_negated_strong_agreement_is_not_a_conflict() -> None:
+    assert not conflicting_confirmation("không đồng ý", QuestionId.CONFIRM_READBACK)

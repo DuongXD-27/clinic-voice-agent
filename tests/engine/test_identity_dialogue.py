@@ -451,7 +451,7 @@ def test_inbound_cannot_provide_twice_transfers_without_write() -> None:
 
 def test_request_before_identity_asks_to_verify_first() -> None:
     actions, clinic = _call(_inbound("c_book_first"), ["Alô, tôi muốn đặt lịch khám ạ.", NAME, DOB])
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
+    assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
     assert actions[3].state == "AWAITING_INTENT"
     _assert_no_disclosure(actions)
     # Nhu cầu nói trước xác minh không được dùng: chưa đọc slot nào
@@ -460,7 +460,7 @@ def test_request_before_identity_asks_to_verify_first() -> None:
 
 def test_request_before_identity_repeated_exhausts_one_retry() -> None:
     actions, _ = _call(_outbound("c_cancel_first"), ["tôi muốn hủy lịch"] * 2)
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
+    assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
     _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
     _assert_no_disclosure(actions)
 

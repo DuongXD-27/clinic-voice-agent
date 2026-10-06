@@ -82,3 +82,27 @@ def test_several_reasons_are_reported_as_seen_but_unspecified(
     result = extract_cancel_reason(text)
     assert (result.value, result.provenance, result.span) == ("UNSPECIFIED", provenance, span)
     assert result.found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tôi muốn hủy, không phải vì không đủ tiền",
+        "chẳng phải tôi bận",
+        "khong phai vi het tien",
+    ],
+)
+def test_a_denied_reason_is_not_recorded(text: str) -> None:
+    assert extract_cancel_reason(text).found is False
+
+
+@pytest.mark.parametrize(
+    "text, reason",
+    [
+        ("không phải do bận đâu, tôi khỏi rồi", "NO_LONGER_NEEDED"),
+        ("không phải đi công tác đâu, tôi không đủ tiền", "COST"),
+        ("tôi phải đi công tác", "PATIENT_UNAVAILABLE"),  # "phải" không đi sau từ phủ định
+    ],
+)
+def test_the_reason_left_after_a_denial_is_kept(text: str, reason: str) -> None:
+    assert extract_cancel_reason(text).value == reason
