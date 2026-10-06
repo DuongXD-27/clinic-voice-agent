@@ -2,7 +2,12 @@
 
 import pytest
 
-from callbot.engine.extraction.agreement import extract_agreement, gives_up_slot_change, is_bare_da
+from callbot.engine.extraction.agreement import (
+    conflicting_confirmation,
+    extract_agreement,
+    gives_up_slot_change,
+    is_bare_da,
+)
 from callbot.engine.extraction.schema import Agreement, Provenance, QuestionId
 
 CANCEL = QuestionId.CANCEL_RECONFIRM
@@ -506,3 +511,57 @@ def test_giving_up_a_slot_change(text: str) -> None:
 def test_bare_refusal_is_not_giving_up(text: str) -> None:
     """Q-4: "không" trần chưa rõ muốn gì — Dialogue hỏi A/B, không đoán là bỏ đổi lịch."""
     assert not gives_up_slot_change(text)
+
+
+# --- Mâu thuẫn đồng ý / phủ định: từ khẳng định chỉ tính khi mở đầu câu trả lời -------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # "phải" = bắt buộc, "có" = có việc, "đúng" = đúng giờ: từ thường trong câu kể
+        "Hôm đó tôi phải đưa con đi viện nên chắc không đi được",
+        "tôi phải đi làm nên không đến được",
+        "hôm đó tôi có việc phải về quê, không đi được",
+        "tôi có việc bận đột xuất, không đến được",
+        "nhà tôi có đám cưới nên không đi được",
+        "tôi phải trực ca nên không đi khám được",
+        "tôi sẽ đến đúng giờ, không trễ đâu",
+    ],
+)
+def test_affirmative_word_inside_a_statement_is_not_a_conflict(text: str) -> None:
+    assert not conflicting_confirmation(text, QuestionId.CONFIRM_READBACK)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "vâng, à không, chắc không đến được",
+        "có đến, à không đâu",
+        "được, nhưng mà không chắc lắm",
+        "đúng rồi, không đi được",
+        "vâng, không",
+    ],
+)
+def test_answer_that_opens_with_agreement_then_negates_is_a_conflict(text: str) -> None:
+    assert conflicting_confirmation(text, QuestionId.CONFIRM_READBACK)
+
+
+@pytest.mark.parametrize("question", [QuestionId.CONFIRM_READBACK, QuestionId.CANCEL_RECONFIRM])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Từ khẳng định mạnh không phải từ thường trong câu kể: tính ở mọi vị trí
+        "không, à vâng đúng rồi",
+        "chưa, à đồng ý",
+        "không đâu, đúng rồi tôi đến",
+        "khong, a vang dung roi",
+        "tôi đồng ý nhưng không đi được",
+    ],
+)
+def test_strong_agreement_after_a_negation_is_a_conflict(text: str, question: QuestionId) -> None:
+    assert conflicting_confirmation(text, question)
+
+
+def test_negated_strong_agreement_is_not_a_conflict() -> None:
+    assert not conflicting_confirmation("không đồng ý", QuestionId.CONFIRM_READBACK)

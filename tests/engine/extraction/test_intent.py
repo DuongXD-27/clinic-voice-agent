@@ -210,3 +210,39 @@ def test_booking_with_a_late_arrival_question_stays_a_booking() -> None:
     text = "tôi muốn đặt lịch, mà tôi đến muộn chút được không"
     assert extract_intent(text, "inbound").value is Intent.BOOK
     assert extract_intent("toi muon dat lich kham", "inbound").value is Intent.BOOK
+
+
+# --- Từ khóa trong câu kể không đủ để quyết cả câu -----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text, intent",
+    [
+        # Chính người bệnh nói mình vắng: không phải người khác nghe máy
+        ("Tôi đi vắng nên muốn đổi lịch", Intent.RESCHEDULE),
+        # "nhân viên" trong câu kể / phủ định không phải xin gặp người
+        ("Nhân viên đã hẹn tôi đến hôm đó", Intent.CONFIRM),
+        ("Tôi không muốn gặp bất kỳ nhân viên nào", Intent.NONE),
+        # Biết địa chỉ không phải hỏi địa chỉ
+        ("Tôi biết địa chỉ bệnh viện rồi, tôi sẽ đến", Intent.CONFIRM),
+    ],
+)
+def test_keyword_inside_a_statement_does_not_decide_the_turn(text: str, intent: Intent) -> None:
+    assert extract_intent(text, "outbound").value is intent
+
+
+@pytest.mark.parametrize(
+    "text, intent",
+    [
+        ("anh ấy đi vắng rồi", Intent.NOT_PATIENT),
+        ("đi vắng rồi", Intent.NOT_PATIENT),
+        ("nhân viên", Intent.REQUEST_HUMAN),
+        ("cho tôi nhân viên đi", Intent.REQUEST_HUMAN),
+        ("chuyển tôi sang nhân viên nhé", Intent.REQUEST_HUMAN),
+        ("nếu hết giờ thì chuyển nhân viên", Intent.REQUEST_HUMAN),
+        ("cho tôi xin địa chỉ phòng khám", Intent.OUT_OF_SCOPE),
+        ("địa chỉ phòng khám ở đâu vậy em", Intent.OUT_OF_SCOPE),
+    ],
+)
+def test_explicit_requests_are_still_recognised(text: str, intent: Intent) -> None:
+    assert extract_intent(text, "outbound").value is intent

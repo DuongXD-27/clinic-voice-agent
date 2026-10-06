@@ -14,7 +14,8 @@ chấm rẽ nhánh, không tính vào tỷ lệ hoàn thành xác nhận đến 
 
 `expect_behaviour` là nhãn nghiệp vụ theo kiến trúc §3.2 (`O_AGREE`): nói sẽ đến / đồng ý rõ với lịch
 vừa đọc → `CONFIRM` (chỉ báo đã nghe / đã nhớ như "vâng tôi nghe", "tôi nhớ rồi" chưa phải đồng ý);
-"không" hoặc kể hoàn cảnh không đến được → `ASK_CHANGE_OR_CANCEL`; chỉ chưa rõ có đồng ý lịch hay không
+"không" hoặc kể hoàn cảnh không đến được → `ASK_CHANGE_OR_CANCEL`, trừ lý do đã khám
+nơi khác / đã khỏi ("khám chỗ khác rồi", "khỏi rồi") → `CANCEL` (`implied_cancel`); chỉ chưa rõ có đồng ý lịch hay không
 → `REREAD`. Câu bot hiểu được nhưng là yêu cầu / câu hỏi ngoài kịch bản (người khác đến thay, hỏi địa
 chỉ, xin gọi lại sau, không nhận lịch...) → `TRANSFER` (§3.3, `OUT_OF_SCOPE`), không dùng `REREAD` để né.
 Dấu `|` chỉ dùng khi nghiệp vụ chấp nhận cả hai hành vi với câu mơ hồ thật — không dùng vì "cả hai đều

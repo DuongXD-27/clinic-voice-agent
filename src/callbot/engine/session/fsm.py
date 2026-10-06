@@ -14,6 +14,9 @@ TRANSITIONS: dict[CallState, set[CallState]] = {
     "AWAITING_IDENTITY": {
         "AWAITING_IDENTITY",
         "AWAITING_INTENT",
+        # Yêu cầu hủy nói cùng lượt danh tính: xác minh xong hỏi thẳng câu xác nhận hủy (QC qc-cn-08).
+        # Vẫn chịu kiểm tra "state khác AWAITING_IDENTITY cần xác minh xong" bên dưới.
+        "AWAITING_CONFIRMATION",
         "OFFERING_SLOTS",
         "CLOSING",
         "ENDED",

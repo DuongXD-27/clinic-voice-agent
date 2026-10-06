@@ -216,8 +216,6 @@ def test_a_greeting_between_failures_counts_as_absent_identity() -> None:
         "hello em",
         "hi em",
         "Hello, chị ạ!",
-        "AI đấy?",
-        "ai goi vay",
         "hú hú",
         "em ơi",
         "tôi nghe đây",
@@ -231,6 +229,39 @@ def test_greeting_after_opening_gets_one_open_identity_retry(direction, greeting
     assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
 
 
+# --- "Ai đấy?": câu hỏi phải trả lời, giới thiệu lại một lần mỗi cuộc gọi -------------------------
+
+
+@pytest.mark.parametrize("direction", ["outbound", "inbound"])
+@pytest.mark.parametrize("question", ["AI đấy?", "ai goi vay", "Alo, ai đấy?"])
+def test_identity_question_reintroduces_without_spending_the_retry(direction, question) -> None:
+    start = _outbound("c_who") if direction == "outbound" else _inbound("c_who")
+    actions, clinic = _call(start, [question, NAME, DOB])
+    assert actions[1].utterance == t.greeting_back(direction)
+    assert actions[2].utterance == t.ASK_DOB
+    assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+def test_identity_question_then_two_non_answers_transfers_on_the_third() -> None:
+    # Bản QC qc-w6-03: "ai đấy?" được trả lời, câu không có tên tiếp theo mới dùng lượt hỏi lại
+    actions, _ = _call(
+        _outbound("c_who_then_vague"), ["Alo, ai đấy?", "À phòng khám à, ừ tôi đây", "ừ"]
+    )
+    assert actions[1].utterance == t.GREETING_BACK_OUTBOUND
+    assert actions[2].utterance == t.ASK_NAME_AGAIN
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+    _assert_no_disclosure(actions)
+
+
+def test_identity_question_then_name_completes_identity() -> None:
+    actions, clinic = _call(
+        _outbound("c_who_then_name"), ["Alo, ai đấy?", "À phòng khám à, ừ tôi đây", NAME, DOB]
+    )
+    assert actions[2].utterance == t.ASK_NAME_AGAIN
+    assert actions[4].state == "AWAITING_INTENT" and clinic.writes == []
+
+
 def test_repeated_greeting_exhausts_identity_retry() -> None:
     actions, _ = _call(_outbound("c_alo_twice"), ["alo", "alo"])
     assert actions[1].utterance == t.ASK_NAME_AGAIN
@@ -241,8 +272,10 @@ def test_repeated_greeting_exhausts_identity_retry() -> None:
 @pytest.mark.parametrize("first", ["alo", "tôi không rõ"])
 def test_absent_name_after_reprompt_transfers(direction, first) -> None:
     start = _outbound("c_who_again") if direction == "outbound" else _inbound("c_who_again")
-    actions, _ = _call(start, [first, "Ai đấy?"])
-    _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
+    # "Ai đấy?" vẫn được trả lời sau lượt hỏi lại; câu không có tên kế tiếp thì chuyển máy
+    actions, _ = _call(start, [first, "Ai đấy?", "tôi không rõ"])
+    assert actions[2].utterance == t.greeting_back(direction)
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
     _assert_no_disclosure(actions)
 
 
@@ -250,7 +283,7 @@ def test_absent_name_after_reprompt_transfers(direction, first) -> None:
 def test_identity_question_at_dob_step_reasks_only_dob(direction) -> None:
     start = _outbound("c_who_dob") if direction == "outbound" else _inbound("c_who_dob")
     actions, clinic = _call(start, [NAME, "Ai gọi vậy?", DOB])
-    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[2].utterance == t.INTRODUCE_AGAIN_ASK_DOB
     assert actions[3].state == "AWAITING_INTENT" and clinic.writes == []
     _assert_no_disclosure(actions)
 
@@ -281,11 +314,24 @@ def test_two_greetings_transfer_without_disclosure() -> None:
     _assert_no_disclosure(actions)
 
 
-@pytest.mark.parametrize("greeting", ["alo", "Ai đấy?"])
-def test_greetings_exhaust_one_identity_retry(greeting) -> None:
-    actions, _ = _call(_outbound("c_alo_many"), [greeting] * 2)
+def test_greetings_exhaust_one_identity_retry() -> None:
+    actions, _ = _call(_outbound("c_alo_many"), ["alo"] * 2)
     assert not actions[1].ended
     _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_repeated_identity_question_is_answered_once_then_counts() -> None:
+    actions, _ = _call(_outbound("c_who_many"), ["Ai đấy?"] * 3)
+    assert actions[1].utterance == t.GREETING_BACK_OUTBOUND
+    assert actions[2].utterance == t.ASK_NAME_AGAIN
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_identity_question_free_pass_is_per_call_not_per_field() -> None:
+    actions, _ = _call(_outbound("c_who_both"), ["Ai đấy?", NAME, "Ai gọi vậy?", "tôi không rõ"])
+    assert actions[1].utterance == t.GREETING_BACK_OUTBOUND
+    assert actions[3].utterance == t.ASK_DOB_AGAIN
+    _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
 def test_a_greeting_while_asking_dob_uses_the_single_retry() -> None:
@@ -405,7 +451,7 @@ def test_inbound_cannot_provide_twice_transfers_without_write() -> None:
 
 def test_request_before_identity_asks_to_verify_first() -> None:
     actions, clinic = _call(_inbound("c_book_first"), ["Alô, tôi muốn đặt lịch khám ạ.", NAME, DOB])
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
+    assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
     assert actions[3].state == "AWAITING_INTENT"
     _assert_no_disclosure(actions)
     # Nhu cầu nói trước xác minh không được dùng: chưa đọc slot nào
@@ -414,7 +460,7 @@ def test_request_before_identity_asks_to_verify_first() -> None:
 
 def test_request_before_identity_repeated_exhausts_one_retry() -> None:
     actions, _ = _call(_outbound("c_cancel_first"), ["tôi muốn hủy lịch"] * 2)
-    assert actions[1].utterance == t.ASK_NAME_AGAIN
+    assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
     _ended(actions[2], "TRANSFERRED", "NOT_UNDERSTOOD")
     _assert_no_disclosure(actions)
 

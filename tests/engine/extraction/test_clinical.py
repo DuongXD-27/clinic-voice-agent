@@ -68,3 +68,22 @@ def test_mention_and_none() -> None:
     assert extract_clinical("hay đau bụng nên muốn đặt lịch").value is ClinicalLevel.MENTION
     assert extract_clinical("tôi muốn hủy lịch").value is ClinicalLevel.NONE
     assert extract_clinical("tôi muốn đặt lịch khám bệnh").value is ClinicalLevel.NONE
+
+
+@pytest.mark.parametrize("text", ["Hủy lịch có sao không em", "đổi giờ có ảnh hưởng gì không"])
+def test_assessment_question_about_the_booking_is_only_a_mention(text: str) -> None:
+    """Không chuyển máy chỉ vì "có sao không": tầng ngữ nghĩa đọc lại câu (CLINICAL_UNRESOLVED)."""
+    assert extract_clinical(text).value is ClinicalLevel.MENTION
+
+
+@pytest.mark.parametrize(
+    "text, level",
+    [
+        ("hủy lịch thì bệnh của tôi có sao không", ClinicalLevel.ADVICE_REQUEST),
+        ("uống thuốc rồi hủy lịch có sao không", ClinicalLevel.ADVICE_REQUEST),
+        ("đau bụng thế này có sao không", ClinicalLevel.ADVICE_REQUEST),
+        ("tôi bị đau ngực, hủy lịch có sao không", ClinicalLevel.EMERGENCY),
+    ],
+)
+def test_assessment_question_with_health_content_stays_clinical(text, level) -> None:
+    assert extract_clinical(text).value is level

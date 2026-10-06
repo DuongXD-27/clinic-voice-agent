@@ -16,8 +16,15 @@ PROMPT_VERSION = "semantic_v5"
 PROMPT_VERSION_CANCEL_CONFIRM = "semantic_v6"
 # Prompt gọn, có thứ tự ưu tiên và input JSON dành cho workload phân loại của GPT-6 Luna.
 # Giữ nguyên v5/v6 để có thể rollback và so sánh eval theo đúng version lịch sử.
-PROMPT_VERSION_LUNA = "semantic_v7_luna"
-PROMPT_VERSIONS = (PROMPT_VERSION, PROMPT_VERSION_CANCEL_CONFIRM, PROMPT_VERSION_LUNA)
+PROMPT_VERSION_LUNA_V7 = "semantic_v7_luna"
+# v8 giữ quy tắc và ví dụ v7, gom ngữ cảnh ví dụ lặp lại vào system một lần.
+PROMPT_VERSION_LUNA = "semantic_v8_luna"
+PROMPT_VERSIONS = (
+    PROMPT_VERSION,
+    PROMPT_VERSION_CANCEL_CONFIRM,
+    PROMPT_VERSION_LUNA_V7,
+    PROMPT_VERSION_LUNA,
+)
 
 # Mô tả MỤC ĐÍCH câu bot vừa hỏi, không gửi nguyên văn câu hỏi (câu đọc lịch có dữ liệu Clinic).
 QUESTION_PURPOSE: dict[str, str] = {
@@ -444,8 +451,10 @@ def build_messages(
         system, shots = SYSTEM_PROMPT, FEW_SHOTS
     elif version == PROMPT_VERSION_CANCEL_CONFIRM:
         system, shots = SYSTEM_PROMPT_CANCEL_CONFIRM, FEW_SHOTS_CANCEL_CONFIRM
-    elif version == PROMPT_VERSION_LUNA:
+    elif version == PROMPT_VERSION_LUNA_V7:
         return _build_luna_messages(context)
+    elif version == PROMPT_VERSION_LUNA:
+        return _build_luna_messages(context, compact=True)
     else:
         raise ValueError(f"prompt version không hỗ trợ: {version}")
     messages = [{"role": "system", "content": system}]
@@ -460,12 +469,34 @@ def build_messages(
     return messages
 
 
-def _build_luna_messages(context: "SemanticContext") -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": LUNA_SYSTEM_PROMPT}]
+_LUNA_EXAMPLE_CONTEXT = """
+Các ví dụ dùng input rút gọn: answers_last_question=true, rule_hints_untrusted=null,
+allowed_intents=[CONFIRM,CANCEL,RESCHEDULE,BOOK,OUT_OF_SCOPE]; pending_action=CANCEL khi
+question_id=CANCEL_RECONFIRM, còn lại null. CANCEL_RECONFIRM hỏi xác nhận hủy lần hai;
+CONFIRM_READBACK hỏi có đến khám theo lịch không. Lượt cuối dùng ngữ cảnh được gửi đầy đủ.
+"""
+
+
+def _build_luna_messages(
+    context: "SemanticContext", *, compact: bool = False
+) -> list[dict[str, str]]:
+    system = LUNA_SYSTEM_PROMPT + (_LUNA_EXAMPLE_CONTEXT if compact else "")
+    messages = [{"role": "system", "content": system}]
     for question_id, transcript, reading in LUNA_FEW_SHOTS:
+        user = (
+            json.dumps(
+                {"question_id": question_id, "transcript": transcript},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+            if compact
+            else _luna_user_block(question_id, transcript)
+        )
+        if compact:
+            reading = json.dumps(json.loads(reading), ensure_ascii=False, separators=(",", ":"))
         messages.extend(
             [
-                {"role": "user", "content": _luna_user_block(question_id, transcript)},
+                {"role": "user", "content": user},
                 {"role": "assistant", "content": reading},
             ]
         )

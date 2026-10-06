@@ -54,6 +54,7 @@ from inference.llm.prompt.semantic import (
     PROMPT_VERSION,
     PROMPT_VERSION_CANCEL_CONFIRM,
     PROMPT_VERSION_LUNA,
+    PROMPT_VERSION_LUNA_V7,
     build_messages,
 )
 from tests.engine.extraction.test_agreement import (
@@ -502,6 +503,23 @@ def test_luna_prompt_is_smaller_and_keeps_the_runtime_contract() -> None:
     assert payload["transcript"] == context.transcript
     assert payload["pending_action"] == "CANCEL"
     assert payload["allowed_intents"] == ["CONFIRM", "CANCEL", "RESCHEDULE", "OUT_OF_SCOPE"]
+
+
+def test_compact_luna_prompt_preserves_examples_and_runtime_context() -> None:
+    context = _prompt_context()
+    previous = build_messages(context, version=PROMPT_VERSION_LUNA_V7)
+    compact = build_messages(context, version=PROMPT_VERSION_LUNA)
+    assert compact[0]["content"].startswith(previous[0]["content"])
+    assert compact[-1] == previous[-1]
+    assert len(compact) == len(previous)
+    for old, new in zip(previous[1:-1], compact[1:-1], strict=True):
+        assert old["role"] == new["role"]
+        before, after = json.loads(old["content"]), json.loads(new["content"])
+        if old["role"] == "assistant":
+            assert after == before
+        else:
+            assert after == {key: before[key] for key in ("question_id", "transcript")}
+    assert sum(len(m["content"]) for m in compact) < 0.8 * sum(len(m["content"]) for m in previous)
 
 
 @pytest.mark.parametrize(

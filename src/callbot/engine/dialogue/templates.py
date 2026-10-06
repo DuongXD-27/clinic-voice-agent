@@ -38,7 +38,7 @@ GREETING_HANDOFF_INBOUND = static(
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ.",
 )
-# Người nghe máy chỉ nói "alo" sau câu chào: chào lại, nhắc lại AI [R-26] và hỏi tên
+# Người nghe máy hỏi "ai đấy?" khi đang hỏi tên: chào lại, nhắc lại AI [R-26] và hỏi tên
 GREETING_BACK_OUTBOUND = static(
     "GREETING_BACK_OUTBOUND",
     f"Dạ em chào anh chị ạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
@@ -464,7 +464,7 @@ def greeting(direction: str) -> str:
 
 
 def greeting_back(direction: str) -> str:
-    """Trả lời "alo" ngay sau câu chào mở đầu."""
+    """Trả lời "ai đấy?" ở bước hỏi tên: giới thiệu lại AI [R-26] rồi hỏi tên."""
     return GREETING_BACK_OUTBOUND if direction == "outbound" else GREETING_BACK_INBOUND
 
 
@@ -546,6 +546,24 @@ def attendance_reread(ctx: CallContext, appointment: dict[str, Any], *, variant:
     return (
         f"Dạ, lịch khám {_department(appointment)}của anh chị là "
         f"{attendance_facts(appointment)}. {ASK_ATTENDANCE}"
+    )
+
+
+@renderer(
+    "CANCEL_READBACK",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def cancel_readback(ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0") -> str:
+    """§1.1.4: đọc lại lịch sắp hủy rồi hỏi xác nhận lần hai. Câu hỏi cuối giữ nguyên văn
+    CANCEL_RECONFIRM; các câu hỏi lại sau đó (CANCEL_CHOICE...) không đọc lại lịch."""
+    guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        return _attendance_variant(appointment, variant, CANCEL_RECONFIRM)
+    return (
+        f"Dạ, lịch khám {_department(appointment)}của anh chị là "
+        f"{attendance_facts(appointment)}. {CANCEL_RECONFIRM}"
     )
 
 
