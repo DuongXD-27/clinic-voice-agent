@@ -550,6 +550,24 @@ def attendance_reread(ctx: CallContext, appointment: dict[str, Any], *, variant:
 
 
 @renderer(
+    "CANCEL_READBACK",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": VARIANT_IDS},
+)
+def cancel_readback(ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0") -> str:
+    """§1.1.4: đọc lại lịch sắp hủy rồi hỏi xác nhận lần hai. Câu hỏi cuối giữ nguyên văn
+    CANCEL_RECONFIRM; các câu hỏi lại sau đó (CANCEL_CHOICE...) không đọc lại lịch."""
+    guardrails.assert_can_disclose(ctx)
+    if variant != "v0":
+        return _attendance_variant(appointment, variant, CANCEL_RECONFIRM)
+    return (
+        f"Dạ, lịch khám {_department(appointment)}của anh chị là "
+        f"{attendance_facts(appointment)}. {CANCEL_RECONFIRM}"
+    )
+
+
+@renderer(
     "CONFIRMED_DONE",
     discloses=True,
     success_outcome="CONFIRMED",

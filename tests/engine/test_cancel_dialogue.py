@@ -32,6 +32,8 @@ from inference.llm.providers.base import StructuredReply
 
 SILENCE = None
 FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
+# Câu xác nhận lần hai đọc lại đúng lịch sắp hủy (§1.1.4)
+CANCEL_READBACK = f"Dạ, lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
 
 
 def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
@@ -64,7 +66,7 @@ def _requesting(call_id: str, request: str = "Tôi muốn hủy lịch", clinic=
     """Đã nêu yêu cầu hủy ở lượt 3 và đang chờ xác nhận lần hai. Lượt kế tiếp là 4."""
     bot, clinic, _ = _verified(call_id, clinic)
     action = _run(bot, call_id, [request], start=3)
-    assert action.state == "AWAITING_CONFIRMATION" and action.utterance == t.CANCEL_RECONFIRM
+    assert action.state == "AWAITING_CONFIRMATION" and action.utterance == CANCEL_READBACK
     assert clinic.writes == []
     return bot, clinic
 
@@ -408,7 +410,7 @@ def test_reason_does_not_survive_a_trip_through_another_action() -> None:
     assert _context(bot, "c_t05_roundtrip").cancel_reason is None
 
     action = _run(bot, "c_t05_roundtrip", ["Thôi, tôi muốn hủy lịch"], start=5)
-    assert action.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
     action = _run(bot, "c_t05_roundtrip", ["Hủy giúp tôi"], start=6)
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
@@ -421,7 +423,7 @@ def test_coming_back_to_cancel_needs_a_fresh_request_and_confirmation(monkeypatc
 
     # Nói lại yêu cầu hủy: chỉ tạo REQUEST mới, chưa ghi
     action = _run(bot, "c_t05_again", ["Tôi vẫn muốn hủy lịch"], start=5)
-    assert action.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
 
     captured = _capture_cancel(monkeypatch, bot)
     action = _run(bot, "c_t05_again", ["Hủy giúp tôi"], start=6)
@@ -500,7 +502,7 @@ def test_agreement_after_a_not_understood_prompt_does_not_write() -> None:
 def test_repeat_request_replays_the_cancel_question_at_this_turn() -> None:
     bot, clinic = _requesting("c_t05_repeat")
     action = _run(bot, "c_t05_repeat", ["Gì cơ?"], start=4)
-    assert action.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
     ctx = _context(bot, "c_t05_repeat")
     assert ctx.question.turn == 4 and (ctx.unclear_streak, ctx.failed_understandings) == (0, 0)
 
@@ -513,7 +515,7 @@ def test_repeat_request_replays_the_cancel_question_at_this_turn() -> None:
 def test_silence_then_agreement_replays_the_cancel_question_first() -> None:
     bot, clinic = _requesting("c_t05_silence")
     action = _run(bot, "c_t05_silence", [SILENCE], start=4)
-    assert action.utterance == f"{t.SILENCE} {t.CANCEL_RECONFIRM}"
+    assert action.utterance == f"{t.SILENCE} {CANCEL_READBACK}"
     assert _context(bot, "c_t05_silence").question.turn == 4
 
     action = _run(bot, "c_t05_silence", ["Hủy giúp tôi"], start=5)
@@ -723,7 +725,7 @@ def test_cancel_asked_while_choosing_a_slot_starts_a_fresh_cancel_request() -> N
     _run(bot, "c_t05_from_slots", ["Tôi muốn đổi lịch"], start=3)
     action = _run(bot, "c_t05_from_slots", ["Thôi, tôi muốn hủy lịch luôn"], start=4)
 
-    assert action.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
     ctx = _context(bot, "c_t05_from_slots")
     assert (ctx.pending_action, ctx.selected_slot_id) == ("CANCEL", None)
     assert [(e.kind, e.turn) for e in ctx.evidence] == [("REQUEST", 4)]
@@ -776,7 +778,7 @@ def _requesting_with(
     bot._extractor._cancel_semantic_confirm = cancel_confirm
     bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
     action = _run(bot, call_id, ["Nguyễn Văn A", "14/03/1978", request])
-    assert action.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    assert action.utterance == CANCEL_READBACK and clinic.writes == []
     return bot, clinic
 
 

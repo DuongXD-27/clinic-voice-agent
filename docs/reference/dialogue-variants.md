@@ -7,13 +7,14 @@ trước Output Guard và TTS, nên HTTP và LiveKit dùng cùng lời thoại. 
 
 - 24 nhóm câu tĩnh: chào/giới thiệu AI, hỏi tên và ngày sinh, hỏi lại, hỏi nhu cầu,
   đổi hay hủy, chờ, chuyển máy, kết thúc không liên lạc được, hỏi ngày/buổi muốn đặt/đổi.
-- 7 renderer động: `APPOINTMENT_SUMMARY`, `ATTENDANCE_READBACK`, `ATTENDANCE_REREAD`,
-  `KEEP_APPOINTMENT`, `OFFER_SLOTS`, `SLOT_OFFER_READBACK`, `SLOT_READBACK`.
+- 8 renderer động: `APPOINTMENT_SUMMARY`, `ATTENDANCE_READBACK`, `ATTENDANCE_REREAD`,
+  `KEEP_APPOINTMENT`, `CANCEL_READBACK`, `OFFER_SLOTS`, `SLOT_OFFER_READBACK`, `SLOT_READBACK`.
 - Câu hỏi xác nhận cuối mỗi renderer giữ nguyên. Ngày, giờ, thứ, chuyên khoa và cơ sở
   được dựng theo các hàm nguồn hiện có; số slot, thứ tự và lời báo hết/kín khung cũng giữ đúng.
 
-`CANCEL_RECONFIRM`, `CANCEL_CHOICE`, `CANCEL_REASON_NOTED` giữ nguyên wording và ngưỡng
-xác nhận hủy. `SLOT_READBACK_DA` giữ hướng dẫn nói rõ “đồng ý”. Các câu báo đã ghi thành công,
+`CANCEL_CHOICE`, `CANCEL_REASON_NOTED` giữ nguyên wording và ngưỡng xác nhận hủy.
+`CANCEL_READBACK` (06/10/2026) đọc lại lịch sắp hủy theo biến thể, rồi kết thúc bằng nguyên văn
+`CANCEL_RECONFIRM`; câu này không còn được nói riêng. `SLOT_READBACK_DA` giữ hướng dẫn nói rõ “đồng ý”. Các câu báo đã ghi thành công,
 fallback `DONE_SAFE`, tiền tố xử lý xung đột slot và câu nhắc im lặng tiếp tục dùng câu chuẩn.
 
 ## Cách chọn và kiểm tra

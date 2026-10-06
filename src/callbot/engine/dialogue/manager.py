@@ -439,18 +439,21 @@ class DialogueManager:
             ctx.cancel_reason = prior_reason
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
             self._update_cancel_reason(ctx, ex)
-            return Reply(
-                ask(
-                    ctx,
-                    QuestionId.CANCEL_RECONFIRM,
-                    t.CANCEL_RECONFIRM,
-                    "AWAITING_CONFIRMATION",
-                    action="CANCEL",
-                )
-            )
+            return Reply(self._ask_cancel_readback(ctx))
         action: PendingAction = "RESCHEDULE" if intent is Intent.RESCHEDULE else "BOOK"
         ctx.set_pending(action)
         return self._new_request(ctx, now, ex.transcript)
+
+    def _ask_cancel_readback(self, ctx: CallContext) -> BotAction:
+        """Đọc lại đúng lịch sắp hủy trong câu xác nhận lần hai (§1.1.4)."""
+        appointment = self._reads.get_actionable_appointment(ctx)
+        return ask(
+            ctx,
+            QuestionId.CANCEL_RECONFIRM,
+            t.cancel_readback(ctx, appointment, variant=t.choose_variant(ctx, "CANCEL_READBACK")),
+            "AWAITING_CONFIRMATION",
+            action="CANCEL",
+        )
 
     # --- Chọn slot -----------------------------------------------------------------------
 
