@@ -37,6 +37,7 @@ from callbot.engine.extraction.agreement import (
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
     is_hold_request,
+    is_identity_question,
     is_return_signal,
 )
 from callbot.engine.extraction.schema import (
@@ -80,6 +81,9 @@ logger = logging.getLogger(__name__)
 MAX_SLOTS_PRESENTED = 2
 # R-29: người gọi nêu tối đa 2 ngày / khoảng thời gian; ngày thứ ba -> giữ lịch cũ, PATIENT_REQUEST (D-5)
 MAX_SLOT_ROUNDS = 2
+# "Ai đấy?" ở bước danh tính là câu hỏi phải trả lời (R-26), không phải câu thiếu định danh: giới thiệu
+# lại mà không dùng lượt hỏi lại R-40. Chỉ một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
+MAX_IDENTITY_QUESTIONS = 1
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -281,6 +285,14 @@ class DialogueManager:
                 return self._retry_identity(ctx, question)
             text = t.ASK_NAME_AFTER_DOB if question is QuestionId.ASK_NAME else t.ASK_DOB
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))
+        if is_identity_question(ex.transcript) and ctx.neutral_greetings < MAX_IDENTITY_QUESTIONS:
+            ctx.neutral_greetings += 1
+            text = (
+                t.greeting_back(ctx.call.direction)
+                if question is QuestionId.ASK_NAME
+                else t.INTRODUCE_AGAIN_ASK_DOB
+            )
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         return self._retry_identity(ctx, question)
 
     @staticmethod

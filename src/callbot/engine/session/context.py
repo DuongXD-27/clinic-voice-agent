@@ -120,7 +120,8 @@ class CallContext:
     failed_understandings: int = 0
     unclear_streak: int = 0
     silent_turns: int = 0
-    # Lời chào ở bước danh tính đã được hỏi lại mà không tính §1.1.5 (MAX_NEUTRAL_GREETINGS)
+    # Câu "ai đấy?" ở bước danh tính đã được giới thiệu lại mà không dùng lượt hỏi lại
+    # (MAX_IDENTITY_QUESTIONS)
     neutral_greetings: int = 0
 
     outcome: Optional[Outcome] = None

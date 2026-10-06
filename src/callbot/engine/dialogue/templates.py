@@ -38,7 +38,7 @@ GREETING_HANDOFF_INBOUND = static(
     f"Dạ Vinmec xin nghe, em là {AI_DISCLOSURE} của tổng đài. "
     "Em xin phép chuyển máy tới nhân viên để hỗ trợ anh chị ạ.",
 )
-# Người nghe máy chỉ nói "alo" sau câu chào: chào lại, nhắc lại AI [R-26] và hỏi tên
+# Người nghe máy hỏi "ai đấy?" khi đang hỏi tên: chào lại, nhắc lại AI [R-26] và hỏi tên
 GREETING_BACK_OUTBOUND = static(
     "GREETING_BACK_OUTBOUND",
     f"Dạ em chào anh chị ạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
@@ -464,7 +464,7 @@ def greeting(direction: str) -> str:
 
 
 def greeting_back(direction: str) -> str:
-    """Trả lời "alo" ngay sau câu chào mở đầu."""
+    """Trả lời "ai đấy?" ở bước hỏi tên: giới thiệu lại AI [R-26] rồi hỏi tên."""
     return GREETING_BACK_OUTBOUND if direction == "outbound" else GREETING_BACK_INBOUND
 
 
