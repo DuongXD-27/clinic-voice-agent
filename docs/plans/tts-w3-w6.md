@@ -1,6 +1,6 @@
 # Task TTS tuần 3 → tuần 6 (28/09 – 24/10)
 
-**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 01/10/2026
+**Owner:** Hưng (TTS) · phối hợp Việt (STT) và Hoàn (Engine) · **Viết ngày:** 27/09/2026 · **Cập nhật:** 06/10/2026
 **Nguồn:** `tailieu/callbot-contract-vi.md` (AIHR-PC-001 rev 1.1) là căn cứ chính. PRD v1.6 và Master plan được ghi rõ ở cột *Căn cứ* khi dùng tới.
 
 **Quy ước cột *Căn cứ*:** `MUST` = contract bắt buộc · `§5` = ảnh hưởng điểm · `Phụ lục B` = contract khuyến nghị · `MP` = Master plan · `SP` = mục tiêu sản phẩm (luồng streaming hoàn chỉnh).
@@ -34,11 +34,11 @@
 
 | Phần | Đã có | Chưa có |
 |---|---|---|
-| TTS trên HTTP | Vbee chính + ElevenLabs dự phòng trong gateway; WAV 8 kHz ghi xong trước response; đọc nguyên `utterance`; **audio mode trên prod đã verify 28/09 (PASS, tổng lớn nhất 3,79 s / 8 s)** | ~~Dùng chung kết nối Vbee~~ (xong 29/09; trên EC2 bắt tay chỉ ~9 ms, không phải ~300–400 ms như ước tính từ mạng VN); số chi phí/phiên |
+| TTS trên HTTP | Vbee chính + ElevenLabs dự phòng trong gateway; WAV 8 kHz ghi xong trước response; đọc nguyên `utterance`; **audio mode trên prod đã verify 28/09 (PASS, tổng lớn nhất 3,79 s / 8 s)** | ~~Dùng chung kết nối Vbee~~ (xong 29/09; trên EC2 bắt tay chỉ ~9 ms, không phải ~300–400 ms như ước tính từ mạng VN) |
 | TTS trên LiveKit | `CallBridge` phát TTS theo chunk và gọi `cancel()` khi bị ngắt; xoá hàng đợi phát; **Vbee có `synthesize_stream` / `cancel()`, stream đi qua gateway có fallback ElevenLabs (xong)** | Báo Engine phần câu đã phát khi bị ngắt / lỗi giữa câu (07/10) |
 | STT (Việt) | STT stream + VAD, `InterruptionController`, chống bot tự nghe mình (SNR) | — |
 | Engine (Hoàn) | Core dùng chung cho HTTP và LiveKit | Giữ partial turn theo phần bot đã nói (P-03) |
-| Vbee | Trên EC2 (trace 02/10): ~51 ký tự byte đầu 260 ms / xong 302 ms; ~110 ký tự byte đầu ~530 ms / xong ~760 ms (~6–8 ms/ký tự). Gửi dần, byte đầu khi đã sinh ~70% thời gian câu | Chưa có số câu > 150 ký tự và p95 (lấy từ trace tuần 4) |
+| Vbee | Trên EC2 (trace 02/10): ~51 ký tự byte đầu 260 ms / xong 302 ms; ~110 ký tự byte đầu ~530 ms / xong ~760 ms (~6–8 ms/ký tự). Gửi dần, byte đầu khi đã sinh ~70% thời gian câu. Benchmark 05/10 (stream, [chi tiết](../evidence/benchmark-streaming-truoc-sau.md)): câu 234 ký tự chunk đầu 268 ms / xong 1010 ms | Chưa có p95 (lấy từ trace tuần 4) |
 
 ---
 
@@ -56,8 +56,8 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 | Nhánh | Gộp task | PR trước |
 |---|---|---|
-| `feature/tts-w3-vbee-streaming` | 29/09 dùng chung kết nối Vbee · 30/09 Vbee stream + `cancel()` · 01/10 fallback trên stream | 01/10 |
-| `feature/tts-w3-grading-path` | 29/09 kiểm audio đọc đúng lời bot · 01/10 chi phí/phiên · 02/10 Gate W3 | 02/10 |
+| `feature/tts-w3-vbee-streaming` ✅ | 29/09 dùng chung kết nối Vbee · 30/09 Vbee stream + `cancel()` · 01/10 fallback trên stream (kèm việc 28/09 – 29/09 của Đường A) | Đã merge (PR #70) |
+| `feature/tts-w3-grading-path` | 29/09 kiểm audio đọc đúng lời bot · 02/10 Gate W3 | 02/10 |
 | `feature/p01-livekit-sip` | 05/10 P-01: cấu hình LiveKit SIP + softphone (dời từ 29/09) | 06/10 |
 | `feature/tts-w4-livekit-vbee` | 05/10 chốt phối hợp STT / Engine / TTS · 06/10 cuộc gọi LiveKit chạy Vbee | 06/10 |
 | `feature/tts-w4-playback-control` | 07/10 bot im khi khách nói chen · 08/10 chuyển máy và cúp máy | 08/10 |
@@ -71,7 +71,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T2 28/09 · Đường A — Xác nhận audio mode trên prod ✅ Đã xong
 
-> Kết quả: PASS, tổng lớn nhất 3,79 s so với trần 8 s, không lượt nào phải fallback. Evidence: `docs/evidence/tts-audio-mode-prod.md`, script `scripts/audio_smoke.py` (chưa commit).
+> Kết quả: PASS, tổng lớn nhất 3,79 s so với trần 8 s, không lượt nào phải fallback. Evidence: `docs/evidence/tts-audio-mode-prod.md`, script `scripts/audio_smoke.py` (đã lên main qua PR #70).
 
 **Gửi PM:** Verify audio mode trên production từ ngày harness chuyển sang chấm audio: mỗi turn đều có audio, audio sẵn sàng ngay khi response trả về và tổng latency (kể cả thời gian tải audio) không vượt 8 s. Đồng thời xác nhận config Vbee primary + ElevenLabs fallback, set timeout để trường hợp phải fallback vẫn nằm trong budget.
 
@@ -92,7 +92,9 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 **Xong khi:** config trong container đúng provider (Vbee + ElevenLabs); mọi lượt có `audio_url` tải được; tổng mỗi lượt < 8 s; `mode=text` trả `null`.
 **Căn cứ:** Listing 1–2, §4.1.2, §5.3 · **Đầu ra:** bảng thời gian từng lượt + `scripts/audio_smoke.py` · **Nhánh:** `restructure-tts` (đã xong)
 
-#### T3 29/09 · Đường A — Kiểm audio đọc đúng lời bot
+#### T3 29/09 · Đường A — Kiểm audio đọc đúng lời bot ✅ Đã xong
+
+> Kết quả ([evidence](../evidence/tts-utterance-fidelity.md)): test `test_audio_mode_speaks_exactly_the_utterance_every_turn` (4 cuộc gọi `mode=audio`, text gửi TTS đúng bằng `utterance` mọi lượt). `scripts/tts_fidelity_audit.py` lấy câu từ registry `templates.py`: 34 câu của 5 kịch bản, dài nhất 205 ký tự, 0 câu vượt 300. 34/34 câu sinh được bằng giọng prod. Nghe lại và ghi bảng đúng/sai gộp vào task rà soát câu thoại 05/10, vì template đã đổi sau đợt sửa eval mentor. Lên main qua PR #70.
 
 **Gửi PM:** Kiểm tra utterance fidelity cho 5 scenario đang được chấm (Identity, Confirm, No-answer, Cancel, Transfer): audio phải khớp đúng nội dung utterance, không thêm, bớt hay đổi nghĩa. Bổ sung test tự động để chặn mọi thay đổi text trước TTS, vì sai lệch có tính hệ thống sẽ bị xử như sửa mock khi chương trình lấy mẫu ở tuần 6.
 
@@ -162,7 +164,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T5 01/10 · Đường B — Dự phòng khi Vbee lỗi trên cuộc gọi thời gian thực ✅ Đã xong (02/10)
 
-> **Kết quả** ([evidence](../evidence/tts-stream-fallback.md)): `TTSGateway.synthesize_stream` + `cancel()`; `SpeechSynthesizer` đi qua gateway. Vbee lỗi trước chunk đầu → ElevenLabs đọc đúng câu đó; lỗi giữa câu → dừng êm (không ném lỗi để không cắt cả cuộc gọi), ghi `error_code`; cả hai lỗi → ném lỗi như cũ. Span LiveKit có lại `voice` / `fallback_used`. 16 test mới, cả suite pass; kiểm thêm với httpx thật + server giả (503, rớt giữa câu). Còn lại: báo Engine phần câu đã phát và cho `CallBridge` đọc `error_code` → làm cùng 07/10.
+> **Kết quả** ([evidence](../evidence/tts-stream-fallback.md)): `TTSGateway.synthesize_stream` + `cancel()`; `SpeechSynthesizer` đi qua gateway. Vbee lỗi trước chunk đầu → ElevenLabs đọc đúng câu đó; lỗi giữa câu → dừng êm (không ném lỗi để không cắt cả cuộc gọi), ghi `error_code`; cả hai lỗi → ném lỗi như cũ. Span LiveKit có lại `voice` / `fallback_used`. 16 test mới, cả suite pass; kiểm thêm với httpx thật + server giả (503, rớt giữa câu). Sửa theo review PR: `CallBridge` đọc `error_code`, câu bị cắt ghi span `ERROR` / `truncated=True` và không tính tiền. Benchmark 05/10 trên prod: 0 lỗi, 0 fallback. Còn lại: báo Engine phần câu đã phát → làm cùng 07/10.
 
 **Gửi PM:** Bổ sung fallback cho streaming path: khi Vbee lỗi hoặc timeout, hệ thống tự failover sang ElevenLabs cho đúng câu đang đọc, user không bị im lặng hay nghe sai câu. Nếu lỗi xảy ra khi đã phát được một phần thì dừng lại, không đọc lặp từ đầu.
 
@@ -180,29 +182,17 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 **Xong khi:** test fallback trên stream pass; test cũ của gateway (HTTP) vẫn pass.
 **Căn cứ:** SP, §4.1.3 · **Đầu ra:** code + test · **Nhánh:** `feature/tts-w3-vbee-streaming`
 
-#### T5 01/10 · Đường A — Chi phí giọng nói mỗi cuộc gọi
+#### T6 02/10 · Đường A — Gate W3 ✅ Đã xong
 
-**Gửi PM:** Tính cost per session của TTS theo từng scenario, dựa trên số ký tự mỗi cuộc gọi và đơn giá của Vbee (cộng phần fallback sang ElevenLabs). Số liệu dùng cho tiêu chí latency + cost và trình bày theo format chương trình công bố.
+> Kết quả: đã tổng hợp ngày 02/10 (xem Daily Report 02/10).
 
-**Nội dung:**
-1. **Số ký tự mỗi cuộc gọi.** Chạy các kịch bản đang có eval (`scripts/*_eval.py` hoặc regression local trên `clinic_mock_sim`) với một TTS đếm ký tự. Ghi tổng ký tự TTS mỗi cuộc gọi theo kịch bản: Confirm, Cancel, Transfer, No-answer, Reschedule, Booking.
-2. **Đơn giá.** Vbee theo gói đang dùng (ký tự/tháng ÷ giá gói); ElevenLabs Flash theo bảng giá niêm yết (chỉ tính phần fallback; tỉ lệ fallback đếm từ log WARNING `chuyển sang` trên prod, log INFO không được in).
-3. **Công thức.** USD/phiên = ký tự × đơn giá Vbee + ký tự fallback × đơn giá ElevenLabs. Ghi thêm USD/1.000 cuộc gọi.
-4. **Format.** Xem format báo cáo chi phí chương trình đã công bố trên kênh chưa (§5.4). Có rồi thì trình bày theo đó; chưa có thì ghi vào mục 7 để hỏi.
-
-**Xong khi:** có bảng USD/phiên theo từng kịch bản, ghi rõ nguồn đơn giá.
-**Căn cứ:** §5, §5.4, Phụ lục B · **Đầu ra:** bảng USD/phiên · **Nhánh:** `feature/tts-w3-grading-path`
-
-#### T6 02/10 · Đường A — Gate W3
-
-**Gửi PM:** C
+**Gửi PM:** Tổng hợp Gate W3 evidence cho TTS trên đường chấm điểm HTTP: config đang chạy trên production, latency từng lượt, kết quả kiểm audio đọc đúng `utterance` cho 5 kịch bản và cách xử lý khi provider lỗi. Kèm tiến độ streaming Vbee để chuẩn bị cho tuần 4.
 
 **Nội dung:** viết `docs/evidence/tts-gate-w3.md` theo `TEMPLATE.md`, gồm:
 - config đang chạy trên prod (kiểm trong container, xem evidence 28/09);
 - bảng thời gian từng lượt (28/09) và số trước/sau khi dùng chung kết nối (29/09);
 - test "text gửi TTS = utterance" + bảng câu đã nghe của 5 kịch bản;
 - test đường lỗi: Vbee lỗi → ElevenLabs; cả hai lỗi → `utterance` vẫn trả, `audio_url = null`;
-- bảng chi phí/phiên;
 - tiến độ stream Vbee (30/09 – 01/10).
 
 **Xong khi:** file evidence đủ các mục trên, có link test và số liệu.
@@ -229,19 +219,34 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 **Xong khi:** Việt và Hoàn đồng ý bảng interface và phân vai.
 **Căn cứ:** §1.3.2, Phụ lục B.2, MP · **Đầu ra:** bảng interface + phân vai · **Nhánh:** `feature/tts-w4-livekit-vbee`
 
-#### T2 05/10 · Đường A — Kiểm câu thoại đổi lịch
+#### T2 05/10 · Đường A — Rà soát và chuẩn hoá câu thoại toàn bộ kịch bản
 
-**Gửi PM:** Kiểm tra utterance fidelity cho scenario Reschedule trước khi vào test set tuần 4: các câu offer slot, đọc lại lịch mới và xác nhận đổi lịch. Câu nào đọc sai hoặc quá dài sẽ báo Engine chỉnh template.
+**Gửi PM:** Rà soát và chuẩn hoá câu thoại cho toàn bộ kịch bản: kiểm tra audio đọc đúng `utterance` cho toàn bộ kịch bản trước khi kịch bản vào bộ chấm. Câu nào đọc sai, đọc thiếu tự nhiên hoặc quá dài sẽ được sửa ngay trong template câu thoại ở Engine để audio luôn khớp đúng lời bot. Chuẩn hoá và cố định câu chữ của các câu không đổi theo cuộc gọi, làm nền cho việc dựng sẵn audio nhằm giảm độ trễ và chi phí TTS.
 
-**Nội dung:** làm giống task 29/09 cho kịch bản Reschedule:
-- câu đề xuất khung giờ ("Dạ, hiện còn khung 1 là …, khung 2 là …");
-- câu báo ngày đã kín;
-- câu đọc lại lịch mới, câu xác nhận đã đổi.
+**Phạm vi:** cả 7 kịch bản của Bảng 1. 5 kịch bản đã nghe ngày 29/09 (Identity, Confirm, No-answer, Cancel, Transfer) được nghe lại, vì template đã đổi sau đợt sửa eval mentor 05–06/10. Reschedule (vào bộ chấm tuần 4) và Booking (tuần 5) nghe lần đầu.
 
-Điền dữ liệu mẫu với số khung tối đa mỗi lượt (R-25: tối đa 2 khung) để có câu dài nhất, rồi kiểm ≤ 300 ký tự. Nghe và ghi bảng.
+**Nội dung:**
+1. **Liệt kê câu.** Mở rộng `scripts/tts_fidelity_audit.py` (đang phủ 5 kịch bản) sang Reschedule và Booking. Câu vẫn lấy từ registry `STATIC_UTTERANCES` / `RENDERERS` của `templates.py`, không chép tay; script cảnh báo template chưa xếp kịch bản.
+   - Reschedule: câu đề xuất khung giờ ("Dạ, hiện còn khung 1 là …, khung 2 là …"), câu báo ngày đã kín, câu "em chưa thấy khung giờ đó", câu đọc lại lịch mới, câu xác nhận đã đổi, câu giữ lịch cũ và chuyển máy.
+   - Booking: câu hỏi nhu cầu, câu đề xuất khung giờ, câu đọc lại để xác nhận, câu báo đã đặt lịch, câu chuyển máy khi không tìm thấy hồ sơ.
+2. **Điền dữ liệu và kiểm độ dài.** Câu có phần động điền bằng dữ liệu Clinic Mock (`apt_00417`, `apt_00418`–`427`), với số khung tối đa mỗi lượt (R-25: tối đa 2 khung) để có câu dài nhất. Kiểm mọi câu ≤ 300 ký tự (`MAX_TEXT_CHARS` của Vbee).
+3. **Sinh audio và nghe.** Sinh bằng giọng đang chạy prod, nghe từng câu và ghi bảng: câu · đọc đúng/sai · tự nhiên/ngang · ghi chú (sai chữ nào, ngắt nghỉ lạ, nhanh quá).
+4. **Sửa câu chữ ở template Engine.** Câu đọc sai, đọc thiếu tự nhiên hoặc quá dài sửa thẳng trong `src/callbot/engine/dialogue/templates.py`: viết lại câu, thêm dấu phẩy để ngắt, tách câu dài (cách đã chốt ngày 29/09). `utterance` đổi theo nên audio vẫn khớp nguyên văn (§4.1.3). **Không** sửa câu ở lớp TTS.
+   - Cập nhật các test đang so nguyên văn chuỗi cũ; Output Guard render lại bằng chính renderer nên tự khớp.
+   - Câu sửa xong thì nghe lại.
+5. **Cố định câu không đổi theo cuộc gọi.** Với các câu trong `STATIC_UTTERANCES` (chào, hỏi họ tên / ngày sinh, nhắc khi im lặng, xin nhắc lại, chuyển máy…):
+   - chốt câu chữ cuối cùng sau bước 4;
+   - thêm test khóa nguyên văn từng câu, để mọi thay đổi câu chữ về sau đều phải chủ động cập nhật test và audio dựng sẵn;
+   - sinh sẵn audio cho từng câu, ghi manifest gồm hash của text, giọng, tốc độ và sample rate.
+6. **Ghi kết quả** vào `docs/evidence/` theo `TEMPLATE.md`: bảng câu đã nghe, các câu đã sửa (trước / sau), danh sách câu cố định kèm số ký tự mỗi câu. Số ký tự này cho biết phần chi phí TTS tiết kiệm được nếu dùng audio dựng sẵn.
 
-**Xong khi:** 100% câu Reschedule đã nghe và ghi kết quả; câu đọc sai đã báo Hoàn.
-**Căn cứ:** §4.1.3, Bảng 1 (tuần 4) · **Đầu ra:** bảng câu đã nghe · **Nhánh:** `docs/tts-w4-gate`
+**Điều kiện cho bước dựng sẵn audio** (để không vi phạm §4.1.3, xem mục 6):
+- Chỉ áp dụng cho câu **không có phần động**. Câu có tên, ngày giờ hay khoa vẫn gọi TTS mỗi lần.
+- Tra audio theo **đúng nguyên văn text** (hash của text + giọng + tốc độ). Text khác một ký tự thì không trúng và gọi TTS như bình thường, nên không bao giờ phát audio của câu khác thay cho `utterance`.
+- Nối lớp tra cứu vào pipeline (trước khi gọi `TTSGateway.synthesize` trong `SpeechSynthesizer`) là việc riêng sau task này, cần đo lại latency và chi phí trước / sau.
+
+**Xong khi:** 100% câu của 7 kịch bản đã nghe và ghi kết quả; câu đọc sai hoặc thiếu tự nhiên đã sửa ở template và nghe lại; không câu nào vượt 300 ký tự; danh sách câu cố định đã chốt, có test khóa nguyên văn và audio dựng sẵn kèm manifest.
+**Căn cứ:** §4.1.3, Bảng 1, §5 (latency + chi phí) · **Đầu ra:** template đã sửa, bảng câu đã nghe, danh sách câu cố định + audio dựng sẵn · **Nhánh:** `docs/tts-w4-gate`
 
 #### T2 05/10 · Đường B — P-01 Chuẩn bị telephony (dời từ 29/09)
 
@@ -448,7 +453,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 | Việc | Lý do |
 |---|---|
 | Phát câu "xin lỗi" từ cache khi TTS lỗi | Audio khác `utterance`, vi phạm §4.1.3 |
-| Cache toàn bộ câu kịch bản demo | Dễ phát audio lệch `utterance` |
+| Cache toàn bộ câu kịch bản demo, hoặc cache câu có phần động | Dễ phát audio lệch `utterance`. Chỉ dựng sẵn audio cho câu cố định, tra theo đúng nguyên văn text (task 05/10) |
 | Đặt ngưỡng ms tự nghĩ ra cho TTFA / barge-in | Contract không đặt; chỉ đo và báo số, ngưỡng do team chốt với PM |
 
 ## 7. Cần hỏi

@@ -14,6 +14,8 @@ TRANSITIONS: dict[CallState, set[CallState]] = {
     "AWAITING_IDENTITY": {
         "AWAITING_IDENTITY",
         "AWAITING_INTENT",
+        # R-43: xác minh xong ở lượt người gọi đã xin đổi lịch -> đọc khung duy nhất, hỏi có/không
+        "AWAITING_CONFIRMATION",
         "OFFERING_SLOTS",
         "CLOSING",
         "ENDED",
@@ -54,12 +56,24 @@ CONFIRMATION_QUESTION_FOR: dict[PendingAction, QuestionId] = {
     "BOOK": QuestionId.SLOT_READBACK,
 }
 
+# PRD R-29 (v2.1): người gọi chọn rõ một khung bot vừa đọc là khẳng định rõ (R-23) — ghi đổi lịch
+# ngay từ câu mời khung, không hỏi thêm "đồng ý chứ ạ?". Đặt lịch vẫn đọc lại slot (§1.1.10, R-10).
+DIRECT_PICK_QUESTION_FOR: dict[PendingAction, QuestionId] = {"RESCHEDULE": QuestionId.OFFER_SLOTS}
+
+
+def confirmation_questions(action: PendingAction) -> frozenset[QuestionId]:
+    """Các câu hỏi mà câu trả lời đồng ý / chọn rõ mở khóa lệnh ghi của `action`."""
+    direct = DIRECT_PICK_QUESTION_FOR.get(action)
+    base = CONFIRMATION_QUESTION_FOR[action]
+    return frozenset({base, direct}) if direct is not None else frozenset({base})
+
+
 # Outbound gộp tóm tắt lịch + đọc lại + hỏi đến được không vào một lượt (Figure 0 rev 1.1),
 # nên xác nhận đến khám được ghi cả từ AWAITING_INTENT.
 _WRITE_STATES: dict[PendingAction, frozenset[CallState]] = {
     "CONFIRM": frozenset({"AWAITING_INTENT", "AWAITING_CONFIRMATION"}),
     "CANCEL": frozenset({"AWAITING_CONFIRMATION"}),
-    "RESCHEDULE": frozenset({"AWAITING_CONFIRMATION"}),
+    "RESCHEDULE": frozenset({"AWAITING_CONFIRMATION", "OFFERING_SLOTS"}),
     "BOOK": frozenset({"AWAITING_CONFIRMATION"}),
 }
 
@@ -155,7 +169,7 @@ def check_write(ctx: CallContext, action: PendingAction, slot_id: Optional[str] 
         raise InconsistentSession(
             f"{ctx.call_id}: ghi slot {slot_id}, slot đang chọn {ctx.selected_slot_id}"
         )
-    if ctx.question is None or ctx.question.question_id != CONFIRMATION_QUESTION_FOR[action]:
+    if ctx.question is None or ctx.question.question_id not in confirmation_questions(action):
         raise InconsistentSession(f"{ctx.call_id}: câu hỏi đang chờ không xác nhận {action}")
 
 

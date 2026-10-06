@@ -68,15 +68,15 @@ R066,holdout,refuse,outbound,SLOT_READBACK,1,tôi không đi được giờ này
 R067,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,không,REFUSE_CHOICE,no,Câu A/B cần hỏi lại rõ
 R068,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,"không, nghe khung khác",MORE,no,Từ chối kèm yêu cầu tiếp tục
 R069,holdout,refuse,outbound,OFFER_SLOTS,2,không lấy khung nào cả,REFUSE_CHOICE,yes,Q-4: từ chối các khung chưa phải bỏ đổi lịch -> hỏi A/B
-R070,holdout,refuse,outbound,SLOT_READBACK,1,không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,KEEP_OLD,no,Bỏ đổi lịch sau câu A/B
-R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,KEEP_OLD,no,Bỏ đổi lịch sau hết slot
-R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,KEEP_OLD,yes,Không tiếp tục reschedule
-R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,KEEP_OLD,no,Giữ lịch cũ
-R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,KEEP_OLD,no,Giữ lịch cũ
-R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,KEEP_OLD,no,Giữ lịch cũ
+R070,holdout,refuse,outbound,SLOT_READBACK,1,không đổi nữa,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau câu A/B — giữ lịch cũ + chuyển máy (qc-rs-08)
+R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau hết slot — giữ lịch cũ + chuyển máy (qc-rs-08)
+R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,TRANSFER:PATIENT_REQUEST,yes,Không tiếp tục reschedule — giữ lịch cũ + chuyển máy (qc-rs-08)
+R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
+R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
+R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
 R079,prompt,agreement,outbound,SLOT_READBACK,1,được,WRITE,no,Đồng ý rõ ràng
 R080,prompt,agreement,outbound,SLOT_READBACK,1,đồng ý,WRITE,no,Đồng ý rõ ràng
 R081,prompt,agreement,outbound,SLOT_READBACK,1,ok,WRITE,no,Đồng ý rõ ràng
@@ -121,7 +121,7 @@ R120,holdout,safety_transfer,outbound,SLOT_READBACK,1,tôi đang lái xe,REREAD_
 R121,prompt,unaccented,outbound,OFFER_SLOTS,2,khung khac,MORE,no,ASR không dấu
 R122,holdout,unaccented,outbound,OFFER_SLOTS,2,lay cai dau,PICK:1,no,ASR không dấu
 R123,holdout,unaccented,outbound,OFFER_SLOTS,2,doi sang ngay 19,NEW_TIME:19/10,no,ASR không dấu
-R124,holdout,unaccented,outbound,OFFER_SLOTS,2,thoi khong doi nua,KEEP_OLD,no,ASR không dấu
+R124,holdout,unaccented,outbound,OFFER_SLOTS,2,thoi khong doi nua,TRANSFER:PATIENT_REQUEST,no,ASR không dấu — giữ lịch cũ + chuyển máy (qc-rs-08)
 R125,holdout,unaccented,outbound,SLOT_READBACK,1,dong y,WRITE,no,ASR không dấu
 R126,holdout,unaccented,outbound,SLOT_READBACK,1,vang,WRITE,no,ASR không dấu (D-2)
 R127,holdout,unaccented,outbound,SLOT_READBACK,1,da,REREAD_YESNO,no,"ASR không dấu: ""da"" = dạ, không phải đồng ý"

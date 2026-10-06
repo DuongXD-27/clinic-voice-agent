@@ -6,10 +6,13 @@ import pytest
 
 from callbot.engine.extraction.schema import VN_TZ, Provenance
 from callbot.engine.extraction.slot_choice import (
+    anchor_relative,
     asks_back,
     extract_slot_choice,
+    filter_slots,
     parse_slot_criteria,
     requested_slot_count,
+    requests_time,
     resolve_request,
 )
 
@@ -257,3 +260,73 @@ def test_bare_weekday_still_matches_listed_slots_when_choosing() -> None:
     """R-30 chỉ quy đổi thứ trần cho yêu cầu mới; chọn trong danh sách vẫn khớp thứ đó."""
     criteria = parse_slot_criteria("thứ hai", TUESDAY)
     assert criteria.weekday == 0 and criteria.date_issue is None and criteria.date_from is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sáng mai khoảng 9 giờ có được không?",
+        "Cho tôi ba giờ kém mười lăm chiều ngày 14",
+        "Có 4 giờ chiều ngày 16 không em",
+        "Còn khung sáng thứ Sáu không ạ?",
+        "có lịch 2 giờ chiều mai không",
+        # Câu cầu khiến kết bằng "đi"
+        "5 giờ chiều ngày 14 đi em",
+        "chiều thứ Sáu đi",
+    ],
+)
+def test_requests_time_accepts_asking_for_or_about_a_time(text: str) -> None:
+    assert requests_time(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Không phải 8 giờ à?",
+        "Tưởng là 9 giờ chứ",
+        "8 giờ sáng ngày 15",
+        "Hôm đó 9 giờ tôi bận",
+        "Sao lại 8 giờ?",
+        # Tiểu từ sau chủ ngữ / trạng từ là câu kể việc đi khám, không phải lời xin
+        "3 giờ tôi đi",
+        "Thứ Tư tôi vẫn đi nhé",
+        "vâng, 3 giờ chiều nhé",  # hỏi lại giờ hẹn (confirm eval)
+    ],
+)
+def test_requests_time_rejects_doubts_and_plain_statements(text: str) -> None:
+    assert not requests_time(text)
+
+
+# --- "sớm hơn / muộn hơn": so với lịch đang đổi, Dialogue gắn mốc -----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "relative"),
+    [("sớm hơn chút", "EARLIER"), ("cho tôi muộn hơn được không", "LATER"), ("trễ hơn", "LATER")],
+)
+def test_earlier_or_later_is_a_relative_criterion(text: str, relative: str) -> None:
+    assert parse_slot_criteria(text, NOW).relative == relative
+
+
+def test_relative_without_an_anchor_matches_no_slot() -> None:
+    criteria = parse_slot_criteria("ngày 14 nhưng sớm hơn chút", NOW)
+    assert criteria.day == 14 and criteria.relative == "EARLIER"
+    choice = extract_slot_choice("ngày 14 nhưng sớm hơn chút", SLOTS, [], NOW).value
+    assert choice.kind == "NO_MATCH"
+
+
+def test_anchored_relative_keeps_only_slots_on_that_side() -> None:
+    anchor = datetime(2026, 10, 14, 15, 30, tzinfo=VN_TZ)
+    slots = [
+        {"slot_id": "s1500", "starts_at": "2026-10-14T15:00:00+07:00"},
+        {"slot_id": "s1600", "starts_at": "2026-10-14T16:00:00+07:00"},
+    ]
+    earlier = anchor_relative(parse_slot_criteria("ngày 14 sớm hơn", NOW), anchor)
+    later = anchor_relative(parse_slot_criteria("ngày 14 muộn hơn", NOW), anchor)
+    assert [s["slot_id"] for s in filter_slots(slots, earlier)] == ["s1500"]
+    assert [s["slot_id"] for s in filter_slots(slots, later)] == ["s1600"]
+
+
+def test_bare_earlier_at_a_slot_question_asks_for_other_slots() -> None:
+    """T-10 R033: "sớm hơn" trần ở câu chọn khung là xin khung khác, không phải yêu cầu mới."""
+    assert extract_slot_choice("có giờ nào sớm hơn không", SLOTS, [], NOW).value.kind == "MORE"

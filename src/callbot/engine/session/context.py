@@ -102,6 +102,10 @@ class CallContext:
     selected_slot_id: Optional[str] = None
     evidence: list[ActionEvidence] = field(default_factory=list)
     cancel_reason: Optional[CancelReason] = None
+    # PRD R-43: ý định đổi lịch người gọi nói trước khi xác minh xong (cùng lượt với họ tên / ngày
+    # sinh). Chỉ được dùng SAU khi xác minh; `early_request` là lời nói đó (tiêu chí thời gian).
+    early_intent: Optional[str] = None
+    early_request: Optional[str] = None
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
@@ -241,6 +245,8 @@ class CallContext:
             "selected_slot_id": self.selected_slot_id,
             "evidence": [_evidence_to_dict(item) for item in self.evidence],
             "cancel_reason": self.cancel_reason,
+            "early_intent": self.early_intent,
+            "early_request": self.early_request,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
@@ -285,6 +291,9 @@ class CallContext:
             selected_slot_id=data["selected_slot_id"],
             evidence=[_evidence_from_dict(item) for item in data["evidence"]],
             cancel_reason=data["cancel_reason"],
+            # Khóa thêm ở R-43 (05/10): phiên lưu trước đó chưa có
+            early_intent=data.get("early_intent"),
+            early_request=data.get("early_request"),
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có

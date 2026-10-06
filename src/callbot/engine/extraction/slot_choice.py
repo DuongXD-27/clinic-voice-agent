@@ -14,6 +14,11 @@ Ngày tương đối ("mai", "thứ năm tuần sau") tính theo ngày cuộc g�
 Transcript không dấu: khôi phục dấu cho bảng từ ngày giờ đóng trước khi parse. "sang"/"toi" chỉ thành
 "sáng"/"tối" khi đứng sau "giờ"/"rưỡi"/"buổi" — "doi sang chieu" là "đổi sang chiều", "toi muon" là "tôi muốn".
 Khôi phục sai chỉ làm lệch tiêu chí lọc (NO_MATCH / AMBIGUOUS); slot vẫn chỉ lấy từ GET /slots và vẫn phải đọc lại.
+
+PRD R-44 — tự sửa trong câu: "9 giờ, à không, 10 giờ", "thứ Sáu ngày 15… à không, 14" dùng giá trị nói
+SAU CÙNG. Tiêu chí của phần sửa thay tiêu chí cùng loại của phần trước; tiêu chí phần sau không nhắc lại
+thì giữ ("thứ Sáu" vẫn còn khi chỉ sửa ngày). Số trần ở phần sửa ("à không, 14") mượn đơn vị của số bị sửa
+("ngày 15" -> "ngày 14", "9 giờ" -> "10 giờ"). "à không" ở đây là lời sửa, không phải lời từ chối (R-41).
 """
 
 import re
@@ -21,10 +26,12 @@ from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any, Iterable, Optional, Sequence
 
+from callbot.engine.extraction.identity import CORRECTIONS
 from callbot.engine.extraction.schema import (
     DayPeriod,
     Field,
     Provenance,
+    Relative,
     SlotChoice,
     SlotCriteria,
     to_local,
@@ -35,6 +42,7 @@ from callbot.engine.extraction.spoken_numbers import (
     restore_number_words,
 )
 from callbot.engine.extraction.text import (
+    PhraseSet,
     clean,
     compile_phrases,
     find_phrase,
@@ -240,6 +248,56 @@ _ASKS_BACK = compile_phrases(
 _ASKS_BACK_FINALS = frozenset({"à", "hả", "hở", "a", "ha", "ho"})
 
 
+# So với lịch đang đổi: Dialogue gắn mốc là giờ lịch hẹn (`anchor_relative`)
+_RELATIVE: dict[Relative, PhraseSet] = {
+    "EARLIER": compile_phrases(["sớm hơn một chút", "sớm hơn chút", "sớm hơn"]),
+    "LATER": compile_phrases(["muộn hơn một chút", "muộn hơn chút", "muộn hơn", "trễ hơn"]),
+}
+
+# Lời xin một thời điểm: "… có được không", "cho tôi …", "tôi muốn …", "chiều thứ Sáu tôi rảnh". Không có
+# lời xin thì giờ trong câu có thể chỉ là hỏi lại / thắc mắc ("9 giờ hả em?", "tôi tưởng hẹn 9 giờ").
+_TIME_REQUEST = compile_phrases(
+    [
+        "được không",
+        "được chứ",
+        "có được",
+        "cho tôi",
+        "cho em",
+        "cho mình",
+        "cho chị",
+        "cho anh",
+        "lấy",
+        "muốn",
+        "rảnh",
+        "tiện",
+        "đi được",
+        "đến được",
+        "khám được",
+    ]
+)
+_TIME_DOUBT = compile_phrases(["tưởng", "không phải", "hả", "à", "sao lại", "nhầm"])
+# Hỏi còn chỗ: "có 4 giờ chiều ngày 16 không em", "còn khung sáng thứ Sáu không ạ"
+_AVAILABILITY = re.compile(r"(?:^| )(?:có|còn) (?:\S+ ){1,8}?không(?: (?:em|ạ|nhỉ|nhé|vậy|thế))?$")
+# Câu cầu khiến kết bằng "đi": "5 giờ chiều ngày 14 đi em". Từ ngay trước "đi" là chủ ngữ / trạng từ
+# ("tôi đi", "vẫn đi") thì là câu kể việc đi khám. "nhé" không tính: "vâng, 3 giờ chiều nhé" là hỏi lại
+# giờ hẹn, không phải xin giờ khác.
+_IMPERATIVE_TAIL = re.compile(r"(?:^| )(\S+) đi(?: (?:em|ạ|nhé|nha|nhá))*$")
+_NOT_IMPERATIVE_HEAD = frozenset(
+    ["tôi", "em", "mình", "anh", "chị", "cô", "chú", "bác", "cháu", "con", "vẫn", "sẽ", "cũng", "được"]
+)  # fmt: skip
+
+
+def requests_time(transcript: str) -> bool:
+    """Câu xin một thời điểm (để đổi lịch), không phải hỏi lại / thắc mắc về giờ."""
+    text = clean(transcript)
+    if find_phrase(text, _TIME_DOUBT) is not None:
+        return False
+    if find_phrase(text, _TIME_REQUEST) is not None or _AVAILABILITY.search(text) is not None:
+        return True
+    tail = _IMPERATIVE_TAIL.search(text)
+    return tail is not None and tail.group(1) not in _NOT_IMPERATIVE_HEAD
+
+
 def asks_back(transcript: str) -> bool:
     """Câu hỏi lại, không phải chọn: "sao lại…", hoặc kết thúc bằng "à" / "hả" / "hở"."""
     text = clean(transcript)
@@ -267,7 +325,9 @@ def extract_slot_choice(
     now: datetime,
 ) -> Field[SlotChoice]:
     criteria = parse_slot_criteria(transcript, now)
-    if criteria.empty:
+    # "sớm hơn / muộn hơn" trần ở câu chọn khung là xin khung khác (T-10 R033/R034): sớm hơn khung vừa
+    # đọc hay lịch cũ là mơ hồ. Có kèm ngày / buổi / giờ thì mới là yêu cầu mới.
+    if replace(criteria, relative=None).empty:
         text = clean(transcript)
         any_time = find_phrase(text, _ANY)
         if any_time is not None:
@@ -301,6 +361,35 @@ def filter_slots(
 
 
 def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
+    text = _prepare(transcript)
+    today = to_local(now).date()
+    corrected = _corrected_criteria(text, today)
+    found = corrected[1] if corrected is not None else _criteria(text, today, {})
+    _check_dates(today, found)
+    return SlotCriteria(**found)
+
+
+def anchor_relative(criteria: SlotCriteria, anchor: datetime) -> SlotCriteria:
+    """Gắn mốc cho "sớm hơn" / "muộn hơn": `anchor` là giờ bắt đầu của lịch hẹn đang đổi."""
+    if criteria.relative == "EARLIER":
+        return replace(criteria, before=anchor)
+    if criteria.relative == "LATER":
+        return replace(criteria, after=anchor)
+    return criteria
+
+
+def without_corrected_part(transcript: str, now: datetime) -> str:
+    """Bỏ phần bị sửa: "9 giờ, à không, 10 giờ" -> "10 giờ"; không có lời tự sửa thì giữ nguyên câu.
+
+    Chỉ để đọc có / không trên câu trả lời sau cùng của người gọi (R-44): "không" trong "à không" là
+    lời sửa giá trị, không phải lời từ chối khung đang chốt (R-41). Lời đồng ý thật vẫn đi qua
+    `confirmation_veto` trên NGUYÊN câu.
+    """
+    corrected = _corrected_criteria(_prepare(transcript), to_local(now).date())
+    return corrected[0] if corrected is not None else transcript
+
+
+def _prepare(transcript: str) -> str:
     text = normalize(transcript)
     unaccented = is_unaccented(clean(text))
     if unaccented:
@@ -311,18 +400,110 @@ def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
     count = _SLOT_COUNT.search(strip_diacritics(text))
     if count is not None:
         text = _cut(text, count)
-    today = to_local(now).date()
-    found: dict[str, Any] = {}
+    return text
+
+
+# R-44: cụm tự sửa, thêm vào `CORRECTIONS` của danh tính. Ở đây không có tên người nên "a khong" không dấu
+# vẫn là "à không" ("khong" đã được khôi phục thành "không" như một từ số). "à" / "ờ" / "ơ" trần chỉ nhận
+# bản có dấu ("o" không dấu có thể là "ở"); mọi cụm chỉ được tính khi hai bên đều nêu tiêu chí.
+_CORRECTIONS = compile_phrases(
+    [
+        "à không phải",
+        "ờ không",
+        "ơ không",
+        "à mà không",
+        "a không",
+        "a không phải",
+        "a nhầm",
+        "mà thôi",
+        "thôi để",
+    ]
+)
+_SOFT_CORRECTIONS = compile_phrases(["à", "ờ", "ơ"], unaccented_exclude=["à", "ờ", "ơ"])
+# Số trần ở phần sửa mượn đơn vị của số bị sửa: đứng trước số ("ngày 15") hoặc sau số ("9 giờ")
+_UNIT_BEFORE = frozenset({"ngày", "mùng", "mồng", "thứ", "khung", "số"})
+_UNIT_AFTER = frozenset({"giờ", "rưỡi", "tháng"})
+_ORDINAL_TAIL = re.compile(r"^(?:thứ|số)\s+(?:nhất|một|hai|ba|tư|bốn|năm|[1-9])$")
+
+
+def _corrected_criteria(text: str, today: date) -> Optional[tuple[str, dict[str, Any]]]:
+    """(phần sửa, tiêu chí) của lời tự sửa sau cùng có hai bên đều nêu tiêu chí; `None` khi không có.
+
+    Phần trước lời sửa vẫn được đọc, để giữ những tiêu chí phần sửa không nhắc lại.
+    """
+    for head, spoken in _correction_splits(text):
+        head_found = _criteria(head, today, {})
+        if not head_found:
+            continue
+        tail = _complete_tail(head, spoken, head_found)
+        tail_found = _criteria(tail, today, {})
+        if not tail_found:
+            continue
+        if "ordinal" in tail_found:
+            # "khung 1, à không, khung 2": chọn theo thứ tự thay cả cách chọn cũ
+            return spoken, tail_found
+        seed = {k: v for k, v in head_found.items() if k not in ("ordinal", "date_issue")}
+        merged = _criteria(tail, today, seed)
+        if "period" in tail_found and "hours" not in tail_found and "hours" in seed:
+            # "9 giờ sáng, à không, chiều": giờ cũ đọc lại theo buổi mới
+            hour = min(seed["hours"])
+            if hour < 12:
+                merged["hours"] = _candidate_hours(hour, merged["period"])
+        return spoken, merged
+    return None
+
+
+def _correction_splits(text: str) -> list[tuple[str, str]]:
+    """(phần trước, phần sau) của mỗi cụm tự sửa, cụm kết thúc muộn nhất trước."""
+    matches: list[re.Match[str]] = []
+    phrase_sets: tuple[PhraseSet, ...] = (CORRECTIONS, _CORRECTIONS, _SOFT_CORRECTIONS)
+    for phrases in phrase_sets:
+        matches += [m for _, p in phrases.for_text(text, mixed=True) for m in p.finditer(text)]
+    splits = []
+    for match in sorted(matches, key=lambda m: (m.end(), m.end() - m.start()), reverse=True):
+        head, tail = text[: match.start()].strip(), text[match.end() :].strip()
+        if head and tail:
+            splits.append((head, tail))
+    return splits
+
+
+def _complete_tail(head: str, tail: str, head_found: dict[str, Any]) -> str:
+    """ "thứ Sáu ngày 15… à không, 14" -> phần sửa "ngày 14"; "khung thứ nhất, à không, thứ hai" -> "khung thứ hai"."""
+    words = tail.split()
+    if "ordinal" in head_found and _ORDINAL_TAIL.match(tail):
+        return f"khung {tail}"
+    # Chỉ số trần đứng đầu phần sửa ("16 được không"); "10 giờ", "15 tháng 10" đã tự có đơn vị
+    lead = len(_number_run(words))
+    if lead == 0 or (lead < len(words) and words[lead] in _UNIT_AFTER):
+        return tail
+    number, rest = " ".join(words[:lead]), " ".join(words[lead:])
+    tokens = head.split()
+    end = max((i for i, t in enumerate(tokens) if is_number_token(t)), default=None)
+    if end is None:
+        return tail
+    start = end
+    while start > 0 and is_number_token(tokens[start - 1]):
+        start -= 1
+    if start > 0 and tokens[start - 1] in _UNIT_BEFORE:
+        return f"{tokens[start - 1]} {number} {rest}".strip()
+    if end + 1 < len(tokens) and tokens[end + 1] in _UNIT_AFTER:
+        return f"{number} {tokens[end + 1]} {rest}".strip()
+    return tail
+
+
+def _criteria(text: str, today: date, seed: dict[str, Any]) -> dict[str, Any]:
+    """Tiêu chí rút từ `text`, chưa kiểm ngày (`_check_dates`). `seed`: tiêu chí giữ lại từ trước lời sửa."""
+    found: dict[str, Any] = dict(seed)
 
     text = _take_ordinal(text, found)
+    text = _take_relative(text, found)
     text = _take_relative_dates(text, today, found)
     text = _take_weekday(text, found)
     text = _take_day_of_month(text, found)
     text = _take_month(text, today, found)
     text = _take_period(text, found)
     _take_time(text, found)
-    _check_dates(today, found)
-    return SlotCriteria(**found)
+    return found
 
 
 def resolve_request(criteria: SlotCriteria, now: datetime) -> SlotCriteria:
@@ -383,6 +564,15 @@ def _take_ordinal(text: str, found: dict[str, Any]) -> str:
         match = pattern.search(text)
         if match:
             found["ordinal"] = value
+            return _cut(text, match)
+    return text
+
+
+def _take_relative(text: str, found: dict[str, Any]) -> str:
+    for relative, phrases in _RELATIVE.items():
+        match = find_phrase(text, phrases)
+        if match is not None:
+            found["relative"] = relative
             return _cut(text, match)
     return text
 
@@ -623,6 +813,12 @@ def _matches(slot: dict[str, Any], c: SlotCriteria, ordinal_id: Optional[str]) -
     if c.date_from is not None and starts.date() < c.date_from:
         return False
     if c.date_to is not None and starts.date() > c.date_to:
+        return False
+    if c.relative is not None and c.before is None and c.after is None:
+        return False  # chưa có mốc: là yêu cầu mới, không chọn được khung nào
+    if c.before is not None and starts >= c.before:
+        return False
+    if c.after is not None and starts <= c.after:
         return False
     return True
 

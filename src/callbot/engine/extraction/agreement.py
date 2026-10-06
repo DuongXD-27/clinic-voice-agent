@@ -59,6 +59,7 @@ from callbot.engine.extraction.text import (
     remove_phrases,
     remove_spans,
     strip_diacritics,
+    strip_punctuation,
 )
 
 _AGREE_IDIOMS = compile_phrases(
@@ -272,8 +273,15 @@ _SLOT_COMPLEMENTS = compile_phrases(
         "này",
         "lịch",
         "sang",
+        # Chọn khung (R-23 v2.1): "tôi chọn 9 giờ", "lấy cho tôi giờ đầu tiên"
+        "cũng",
+        "chọn",
+        "lấy",
+        "muốn",
+        # "Vậy thì 3 giờ", "thế thì khung đó": "thì" chỉ nối; câu còn từ nội dung khác vẫn bị chặn
+        "thì",
     ],
-    unaccented_exclude=["đổi", "sang"],  # "doi" = đợi, "sang" = sáng
+    unaccented_exclude=["đổi", "sang", "thì"],  # "doi" = đợi, "sang" = sáng, "thi" = thi
 )
 # SF-05: câu xác nhận hủy phải có dạng [mở đầu] hủy [phần sau]. Mở đầu: đáp lễ, lời đồng ý, xưng hô,
 # "muốn / vẫn / cứ / cho". Phần sau: bổ ngữ của động từ, tiểu từ, xưng hô. Mọi từ khác ("trợ lý",
@@ -697,6 +705,55 @@ _GIVE_UP_SLOT = compile_phrases(
 )
 
 
+# Vế điều kiện "giờ mình muốn không có": "không có thì", "nếu không còn 5 giờ thì", "hết giờ đó rồi thì",
+# "kín rồi thì". Chỉ bỏ khi vế này đứng đầu câu và kết thúc bằng "thì": phần sau mới là lời chọn khung.
+_FALLBACK_LEAD = re.compile(
+    r"^(?:nếu |vậy |thế )?(?:(?:không|ko|chẳng) (?:có|còn)|hết|kín)(?: \S+){0,5}? (?:rồi )?(?:thì|vậy thì) "
+)
+
+
+def without_fallback_lead(transcript: str) -> str:
+    """Bỏ vế "không có (giờ đó) thì" ở đầu câu chọn khung; chỉ dùng cho đổi / đặt lịch, không cho hủy.
+
+    Phần còn lại giữ nguyên dấu câu: "20/10", "15:30" bị `clean` tách thành hai số, mất ngày / giờ.
+    """
+    lead = _FALLBACK_LEAD.match(clean(transcript))
+    if lead is None:
+        return transcript
+    skip = len(lead.group(0).split())
+    words = normalize(transcript).split()
+    while words and skip:
+        if strip_punctuation(words.pop(0)).strip():
+            skip -= 1
+    return " ".join(words)
+
+
+def explicit_slot_pick(transcript: str) -> bool:
+    """PRD R-23 / R-29 (v2.1): câu chọn khung là khẳng định rõ, ghi đổi lịch được ngay.
+
+    Đồng ý tường minh kèm giờ ("vâng, ba giờ chiều được"), hoặc chỉ nêu lại giờ / thứ tự khung ("ba
+    giờ chiều", "cái đầu tiên"), không ngập ngừng, không hỏi lại, không phủ định, không còn nội dung
+    khác. Đọc theo ngưỡng của câu chốt khung (SLOT_READBACK); "dạ" một mình không bao giờ đủ.
+    """
+    if "?" in transcript:
+        return False
+    # "Không có thì 3 giờ cũng được": nhận khung khác sau khi giờ mình muốn không có. "không" ở
+    # vế điều kiện nói về khung vừa thiếu, không phải từ chối khung được chọn (rs-02)
+    transcript = without_fallback_lead(transcript)
+    text = clean(transcript)
+    if not text or is_bare_da(transcript) or confirmation_veto(transcript):
+        return False
+    result, cause = _read_agreement(transcript, QuestionId.SLOT_READBACK)
+    if result.value is Agreement.AGREE:
+        return True
+    if cause not in (UnclearCause.NO_SIGNAL, UnclearCause.BELOW_THRESHOLD):
+        return False
+    unaccented = is_unaccented(text)
+    if unaccented:
+        return False
+    return not _leaves_content(text, QuestionId.SLOT_READBACK, None, unaccented)
+
+
 def mentions_busy(transcript: str) -> bool:
     """ "hôm đó tôi bận mất rồi", "tôi phải đi làm": người gọi không rảnh vào lúc bot vừa đọc."""
     return find_phrase(clean(transcript), _BUSY) is not None
@@ -715,6 +772,32 @@ def mentions_cancel(transcript: str) -> bool:
     return find_phrase(clean(transcript), _CANCEL_VERB) is not None
 
 
+# Bỏ việc đổi lịch dù câu có nhắc giờ: "không có 5 giờ thì thôi", "thế thì thôi, giữ lịch cũ", "không
+# được thì để nguyên", "thôi khỏi đổi". Khác `_GIVE_UP_SLOT`, KHÔNG có "thôi" trần: "thôi, 3 giờ cũng
+# được" là chấp nhận khung. Giờ trong các câu này là điều kiện vừa không có, không phải yêu cầu mới.
+_DROP_CHANGE = compile_phrases(
+    [
+        *_KEEP_WORDS,
+        *_NOT_CHANGE_WORDS,
+        "giữ lịch cũ",
+        "để nguyên",
+        "để lịch cũ",
+        "thì thôi",
+        "thôi khỏi",
+        "thôi bỏ đi",
+        "thì bỏ qua",
+        "thì bỏ đi",
+        "thôi vậy",
+        "không đặt nữa",
+    ]
+)
+
+
+def gives_up_if_unavailable(transcript: str) -> bool:
+    """Lời bỏ việc đổi / đặt lịch còn đứng vững khi câu có nhắc giờ (không tính "thôi" trần)."""
+    return find_phrase(clean(transcript), _DROP_CHANGE) is not None
+
+
 def gives_up_slot_change(transcript: str) -> bool:
     """ "thôi không đổi nữa", "giữ lịch cũ": bỏ việc đổi / đặt; "không" trần thì không (T-10 Q-4)."""
     return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
@@ -723,6 +806,59 @@ def gives_up_slot_change(transcript: str) -> bool:
 def mentions_keeping(transcript: str) -> bool:
     """Câu có cụm "không hủy / không (cần) đổi": từ chối THAY lịch, không phải từ chối đến khám."""
     return find_phrase(clean(transcript), _NOT_CANCEL) is not None
+
+
+# PRD R-23 (v2.1): nhắc lại giờ / ngày / thứ tự của khung là khẳng định rõ ("Đúng rồi, 15 giờ",
+# "vâng, ba giờ chiều được", "cái đầu tiên"). Chỉ bỏ một CỤM thời gian (có từ neo hoặc chữ số); khung
+# nhắc tới có đúng là khung đang chốt hay không do Dialogue đối chiếu với slot (`SlotChoice`).
+_TIME_NUMBER_WORDS = frozenset(
+    clean(w)
+    for w in [
+        "một", "hai", "ba", "bốn", "tư", "năm", "sáu", "bảy", "tám", "chín", "mười", "mươi",
+        "mốt", "lăm", "nhăm", "linh", "lẻ",
+    ]
+)  # fmt: skip
+_TIME_ANCHORS = frozenset(
+    clean(w)
+    for w in [
+        "giờ", "h", "rưỡi", "phút", "kém", "sáng", "trưa", "chiều", "tối", "thứ", "chủ", "nhật",
+        "ngày", "tháng", "hôm", "mai", "buổi", "đầu", "tiên", "nhất", "cuối", "tuần",
+    ]
+)  # fmt: skip
+_TIME_LINKS = frozenset(clean(w) for w in ["lúc", "vào", "cái", "số", "này", "nay", "tới", "sau"])
+
+
+def _strip_slot_time(text: str) -> str:
+    """Bỏ các cụm thời gian / thứ tự khung khỏi câu đã `clean` (chỉ bản có dấu)."""
+    words = text.split()
+    kept: list[str] = []
+    run: list[str] = []
+
+    def flush() -> None:
+        has_anchor = any(w in _TIME_ANCHORS or w.isdigit() or _is_clock(w) for w in run)
+        if not has_anchor:
+            kept.extend(run)
+        run.clear()
+
+    for word in words:
+        if (
+            word in _TIME_ANCHORS
+            or word in _TIME_NUMBER_WORDS
+            or word in _TIME_LINKS
+            or word.isdigit()
+            or _is_clock(word)
+        ):
+            run.append(word)
+        else:
+            flush()
+            kept.append(word)
+    flush()
+    return " ".join(kept)
+
+
+def _is_clock(word: str) -> bool:
+    """ "15h", "15h30", "9g" sau khi bỏ dấu câu ("15:30" đã tách thành hai số)."""
+    return re.fullmatch(r"\d{1,2}(?:h|g)(?:\d{2})?", word) is not None
 
 
 def _leaves_content(
@@ -750,6 +886,8 @@ def _leaves_content(
     else:
         return False
     rest = phrase_pattern(stated).sub(" ", text) if stated else text
+    if question_id is QuestionId.SLOT_READBACK and not unaccented:
+        rest = _strip_slot_time(rest)
     for phrases in sets:
         rest = remove_phrases(rest, phrases, unaccented)
     filler = _FILLER_UNACCENTED if unaccented else _FILLER

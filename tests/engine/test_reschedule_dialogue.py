@@ -32,7 +32,7 @@ SLOTS = [
 AFTERNOON = ["slot_91d2", "slot_b502", "slot_b504", "slot_b506", "slot_b508", "slot_b510"]
 
 
-def _call(call_id: str, request: str):
+def _call(call_id: str, request: str, *, semantic=None):
     clinic = FakeClinicAPI(seed=False, strict_slot_window=True)  # lọc from/to như mock thật
     clinic.seed_patient({"patient_id": "pt_3401", "phone": "0901234501", "verify": VERIFY})
     clinic.seed_appointment(
@@ -54,7 +54,10 @@ def _call(call_id: str, request: str):
     bot = create_orchestrator(clinic)
     bot.sessions._clock = lambda: NOW
     bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00418"))
-    action = _run(bot, call_id, ["Trần Thị Bình", "21 tháng 6 năm 1990", request])
+    _run(bot, call_id, ["Trần Thị Bình", "21 tháng 6 năm 1990"])
+    if semantic is not None:
+        bot._extractor._semantic = semantic
+    action = _run(bot, call_id, [request], start=3)
     return clinic, bot, action
 
 
@@ -392,20 +395,20 @@ def test_bare_no_at_read_back_asks_instead_of_guessing() -> None:
 def test_giving_up_keeps_the_old_appointment(answer: str) -> None:
     clinic, bot = _at_read_back("c_keep")
 
+    # PRD R-29 v2.1 (GC-RES-09): giữ lịch cũ, không đổi gì, chuyển PATIENT_REQUEST
     action = _say(bot, "c_keep", answer)
-    ctx = _context(bot, "c_keep")
-    assert ctx.pending_action is None and clinic.writes == []
-    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
-    assert "8 giờ sáng thứ Năm ngày 15 tháng 10" in action.utterance
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    assert action.utterance == t.ROUNDS_EXHAUSTED_TRANSFER
+    assert [w[1] for w in clinic.writes] == ["TRANSFERRED"]
 
 
 def test_keeping_after_the_refuse_choice_keeps_the_old_appointment() -> None:
     clinic, bot = _at_read_back("c_keep2")
     _say(bot, "c_keep2", "không")
 
-    _say(bot, "c_keep2", "giữ lịch cũ")
-    ctx = _context(bot, "c_keep2")
-    assert ctx.pending_action is None and clinic.writes == []
+    action = _say(bot, "c_keep2", "giữ lịch cũ")
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    assert [w[1] for w in clinic.writes] == ["TRANSFERRED"]
 
 
 # --- Bước 5: D-1 chưa nêu thời gian, "nào cũng được" -----------------------------------
@@ -601,12 +604,21 @@ def test_bare_no_at_the_refuse_choice_asks_again() -> None:
     assert _context(bot, "c_eval_ab").failed_understandings == 1
 
 
-def test_time_only_choice_matching_several_slots_reads_at_most_two() -> None:
-    """R135: "3 giờ chiều thứ Tư" khớp 14/10 và 21/10 -> đọc 2 khung khớp, không thành "30/9 đã kín"."""
-    _, bot, _ = _call("c_eval_amb", "Tôi muốn đổi lịch")
+def test_time_only_choice_matching_one_slot_on_the_page_picks_it() -> None:
+    """R135: "3 giờ chiều thứ Tư" khớp 14/10 (vừa đọc) và 21/10 (chưa đọc) -> chọn khung vừa đọc,
+    không thành "30/9 đã kín" (R-23 v2.1: chọn rõ nên ghi luôn)."""
+    clinic, bot, _ = _call("c_eval_amb", "Tôi muốn đổi lịch")
     action = _say(bot, "c_eval_amb", "3 giờ chiều thứ Tư")
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+
+
+def test_time_only_choice_matching_several_slots_off_the_page_reads_at_most_two() -> None:
+    """Trang vừa đọc không có khung khớp: đọc tối đa 2 khung khớp rồi hỏi lại, không tự chọn."""
+    _, bot, _ = _call("c_eval_amb2", "Tôi muốn đổi lịch")
+    action = _say(bot, "c_eval_amb2", "2 giờ chiều")
     assert action.utterance.startswith(t.SLOT_AMBIGUOUS)
-    assert _context(bot, "c_eval_amb").presented_slot_ids == ["slot_91d2", "slot_b510"]
+    assert _context(bot, "c_eval_amb2").presented_slot_ids == ["slot_b504", "slot_b508"]
 
 
 def test_bare_weekday_not_on_the_page_follows_r30() -> None:
@@ -616,15 +628,20 @@ def test_bare_weekday_not_on_the_page_follows_r30() -> None:
     assert action.utterance.startswith("Dạ, hôm nay là thứ Ba ngày 29 tháng 9.")
 
 
-@pytest.mark.parametrize(
-    ("text", "slot_id"), [("chọn giờ thứ 2", "slot_b501"), ("cho em giờ còn lại", "slot_b501")]
-)
-def test_eval_ordinals(text: str, slot_id: str) -> None:
-    """R008: "giờ thứ 2" là khung 2 (không phải thứ Hai); R010: "giờ còn lại" là khung kia."""
-    _, bot, _ = _call("c_eval_ord", "Tôi muốn đổi lịch")
-    action = _say(bot, "c_eval_ord", text)
+def test_eval_ordinals_pick_the_second_slot() -> None:
+    """R008: "giờ thứ 2" là khung 2 (không phải thứ Hai) — chọn rõ nên ghi luôn (R-29 v2.1)."""
+    clinic, bot, _ = _call("c_eval_ord", "Tôi muốn đổi lịch")
+    action = _say(bot, "c_eval_ord", "chọn giờ thứ 2")
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_b501"})]
+
+
+def test_eval_remaining_slot_is_read_back() -> None:
+    """R010: "giờ còn lại" là khung kia, nhưng không nêu giờ nên đọc lại để chốt."""
+    _, bot, _ = _call("c_eval_rest", "Tôi muốn đổi lịch")
+    action = _say(bot, "c_eval_rest", "cho em giờ còn lại")
     assert action.state == "AWAITING_CONFIRMATION"
-    assert _context(bot, "c_eval_ord").selected_slot_id == slot_id
+    assert _context(bot, "c_eval_rest").selected_slot_id == "slot_b501"
 
 
 # --- Thứ tự nhánh chọn khung: bận / chọn / yêu cầu mới (30-09) ----------------------------------
@@ -778,3 +795,193 @@ def test_taken_slot_searches_again_from_the_requested_day(
 
     assert action.utterance.startswith(t.SLOT_TAKEN)
     assert f"ngày {first_day};" in action.utterance and "14 tháng 10" not in action.utterance
+
+
+# --- PRD v2.1 R-23 / R-29: chọn rõ khung vừa đọc thì ghi ngay -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer", ["Vâng, ba giờ chiều được", "3 giờ chiều", "Đúng rồi, 15 giờ", "cái đầu tiên"]
+)
+def test_explicit_pick_of_an_offered_slot_reschedules_at_once(answer: str) -> None:
+    """GC-RES-03: không hỏi thêm "đồng ý chứ ạ?", đúng một lệnh ghi ở lượt chọn."""
+    clinic, bot, action = _call("c_v21_pick", "Tôi đổi sang buổi chiều được không?")
+    assert _context(bot, "c_v21_pick").presented_slot_ids == AFTERNOON[:2]
+
+    action = _say(bot, "c_v21_pick", answer)
+
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+
+
+# --- PRD R-44: tự sửa khi chọn / chốt khung ---------------------------------------------------
+
+
+def test_corrected_date_in_request_uses_the_last_day() -> None:
+    _, bot, action = _call("c_r44_req", "Tôi đổi sang thứ Sáu ngày 17 à không 16 được không?")
+    assert action.state == "OFFERING_SLOTS"
+    assert _context(bot, "c_r44_req").presented_slot_ids == ["slot_b503", "slot_b504"]
+
+
+def test_corrected_day_when_choosing_among_offered_slots() -> None:
+    _, bot, _ = _call("c_r44_pick", "Tôi đổi sang buổi chiều được không?")
+    action = _say(bot, "c_r44_pick", "ngày 14 à không 15")
+    assert "ngày 14" not in action.utterance
+    assert _context(bot, "c_r44_pick").presented_slot_ids == ["slot_b501", "slot_b502"]
+
+
+def test_correction_at_readback_is_not_a_refusal_and_later_yes_writes() -> None:
+    """ "3 giờ rưỡi, à không, 3 giờ" nhắc lại đúng khung đang chốt: hỏi lại có/không, không bỏ khung."""
+    clinic, bot, _ = _call("c_r44_readback", "Tôi đổi sang chiều ngày 14 tháng 10 được không?")
+    action = _say(bot, "c_r44_readback", "3 giờ rưỡi, à không, 3 giờ")
+    ctx = _context(bot, "c_r44_readback")
+    assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
+    assert ctx.selected_slot_id == "slot_91d2" and "slot_91d2" not in ctx.refused_slot_ids
+
+    action = _say(bot, "c_r44_readback", "vâng")
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+
+
+@pytest.mark.parametrize(
+    "answer", ["dạ", "chắc là 3 giờ chiều", "3 giờ chiều à?", "3 giờ chiều thì tôi phải hỏi vợ"]
+)
+def test_unclear_pick_is_read_back_without_writing(answer: str) -> None:
+    """GC-RES-04: mơ hồ thì không ghi, hỏi lại."""
+    clinic, bot, _ = _call("c_v21_unclear", "Tôi đổi sang buổi chiều được không?")
+
+    action = _say(bot, "c_v21_unclear", answer)
+
+    assert not action.ended and clinic.writes == []
+
+
+def test_agreeing_with_the_readback_while_restating_its_time_writes() -> None:
+    """GC-RES-03: bot đọc lại khung 3 giờ chiều, khách "Đúng rồi, 15 giờ" -> ghi ngay."""
+    clinic, bot, action = _call("c_v21_readback", "Tôi đổi sang chiều ngày 14 tháng 10 được không?")
+    assert action.state == "AWAITING_CONFIRMATION"
+
+    action = _say(bot, "c_v21_readback", "Đúng rồi, 15 giờ")
+
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+
+
+def test_correction_mixed_with_agreement_is_not_a_write_but_the_next_yes_is() -> None:
+    """confirmation_veto giữ nguyên: "..., à không, ..., đồng ý" chưa ghi; "vâng" lượt sau mới ghi."""
+    clinic, bot, _ = _call("c_r44_veto", "Tôi đổi sang chiều ngày 14 tháng 10 được không?")
+    action = _say(bot, "c_r44_veto", "3 giờ rưỡi, à không, 3 giờ, đồng ý")
+    assert not action.ended and clinic.writes == []
+    action = _say(bot, "c_r44_veto", "vâng")
+    assert action.outcome == "RESCHEDULED"
+
+
+# --- Bench W4: nêu giờ khác ở câu đọc lại lịch, nhận khung thay thế, "thì thôi" ----------------
+
+
+@pytest.mark.parametrize(
+    "request_text, answer",
+    [
+        ("Đổi cho tôi sang 5 giờ chiều ngày 14", "Không có thì 3 giờ cũng được"),  # rs-02
+        ("Cho tôi ba giờ kém mười lăm chiều ngày 14", "Thế ba giờ cũng được"),  # rs-04
+        ("Sáng mai khoảng 9 giờ có được không?", "Vậy 3 giờ chiều ngày 14 cũng được"),  # rs-03
+        ("Chuyển giúp chị qua 5 giờ chiều ngày 14", "Nếu không còn 5 giờ thì 3 giờ cũng được"),
+        ("Tôi muốn 4 giờ chiều ngày 14", "Hết giờ đó rồi thì lấy 3 giờ chiều"),
+    ],
+)
+def test_other_time_then_accepting_an_offered_slot_writes(request_text: str, answer: str) -> None:
+    """Nêu giờ khác lịch đang đọc là muốn đổi; giờ đó không có thì nhận khung bot đọc -> ghi ngay."""
+    clinic, bot, action = _call("c_bench_alt", request_text)
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+
+    action = _say(bot, "c_bench_alt", answer)
+
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+
+
+class _ModelDown:
+    """Tầng ngữ nghĩa timeout ở mọi lượt được gọi."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def analyze(self, context):
+        self.calls += 1
+        raise TimeoutError("model slow")
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    [
+        "Sáng mai khoảng 9 giờ có được không?",
+        "Cho tôi ba giờ kém mười lăm chiều ngày 14",
+        "Chiều thứ Sáu tầm 2 giờ được không em",
+        "Có 4 giờ chiều ngày 16 không em",
+    ],
+)
+def test_other_time_still_offers_slots_when_the_model_times_out(request_text: str) -> None:
+    """Giờ khác lịch đang đọc nhận ra bằng luật thời gian; model lỗi không biến câu thành hỏi lại xác nhận.
+    Lượt này chỉ đọc khung giờ, không ghi gì."""
+    down = _ModelDown()
+    clinic, bot, action = _call("c_model_down_alt", request_text, semantic=down)
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+    assert action.utterance != t.CONFIRM_CONFLICT
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["8 giờ sáng ngày 15 ạ", "Hôm đó 9 giờ tôi bận", "Ờ để tôi xem", "Chắc là được 8 giờ"],
+)
+def test_without_a_new_time_a_model_timeout_still_asks_the_confirmation_again(answer: str) -> None:
+    """Đợt 1 giữ nguyên: model lỗi thì không ghi, câu không nêu giờ mới vẫn hỏi lại xác nhận."""
+    clinic, bot, action = _call("c_model_down_keep", answer, semantic=_ModelDown())
+    assert action.state != "OFFERING_SLOTS"
+    assert [w for w in clinic.writes if w[1] != "TRANSFERRED"] == []
+
+
+@pytest.mark.parametrize("answer", ["Vâng, 8 giờ sáng thứ Năm đúng rồi", "8 giờ sáng ngày 15 ạ"])
+def test_restating_the_current_appointment_time_is_not_a_reschedule(answer: str) -> None:
+    clinic, bot, action = _call("c_bench_same", answer)
+    assert action.state != "OFFERING_SLOTS" and clinic.writes[:1] != [
+        ("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})
+    ]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    ["Không có 5 giờ thì thôi", "Thế thì thôi, giữ lịch cũ", "Không được 5 giờ thì để nguyên"],
+)
+def test_giving_up_when_the_wanted_time_is_missing_keeps_the_old_appointment(answer: str) -> None:
+    """Bỏ đổi lịch dù câu nhắc giờ -> giữ lịch cũ, chuyển PATIENT_REQUEST (GC-RES-09)."""
+    clinic, bot, _ = _call("c_bench_giveup", "Tôi muốn đổi lịch")
+    _say(bot, "c_bench_giveup", "Không, tôi chỉ đi được 5 giờ chiều thôi")
+
+    action = _say(bot, "c_bench_giveup", answer)
+
+    assert action.outcome == "TRANSFERRED" and action.transfer_reason == "PATIENT_REQUEST"
+    assert [w for w in clinic.writes if w[1] == "RESCHEDULED"] == []
+
+
+def test_resigned_thoi_before_a_time_is_not_giving_up() -> None:
+    """ "Thôi, 3 giờ chiều cũng được" là nhận khung, không phải bỏ đổi lịch: đọc lại khung đó."""
+    clinic, bot, _ = _call("c_bench_thoi", "Tôi muốn đổi lịch")
+
+    action = _say(bot, "c_bench_thoi", "Thôi, 3 giờ chiều cũng được")
+
+    assert not action.ended and clinic.writes == []
+    assert _context(bot, "c_bench_thoi").selected_slot_id == "slot_91d2"
+
+
+@pytest.mark.parametrize("answer", ["9 giờ hả em?", "Tôi tưởng hẹn 9 giờ chứ?"])
+def test_asking_about_a_time_at_the_readback_is_not_a_reschedule(answer: str) -> None:
+    clinic, bot, action = _call("c_doubt", answer)
+    assert action.state != "OFFERING_SLOTS" and _context(bot, "c_doubt").pending_action is None
+
+
+def test_dropping_the_change_while_still_picking_an_offered_slot_reads_it_back() -> None:
+    """ "Thôi khỏi, 3 giờ cũng được" vẫn nhận khung vừa đọc: không bỏ đổi lịch, không chuyển máy."""
+    clinic, bot, _ = _call("c_khoi", "Tôi muốn đổi lịch")
+
+    action = _say(bot, "c_khoi", "Thôi khỏi, 3 giờ chiều cũng được")
+
+    assert action.outcome != "TRANSFERRED"

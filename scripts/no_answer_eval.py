@@ -110,7 +110,8 @@ SETUP: dict[str, dict[str, list[str]]] = {
         "CONFIRM_READBACK": [NAME, DOB],
         "ASK_INTENT": [NAME, DOB, "không"],
         "OFFER_SLOTS": [NAME, DOB, "tôi muốn đổi lịch"],
-        "SLOT_READBACK": [NAME, DOB, "tôi muốn đổi lịch", "khung 1"],
+        # Chọn khung là chốt đổi lịch luôn; "nào cũng được" để bot chọn nên vẫn đọc lại hỏi đồng ý
+        "SLOT_READBACK": [NAME, DOB, "tôi muốn đổi lịch", "khung nào cũng được"],
         "CANCEL_RECONFIRM": [NAME, DOB, "tôi muốn hủy lịch"],
     },
     "inbound": {

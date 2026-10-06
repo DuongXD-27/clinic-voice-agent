@@ -25,6 +25,7 @@ from callbot.engine.extraction.agreement import (
     confirmation_veto,
     conflicting_confirmation,
     extract_agreement,
+    without_fallback_lead,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
@@ -58,6 +59,7 @@ from callbot.engine.extraction.schema import (
     IDENTITY_QUESTIONS,
     Agreement,
     ClinicalLevel,
+    DobValue,
     ExtractionResult,
     Field,
     Intent,
@@ -73,7 +75,7 @@ from callbot.engine.extraction.semantic_router import (
     merge_semantic,
     route_semantic,
 )
-from callbot.engine.extraction.slot_choice import extract_slot_choice
+from callbot.engine.extraction.slot_choice import extract_slot_choice, without_corrected_part
 from callbot.engine.extraction.text import clean
 from callbot.engine.types import CancelReason
 from callbot.tracing import trace_event
@@ -104,6 +106,8 @@ _IDENTITY_FALLBACK_INTENTS = frozenset(
 logger = logging.getLogger(__name__)
 
 _TRANSFER_CLINICAL = frozenset({ClinicalLevel.EMERGENCY, ClinicalLevel.ADVICE_REQUEST})
+# R-43: ý định nói trước khi xác minh xong mà Dialogue mở luồng ngay sau xác minh (outbound: đổi lịch)
+_EARLY_INTENTS = frozenset({Intent.RESCHEDULE})
 
 # Intent không mâu thuẫn với câu hỏi xác nhận. Intent khác (vd. RESCHEDULE khi đang xác nhận hủy)
 # hạ AGREE xuống UNCLEAR: người gọi đang nói việc khác, không phải đồng ý hành động đang chờ.
@@ -207,6 +211,21 @@ def _promotion_rejection(
     ):
         return "context"
     return promotion_rejection(result.transcript, outcome.reply_span)
+
+
+def _without_identity(
+    transcript: str, full_name: Field[str], dob_reading: Optional[Reading[DobValue]]
+) -> str:
+    """Lời yêu cầu nói cùng lượt danh tính, đã bỏ vùng ngày sinh và tên (R-43): ngày sinh không được
+    thành tiêu chí thời gian của việc đổi, dù khách nói ý định trước hay sau danh tính."""
+    text = clean(transcript)
+    spans = [dob_reading.zone if dob_reading is not None else None]
+    if full_name.found and full_name.value:
+        spans.append(clean(full_name.value))
+    for span in spans:
+        if span:
+            text = text.replace(span, " ", 1)
+    return " ".join(text.split())
 
 
 def _within(outer: str, inner: str) -> bool:
@@ -319,19 +338,36 @@ class InformationExtractor:
             if fallback_intent.found:
                 intent = fallback_intent
 
+        early_intent = self._early_intent(ctx, transcript, intent, full_name, dob_reading)
+        early_request = (
+            _without_identity(transcript, full_name, dob_reading)
+            if early_intent is not None
+            else None
+        )
+
         slot_choice = skipped
         if question in _SLOT_QUESTIONS:
+            # "Nếu không còn 5 giờ thì 3 giờ cũng được": giờ ở vế điều kiện là giờ vừa không có, khung
+            # được chọn nằm ở vế sau
             slot_choice = extract_slot_choice(
-                transcript, ctx.slots, ctx.presented_slot_ids, ctx.now
+                without_fallback_lead(transcript), ctx.slots, ctx.presented_slot_ids, ctx.now
             )
 
         agreement: Field[Agreement] = skipped
+        # R-44: "9 giờ, à không, 10 giờ" — "không" của lời tự sửa không phải lời từ chối khung (R-41).
+        # Có / không chỉ đọc trên phần nói sau cùng; AGREE vẫn qua confirmation_veto trên NGUYÊN câu
+        # (`extract`), nên lời đồng ý lẫn phủ định vẫn bị hạ về UNCLEAR như cũ.
+        answer = (
+            without_corrected_part(transcript, ctx.now)
+            if question in _SLOT_QUESTIONS
+            else transcript
+        )
         if question in CONFIRMATION_QUESTIONS:
-            agreement = self._agreement(question, transcript, intent, clinical)
+            agreement = self._agreement(question, answer, intent, clinical)
         elif question in _SLOT_QUESTIONS and not slot_choice.found:
             # Chỉ để nhận lời từ chối chọn slot ("thôi không đổi nữa"). Các câu hỏi này không có ngưỡng
             # AGREE trong agreement._agree_span nên kết quả không bao giờ là AGREE, không mở khóa ghi.
-            agreement = extract_agreement(transcript, question)
+            agreement = extract_agreement(answer, question)
 
         cancel_reason = skipped
         if question in _CANCEL_QUESTIONS or intent.value is Intent.CANCEL:
@@ -367,6 +403,8 @@ class InformationExtractor:
                 if dob_reading is not None
                 else None
             ),
+            early_intent=early_intent,
+            early_request=early_request,
         )
         if route_reason is None:
             return result
@@ -395,6 +433,34 @@ class InformationExtractor:
         return merge_semantic(result, outcome, route_reason, context.allowed_intents), outcome
 
     # --- Từng trường có tuyến sau ------------------------------------------------
+
+    @staticmethod
+    def _early_intent(
+        ctx: TurnContext,
+        transcript: str,
+        intent: Field[Intent],
+        full_name: Field[str],
+        dob_reading: Optional[Reading[DobValue]],
+    ) -> Optional[Field[Intent]]:
+        """PRD R-43: ý định đổi lịch nói cùng lượt với họ tên / ngày sinh (cuộc gọi đi).
+
+        Chỉ xét khi lượt đã cho một định danh (tên hợp lệ luôn thắng, như `_IDENTITY_FALLBACK_INTENTS`)
+        và cụm ý định nằm ngoài tên đã đọc ("Lê Văn Hủy" không phải ý định hủy).
+        """
+        if ctx.question_id not in IDENTITY_QUESTIONS or intent.value is not Intent.NONE:
+            return None
+        if ctx.direction != "outbound":
+            return None
+        has_dob = dob_reading is not None and bool(dob_reading.zone)
+        if not full_name.found and not has_dob:
+            return None
+        early = extract_intent(transcript, ctx.direction, _EARLY_INTENTS, business_step=False)
+        if not early.found or not early.span:
+            return None
+        name = clean(full_name.value) if full_name.found and full_name.value else ""
+        if name and _within(name, clean(early.span)):
+            return None
+        return early
 
     def _intent(self, ctx: TurnContext, transcript: str) -> Field[Intent]:
         identity_step = ctx.question_id in IDENTITY_QUESTIONS

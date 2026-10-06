@@ -120,6 +120,8 @@ DayPeriod = Literal["MORNING", "NOON", "AFTERNOON", "EVENING"]
 # Ngày người gọi nói nhưng không dùng được để tra (PRD R-30): đã qua, không tồn tại, quá rộng
 # ("tháng sau"), hoặc thứ trần trùng hôm nay (hôm nay hay tuần sau?) -> hỏi lại, không đoán
 DateIssue = Literal["PAST", "INVALID", "TOO_BROAD", "TODAY"]
+# "sớm hơn" / "muộn hơn" so với lịch đang đổi
+Relative = Literal["EARLIER", "LATER"]
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,11 @@ class SlotCriteria:
     date_to: Optional[date] = None
     # Có giá trị thì không khung nào khớp; PAST / TODAY kèm ngày đó ở date_from = date_to
     date_issue: Optional[DateIssue] = None
+    # IE không biết giờ lịch hẹn (nguyên tắc 2): Dialogue gắn mốc vào `before` / `after`
+    # (`anchor_relative`). Chưa có mốc thì không khung nào khớp — là yêu cầu mới, không phải chọn khung.
+    relative: Optional[Relative] = None
+    before: Optional[datetime] = None  # khung phải bắt đầu trước mốc này
+    after: Optional[datetime] = None  # khung phải bắt đầu sau mốc này
 
     @property
     def empty(self) -> bool:
@@ -226,6 +233,11 @@ class ExtractionResult:
     dob_identity: Optional[IdentityValue[date]] = None
     model_status: Optional[str] = None
     confirmation_conflict: bool = False
+    # PRD R-43: ý định đổi lịch nói cùng lượt với họ tên / ngày sinh (ngoài vùng tên). Chỉ Dialogue
+    # dùng, sau khi xác minh xong; không ảnh hưởng `intent` của bước danh tính.
+    early_intent: Optional[Field[Intent]] = None
+    # Lời yêu cầu của early_intent, đã bỏ tên và ngày sinh
+    early_request: Optional[str] = None
 
     @property
     def model_failed(self) -> bool:
