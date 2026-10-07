@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from callbot.engine.errors import AppointmentUnusable, ClinicAPIError
 from callbot.engine.extraction.honorific import strip_honorific
+from callbot.engine.extraction.text import is_unaccented
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ClinicGateway
 from callbot.engine.tools.normalize import parse_iso_date
@@ -262,6 +263,9 @@ class IdentityVerifier:
         count = len(details)
 
         def verified() -> VerificationResult:
+            if is_unaccented(ctx.claimed_name or ""):
+                # Đo tần suất ngoại lệ tên không dấu (names.py); không ghi giá trị tên
+                logger.info("%s: xác minh với tên khai không dấu", ctx.call_id)
             return VerificationResult(
                 VerificationStatus.VERIFIED,
                 matched[0].get("patient_id"),

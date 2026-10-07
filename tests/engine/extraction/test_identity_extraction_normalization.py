@@ -73,8 +73,9 @@ def test_name_extraction(transcript: str, expected: str | None) -> None:
         ("  Nguyễn Văn A  ", True),
         ("Nguyễn   Văn    A", True),
         ("Nguyễn Văn A.", True),
-        ("Nguyen Van A", False),
-        ("NGUYEN van a", False),
+        # Không dấu nào: so trên bản bỏ dấu (QC qc-stt-05); ngày sinh vẫn phải khớp
+        ("Nguyen Van A", True),
+        ("NGUYEN van a", True),
         ("Nguyễn Văn B", False),
     ],
     ids=[f"TC_IEN_{number:02d}" for number in range(9, 17)],

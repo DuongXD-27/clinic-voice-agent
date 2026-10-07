@@ -456,6 +456,22 @@ def test_filler_sound_alone_is_not_a_confirmation(text: str) -> None:
     assert result.value is Agreement.UNCLEAR and result.found
 
 
+@pytest.mark.parametrize("question", ALL_CONFIRMATIONS)
+@pytest.mark.parametrize(
+    "text", ["ờ.... ừ ..... à", "ờ...", "ừ…", "ờ ừ", "ừm... à", "ờ ờ...", "hmm ờ"]
+)
+def test_hesitation_sounds_are_not_a_confirmation(question: QuestionId, text: str) -> None:
+    """Người gọi ậm ừ khi đang nghĩ: chưa trả lời, hỏi lại."""
+    result = extract_agreement(text, question)
+    assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize("question", [SLOT, CONFIRM, QuestionId.ASK_ATTENDANCE])
+@pytest.mark.parametrize("text", ["ờ", "ừ", "ờ.", "ừ ừ", "ờ... vâng"])
+def test_a_short_o_or_u_still_agrees(question: QuestionId, text: str) -> None:
+    assert extract_agreement(text, question).value is Agreement.AGREE
+
+
 @pytest.mark.parametrize(
     "text",
     [

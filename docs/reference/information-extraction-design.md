@@ -428,7 +428,7 @@ Hai chốt chặn ở **tầng luật** (chạy cả khi tắt model, `extractio
 | `CONFIRM_READBACK` outbound, câu mâu thuẫn có ý định `CANCEL` / `RESCHEDULE` | `NEED_CONFLICT` |
 | `CONFIRM_READBACK` / `ASK_INTENT` outbound, `CANCEL` / `RESCHEDULE` trong câu chưa phải quyết định | `INTENT_HEDGED` |
 
-Ở `ASK_NAME`, slot filling tên và tầng ngữ nghĩa dùng chung một lần gọi model mỗi lượt (stage 1). Lượt luật không đọc ra tên mà có dấu hiệu hỏi hoặc nhắc tới lịch hẹn ("tôi khám hôm nào vậy em?", "cứ đọc lịch trước đi") nhường lần gọi đó cho tầng ngữ nghĩa thay vì slot filling tên — chỉ là chọn model nào đọc câu.
+Ở `ASK_NAME`, slot filling tên và tầng ngữ nghĩa dùng chung một lần gọi model mỗi lượt (stage 1). Lượt luật không đọc ra tên mà có dấu hiệu hỏi hoặc nhắc tới lịch hẹn ("tôi khám hôm nào vậy em?", "cứ đọc lịch trước đi", "nói giờ trước đã" — từ 06/10/2026 "giờ", "khám" đứng riêng cũng tính) nhường lần gọi đó cho tầng ngữ nghĩa thay vì slot filling tên — chỉ là chọn model nào đọc câu.
 
 **Prompt `semantic_v9_luna`** (06/10/2026) = v8 + nguyên tắc chung, không bám câu cụ thể: (5) phân loại theo quyết định sau cùng — tiếng đệm / ngập ngừng / tự sửa trước một quyết định rõ không làm câu thành `AMBIGUOUS`; hai ý trái ngược đứng cạnh nhau không có lời tự sửa ("không, hủy đi") vẫn là `AMBIGUOUS`; (6) ở `CANCEL_RECONFIRM`, mọi cách nói giữ lịch là `DECLINE_ACTION`; (7) ở `ASK_NAME` / `ASK_DOB`, hỏi / đòi thông tin là `QUESTION`. Ví dụ đi kèm cố ý khác câu QC. v7, v8 giữ nguyên để rollback.
 

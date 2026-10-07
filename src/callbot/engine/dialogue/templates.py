@@ -63,6 +63,17 @@ ASK_DOB_FOR_REQUEST = static(
     "Dạ vâng, để hỗ trợ anh chị, em cần xác minh thông tin trước. "
     "Anh chị cho em xin ngày tháng năm sinh ạ.",
 )
+# Người gọi hỏi / đòi thông tin lịch lần nữa trước khi xác minh: nói rõ vì sao (SF-03), không đọc gì về lịch
+ASK_NAME_VERIFY_FIRST = static(
+    "ASK_NAME_VERIFY_FIRST",
+    "Dạ, để bảo mật thông tin, em chỉ trao đổi về lịch khám sau khi xác minh họ tên và ngày sinh. "
+    "Anh chị cho em xin họ và tên đầy đủ ạ.",
+)
+ASK_DOB_VERIFY_FIRST = static(
+    "ASK_DOB_VERIFY_FIRST",
+    "Dạ, để bảo mật thông tin, em chỉ trao đổi về lịch khám sau khi xác minh họ tên và ngày sinh. "
+    "Anh chị cho em xin ngày tháng năm sinh ạ.",
+)
 ASK_NAME_DECLINED = static(
     "ASK_NAME_DECLINED",
     "Dạ, em cần họ và tên để xác minh đúng người trước khi hỗ trợ. "
@@ -323,6 +334,26 @@ _static_group(
     "Dạ, em cần xác minh thông tin trước khi hỗ trợ. Cho em xin ngày tháng năm sinh ạ.",
     "Để hỗ trợ đúng người, em xin thêm ngày tháng năm sinh của anh chị ạ.",
     "Dạ, mình cần xác minh thông tin trước. Anh chị cho em biết ngày tháng năm sinh ạ.",
+)
+_static_group(
+    "ASK_NAME_VERIFY_FIRST",
+    ASK_NAME_VERIFY_FIRST,
+    "Dạ, vì bảo mật, em cần xác minh họ tên và ngày sinh trước rồi mới báo được thông tin lịch khám. "
+    "Anh chị cho em xin họ và tên đầy đủ ạ.",
+    "Dạ em hiểu anh chị đang vội. Chỉ cần họ tên và ngày sinh để xác minh, em sẽ báo ngay ạ. "
+    "Anh chị cho em xin họ và tên đầy đủ ạ.",
+    "Dạ, thông tin lịch khám chỉ được trao đổi sau khi xác minh đúng người. "
+    "Anh chị vui lòng cho em xin họ và tên đầy đủ ạ.",
+)
+_static_group(
+    "ASK_DOB_VERIFY_FIRST",
+    ASK_DOB_VERIFY_FIRST,
+    "Dạ, vì bảo mật, em cần xác minh họ tên và ngày sinh trước rồi mới báo được thông tin lịch khám. "
+    "Anh chị cho em xin ngày tháng năm sinh ạ.",
+    "Dạ em hiểu anh chị đang vội. Chỉ cần thêm ngày sinh để xác minh, em sẽ báo ngay ạ. "
+    "Anh chị cho em xin ngày tháng năm sinh ạ.",
+    "Dạ, thông tin lịch khám chỉ được trao đổi sau khi xác minh đúng người. "
+    "Anh chị vui lòng cho em xin ngày tháng năm sinh ạ.",
 )
 _static_group(
     "ASK_NAME_DECLINED",

@@ -49,7 +49,7 @@ def test_real_selector_survives_context_roundtrip_and_uses_all_variants():
     assert set(seen) == set(VARIANT_IDS)
 
 
-def test_real_openings_vary_and_alo_uses_the_single_identity_retry():
+def test_real_openings_vary_and_opening_alo_is_greeted_back_without_the_retry():
     bot = create_orchestrator(FakeClinicAPI())
     seen, summaries = set(), set()
     for index in range(40):
@@ -57,9 +57,9 @@ def test_real_openings_vary_and_alo_uses_the_single_identity_retry():
         opening = bot.start_call(_outbound(call_id))
         seen.add(opening.utterance)
         reply = _run(bot, call_id, ["alo"])
-        assert reply.utterance in t.static_choices(t.ASK_NAME_AGAIN)
-        assert _context(bot, call_id).failed_understandings == 1
-        assert _context(bot, call_id).identity_retries == {"ASK_NAME": 1}
+        assert reply.utterance in t.static_choices(t.GREETING_BACK_OUTBOUND)
+        assert _context(bot, call_id).failed_understandings == 0
+        assert _context(bot, call_id).identity_retries == {}
         summary = _run(bot, call_id, ["Nguyễn Văn A", "14/03/1978"], start=2)
         assert summary.state == "AWAITING_INTENT"
         assert summary.utterance.endswith(t.ASK_ATTENDANCE)
