@@ -517,13 +517,26 @@ def test_livekit_prewarm_uses_override_without_batch_call(monkeypatch):
     monkeypatch.setenv("ASR_PROVIDER", "zipformer")
     monkeypatch.setenv("LIVEKIT_ASR_PROVIDER", "gemini_live")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    # CI không có model ZipFormer; nạp sẵn fallback có test riêng (fake).
-    monkeypatch.setenv("GEMINI_LIVE_FALLBACK_PROVIDER", "")
+    # CI không có model ZipFormer: fallback (config/asr.yaml) thay bằng bản giả. Env rỗng không
+    # tắt được fallback — env rỗng nghĩa là lấy giá trị YAML.
+    warmed: list[int] = []
+
+    class _FakeZipFormer:
+        input_sample_rate = 16_000
+
+        def __init__(self, config) -> None:
+            pass
+
+        def transcribe(self, pcm: bytes) -> None:
+            warmed.append(len(pcm))
+
+    monkeypatch.setattr("inference.asr.providers.zipformer.ZipFormerASR", _FakeZipFormer)
     proc = SimpleNamespace(userdata={})
     worker.prewarm(proc)
     recognizer = proc.userdata[worker._PREWARMED_ASR]
     assert recognizer.name == "gemini_live"
     assert recognizer.model == "gemini-3.5-transcribe-live"
+    assert warmed == [3_200]
 
 
 async def test_prepaid_credit_error_is_actionable_without_leaking_upstream_reason():

@@ -64,3 +64,18 @@ def test_log_mode_never_blocks() -> None:
     gate.allows(_pcm(), RATE, speech_ms=2500)
 
     assert gate.allows(_pcm(), RATE, speech_ms=2500) is True
+
+
+def test_missing_model_runs_without_gate(tmp_path, caplog) -> None:
+    """Image Docker không có model speaker: worker vẫn dựng được pipeline, chỉ cảnh báo."""
+    from speech.bundle import _build_speaker_gate
+    from speech.settings import SpeechSettings
+
+    settings = SpeechSettings(
+        speaker_gate_mode="enforce",
+        speaker_gate_model_path=str(tmp_path / "missing.onnx"),
+        _env_file=None,
+    )
+
+    assert _build_speaker_gate(settings) is None
+    assert "missing.onnx" in caplog.text

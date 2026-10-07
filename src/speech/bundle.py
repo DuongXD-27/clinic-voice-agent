@@ -9,6 +9,7 @@ Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết
 import logging
 from contextlib import aclosing
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AsyncIterator, Optional, Protocol
 
 from inference.asr import create_asr_gateway
@@ -161,6 +162,25 @@ def turn_controller_options(settings: SpeechSettings) -> dict[str, object]:
     }
 
 
+def _build_speaker_gate(settings: SpeechSettings) -> Optional[SpeakerGate]:
+    """Thiếu file model (không có trong image Docker) hoặc sherpa-onnx: cảnh báo và chạy không
+    có cổng, như Krisp — tính năng thử nghiệm không được làm hỏng cả cuộc gọi."""
+    model_path = settings.speaker_gate_model_path
+    if not Path(model_path).is_file():
+        logger.warning("speaker_gate: không thấy model %s — chạy không có cổng", model_path)
+        return None
+    try:
+        return SpeakerGate.from_model(
+            model_path,
+            enforce=settings.speaker_gate_mode == "enforce",
+            threshold=settings.speaker_gate_threshold,
+            min_speech_ms=settings.speaker_gate_min_speech_ms,
+        )
+    except ImportError:
+        logger.warning("speaker_gate: chưa cài sherpa-onnx — chạy không có cổng")
+        return None
+
+
 def build_streaming_bundle(
     settings: SpeechSettings,
     *,
@@ -197,14 +217,7 @@ def build_streaming_bundle(
             else _build_silero(settings, sample_rate),
             frame_ms=frame_ms,
         )
-    speaker_gate = None
-    if settings.speaker_gate_mode != "off":
-        speaker_gate = SpeakerGate.from_model(
-            settings.speaker_gate_model_path,
-            enforce=settings.speaker_gate_mode == "enforce",
-            threshold=settings.speaker_gate_threshold,
-            min_speech_ms=settings.speaker_gate_min_speech_ms,
-        )
+    speaker_gate = _build_speaker_gate(settings) if settings.speaker_gate_mode != "off" else None
     stt_pipeline = STTPipeline(
         asr,
         AsyncStreamingVAD(
