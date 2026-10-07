@@ -143,15 +143,33 @@ def token_index(tokens: list[str], offset: int) -> int:
 # nên "nó" có dấu không khớp "no".
 _ENGLISH_HEDGE = re.compile(
     r"(?<!\w)(?:not|never|isn t|wasn t|don t|doesn t|didn t|can t|maybe|perhaps|probably|possibly|"
-    r"i think|i guess|i believe|i suppose|i m not sure|around|about|approximately|or so|"
-    r"something like|actually|sorry|i mean|wait)(?!\w)"
+    r"i think|i guess|i believe|i suppose|i m not sure|something like|i mean)(?!\w)"
+)
+# "sorry", "wait", "actually" mở câu là lễ phép / lấy hơi ("Sorry, my name is Nguyen Van A"); nói
+# giữa câu mới là tự sửa ("March 14, sorry, March 15").
+_ENGLISH_OPENER_WORDS = r"sorry|wait|actually"
+_ENGLISH_MID_CORRECTION = re.compile(rf"(?<=\w )(?:{_ENGLISH_OPENER_WORDS})(?!\w)")
+_ENGLISH_OPENER = re.compile(rf"^(?:(?:{_ENGLISH_OPENER_WORDS})(?:\s+|$))+")
+# Ước chừng chỉ là phân vân khi đứng sát giá trị ngày ("around 1978", "about March 14", "1978 or
+# so"): "I'm calling about my appointment" không phải phân vân.
+_EN_MONTH = (
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|"
+    r"august|september|october|november|december"
+)
+_ENGLISH_APPROX = re.compile(
+    rf"(?<!\w)(?:(?:around|about|approximately)\s+(?:the\s+)?(?=\d|(?:{_EN_MONTH})(?!\w))|or so(?!\w))"
 )
 _ENGLISH_NO = re.compile(r"(?<!\w)no(?!\w)")
 
 
-def english_hedge(text: str, *, bare_no: bool) -> bool:
-    """`text` đã qua `clean`. `bare_no`: tính cả "no" đứng riêng — không dùng cho tên, vì tên không
-    dấu có thể có âm "no" (Nô)."""
-    return _ENGLISH_HEDGE.search(text) is not None or (
-        bare_no and _ENGLISH_NO.search(text) is not None
-    )
+def english_hedge(text: str, *, date: bool) -> bool:
+    """`text` đã qua `clean`. `date`: câu khai ngày sinh — tính thêm lời ước chừng và "no" đứng riêng.
+    Không dùng cho tên, vì tên không dấu có thể có âm "no" (Nô)."""
+    if _ENGLISH_HEDGE.search(text) or _ENGLISH_MID_CORRECTION.search(text):
+        return True
+    return date and bool(_ENGLISH_APPROX.search(text) or _ENGLISH_NO.search(text))
+
+
+def strip_english_opener(clause: str) -> str:
+    """Bỏ "sorry" / "wait" / "actually" mở mệnh đề (đã qua `clean`): "sorry my name is …"."""
+    return _ENGLISH_OPENER.sub("", clause)

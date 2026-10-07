@@ -273,3 +273,25 @@ def test_english_alternatives_are_multiple_names() -> None:
 )
 def test_english_hedged_name_is_uncertain(text: str) -> None:
     assert read_full_name(text).reason is Reason.UNCERTAIN
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sorry, my name is Nguyen Van A",
+        "Actually, my name is Nguyen Van A",
+        "sorry my name is Nguyen Van A",
+    ],
+)
+def test_english_politeness_is_not_a_hedge(text: str) -> None:
+    assert read_full_name(text).field.value == "nguyen van a"
+
+
+def test_calling_about_something_is_not_a_hedge() -> None:
+    # Luật chưa đọc tên sau một mệnh đề kể chuyện; không phân vân thì model đọc tên vẫn được hỏi
+    reading = read_full_name("I'm calling about my appointment, my name is Nguyen Van A")
+    assert reading.reason is not Reason.UNCERTAIN
+
+
+def test_a_mid_sentence_sorry_is_a_correction() -> None:
+    assert read_full_name("Nguyen Van A, sorry, Nguyen Van B").reason is Reason.UNCERTAIN

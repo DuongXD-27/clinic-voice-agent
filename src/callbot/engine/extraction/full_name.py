@@ -34,6 +34,7 @@ from callbot.engine.extraction.identity import (
     Reading,
     Reason,
     english_hedge,
+    strip_english_opener,
 )
 from callbot.engine.extraction.schema import Field, Provenance
 from callbot.engine.extraction.spoken_numbers import is_number_token, parse_number
@@ -389,13 +390,14 @@ def read_full_name(
     # "Nguyễn Văn A, tôi không nhớ rõ ngày sinh" vẫn khai tên rõ ràng, chỉ thiếu ngày.
     # Giữ ranh giới mệnh đề: "alo em, tôi là A" không được ghép thành "em tôi là A"
     # rồi hiểu nhầm đó là tên người thân. Chỉ bỏ mệnh đề xã giao đã nhận chắc chắn.
-    name_clauses = [_strip_dob_aside(c) for c in clauses]
+    # "Sorry, my name is …": lời mở câu tiếng Anh là lễ phép; "A, sorry, B" giữa câu vẫn là tự sửa.
+    name_clauses = [
+        _strip_dob_aside(strip_english_opener(c) if i == 0 else c) for i, c in enumerate(clauses)
+    ]
     named = " ".join(c for c in name_clauses if c and not is_greeting(c) and not _is_dob_aside(c))
     if not named:
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
-    if find_phrase(named, UNCERTAINTY, mixed=True) is not None or english_hedge(
-        named, bare_no=False
-    ):
+    if find_phrase(named, UNCERTAINTY, mixed=True) is not None or english_hedge(named, date=False):
         # "chắc là Nguyễn Văn A", "maybe Nguyen Van A": chưa đủ chắc để đi xác minh — hỏi lại, và
         # mô hình cũng không được biến câu này thành một tên.
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)

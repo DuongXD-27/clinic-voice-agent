@@ -214,10 +214,13 @@ def _keep_cancel_threshold(
         )
     if rejection is None:
         return result
-    # Không nâng được thì model chỉ còn là Ý ĐỊNH hủy: Dialogue hỏi đúng câu xác nhận hủy
+    # Không nâng được thì model chỉ còn là Ý ĐỊNH hủy: Dialogue hỏi đúng câu xác nhận hủy. Nhu cầu
+    # khác luật đã đọc ra ("hủy đi, à thôi đổi sang tuần sau" -> RESCHEDULE) vẫn thắng.
     intent = (
         Field(Intent.CANCEL, Provenance.FALLBACK, span=outcome.reply_span)
-        if outcome is not None and outcome.reply_kind is ReplyKind.CONFIRM_ACTION
+        if outcome is not None
+        and outcome.reply_kind is ReplyKind.CONFIRM_ACTION
+        and result.intent.value in _PROMOTION_INTENTS
         else result.intent
     )
     return replace(
@@ -605,15 +608,30 @@ _CLEAR_CANCEL_AFTER_UNACCENTED = frozenset(strip_diacritics(w) for w in _CLEAR_C
 # Từ đi kèm lời khai tên / ngày sinh. Lượt định danh còn từ nào ngoài các từ này (sau khi bỏ tên và
 # vùng ngày sinh) mà không phải yêu cầu hủy rõ ràng là người gọi nói thêm điều khác: bỏ yêu cầu hủy
 # đã giữ, thay vì cố liệt kê mọi cách đổi ý ("tôi đổi ý rồi", "thôi vẫn đi khám", "để tôi nghĩ lại").
+# Lời xác nhận ngắn đi kèm lời khai: "dạ đúng rồi, 14/3/1978", "14/3/1978 ok em"
+_IDENTITY_CONFIRMATIONS = ["đúng", "vâng", "phải", "ừ", "ờ", "yes", "ok", "okay", "oke"]
+# Từ đệm, lễ phép
+_IDENTITY_PARTICLES = ["dạ", "ạ", "à", "ơi", "nhé", "nha", "alo", "alô", "yeah"]
+# Hư từ
+_IDENTITY_FUNCTION_WORDS = ["đây", "đó", "đấy", "rồi", "thì", "là", "và", "của"]
+# Từ đi kèm lời khai
+_IDENTITY_FIELD_WORDS = ["tên", "họ", "sinh", "ngày", "tháng", "năm"]
+# Xưng hô
+_IDENTITY_ADDRESS = [
+    "tôi", "em", "mình", "con", "cháu", "anh", "chị", "cô", "chú", "bác", "ông", "bà",
+]  # fmt: skip
 _IDENTITY_FILLER = frozenset(
     clean(w)
     for w in [
-        "alo", "alô", "dạ", "vâng", "ạ", "à", "ừ", "ờ", "ơi", "nhé", "nha", "đây", "đó", "đấy",
-        "rồi", "thì", "là", "và", "của", "tên", "họ", "sinh", "ngày", "tháng", "năm",
-        "tôi", "em", "mình", "con", "cháu", "anh", "chị", "cô", "chú", "bác", "ông", "bà",
+        *_IDENTITY_CONFIRMATIONS,
+        *_IDENTITY_PARTICLES,
+        *_IDENTITY_FUNCTION_WORDS,
+        *_IDENTITY_FIELD_WORDS,
+        *_IDENTITY_ADDRESS,
     ]
-)  # fmt: skip
-_IDENTITY_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _IDENTITY_FILLER)
+)
+# Không dấu "dung" còn là "đừng": "dung huy" (đừng hủy) không được coi là chỉ có từ đệm
+_IDENTITY_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _IDENTITY_FILLER) - {"dung"}
 _CLAUSE_BREAK = re.compile(r"[,;.!?…]")
 
 

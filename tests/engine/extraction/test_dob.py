@@ -154,10 +154,27 @@ def test_english_and_iso_dates(text: str) -> None:
         "not 14/3/1978",
         "March 14, 1978, no, March 15, 1978",
         "sorry, I mean March 15, 1978",
+        "March 14, sorry, March 15, 1978",
+        "March 14, wait, March 15, 1978",
+        "around March 14, 1978",
+        "about the 14th of March 1978",
+        "March 14, 1978 or so",
     ],
 )
 def test_unusable_english_dates_are_invalid(text: str) -> None:
     assert extract_dob(text, TODAY).value == INVALID
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sorry, March 14, 1978",
+        "Wait, March 14, 1978",
+        "I'm calling about my appointment, March 14, 1978",
+    ],
+)
+def test_english_politeness_is_not_a_hedge(text: str) -> None:
+    assert extract_dob(text, TODAY).value == date(1978, 3, 14)
 
 
 def test_may_is_a_month_only_inside_a_full_english_date() -> None:

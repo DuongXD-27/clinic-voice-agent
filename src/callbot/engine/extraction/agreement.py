@@ -569,6 +569,9 @@ def _read_agreement(
     unaccented = is_unaccented(text)
     matched = Provenance.NORMALIZED if unaccented else Provenance.EXACT
 
+    if _is_hesitation(transcript, text):
+        # "ờ.... ừ ..... à": người gọi đang nghĩ, chưa trả lời. "ờ", "ừ" nói gọn vẫn là đồng ý.
+        return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.HEDGE
     if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
         # "... được không?" là hỏi lại, không phải từ chối
         return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.TAG_QUESTION
@@ -736,6 +739,21 @@ _GIVE_UP_SLOT = compile_phrases(
 def mentions_busy(transcript: str) -> bool:
     """ "hôm đó tôi bận mất rồi", "tôi phải đi làm": người gọi không rảnh vào lúc bot vừa đọc."""
     return find_phrase(clean(transcript), _BUSY) is not None
+
+
+# Âm ậm ừ khi đang nghĩ. Cả lượt chỉ có các âm này, mà kéo dài ("ờ...", "ừ…") hoặc nhiều âm khác
+# nhau ("ờ ừ à"), là chưa trả lời. "ừ ừ" lặp gọn vẫn là đồng ý (`_POLITE_AGREE`).
+_HESITATION_SOUNDS = frozenset(
+    clean(w) for w in ["ờ", "ừ", "à", "ừm", "ưm", "ờm", "ơ", "hừm", "hmm"]
+)
+_DRAWN_OUT = re.compile(r"\.\.|…")
+
+
+def _is_hesitation(transcript: str, text: str) -> bool:
+    words = text.split()
+    if not words or any(w not in _HESITATION_SOUNDS for w in words):
+        return False
+    return _DRAWN_OUT.search(transcript) is not None or len(set(words)) > 1
 
 
 def is_bare_da(transcript: str) -> bool:

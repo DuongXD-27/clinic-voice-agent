@@ -211,6 +211,8 @@ def test_name_huy_does_not_hide_a_cancel_request_in_the_same_turn() -> None:
         "14/03/1978, để tôi nghĩ lại đã",
         # đoạn đứng trước ngày sinh không phải tên thì không bị bỏ
         "Tôi đổi ý rồi, sinh 14/3/1978",
+        "14/03/1978, đừng hủy nhé",
+        "14/03/1978, dung huy nhe",  # không dấu: "dung" là "đừng", không phải "đúng"
     ],
 )
 def test_identity_turn_with_other_content_drops_the_kept_cancel(text: str) -> None:
@@ -232,6 +234,10 @@ def test_identity_turn_with_other_content_drops_the_kept_cancel(text: str) -> No
         # nhắc lại tên sau ngày sinh chỉ là bổ sung danh tính
         ("14/3/1978, tôi là Nguyễn Văn A", QuestionId.ASK_DOB),
         ("14/3/1978, Trần Văn Hủy đây", QuestionId.ASK_DOB),
+        # lời xác nhận ngắn không phải nội dung khác
+        ("dạ đúng rồi, 14/3/1978", QuestionId.ASK_DOB),
+        ("14/3/1978 ok em", QuestionId.ASK_DOB),
+        ("vâng phải rồi, 14/3/1978", QuestionId.ASK_DOB),
     ],
 )
 def test_identity_only_turn_keeps_what_was_kept(text: str, question: QuestionId) -> None:

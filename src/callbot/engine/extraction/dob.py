@@ -199,7 +199,7 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     value, lo, hi = parsed
     zone = " ".join(words[origin[start + lo][0] : origin[start + hi - 1][1] + 1])
     if find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None or english_hedge(
-        text, bare_no=True
+        text, date=True
     ):
         # "14/3/1978 thì phải", "maybe March 14", "not 14/3/1978": người gọi đã tự nói là không
         # chắc hoặc bác bỏ — hỏi lại, đừng xác minh hộ

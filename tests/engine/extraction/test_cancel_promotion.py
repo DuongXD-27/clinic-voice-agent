@@ -393,6 +393,25 @@ def test_the_gate_rechecks_every_condition_itself(
     assert kept.agreement.value is Agreement.UNCLEAR
 
 
+@pytest.mark.parametrize("other", [Intent.RESCHEDULE, Intent.OUT_OF_SCOPE])
+def test_a_rejected_promotion_keeps_another_need_the_rule_read(other: Intent) -> None:
+    """ "hủy đi, à thôi đổi sang tuần sau": CONFIRM_ACTION bị bác không được đè RESCHEDULE thành hủy."""
+    result = _promoted(GATE_TRANSCRIPT, GATE_SPAN, intent=Field(other, Provenance.EXACT, span="x"))
+    kept = _keep_cancel_threshold(RULE, result, _turn_context(), CONFIRM, promotion_enabled=True)
+    assert kept.intent.value is other
+
+
+def test_a_rejected_promotion_is_still_a_cancel_intent() -> None:
+    kept = _keep_cancel_threshold(
+        RULE,
+        _promoted(GATE_TRANSCRIPT, GATE_SPAN),
+        _turn_context(question_turn=2),
+        CONFIRM,
+        promotion_enabled=True,
+    )
+    assert kept.intent.value is Intent.CANCEL
+
+
 def test_the_gate_drops_a_promotion_when_the_flag_is_off() -> None:
     kept = _keep_cancel_threshold(
         RULE,
