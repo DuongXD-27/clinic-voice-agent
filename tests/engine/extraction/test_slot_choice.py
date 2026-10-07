@@ -263,6 +263,37 @@ def test_bare_weekday_still_matches_listed_slots_when_choosing() -> None:
     assert criteria.weekday == 0 and criteria.date_issue is None and criteria.date_from is None
 
 
+# --- Tự sửa, loại trừ, khoảng giờ: không chọn theo lần khớp đầu tiên của cả câu -------------------
+
+_THREE = [
+    {"slot_id": "s1000", "starts_at": "2026-10-14T10:00:00+07:00"},
+    {"slot_id": "s1430", "starts_at": "2026-10-14T14:30:00+07:00"},
+    {"slot_id": "s1030", "starts_at": "2026-10-14T10:30:00+07:00"},
+]
+
+
+@pytest.mark.parametrize(
+    "text, kind, ids",
+    [
+        ("không phải khung 1 mà là khung 2", "MATCH", ("s1430",)),
+        ("khung 2 chứ không phải khung 1", "MATCH", ("s1430",)),
+        ("khung nào cũng được trừ khung 1", "MATCH", ("s1430",)),
+        ("sau 10 giờ 30", "MATCH", ("s1430",)),
+        ("từ 10 giờ 30", "AMBIGUOUS", ("s1430", "s1030")),
+        ("trước 10 giờ 30", "MATCH", ("s1000",)),
+        ("từ 2 giờ chiều trở đi", "MATCH", ("s1430",)),
+        ("10 giờ, không phải lo", "MATCH", ("s1000",)),  # phần sau "không phải" không là khung
+        ("10 giờ 30", "MATCH", ("s1030",)),
+        # phần bị loại chỉ đến hết mệnh đề; phần sau là điều người gọi muốn
+        ("trừ khung 1, 10 giờ 30", "MATCH", ("s1030",)),
+    ],
+)
+def test_corrections_exclusions_and_ranges(text: str, kind: str, ids: tuple[str, ...]) -> None:
+    now = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)
+    result = extract_slot_choice(text, _THREE, ["s1000", "s1430"], now)
+    assert (result.value.kind, result.value.slot_ids) == (kind, ids)
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -363,3 +394,38 @@ def test_requests_time_needs_the_whole_sentence_to_be_a_request(text: str, expec
 )
 def test_strip_slot_phrases_removes_ordinals_and_times(text: str, rest: str) -> None:
     assert strip_slot_phrases(text) == rest
+
+
+# --- Merge main 07/10: khoảng giờ (main) và "sớm / muộn hơn" (nhánh) là hai tiêu chí riêng ---------------
+
+
+def test_time_range_and_anchored_relative_filter_together() -> None:
+    """main: `not_before` / `before` là phút trong ngày; nhánh: `earlier_than` / `later_than` là mốc lịch
+    đang đổi. Cùng tên trường thì so int với datetime và lỗi lượt (SYSTEM_ERROR)."""
+    anchor = datetime(2026, 10, 14, 14, 30, tzinfo=VN_TZ)
+    criteria = anchor_relative(parse_slot_criteria("ngày 14 sau 9 giờ sớm hơn", NOW), anchor)
+    assert (criteria.not_before, criteria.relative) == (9 * 60 + 1, "EARLIER")
+    assert [s["slot_id"] for s in filter_slots(_THREE, criteria)] == ["s1000", "s1030"]
+
+
+@pytest.mark.parametrize(
+    ("text", "ids"),
+    [
+        # Lời tự sửa không có dấu câu (ASR): "không phải" sau "à" không loại giờ nói sau
+        ("2 giờ chiều à không phải 10 giờ 30", ("s1030",)),
+        # Buổi của giờ cũ vẫn giữ khi hợp giờ mới
+        ("10 giờ sáng, à nhầm, 10 giờ 30", ("s1030",)),
+    ],
+)
+def test_self_correction_is_not_an_exclusion(text: str, ids: tuple[str, ...]) -> None:
+    result = extract_slot_choice(text, _THREE, ["s1000", "s1430"], NOW)
+    assert result.value.slot_ids == ids
+
+
+def test_correction_keeps_the_date_punctuation() -> None:
+    slots = [*_THREE, {"slot_id": "s15", "starts_at": "2026-10-15T09:00:00+07:00"}]
+    criteria = parse_slot_criteria("không phải 14/10 mà là 15/10", NOW)
+    assert (criteria.day, criteria.month) == (15, 10)
+    assert extract_slot_choice("không phải 14/10 mà là 15/10", slots, [], NOW).value.slot_ids == (
+        "s15",
+    )

@@ -4,6 +4,7 @@ from callbot.engine.extraction.text import (
     drop_leading_words,
     find_phrase,
     is_negated,
+    keep_leading_words,
     normalize,
     remove_words,
 )
@@ -48,3 +49,10 @@ def test_remove_words_skips_missing_spans_and_keeps_partly_covered_tokens() -> N
 def test_drop_leading_words_counts_clean_words() -> None:
     assert drop_leading_words("Không có 5 giờ thì, 9:00 ngày 16", 5) == "9:00 ngày 16"
     assert drop_leading_words("thì thôi,khung 2", 2) == "thôi,khung 2"
+
+
+def test_keep_leading_words_keeps_punctuation() -> None:
+    assert keep_leading_words("15/10 chứ không phải 14/10", 2) == "15/10"
+    assert keep_leading_words("khung 2, chứ không phải khung 1", 2) == "khung 2,"
+    # "15:30" là hai từ `clean`: không vắt qua ranh giới
+    assert keep_leading_words("lúc 15:30 nhé", 2) == "lúc"

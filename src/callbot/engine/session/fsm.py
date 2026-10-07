@@ -14,7 +14,9 @@ TRANSITIONS: dict[CallState, set[CallState]] = {
     "AWAITING_IDENTITY": {
         "AWAITING_IDENTITY",
         "AWAITING_INTENT",
-        # R-43: xác minh xong ở lượt người gọi đã xin đổi lịch -> đọc khung duy nhất, hỏi có/không
+        # Yêu cầu hủy / đổi lịch nói cùng lượt danh tính: xác minh xong hỏi thẳng câu xác nhận hủy
+        # (QC qc-cn-08), hoặc đọc khung duy nhất hợp yêu cầu đổi và hỏi có/không (R-43).
+        # Vẫn chịu kiểm tra "state khác AWAITING_IDENTITY cần xác minh xong" bên dưới.
         "AWAITING_CONFIRMATION",
         "OFFERING_SLOTS",
         "CLOSING",

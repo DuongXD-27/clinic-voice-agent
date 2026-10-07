@@ -17,6 +17,7 @@ from typing import Optional
 import pytest
 
 from callbot.engine import CallStart
+from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction.schema import VN_TZ, Intent
 from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
 from clinic_mock_sim import FakeClinicAPI
@@ -180,9 +181,22 @@ def test_the_date_of_birth_is_not_a_time_criterion() -> None:
     assert "tháng 3" not in action.utterance
 
 
-def test_a_cancel_request_in_the_identity_turn_is_not_carried() -> None:
-    """Hủy cần hai lượt xác nhận (SF-05): chỉ yêu cầu đổi lịch được mang qua bước xác minh."""
+def test_a_request_without_the_identity_is_kept_until_verification() -> None:
+    """Như yêu cầu hủy (QC qc-cn-08): lời xin đổi ở lượt chưa có ngày sinh vẫn dùng lượt hỏi lại (R-40),
+    được giữ qua phiên lưu và mời khung theo lời đó ngay khi xác minh xong; trước đó không đọc khung."""
+    clinic, bot = _outbound_call("r43-held")
+    action = _run(bot, "r43-held", ["Nguyễn Văn A", "tôi muốn đổi lịch sang chiều ngày 14"])
+    assert action.state == "AWAITING_IDENTITY" and clinic.slot_reads == 0
+    action = _run(bot, "r43-held", ["14/03/1978"], start=3)
+    assert "chiều thứ Tư ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance
+    assert clinic.writes == []
+
+
+def test_a_cancel_request_in_the_identity_turn_asks_the_cancel_confirmation() -> None:
+    """QC qc-cn-08: yêu cầu hủy cùng lượt danh tính là lượt yêu cầu; xác minh xong hỏi xác nhận hủy (lượt
+    thứ hai của SF-05), không mở luồng đổi lịch, không đọc khung, không ghi."""
     clinic, bot = _outbound_call("r43-cancel")
     action = _run(bot, "r43-cancel", ["Tôi là Nguyễn Văn A, sinh 14/3/78, tôi muốn hủy lịch"])
-    assert action.utterance.endswith("Anh chị có đến khám được theo lịch này không ạ?")
+    assert action.state == "AWAITING_CONFIRMATION"
+    assert action.utterance.endswith(t.CANCEL_RECONFIRM)
     assert clinic.slot_reads == 0 and clinic.writes == []

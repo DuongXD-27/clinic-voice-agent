@@ -76,6 +76,19 @@ def drop_leading_words(transcript: str, count: int) -> str:
     return " ".join(words)
 
 
+def keep_leading_words(transcript: str, count: int) -> str:
+    """Giữ `count` từ đầu câu (đếm như `clean`) trên bản `normalize`, kèm dấu câu của chúng: ngược với
+    `drop_leading_words`. Một từ dính dấu câu nằm vắt qua ranh giới bị bỏ."""
+    kept: list[str] = []
+    for word in normalize(transcript).split():
+        size = len(strip_punctuation(word).split())
+        if count == 0 or size > count:
+            break
+        kept.append(word)
+        count -= size
+    return " ".join(kept)
+
+
 def remove_words(transcript: str, spans: Iterable[Optional[str]]) -> str:
     """Bỏ các đoạn (dạng `clean`) khỏi bản `normalize`, giữ dấu câu của phần còn lại; căn theo từ.
 

@@ -14,7 +14,6 @@ Quy ước:
 """
 
 import logging
-import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any, Optional
@@ -42,6 +41,7 @@ from callbot.engine.extraction.agreement import (
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
     is_hold_request,
+    is_identity_question,
     is_return_signal,
 )
 from callbot.engine.extraction.schema import (
@@ -67,7 +67,6 @@ from callbot.engine.extraction.slot_choice import (
     requests_time,
     resolve_request,
 )
-from callbot.engine.extraction.text import normalize
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.policy_engine import Understanding
 from callbot.engine.policy.sources import SourceRecorder
@@ -89,6 +88,12 @@ logger = logging.getLogger(__name__)
 MAX_SLOTS_PRESENTED = 2
 # R-29: người gọi nêu tối đa 2 ngày / khoảng thời gian; ngày thứ ba -> giữ lịch cũ, PATIENT_REQUEST (D-5)
 MAX_SLOT_ROUNDS = 2
+# Câu hỏi của người gọi ở bước danh tính phải được trả lời, không phải câu thiếu định danh: "ai đấy?"
+# (R-26, giới thiệu lại) và câu hỏi khác model nhận ra (SF-03: cần xác minh trước). Không dùng lượt hỏi
+# lại R-40. Chung một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
+MAX_IDENTITY_QUESTIONS = 1
+# Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
+_REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -196,7 +201,7 @@ class DialogueManager:
             proposal = self._time_proposal_without_model(ctx, extraction, now)
             if not proposal:
                 return self._reask_confirmation(ctx, failed=True)
-        if extraction.confirmation_conflict:
+        if extraction.confirmation_conflict and not self._states_other_need(ctx, extraction):
             if ctx.pending_action == "CANCEL":
                 self._update_cancel_reason(ctx, extraction)
             return self._reask_confirmation(ctx)
@@ -228,6 +233,21 @@ class DialogueManager:
         if question is QuestionId.CANCEL_RECONFIRM:
             return self._cancel_reconfirm(ctx, extraction, now)
         return self._not_understood(ctx)
+
+    @staticmethod
+    def _states_other_need(ctx: CallContext, ex: ExtractionResult) -> bool:
+        """Câu đọc lịch outbound: người gọi nói không đến được / muốn đổi giờ ("đúng rồi, không đi
+        được", "…không đi được, dời lịch giúp tôi") là kịch bản Cancel / Reschedule (contract Table 1),
+        không phải câu trả lời có/không lẫn lộn cho việc đến khám. Đi nhánh ý định: nhánh này không
+        ghi gì, vẫn cần xác nhận hủy / chốt khung ở lượt sau; AGREE của lượt đã bị hạ UNCLEAR."""
+        return (
+            ctx.call.direction == "outbound"
+            and ctx.question is not None
+            and ctx.question.question_id is QuestionId.CONFIRM_READBACK
+            and ex.intent.value in (Intent.CANCEL, Intent.RESCHEDULE)
+            # Chỉ khi model đọc câu là nhu cầu; "hủy đi, à không, giữ lịch giúp tôi" vẫn hỏi lại
+            and ex.need_over_conflict
+        )
 
     def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
         question = ctx.question
@@ -261,9 +281,9 @@ class DialogueManager:
 
     def _identity(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         """R-40: only PRESENT values reach the verifier; each identifier gets one open retry."""
-        self._note_early_intent(ctx, ex)
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
+        self._keep_early_request(ctx, ex)
         name_suspicious = False
         progressed = False
         if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
@@ -295,7 +315,56 @@ class DialogueManager:
                 return self._retry_identity(ctx, question)
             text = t.ASK_NAME_AFTER_DOB if question is QuestionId.ASK_NAME else t.ASK_DOB
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"))
-        return self._retry_identity(ctx, question)
+        if is_identity_question(ex.transcript) and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
+            ctx.identity_questions += 1
+            text = (
+                t.greeting_back(ctx.call.direction)
+                if question is QuestionId.ASK_NAME
+                else t.INTRODUCE_AGAIN_ASK_DOB
+            )
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+        if ex.caller_question and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
+            # Người gọi hỏi trước khi xác minh ("lịch khám của tôi mấy giờ?", model đọc là QUESTION):
+            # trả lời cần xác minh trước (SF-03), không đọc gì về lịch, không dùng lượt hỏi lại.
+            ctx.identity_questions += 1
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
+            )
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+        # Nhu cầu không kèm định danh vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40); chỉ đổi lời
+        # hỏi lại để người gọi biết bot đã nghe nhu cầu, thay vì "em chưa nghe rõ".
+        return self._retry_identity(ctx, question, request=ex.intent.value in _REQUEST_INTENTS)
+
+    @staticmethod
+    def _keep_early_request(ctx: CallContext, ex: ExtractionResult) -> None:
+        """Yêu cầu hủy (QC qc-cn-08) / đổi lịch (R-43) nói cùng lượt danh tính: chỉ GIỮ lại, chưa phải
+        hành động chờ, chưa tiết lộ gì (SF-03) và không đổi bộ đếm R-40. `_verify` dùng nó sau khi xác
+        minh xong. Chỉ giữ một yêu cầu, lượt sau thay lượt trước (R-44): "đổi lịch sang tuần sau" thay
+        yêu cầu hủy đã giữ; đổi ý ("không hủy nữa", "vẫn đi khám") bỏ yêu cầu đã giữ."""
+        if not ex.deferred_intent.found:
+            return
+        if ex.deferred_intent.value is not Intent.CANCEL:
+            ctx.early_cancel = ctx.early_cancel_reason = None
+            rescheduling = ex.deferred_intent.value is Intent.RESCHEDULE
+            ctx.early_reschedule = (ex.deferred_request or "") if rescheduling else None
+            return
+        ctx.early_reschedule = None
+        ctx.early_cancel = ActionEvidence(
+            kind="REQUEST",
+            action="CANCEL",
+            slot_id=None,
+            turn=ex.turn,
+            question_id=ex.question_id,
+            question_turn=ctx.question.turn if ctx.question else None,
+            transcript=ex.transcript,
+            label=Intent.CANCEL.value,
+            provenance=ex.deferred_intent.provenance.value,
+            span=ex.deferred_intent.span,
+        )
+        # Nhắc lại yêu cầu mà không nêu lý do ("hủy lịch giúp tôi") không xóa lý do đã nói trước đó
+        reason = ex.deferred_cancel_reason
+        if reason.found:
+            ctx.early_cancel_reason = reason.value
 
     @staticmethod
     def _legacy_identity(item: Field, transcript: str) -> IdentityValue:
@@ -309,28 +378,25 @@ class DialogueManager:
         return "PATIENT_NOT_FOUND" if ctx.call.direction == "inbound" else "IDENTITY_FAILED"
 
     def _retry_identity(
-        self, ctx: CallContext, question: QuestionId, *, suspicious: bool = False
+        self,
+        ctx: CallContext,
+        question: QuestionId,
+        *,
+        suspicious: bool = False,
+        request: bool = False,
     ) -> Reply:
         key = question.value
         if ctx.identity_retries.get(key, 0) >= 1:
             reason = self._identity_failure_reason(ctx) if suspicious else "NOT_UNDERSTOOD"
             return Reply(self.transfer(ctx, reason))
         ctx.identity_retries[key] = 1
-        text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
+        if request:
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
+            )
+        else:
+            text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
         return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
-
-    @staticmethod
-    def _note_early_intent(ctx: CallContext, ex: ExtractionResult) -> None:
-        """R-43: ghi nhớ yêu cầu đổi lịch nói trước khi xác minh xong; chưa làm gì, chưa tiết lộ gì (SF-03)."""
-        early = ex.early_intent
-        if early is None or not early.found or early.value is not Intent.RESCHEDULE:
-            return
-        ctx.early_intent = early.value.value
-        ctx.early_request = (
-            ex.early_request
-            if ex.early_request is not None
-            else _from_span(ex.transcript, early.span)
-        )
 
     def _verify(self, ctx: CallContext, now: datetime) -> Reply:
         result = self._verifier.verify(ctx)
@@ -343,11 +409,19 @@ class DialogueManager:
 
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id
-        early = self._early_flow(ctx, now)
-        if early is not None:
-            return early
         if ctx.call.direction == "inbound":
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
+        if ctx.early_reschedule is not None:
+            return self._early_reschedule(ctx, now)
+        if ctx.early_cancel is not None:
+            # Đã nói muốn hủy cùng lúc khai tên / ngày sinh: đó là lượt yêu cầu (§1.1.4 lần một).
+            # Đọc lại lịch sắp hủy và hỏi xác nhận lần hai ngay, không hỏi "có đến được không".
+            request, reason = ctx.early_cancel, ctx.early_cancel_reason
+            ctx.early_cancel = ctx.early_cancel_reason = None
+            ctx.set_pending("CANCEL")
+            ctx.cancel_reason = reason
+            ctx.add_evidence(request)
+            return Reply(self._ask_cancel_readback(ctx))
         appointment = self._reads.get_actionable_appointment(ctx)
         return Reply(
             ask(
@@ -361,20 +435,18 @@ class DialogueManager:
             )
         )
 
-    def _early_flow(self, ctx: CallContext, now: datetime) -> Optional[Reply]:
+    def _early_reschedule(self, ctx: CallContext, now: datetime) -> Reply:
         """R-43: xác minh xong thì đi thẳng vào luồng đổi lịch đã xin, không hỏi lại nhu cầu.
 
         Lời nói trước là tiêu chí thời gian của yêu cầu (đã bỏ phần họ tên / ngày sinh).
         """
-        intent, request = ctx.early_intent, ctx.early_request or ""
-        ctx.early_intent = ctx.early_request = None
-        if ctx.call.direction == "outbound" and intent == Intent.RESCHEDULE.value:
-            # Cùng cổng với luồng thường (`_verify`): lịch không còn thao tác được thì chuyển máy, không
-            # mời khung cho một lịch đã hủy / đã chuyển sau lượt 0
-            self._reads.get_actionable_appointment(ctx)
-            ctx.set_pending("RESCHEDULE")
-            return self._new_request(ctx, now, request)
-        return None
+        request = ctx.early_reschedule or ""
+        ctx.early_reschedule = None
+        # Cùng cổng với luồng thường (`_verify`): lịch không còn thao tác được thì chuyển máy, không
+        # mời khung cho một lịch đã hủy / đã chuyển sau lượt 0
+        self._reads.get_actionable_appointment(ctx)
+        ctx.set_pending("RESCHEDULE")
+        return self._new_request(ctx, now, request)
 
     # --- Outbound: đến khám được không ----------------------------------------------------
 
@@ -510,18 +582,21 @@ class DialogueManager:
             ctx.cancel_reason = prior_reason
             ctx.add_evidence(self._evidence(ctx, ex, "REQUEST", ex.intent))
             self._update_cancel_reason(ctx, ex)
-            return Reply(
-                ask(
-                    ctx,
-                    QuestionId.CANCEL_RECONFIRM,
-                    t.CANCEL_RECONFIRM,
-                    "AWAITING_CONFIRMATION",
-                    action="CANCEL",
-                )
-            )
+            return Reply(self._ask_cancel_readback(ctx))
         action: PendingAction = "RESCHEDULE" if intent is Intent.RESCHEDULE else "BOOK"
         ctx.set_pending(action)
         return self._new_request(ctx, now, ex.transcript)
+
+    def _ask_cancel_readback(self, ctx: CallContext) -> BotAction:
+        """Đọc lại đúng lịch sắp hủy trong câu xác nhận lần hai (§1.1.4)."""
+        appointment = self._reads.get_actionable_appointment(ctx)
+        return ask(
+            ctx,
+            QuestionId.CANCEL_RECONFIRM,
+            t.cancel_readback(ctx, appointment, variant=t.choose_variant(ctx, "CANCEL_READBACK")),
+            "AWAITING_CONFIRMATION",
+            action="CANCEL",
+        )
 
     # --- Chọn slot -----------------------------------------------------------------------
 
@@ -821,6 +896,10 @@ class DialogueManager:
         # Chưa xác nhận: lý do vẫn được ghi nhận ở mọi lượt, nhưng ghi nhận lý do không phải đồng ý hủy
         had_reason = ctx.cancel_reason not in (None, DEFAULT_CANCEL_REASON)
         noted = self._update_cancel_reason(ctx, ex)
+        if ex.intent.value is Intent.CANCEL and ex.intent.provenance is Provenance.FALLBACK:
+            # Tầng ngữ nghĩa đọc ra người gọi muốn hủy, nhưng luật chưa xác nhận được: hỏi đúng câu
+            # xác nhận hủy, không hỏi "hủy hay giữ". Không ghi gì ở lượt này.
+            return Reply(self._ask_cancel_again(ctx, t.CANCEL_CONFLICT), "UNCLEAR")
         if ex.agreement.found:
             # Có tín hiệu đồng ý / mâu thuẫn / ngập ngừng nhưng dưới ngưỡng hủy: hỏi lại bằng câu
             # lựa chọn, kể cả khi lượt đó có nêu lý do (§3.2.6)
@@ -1180,17 +1259,6 @@ class DialogueManager:
         return BotAction(text, "ENDED", ended=True, outcome=outcome)
 
 
-def _from_span(transcript: str, span: Optional[str]) -> str:
-    """Phần lời nói từ cụm ý định trở đi: "Nguyễn Văn A, sinh 12/3/1980, muốn đổi sang thứ Sáu" ->
-    "muốn đổi sang thứ Sáu" — ngày sinh không được thành tiêu chí thời gian của việc đổi (R-43)."""
-    text = normalize(transcript)
-    words = span.split() if span else []
-    if not words:
-        return text
-    match = re.search(r"(?<!\w)" + re.escape(words[0]) + r"(?!\w)", text)
-    return text[match.start() :] if match else text
-
-
 def _criteria(request: str, now: datetime) -> SlotCriteria:
     """Tiêu chí lọc của một yêu cầu thời gian; thứ tự ("khung 2") chỉ có nghĩa trên trang đang đọc.
 
@@ -1281,7 +1349,15 @@ def _names_a_date(criteria: SlotCriteria) -> bool:
 def _dates_only(criteria: SlotCriteria) -> SlotCriteria:
     """Chỉ phần ngày của yêu cầu: ngày xin còn khung nào không, bất kể giờ / buổi / sớm muộn."""
     return replace(
-        criteria, hours=None, minute=None, period=None, relative=None, before=None, after=None
+        criteria,
+        hours=None,
+        minute=None,
+        period=None,
+        relative=None,
+        not_before=None,
+        before=None,
+        earlier_than=None,
+        later_than=None,
     )
 
 

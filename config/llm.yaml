@@ -12,6 +12,8 @@
 openai: # OPENAI_API_KEY
   endpoint: https://api.openai.com/v1/chat/completions
   model: gpt-6-luna
+  # Fast mode cho cả name và semantic; có phụ phí. OPENAI_SERVICE_TIER=default để tắt.
+  service_tier: fast
   timeout_s: 3.0
   connect_timeout_s: 1.0
   max_completion_tokens: 200

@@ -252,3 +252,44 @@ def test_a_reschedule_turn_reads_the_appointment_once(mode: str, lines: list[str
     action = _run(bot, call_id, lines[-1:], start=len(lines))
     assert "khung" in action.utterance
     assert _appointment_reads(clinic, before) == 1
+
+
+# --- Merge main 07/10 (evidence §11): khoảng giờ của main và "sớm hơn" của nhánh cùng chạy; tự sửa ------
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    ("line", "said"),
+    [
+        # "trước 12 giờ" (khoảng giờ, main) và "sớm hơn" (mốc lịch đang đổi, nhánh): hai tiêu chí khác nhau
+        ("ngày 15 trước 12 giờ", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
+        ("ngày 14 sớm hơn", "ngày 14 tháng 10 còn khung 3 giờ chiều"),
+        # R-44: "à không phải" là lời tự sửa, không phải loại trừ giờ nói sau; buổi "chiều" của giờ cũ
+        # không áp vào 10 giờ 30
+        ("3 giờ chiều à không phải 10 giờ 30", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
+        ("3 giờ chiều, à không phải, 10 giờ 30", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
+        # "không phải X mà là Y" giữ "15/10", cả khi Dialogue đọc lại câu làm yêu cầu mới
+        ("không phải 14/10 mà là 15/10", "ngày 15 tháng 10"),
+        ("ngày 15/10 chứ không phải 14/10", "ngày 15 tháng 10"),
+    ],
+)
+def test_ranges_relative_times_and_corrections_after_the_merge(
+    mode: str, line: str, said: str
+) -> None:
+    call_id = f"m11-{mode}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*IDENTITY, "Tôi muốn đổi lịch", line])
+    assert not action.ended and said in action.utterance
+    assert "14 tháng 10" not in action.utterance or "ngày 14" in line
+    assert clinic.writes == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_corrected_date_keeps_the_reschedule_intent(mode: str) -> None:
+    """`corrected_tail` (main) đọc lại nhu cầu sau "à không"; lời sửa NGÀY không bỏ nhu cầu đổi lịch."""
+    call_id = f"m11-intent-{mode}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(
+        bot, call_id, [*IDENTITY, "Đổi sang ngày 15... à không, vẫn ngày 14 nhưng sớm hơn"]
+    )
+    assert "ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance and clinic.writes == []

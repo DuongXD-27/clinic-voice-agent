@@ -194,6 +194,22 @@ _AFFIRM = compile_phrases(
     ],
     unaccented_exclude=["có", "đúng"],  # "co" = cô/cỏ/cơ; "dung" = đừng/dùng
 )
+# Từ khẳng định không dùng như từ thường trong câu kể; khác "có", "được", "đúng", "phải", "chuẩn"
+# ("tôi có việc", "tôi phải đi làm", "đến đúng giờ"). Xem `_answers_affirmatively`.
+_STRONG_AFFIRM = compile_phrases(
+    [
+        "đúng rồi",
+        "đúng vậy",
+        "chính xác",
+        "đồng ý",
+        "ok",
+        "oke",
+        "okay",
+        "ô kê",
+        "tất nhiên",
+        "đương nhiên",
+    ]
+)
 # Chỉ ở câu hỏi đến khám: "đến chứ" là khẳng định sẽ đến, không có từ đồng ý nào khác trong câu
 _ATTEND_AFFIRM = compile_phrases(["đến chứ", "đi chứ"])
 _SLOT_ACTION = compile_phrases(
@@ -305,6 +321,7 @@ _CANCEL_AFFIRM = compile_phrases(
         "đồng ý",
         "xác nhận",
         "chắc chắn",
+        "chắc chắn rồi",
         "ok",
         "oke",
         "okay",
@@ -496,14 +513,33 @@ def conflicting_confirmation(
     positive_text = re.sub(
         r"\b(?:không|khong|chưa|chua)\s+(?:\w+\s+){0,4}(?:được|duoc)\b", "", text
     )
-    cues = _find_cues(positive_text, is_unaccented(text), question_id in _ATTENDANCE_QUESTIONS)
+    unaccented = is_unaccented(text)
+    cues = _find_cues(positive_text, unaccented, question_id in _ATTENDANCE_QUESTIONS)
     return bool(
-        cues.affirm
+        _answers_affirmatively(positive_text, cues.affirm, unaccented)
         or cues.idiom
         or (cues.cancel_verb and question_id is QuestionId.CANCEL_RECONFIRM)
         or (cues.slot_action and question_id is QuestionId.SLOT_READBACK)
         or cues.polite in _POLITE_AGREE
     )
+
+
+def _answers_affirmatively(text: str, affirm: Optional[str], unaccented: bool) -> bool:
+    """Từ khẳng định chỉ là lời đáp khi mở đầu câu trả lời ("có, à không", "vâng, đúng rồi, không
+    đi được"). Ở giữa câu kể nó là từ thường: "tôi PHẢI đi làm", "tôi CÓ việc", "đến ĐÚNG giờ" —
+    câu kể không đến được là kịch bản Cancel (contract Table 1), không phải đồng ý lẫn từ chối.
+    "giữ lịch", "đến chứ" vẫn tính ở mọi vị trí; từ khẳng định mạnh cũng vậy — không phải từ thường
+    trong câu kể: "không, à vâng đúng rồi", "tôi đồng ý nhưng không đi được"."""
+    if affirm is None:
+        return False
+    if find_phrase(affirm, _AFFIRM, unaccented=unaccented) is None:
+        return True
+    if find_phrase(text, _STRONG_AFFIRM, allow_negated=False, unaccented=unaccented) is not None:
+        return True
+    answer = " ".join(text.split())
+    polite = _leading_phrase(answer, _POLITE, unaccented)
+    body = answer[polite.end() :].strip() if polite else answer
+    return _leading_phrase(body, _AFFIRM, unaccented) is not None
 
 
 # "thôi thì" mở câu là dấu nối cam chịu ("thôi thì hủy giúp tôi vậy"), không phải lời từ chối. Chỉ
@@ -776,6 +812,91 @@ def is_bare_da(transcript: str) -> bool:
     return clean(transcript) in (_BARE_DA, clean("dạ ạ"), "da", "da a")
 
 
+def asks_or_hesitates(transcript: str) -> bool:
+    """Câu hỏi ("?", câu hỏi đuôi, từ để hỏi), câu có "nhưng" hoặc ngập ngừng: không phải lời kể dứt
+    khoát. Cùng các tập và thứ tự với các luật đầu của `_read_agreement`."""
+    text = clean(transcript)
+    if not text:
+        return False
+    if "?" in transcript:
+        return True
+    unaccented = is_unaccented(text)
+    if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
+        return True
+    return any(
+        find_phrase(text, phrases, unaccented=unaccented) is not None
+        for phrases in (_QUESTION_WORDS, _CONTRAST, _HEDGE)
+    )
+
+
+# Nhu cầu chưa phải quyết định của người gọi:
+# - điều kiện / ngập ngừng (`_HEDGE`): "nếu tôi bận thì hủy nhé", "chắc là đổi";
+# - lời kể lại ĐỨNG TRƯỚC nhu cầu: "vợ tôi bảo hủy lịch" (khác "tôi muốn hủy, vợ tôi bảo thế");
+# - chưa quyết: "tôi chưa quyết", "đang suy nghĩ";
+# - hỏi hệ quả của chính việc đó: "hủy lịch có sao không".
+# KHÔNG gồm câu hỏi lịch sự ("đổi sang chiều được không?" — Figure 0) và "nhưng" ("tôi không bận
+# nhưng muốn hủy"): đó vẫn là yêu cầu.
+_REPORTED = compile_phrases(
+    ["bảo", "bảo là", "kêu", "dặn", "nói là"], unaccented_exclude=["bảo", "kêu", "dặn"]
+)
+_UNDECIDED = compile_phrases(
+    [
+        "chưa quyết",
+        "chưa quyết định",
+        "đang suy nghĩ",
+        "đang tính",
+        "phân vân",
+        "để tôi tính",
+    ],
+)
+_CONSEQUENCE = compile_phrases(
+    [
+        "có sao không",
+        "có ảnh hưởng gì không",
+        "có bị gì không",
+        "có mất phí không",
+        "có tốn phí không",
+        "có nên",
+    ]
+)
+
+
+# Tự sửa: "đổi lịch, à thôi hủy đi", "hủy đi, à không, giữ lịch giúp tôi"
+_CORRECTION = re.compile(r"(?<!\w)(?:(?:à|ờ|ơ) (?:thôi|không|nhầm)|mà thôi)(?!\w)")
+
+
+def corrected_tail(transcript: str) -> Optional[str]:
+    """Phần người gọi nói SAU lời tự sửa cuối cùng — đó mới là nhu cầu; `None` khi không tự sửa."""
+    text = clean(transcript)
+    ends = [match.end() for match in _CORRECTION.finditer(text)]
+    return text[ends[-1] :].strip() if ends else None
+
+
+def undecided_request(transcript: str, span: Optional[str]) -> bool:
+    """Câu có từ khóa nhu cầu (`span`) nhưng chưa phải quyết định của người gọi: luật không tự quyết."""
+    text = clean(transcript)
+    unaccented = is_unaccented(text)
+    if any(
+        find_phrase(text, phrases, unaccented=unaccented) is not None
+        for phrases in (_HEDGE, _UNDECIDED, _CONSEQUENCE)
+    ):
+        return True
+    reported = find_phrase(text, _REPORTED, unaccented=unaccented)
+    at = text.find(span) if span else -1
+    return reported is not None and at >= 0 and reported.start() < at
+
+
+def has_question_cue(transcript: str) -> bool:
+    """Câu có dấu hiệu hỏi ("?" hoặc từ để hỏi). Chỉ để chọn model nào đọc câu, không quyết."""
+    text = clean(transcript)
+    if not text:
+        return False
+    if "?" in transcript:
+        return True
+    # Không dấu chỉ tin dấu "?": "nguyen van a" kết thúc bằng "a" trùng câu hỏi đuôi "à"
+    return not is_unaccented(text) and find_phrase(text, _QUESTION_WORDS) is not None
+
+
 def mentions_cancel(transcript: str) -> bool:
     """Có động từ "hủy": "không đi được, hủy đi" là muốn hủy, không chỉ là bận."""
     return find_phrase(clean(transcript), _CANCEL_VERB) is not None
@@ -828,6 +949,11 @@ def answer_after_give_up(transcript: str) -> Optional[str]:
 def gives_up_slot_change(transcript: str) -> bool:
     """ "thôi không đổi nữa", "giữ lịch cũ": bỏ việc đổi / đặt; "không" trần thì không (T-10 Q-4)."""
     return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
+
+
+def asks_to_keep(transcript: str) -> bool:
+    """Câu có lời giữ lịch ("giữ lịch giúp tôi", "vẫn giữ nguyên")."""
+    return find_phrase(clean(transcript), _KEEP) is not None
 
 
 def mentions_keeping(transcript: str) -> bool:

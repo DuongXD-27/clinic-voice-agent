@@ -230,9 +230,30 @@ REQUEST_HUMAN > NOT_PATIENT > OUT_OF_SCOPE (chủ đề) > RESCHEDULE > CANCEL >
 - "Không đến được, đổi sang chiều được không" → `RESCHEDULE` (có phương án thay thế).
 - Cụm phủ định đứng trước từ khoá phải được xử lý trước: "không hủy", "đừng hủy", "không đổi", "giữ nguyên lịch" → **không** là `CANCEL` / `RESCHEDULE`.
 
+**Lý do hủy là yêu cầu hủy** (06/10/2026, QC `qc-cn-03-went-elsewhere`, `extraction/implied_cancel.py`). Ở `CONFIRM_READBACK` / `ASK_INTENT` outbound, `cancel_reason` được trích bằng luật. Khi luật intent ra `NONE` và không có nội dung lâm sàng, lý do dưới đây là `CANCEL` (span = cụm lý do), không gọi model:
+- Luật chỉ là đường tắt cho câu **ngắn, rõ**, theo một khuôn cho phép (không liệt kê các cách nói "chưa khám"): (lời đáp ngắn "không" / "dạ"…,) + chủ ngữ / tiếng đệm / "đã" / động từ đi khám + cụm lý do + "rồi" / tiểu từ. Ví dụ "Không, tôi khám chỗ khác rồi", "tôi đã khám ở nơi khác", "Tôi khỏi rồi em".
+- `WENT_ELSEWHERE` cần dấu hiệu đã xảy ra ("rồi" từ cụm lý do trở đi, hoặc "đã" trước nó); `NO_LONGER_NEEDED` chỉ nhận cụm dứt khoát ("khỏi rồi", "khỏe rồi", "không cần nữa"; "hết đau rồi" có chữ "đau" nên vẫn đi tuyến lâm sàng).
+- Câu có bất cứ từ nào ngoài khuôn, kể cả chữ nằm giữa hai cụm lý do ("tôi khỏi rồi nhưng không chắc là khỏe rồi") — dự định ("định / sẽ khám chỗ khác"), đặt lịch nơi khác ("tôi đã đặt hẹn ở bệnh viện khác"), "rồi" = sau đó ("… rồi báo lại"), phủ định, câu hỏi, "nhưng", không chắc, nhiều lý do — không nâng: intent luật là `NONE`, lượt đi tuyến ngữ nghĩa (`INTENT_UNCLEAR`); model đọc ra lý do (`WENT_ELSEWHERE`...) và chuyển nhu cầu. Không có model thì đi đường cũ như trước khi có luật này (thường là "em chưa hiểu"; hỏi "đổi hay hủy" khi câu có lời từ chối). Cách nói lý do mà luật không biết ("khám ở viện khác rồi", "khám bên viện khác rồi") cũng để model đọc, không bổ sung vào danh sách cụm. Luật nhãn khác (`RESCHEDULE`, `CONFIRM`, `REQUEST_HUMAN`...) vẫn thắng.
+- Chỉ là lượt yêu cầu: lệnh ghi vẫn cần lượt xác nhận sau có động từ "hủy" (§1.1.4, SF-05).
+
+**Khớp một cụm không đủ để quyết cả câu** (06/10/2026, rà soát rule). Luật chỉ quyết khi cụm khớp nằm trong câu rõ nghĩa; câu còn tín hiệu ngược thì không quyết, để tầng ngữ nghĩa đọc hoặc hỏi lại:
+- `REQUEST_HUMAN` chỉ nhận khung yêu cầu ("gặp / chuyển (sang) / nói chuyện với nhân viên", "chuyển máy", "nối máy"…) hoặc cả câu chỉ là "nhân viên". "Nhân viên đã hẹn tôi đến hôm đó", "tôi không muốn gặp bất kỳ nhân viên nào" không chuyển máy.
+- Địa chỉ (`OUT_OF_SCOPE`) chỉ nhận cụm hỏi / xin ("… ở đâu", "xin / cho tôi / gửi địa chỉ"); danh từ trơ "địa chỉ bệnh viện" ("tôi biết địa chỉ bệnh viện rồi, tôi sẽ đến") không còn chuyển máy.
+- `NOT_PATIENT` từ cụm vắng mặt ("đi vắng", "không ở nhà") không áp dụng khi có chủ ngữ ngôi thứ nhất ngay trước ("Tôi đi vắng nên muốn đổi lịch").
+- Lâm sàng: câu hỏi đánh giá ("có sao không", "có ảnh hưởng gì không") về việc với lịch hẹn ("hủy lịch có sao không") mà không có từ triệu chứng / bệnh / thuốc chỉ là `MENTION` → tầng ngữ nghĩa đọc lại (`CLINICAL_UNRESOLVED`); có nội dung sức khỏe thì vẫn `ADVICE_REQUEST` / `EMERGENCY`.
+- `CANCEL` / `RESCHEDULE` của luật ở câu đọc lịch / "đổi hay hủy" outbound trong câu chưa phải quyết định — điều kiện / ngập ngừng ("nếu tôi bận thì hủy nhé"), lời kể lại đứng trước nhu cầu ("vợ tôi bảo hủy lịch"), chưa quyết, hỏi hệ quả ("hủy lịch có sao không") — đi route `INTENT_HEDGED`: chỉ model chuyển nhu cầu (`CHANGE_INTENT`) mới đặt lại intent; không có model hay model mơ hồ thì intent là `NONE`, bot hỏi lại. Câu hỏi lịch sự ("đổi sang chiều được không?", Figure 0) và "nhưng" mở ra yêu cầu ("tôi không bận nhưng muốn hủy") vẫn là yêu cầu.
+- Tự sửa ("đổi lịch, à thôi hủy đi", "hủy lịch, à nhầm, đổi lịch"): intent đọc trên phần nói SAU lời sửa cuối cùng, không lấy cụm khớp trước theo thứ tự ưu tiên. Phần đó không có nhu cầu ("đổi lịch, à thôi") thì intent là `NONE`, tuyến ngữ nghĩa đọc cả câu.
+- `cancel_reason`: lý do bị bác bỏ ("hủy, không phải vì không đủ tiền", "chẳng phải do bận") không được ghi; không còn lý do nào thì `UNSPECIFIED`.
+- `slot_choice`: tự sửa ("không phải khung 1 mà là khung 2", "khung 2 chứ không phải khung 1") chỉ đọc phần đúng; loại trừ ("trừ khung 1", "không lấy khung 1") bỏ khung bị loại khỏi các khung vừa đọc — còn một khung thì chọn (vẫn đọc lại để xác nhận), còn nhiều thì hỏi lại; "sau / từ / trước X giờ" là khoảng giờ (`SlotCriteria.not_before` / `before`), không phải khung X giờ.
+
 **Ở bước danh tính** (`ASK_NAME`, `ASK_DOB`) không chạy nhãn nghiệp vụ — tên "Lê Văn Thôi", "Trần Văn Được" không được thành từ chối / xác nhận:
 - Luôn chạy: `REQUEST_HUMAN`, `NOT_PATIENT`, `REPEAT_REQUEST` (câu này không được đọc thành tên).
 - Chạy **sau** khi trích tên / ngày sinh thất bại: `OUT_OF_SCOPE`. Tên hợp lệ luôn thắng, vì "thanh toan" trùng tên "Thanh Toàn" khi mất dấu.
+- Outbound: ý định `CANCEL` / `RESCHEDULE` nói gộp với tên / ngày sinh được trả riêng trong `deferred_intent` (kèm `deferred_cancel_reason` cho hủy, `deferred_request` — lời yêu cầu đã bỏ tên và ngày sinh, giữ dấu câu — cho đổi lịch, PRD R-43), tìm trên phần transcript **ngoài tên đã trích** ("Trần Văn Hủy" không phải yêu cầu hủy) và xét đủ thứ tự ưu tiên ("không đi được, đổi sang chiều" là đổi lịch). `intent` của lượt danh tính không đổi; Dialogue chỉ dùng `deferred_intent` sau khi xác minh xong.
+  - "hủy" chỉ là động từ trong khung yêu cầu ("muốn hủy", "hủy lịch", "không hủy nữa"); đứng trơ trọi ("Trần Thị Hủy, sinh …" ở `ASK_DOB`, "tôi tên Hủy") là tên, kể cả khi tên không được trích.
+  - Chỉ giữ yêu cầu hủy rõ ràng: câu hỏi, câu có "nhưng" hoặc ngập ngừng ("…hủy lịch có được không") không được giữ.
+  - Yêu cầu đổi lịch được giữ khi đã quyết: câu hỏi lịch sự ("đổi sang chiều được không") vẫn là yêu cầu; ngập ngừng / chưa quyết / kể lại (`undecided_request`: "chắc là đổi", "vợ tôi bảo đổi lịch") thì không. Dialogue giữ **một** yêu cầu, lượt sau thay lượt trước (R-44): đổi lịch thay yêu cầu hủy đã giữ và ngược lại.
+  - Không liệt kê các cách đổi ý: lượt định danh còn từ nào ngoài tên (tên đã trích, hoặc mệnh đề mà luật đọc tên xác nhận là tên — không cắt mù phần trước / sau ngày sinh), vùng ngày sinh đọc được, chữ số và từ đệm ("dạ", "tôi", "sinh", "nhé"…) mà không phải yêu cầu hủy / đổi lịch thì `deferred_intent` là `NONE` có span ("tôi đổi ý rồi", "không hủy nữa"); Dialogue bỏ yêu cầu hủy đã giữ. Sau xác minh bot đọc lịch và hỏi có đến được không — tức là hỏi lại nhu cầu. Đoán sai theo hướng nào cũng chỉ tốn một lượt hỏi, không ghi gì.
 
 **Tuyến sau:** LLM với tập nhãn đóng, chỉ gọi khi luật cho `NONE`. Không đưa thông tin lịch hẹn hay hồ sơ vào prompt. Lỗi ở tầng này sửa được nhờ bước đọc lại và xác nhận (§1.1.3, §1.1.4, §1.1.10).
 
@@ -395,13 +416,21 @@ Hai chốt chặn ở **tầng luật** (chạy cả khi tắt model, `extractio
 
 | Tình huống | Gọi model? |
 |---|---|
-| Im lặng, transcript rỗng, bước tên / ngày sinh, `OFFER_SLOTS`, `SLOT_READBACK` | Không |
+| Im lặng, transcript rỗng, `OFFER_SLOTS`, `SLOT_READBACK` | Không |
+| Bước tên / ngày sinh có định danh, lời chào, "ai đấy?" hoặc nhãn chính sách | Không |
+| Bước tên / ngày sinh, lượt không có định danh nào (06/10/2026, QC qc-id-05) | `IDENTITY_TURN` — model chỉ cho biết người gọi có đang HỎI không (`caller_question`); không đổi intent, không đọc định danh |
 | Lâm sàng, xin người thật, sai danh tính, ngoài phạm vi, xin nhắc lại | Không — Policy đã đủ căn cứ |
 | Câu khớp **toàn câu** trong tập rõ ("hủy giúp tôi", "không hủy nữa", "vâng") | Không |
 | `CANCEL_RECONFIRM`, từ chối kèm lý do | `CANCEL_REFUSAL_WITH_REASON` |
 | `CANCEL_RECONFIRM`, tín hiệu ngược nhau / ngập ngừng | `CANCEL_CONTRADICTION` |
 | `CANCEL_RECONFIRM`, các câu còn lại | `CANCEL_UNRESOLVED` |
 | `ASK_INTENT` / `CONFIRM_READBACK`, không có ý định dùng được và cũng không có có/không dứt khoát | `INTENT_UNCLEAR` |
+| `CONFIRM_READBACK` outbound, câu mâu thuẫn có ý định `CANCEL` / `RESCHEDULE` | `NEED_CONFLICT` |
+| `CONFIRM_READBACK` / `ASK_INTENT` outbound, `CANCEL` / `RESCHEDULE` trong câu chưa phải quyết định | `INTENT_HEDGED` |
+
+Ở `ASK_NAME`, slot filling tên và tầng ngữ nghĩa dùng chung một lần gọi model mỗi lượt (stage 1). Lượt luật không đọc ra tên mà có dấu hiệu hỏi hoặc nhắc tới lịch hẹn ("tôi khám hôm nào vậy em?", "cứ đọc lịch trước đi") nhường lần gọi đó cho tầng ngữ nghĩa thay vì slot filling tên — chỉ là chọn model nào đọc câu.
+
+**Prompt `semantic_v9_luna`** (06/10/2026) = v8 + nguyên tắc chung, không bám câu cụ thể: (5) phân loại theo quyết định sau cùng — tiếng đệm / ngập ngừng / tự sửa trước một quyết định rõ không làm câu thành `AMBIGUOUS`; hai ý trái ngược đứng cạnh nhau không có lời tự sửa ("không, hủy đi") vẫn là `AMBIGUOUS`; (6) ở `CANCEL_RECONFIRM`, mọi cách nói giữ lịch là `DECLINE_ACTION`; (7) ở `ASK_NAME` / `ASK_DOB`, hỏi / đòi thông tin là `QUESTION`. Ví dụ đi kèm cố ý khác câu QC. v7, v8 giữ nguyên để rollback.
 
 **Kết quả** `SemanticReading` (Structured Outputs, schema đóng): `intent`, `intent_span`, `reply_kind`, `reply_span`, `cancel_reason`, `reason_span`. Không có `outcome`, `appointment_id`, `slot_id`, lời thoại hay trường "được phép ghi". `reply_kind` ∈ {`CONFIRM_ACTION`, `DECLINE_ACTION`, `INFORM_REASON`, `CHANGE_INTENT`, `QUESTION`, `AMBIGUOUS`}.
 
@@ -416,7 +445,7 @@ Span được đối chiếu trên bản **còn dấu câu** (`normalize`), ph�
 | `CHANGE_INTENT` | Đổi ý định (trong tập cho phép); nhu cầu mới cần xác nhận riêng |
 | `intent = OUT_OF_SCOPE` (mọi `reply_kind`, span có trong câu) | `intent = OUT_OF_SCOPE` (`FALLBACK`), bỏ tín hiệu đồng ý → Policy chuyển máy. Chỉ dẫn tới chuyển máy, không mở khóa ghi; dùng cho câu diễn đạt vòng mà luật không bắt được ("lịch này tôi có đặt đâu em") |
 | `QUESTION` / `AMBIGUOUS` | `UNCLEAR`, hỏi lại, Policy đếm như thường |
-| `CONFIRM_ACTION` | **Giữ nguyên kết luận luật.** Model không nâng `NONE`/`UNCLEAR`/`REFUSE` thành `AGREE`; câu đã bị router đánh dấu mâu thuẫn thì hạ `UNCLEAR` |
+| `CONFIRM_ACTION` | **Giữ nguyên kết luận luật.** Model không nâng `NONE`/`UNCLEAR`/`REFUSE` thành `AGREE`; câu đã bị router đánh dấu mâu thuẫn thì hạ `UNCLEAR`. Ở `CANCEL_RECONFIRM` mà luật chưa xác nhận được ("thôi hủy giúp tôi"), model chỉ cho biết **ý định**: `intent = CANCEL` (`FALLBACK`) → Dialogue hỏi `CANCEL_CONFLICT` ("có chắc chắn muốn hủy… nói 'hủy lịch'") thay vì `CANCEL_CHOICE`; không ghi gì, lệnh hủy chỉ đến từ lượt xác nhận luật đọc được |
 | Không có kết quả dùng được (tắt, timeout, lỗi, span không có căn cứ) | Giữ luật rõ; `AGREE` trong câu mâu thuẫn hạ `UNCLEAR` |
 
 **Ranh giới prompt** (`SemanticContext`): transcript, `question_id`, hướng gọi, hành động đang chờ, câu hỏi có ở lượt ngay trước không, tập ý định cho phép, và nhãn luật của chính lượt này (ghi rõ "có thể sai"). **Không** gửi tên / ngày sinh chuẩn, `identity_reference`, object patient / appointment / slot, câu bot đọc lịch, hay lịch sử cuộc gọi. Mục đích câu hỏi được mô tả bằng `QUESTION_PURPOSE`, không gửi nguyên văn.

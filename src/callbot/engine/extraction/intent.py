@@ -52,9 +52,24 @@ _NEGATABLE = frozenset(
 )
 
 _KEYWORDS: dict[Intent, list[str]] = {
+    # Chỉ khung yêu cầu rõ ràng: "nhân viên" đứng trơ trong câu kể ("nhân viên đã hẹn tôi đến hôm
+    # đó", "tôi không muốn gặp bất kỳ nhân viên nào") không phải xin gặp người. Cả câu chỉ có "nhân
+    # viên" vẫn là yêu cầu (xem `_match`).
     Intent.REQUEST_HUMAN: [
-        "nhân viên",
         "gặp nhân viên",
+        "chuyển nhân viên",
+        "chuyển sang nhân viên",
+        "chuyển cho nhân viên",
+        "chuyển qua nhân viên",
+        "chuyển tôi sang nhân viên",
+        "chuyển tôi cho nhân viên",
+        "nói chuyện với nhân viên",
+        "nói với nhân viên",
+        "kết nối nhân viên",
+        "kết nối với nhân viên",
+        "nối máy",
+        "cần nhân viên",
+        "gọi nhân viên",
         "gặp người",
         "người thật",
         "tổng đài viên",
@@ -99,14 +114,17 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "kê đơn",
         "kết quả xét nghiệm",
         "trả kết quả",
-        # Địa chỉ / đường đi: chỉ cụm dạng hỏi, "tôi biết địa chỉ rồi" không phải câu hỏi
+        # Địa chỉ / đường đi: chỉ cụm dạng hỏi / xin. Danh từ trơ "địa chỉ bệnh viện" không đủ: "tôi
+        # biết địa chỉ bệnh viện rồi, tôi sẽ đến" là câu kể — câu không khớp cụm nào thì để model đọc.
         "địa chỉ ở đâu",
         "địa chỉ là gì",
         "địa chỉ cụ thể",
+        "địa chỉ thế nào",
+        "địa chỉ chỗ nào",
         "xin địa chỉ",
-        "địa chỉ phòng khám",
-        "địa chỉ cơ sở",
-        "địa chỉ bệnh viện",
+        "cho tôi địa chỉ",
+        "gửi địa chỉ",
+        "hỏi địa chỉ",
         "phòng khám ở đâu",
         "cơ sở ở đâu",
         "bệnh viện ở đâu",
@@ -384,18 +402,44 @@ def _match(intent: Intent, text: str, unaccented: bool) -> Optional[str]:
             found = pattern.search(text)
             if found:
                 return found.group(0)
+    if intent is Intent.REQUEST_HUMAN and _without_particles(text, unaccented) in _HUMAN_ALONE:
+        return text
     whole = _REPEAT_WHOLE_UTTERANCE_UNACCENTED if unaccented else _REPEAT_WHOLE_UTTERANCE
     if intent is Intent.REPEAT_REQUEST and text in whole:
         return text
     found = find_phrase(
         text, _COMPILED[intent], allow_negated=intent not in _NEGATABLE, unaccented=unaccented
     )
+    if found and intent is Intent.NOT_PATIENT and _first_person_before(text, found, unaccented):
+        # "Tôi đi vắng nên muốn đổi lịch": chính người bệnh nói mình vắng, không phải người khác nghe
+        return None
     if found is None and intent is Intent.RESCHEDULE:
         pattern = _MOVE_PATTERN_UNACCENTED if unaccented else _MOVE_PATTERN
         move = pattern.search(text)
         if move is not None and not is_negated(text, move.start(), unaccented):
             return move.group(0)
     return found.group(0) if found else None
+
+
+# Cả câu chỉ là "nhân viên" (kèm tiểu từ / xưng hô): vẫn là xin gặp người
+_HUMAN_ALONE = frozenset({clean("nhân viên"), "nhan vien"})
+_PARTICLES = frozenset(
+    clean(w) for w in ["ạ", "à", "đi", "nhé", "nha", "ơi", "em", "cho", "tôi", "với", "dạ", "vâng"]
+)
+_PARTICLES_UNACCENTED = frozenset(strip_diacritics(w) for w in _PARTICLES)
+_FIRST_PERSON = frozenset({"tôi", "mình", "tớ", "em"})
+_FIRST_PERSON_UNACCENTED = frozenset({"toi", "minh", "to", "em"})
+
+
+def _without_particles(text: str, unaccented: bool) -> str:
+    particles = _PARTICLES_UNACCENTED if unaccented else _PARTICLES
+    return " ".join(w for w in text.split() if w not in particles)
+
+
+def _first_person_before(text: str, found: re.Match[str], unaccented: bool) -> bool:
+    """Chủ ngữ ngôi thứ nhất trong ba từ trước cụm vắng mặt ("tôi đi vắng", "tôi hiện không ở nhà")."""
+    pronouns = _FIRST_PERSON_UNACCENTED if unaccented else _FIRST_PERSON
+    return bool(pronouns.intersection(text[: found.start()].split()[-3:]))
 
 
 def _match_out_of_scope_request(text: str, unaccented: bool, business_step: bool) -> Optional[str]:

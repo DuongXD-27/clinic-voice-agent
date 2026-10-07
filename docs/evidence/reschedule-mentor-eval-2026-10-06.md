@@ -852,3 +852,114 @@ Cách làm mỗi pha:
 | GET /appointments mỗi lượt đổi lịch | 1 |
 | `ruff check src tests scripts`, `ruff format --check src tests` | Pass |
 | `python -m pytest -q` (`PYTHONUTF8=1`) | Pass (4338 passed, 23 skipped) |
+
+## 11. Merge main (07/10/2026): conflict logic và cách gộp
+
+Nhánh fix hủy / xác nhận (`fix/qc-cancel-identity-flows`, PR #93 và #95) vào main trước, nên PR này conflict khi vào
+main. Đã merge `origin/main` (`6e706a0`) vào `fix/t10-reschedule` và gộp lại logic của hai bên.
+
+### 11.1 Cách kiểm tra
+
+- Merge thử trong worktree tạm, chỗ conflict giữ cả hai bên, rồi chạy toàn bộ test. Chạy lại cùng bộ test trên main
+  riêng và trên nhánh riêng (`f93c63d`) để tách lỗi do merge với lỗi có sẵn.
+- Git báo conflict ở 8 file. Bản merge làm **17 test engine fail**; main riêng và nhánh riêng đều không fail test
+  engine nào. 17 test speech / audio fail như nhau ở cả ba bản: `.venv` local thiếu gói `soxr`, không liên quan.
+- Chạy thêm các câu nói ở bước danh tính và bước chọn khung trên cả ba bản.
+
+### 11.2 Conflict logic và cách sửa
+
+Ba trong bốn chỗ dưới đây nằm trong phần Git **tự merge được**, nên không hiện ra khi resolve conflict.
+
+| # | Chỗ | Hai bên | Triệu chứng trên bản merge | Cách sửa |
+| --- | --- | --- | --- | --- |
+| M1 | `SlotCriteria.before` | main: `not_before` / `before` là phút trong ngày ("trước 10 giờ 30"). Nhánh: `before` / `after` là mốc lịch đang đổi ("sớm hơn"). | `_matches` so int với datetime → `TypeError` → chuyển máy SYSTEM_ERROR. "ngày 15 trước 12 giờ", "ngày 14 sớm hơn", qc-rs-06/07 (14/17 test fail). | Giữ tên của main. Hai trường của nhánh đổi thành `earlier_than` / `later_than`. `_dates_only` xoá thêm `not_before` / `before`, nếu không câu "ngày 16 sau 3 giờ chiều" có thể bị báo kín ngày. |
+| M2 | `InformationExtractor._intent` | main: `corrected_tail` đọc lại nhu cầu sau "à không / à thôi". Nhánh: R-44 sửa giá trị ("ngày 17 à không 16"). | Phần sau "16 được không" không có nhu cầu → mất RESCHEDULE, bot hỏi lại câu đọc lịch (qc-rs-06 rule / timeout, 4 test). | Chỉ đọc lại nhu cầu trên phần sau khi câu **không** phải lời sửa giá trị (`without_corrected_part(...) == transcript`). |
+| M3 | `extract_slot_choice` | main: `_corrected` ("không phải X mà là Y", "Y chứ không phải X") và `_EXCLUSION`. Nhánh: `_corrected_criteria` (R-44). | Không test nào bắt: "3 giờ chiều à không phải 10 giờ 30" (ASR không dấu câu) bị đọc là **loại** 10:30, bot đọc lại 15:00. `_corrected` trả bản `clean`, nên "không phải 14/10 mà là 15/10" mất ngày (cùng loại lỗi với ý 3). | Lời tự sửa xét trước, có lời tự sửa thì không coi "không phải" là loại trừ. `_corrected` cắt trên bản giữ dấu câu (`drop_leading_words`, `keep_leading_words` mới). `parse_slot_criteria` áp `_corrected`, nên Dialogue tạo yêu cầu mới cũng đọc đúng phần giữ lại. Lời sửa giờ: buổi của giờ cũ vẫn giữ ("2 giờ chiều, à nhầm, 3 giờ" = 15:00), trừ khi thành giờ ngoài ngày làm việc ("3 giờ chiều, à không phải, 10 giờ 30" = 10:30, không phải 22:30). |
+| M4 | Yêu cầu nói ở bước danh tính | main (QC qc-cn-08): `deferred_intent` → `ctx.early_cancel` → hỏi thẳng câu xác nhận hủy. Nhánh (R-43): `early_intent` → `ctx.early_intent` → mời khung. | Hai test fail vì hai bên quyết định ngược nhau (11.3). Hai chỗ lưu không xoá nhau và `_verify` xét đổi lịch trước, nên khi cả hai cùng được giữ thì đổi lịch luôn thắng (trái R-44). | Gộp về một cơ chế, xem dưới. |
+
+**M4, cơ chế gộp:**
+
+- IE: `_deferred_cancel` của main thành `_deferred_request`, trả CANCEL (kèm lý do) hoặc RESCHEDULE (kèm
+  `ExtractionResult.deferred_request`: lời yêu cầu đã bỏ tên và ngày sinh, giữ dấu câu).
+  - Yêu cầu đổi lịch đã quyết thì được giữ; câu hỏi lịch sự "… được không" vẫn là yêu cầu.
+  - Câu ngập ngừng, chưa quyết hoặc kể lại (`undecided_request`) thì là NONE có span: bỏ yêu cầu đã giữ.
+- Bỏ `_early_intent`, `_EARLY_INTENTS`, `ExtractionResult.early_intent` / `early_request` của nhánh, cùng
+  `CallContext.early_intent` / `early_request`. Các khoá phiên này chưa từng lên main nên không cần giữ tương thích.
+- Dialogue: `_keep_early_request` thay `_keep_early_cancel` và `_note_early_intent`.
+  - Phiên giữ **một** yêu cầu: `early_cancel` (main) hoặc `early_reschedule` (mới). Lượt sau thay lượt trước.
+  - `_verify` rẽ nhánh theo yêu cầu đang giữ. `_early_reschedule` thay `_early_flow` và vẫn đọc lịch qua cổng
+    kiểm trạng thái (ý 7).
+- Tên hàm / trường cũ ở RC-8, mục 7 và 10.6 là tên trước khi merge.
+
+**Conflict chỉ trùng dòng, giữ cả hai:**
+
+- `respond()`: `_time_proposal_without_model` của nhánh, rồi điều kiện `_states_other_need` của main. Khi model lỗi
+  thì `need_over_conflict` luôn False, nên hai phần không ảnh hưởng nhau.
+- `intent._match`: chặn NOT_PATIENT khi người gọi tự nói về mình (main) và `_MOVE_PATTERN` (nhánh) độc lập với nhau.
+- Import trong `extractor.py`; comment chuyển trạng thái trong `fsm.py`; test thêm cùng chỗ trong `test_agreement.py`,
+  `test_slot_choice.py`.
+
+### 11.3 Hai quyết định ở M4
+
+- **Hủy nói cùng lượt danh tính: theo main (qc-cn-08).** Lượt danh tính là lượt yêu cầu, lượt sau là lượt xác nhận,
+  nên vẫn đủ hai lượt của SF-05. Test của nhánh `test_a_cancel_request_in_the_identity_turn_is_not_carried` đổi thành
+  `..._asks_the_cancel_confirmation`.
+- **"Đổi ý rồi, đổi lịch sang tuần sau" sau một yêu cầu hủy: theo R-43.** Xác minh xong thì mời khung, không hỏi xác
+  nhận hủy, không ghi gì. Ca này tách khỏi test của main thành
+  `test_switching_to_a_reschedule_at_the_identity_step_replaces_the_kept_cancel`.
+- Như yêu cầu hủy của main, lời xin đổi ở lượt chưa có ngày sinh cũng được giữ. Lượt đó vẫn dùng lượt hỏi lại (R-40).
+
+### 11.4 Kết quả
+
+**Các câu kiểm tra ở bước mời khung** (chế độ chỉ luật; cột "Sau khi gộp" chạy thêm model timeout, kết quả như nhau):
+
+| Câu | main | Nhánh | Merge thô | Sau khi gộp |
+| --- | --- | --- | --- | --- |
+| "ngày 15 trước 12 giờ" | đọc lại 15/10 10:30 | báo chưa thấy khung | SYSTEM_ERROR | đọc lại 15/10 10:30 |
+| "ngày 14 sớm hơn" | đọc lại 14/10 15:00 | 14/10 15:00 | SYSTEM_ERROR | 14/10 15:00 |
+| "3 giờ chiều à không phải 10 giờ 30" | đọc lại 15:00 (sai) | báo chưa thấy khung | đọc lại 15:00 (sai) | đọc lại 15/10 10:30 |
+| "3 giờ chiều, à không phải, 10 giờ 30" | đọc lại 15:00 (sai) | báo chưa thấy khung | báo chưa thấy khung | đọc lại 15/10 10:30 |
+| "không phải 14/10 mà là 15/10" | hỏi "khung khác hay giữ lịch cũ" | đọc lại 14/10 (sai) | hỏi "khung khác hay giữ lịch cũ" | mời 2 khung ngày 15/10 |
+| "khung nào cũng được trừ khung 1", "bỏ khung 1", "không lấy khung 1" | đọc lại khung 2 | đọc lại khung 1 (sai) | đọc lại khung 2 | đọc lại khung 2 |
+
+Không câu nào ghi ngay: lời loại trừ / tự sửa có "không" nên không là chọn rõ (R-29), luôn qua câu chốt.
+
+**Eval offline** (chỉ luật, cùng cấu hình `NAME_FALLBACK_PROVIDER=none`, `SEMANTIC_FALLBACK_ENABLED=false`):
+
+| Eval | main | Nhánh trước merge | Sau merge |
+| --- | --- | --- | --- |
+| `reschedule_eval.py --baseline` (holdout) | 99/121 | 113/121 | **113/121**, 8 ca fail trùng nhánh |
+| ghi sai / ghi nhầm khung (đổi lịch) | 0 / 0 | 0 / 0 | **0 / 0** |
+| `confirm_eval.py --baseline` | 122/181 | 112/168 (bộ ca cũ) | **122/181**, danh sách fail trùng main; ghi sai 0 |
+| `cancel_eval.py --baseline` (holdout) | 0.7473 | 0.7473 | **0.7473**; ghi sai 0 |
+| `identity_eval.py` | 118/201 | 116/201 | **118/201** |
+| `no_answer_eval.py --baseline` | 83/83 | 83/83 | **83/83** |
+
+**Test:**
+
+- Thêm `tests/engine/test_reschedule_review.py`: 14 ca (M1, M2, M3; chế độ chỉ luật và model timeout).
+- Thêm `tests/engine/extraction/test_slot_choice.py`: khoảng giờ cùng "sớm hơn"; lời tự sửa không phải loại trừ;
+  "15/10" giữ dấu.
+- Thêm `tests/engine/extraction/test_text.py`: `keep_leading_words`.
+- Thêm `tests/engine/extraction/test_implied_cancel.py`: yêu cầu đổi lịch được giữ / không được giữ ở bước danh tính.
+- Thêm `tests/engine/test_mentor_eval_reschedule.py`: yêu cầu đổi lịch ở lượt chưa có ngày sinh được giữ qua phiên
+  lưu.
+- Đổi hai test theo 11.3.
+
+| Command | Kết quả |
+| --- | --- |
+| `python -m ruff check src tests scripts` | Pass |
+| `python -m ruff format --check src tests` | Pass |
+| `python -m pytest tests/engine -q` (`PYTHONUTF8=1`) | Pass (3608 passed, 1 skipped) |
+| `python -m pytest -q` (`PYTHONUTF8=1`) | 4655 passed, 15 skipped, 17 fail đều ở speech / audio do `.venv` local thiếu `soxr`, fail như nhau trên main và nhánh trước merge |
+| `python -m pytest tests/engine/test_mentor_eval_reschedule.py -q` | Pass; 7 case mentor đạt ở cả 3 chế độ model |
+
+### 11.5 Ngoài phạm vi, ghi nhận
+
+- **"không lấy ngày 14, ngày 15 đi" → bot mời ngày 14.** Đã có sẵn trên main. IE hiểu lời loại trừ, nhưng khi tạo yêu
+  cầu mới, Dialogue đọc lại cả câu và lấy ngày đầu tiên. Không ghi gì vì còn câu chốt. Nên sửa riêng: tạo yêu cầu mới
+  từ phần người gọi muốn.
+- **"Alo" rồi "Nguyễn Văn A, tôi muốn đổi lịch sang thứ Sáu" → chuyển máy NOT_UNDERSTOOD.** Có trên cả main và nhánh:
+  tên không được đọc khi cùng lượt có lời yêu cầu mà không có ngày sinh. Lượt "Alo" trước đó đã dùng lượt hỏi lại.
+- **Bộ đọc ngày sinh coi ngày thứ hai trong lượt danh tính là một phần ngày sinh (10.5):** ví dụ "14/03/1978, tôi muốn
+  đổi sang 20/10". Ngày sinh bị hỏi lại; lời yêu cầu bị bỏ cùng vùng ngày sinh, nên sau xác minh bot mời khung sớm nhất.

@@ -949,3 +949,144 @@ def test_no_merge_branch_can_promote_the_cancel_answer(monkeypatch) -> None:
     # Câu hủy rõ mà luật đã AGREE thì vẫn là AGREE
     failed = extractor.extract(_turn_context(), "dạ hủy luôn em ạ")
     assert failed.model_status == "INVALID" and failed.agreement.value is Agreement.UNCLEAR
+
+
+# --- NEED_CONFLICT: câu đọc lịch vừa đồng ý vừa phủ định, kèm nhu cầu đổi / hủy ----------------
+
+
+@pytest.mark.parametrize(
+    "transcript, intent",
+    [
+        ("đúng rồi, không đi được", _field(Intent.CANCEL, span="không đi được")),
+        ("Hủy đi, à không, giữ lịch giúp tôi", _field(Intent.CANCEL, span="hủy")),
+    ],
+)
+def test_a_conflicting_need_at_the_readback_goes_to_the_model(transcript, intent) -> None:
+    route = _route(transcript, question_id=QuestionId.CONFIRM_READBACK, intent=intent)
+    assert route is RouteReason.NEED_CONFLICT
+
+
+def test_a_need_without_conflict_does_not_call_the_model() -> None:
+    intent = _field(Intent.CANCEL, span="không đến được")
+    route = _route(
+        "tôi phải đi làm nên không đến được", question_id=QuestionId.CONFIRM_READBACK, intent=intent
+    )
+    assert route is None
+
+
+def test_inbound_conflicting_need_is_not_routed() -> None:
+    intent = _field(Intent.CANCEL, span="không đi được")
+    route = _route(
+        "đúng rồi, không đi được",
+        question_id=QuestionId.CONFIRM_READBACK,
+        intent=intent,
+        direction="inbound",
+    )
+    assert route is not RouteReason.NEED_CONFLICT
+
+
+@pytest.mark.parametrize(
+    "outcome, expected",
+    [
+        (SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CANCEL, intent_span="x"), True),
+        (SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.RESCHEDULE, intent_span="x"), True),
+        (SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="PATIENT_UNAVAILABLE"), True),
+        (SemanticOutcome(ReplyKind.INFORM_REASON, cancel_reason="UNSPECIFIED"), False),
+        (SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CONFIRM, intent_span="x"), False),
+        (SemanticOutcome(ReplyKind.CONFIRM_ACTION), False),
+        (SemanticOutcome(ReplyKind.AMBIGUOUS), False),
+        (None, False),
+    ],
+)
+def test_only_a_model_reading_of_a_need_overrides_the_conflict(outcome, expected) -> None:
+    result = _readback(
+        "đúng rồi, không đi được", intent=_field(Intent.CANCEL, span="không đi được")
+    )
+    allowed = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.OUT_OF_SCOPE)
+    merged = merge_semantic(result, outcome, RouteReason.NEED_CONFLICT, allowed)
+    assert merged.need_over_conflict is expected
+    if not expected:
+        assert merged == result
+
+
+def test_keeping_in_the_same_turn_overrides_a_model_reading_of_cancel() -> None:
+    result = _readback(
+        "Hủy đi, à không, giữ lịch giúp tôi", intent=_field(Intent.CANCEL, span="hủy")
+    )
+    outcome = SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CANCEL, intent_span="hủy đi")
+    merged = merge_semantic(result, outcome, RouteReason.NEED_CONFLICT, (Intent.CANCEL,))
+    assert merged.need_over_conflict is False
+
+
+# --- INTENT_HEDGED: từ khóa hủy / đổi trong câu chưa phải quyết định ----------------------------
+
+
+@pytest.mark.parametrize(
+    "transcript, intent",
+    [
+        ("Nếu tôi bận thì hủy lịch nhé", _field(Intent.CANCEL, span="hủy")),
+        ("Vợ tôi bảo hủy lịch nhưng tôi chưa quyết", _field(Intent.CANCEL, span="hủy")),
+        ("Hủy lịch có sao không em", _field(Intent.CANCEL, span="hủy")),
+    ],
+)
+def test_an_undecided_need_goes_to_the_model(transcript, intent) -> None:
+    route = _route(transcript, question_id=QuestionId.CONFIRM_READBACK, intent=intent)
+    assert route is RouteReason.INTENT_HEDGED
+
+
+@pytest.mark.parametrize(
+    "transcript, intent",
+    [
+        # Câu hỏi lịch sự là yêu cầu (Figure 0); "nhưng" mở ra chính yêu cầu
+        (
+            "Tôi đổi sang chiều ngày 14 tháng 10 được không?",
+            _field(Intent.RESCHEDULE, span="đổi sang"),
+        ),
+        ("Tôi không bận nhưng muốn hủy lịch", _field(Intent.CANCEL, span="hủy")),
+        # Lời kể lại đứng SAU quyết định của chính người gọi
+        ("Tôi muốn hủy, vợ tôi bảo thế", _field(Intent.CANCEL, span="hủy")),
+    ],
+)
+def test_a_decided_need_is_not_sent_to_the_model(transcript, intent) -> None:
+    route = _route(transcript, question_id=QuestionId.CONFIRM_READBACK, intent=intent)
+    assert route is None
+
+
+def test_without_a_model_an_undecided_need_is_dropped() -> None:
+    result = _readback("Nếu tôi bận thì hủy lịch nhé", intent=_field(Intent.CANCEL, span="hủy"))
+    merged = merge_semantic(result, None, RouteReason.INTENT_HEDGED, ())
+    assert merged.intent.value is Intent.NONE
+
+
+@pytest.mark.parametrize(
+    "outcome, intent",
+    [
+        (
+            SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CANCEL, intent_span="x"),
+            Intent.CANCEL,
+        ),
+        (SemanticOutcome(ReplyKind.QUESTION), Intent.NONE),
+        (SemanticOutcome(ReplyKind.AMBIGUOUS), Intent.NONE),
+    ],
+)
+def test_only_the_model_puts_an_undecided_need_back(outcome, intent) -> None:
+    result = _readback("Nếu tôi bận thì hủy lịch nhé", intent=_field(Intent.CANCEL, span="hủy"))
+    allowed = (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE, Intent.OUT_OF_SCOPE)
+    merged = merge_semantic(result, outcome, RouteReason.INTENT_HEDGED, allowed)
+    assert merged.intent.value is intent
+
+
+def test_identity_turn_reads_only_whether_the_caller_asks() -> None:
+    result = _result("tôi khám hôm nào vậy em?", question_id=QuestionId.ASK_NAME)
+    asked = merge_semantic(
+        result,
+        SemanticOutcome(ReplyKind.QUESTION, intent=Intent.OUT_OF_SCOPE, intent_span="x"),
+        RouteReason.IDENTITY_TURN,
+        (),
+    )
+    assert asked.caller_question is True and asked.intent == result.intent
+    other = merge_semantic(
+        result, SemanticOutcome(ReplyKind.AMBIGUOUS), RouteReason.IDENTITY_TURN, ()
+    )
+    assert other.caller_question is False
+    assert merge_semantic(result, None, RouteReason.IDENTITY_TURN, ()).caller_question is False

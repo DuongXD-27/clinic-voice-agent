@@ -16,9 +16,12 @@ from typing import Optional
 
 from callbot.engine.extraction.agreement import (
     UnclearCause,
+    asks_to_keep,
     attendance_leaves_content,
     cancel_unclear_cause,
+    conflicting_confirmation,
     mentions_keeping,
+    undecided_request,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.schema import (
@@ -60,6 +63,18 @@ class RouteReason(str, Enum):
     # Outbound: luật ra CONFIRM nhưng chính luật chưa chắc ("hôm đó tôi sẽ đi công tác") (T-04 §8)
     ATTENDANCE_UNCLEAR = "ATTENDANCE_UNCLEAR"
     CLINICAL_UNRESOLVED = "CLINICAL_UNRESOLVED"
+    # Outbound, câu đọc lịch: luật thấy nhu cầu hủy / đổi nhưng câu cũng có tín hiệu đồng ý và phủ
+    # định. Model phân biệt câu kể không đến được ("đúng rồi, không đi được") với câu tự sửa ("hủy
+    # đi, à không, giữ lịch giúp tôi"); không có model thì hỏi lại có/không như mọi câu mâu thuẫn.
+    NEED_CONFLICT = "NEED_CONFLICT"
+    # Outbound, câu đọc lịch / "đổi hay hủy": luật thấy hủy / đổi nhưng câu chưa phải quyết định ("nếu
+    # tôi bận thì hủy nhé", "vợ tôi bảo hủy nhưng tôi chưa quyết", "đổi lịch, à thôi hủy đi"). Model
+    # xác nhận nhu cầu thì theo model; còn lại (kể cả không có model) bỏ nhãn luật, hỏi lại.
+    INTENT_HEDGED = "INTENT_HEDGED"
+    # Bước tên / ngày sinh, lượt không có định danh, không phải lời chào hay nhãn chính sách: người gọi
+    # có thể đang hỏi điều bot phải trả lời ("lịch khám của tôi mấy giờ?"). Model chỉ được nói đó có phải
+    # câu hỏi không; không đổi intent, không đọc định danh.
+    IDENTITY_TURN = "IDENTITY_TURN"
 
 
 # Câu rõ ràng khi khớp TOÀN CÂU — rule đã đủ, không làm chậm đường rõ bằng một request model.
@@ -155,6 +170,15 @@ def route_semantic(
         return None
     if text in _SETTLED:
         return None
+    if (
+        question_id is QuestionId.CONFIRM_READBACK
+        and direction == "outbound"
+        and intent.value in (Intent.CANCEL, Intent.RESCHEDULE)
+        and conflicting_confirmation(transcript, question_id)
+    ):
+        return RouteReason.NEED_CONFLICT
+    if _hedged_need(question_id, direction, intent, transcript):
+        return RouteReason.INTENT_HEDGED
 
     if question_id is QuestionId.CANCEL_RECONFIRM:
         if agreement.value is Agreement.REFUSE and cancel_reason.found:
@@ -231,6 +255,8 @@ def merge_semantic(
     """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật."""
     if outcome is None:
         return _without_model(result, route_reason)
+    if route_reason is RouteReason.IDENTITY_TURN:
+        return _replace(result, caller_question=outcome.reply_kind is ReplyKind.QUESTION)
     if outcome.clinical in _TRANSFER_CLINICAL:
         return _replace(
             result,
@@ -249,6 +275,12 @@ def merge_semantic(
             clinical=clinical,
             agreement=Field.nothing(Agreement.UNCLEAR),
         )
+
+    if route_reason is RouteReason.NEED_CONFLICT:
+        return _need_over_conflict(result, outcome, allowed_intents)
+    if _hedged_need(result.question_id, None, result.intent, result.transcript):
+        # Nhãn luật chưa phải quyết định: chỉ model chuyển nhu cầu (CHANGE_INTENT) mới đặt lại intent
+        result = _replace(result, intent=Field.nothing(Intent.NONE))
 
     intent, agreement, reason = result.intent, result.agreement, result.cancel_reason
     kind = outcome.reply_kind
@@ -309,6 +341,14 @@ def merge_semantic(
             # Model thấy đồng ý mà luật không: đọc lại lịch để nhận xác nhận ở lượt sau, thay vì
             # "em chưa hiểu". Vẫn không nâng lên AGREE.
             agreement = _unclear(outcome.reply_span or result.transcript)
+        if (
+            result.question_id is QuestionId.CANCEL_RECONFIRM
+            and agreement.value is not Agreement.AGREE
+        ):
+            # Model chỉ cho biết Ý ĐỊNH: người gọi muốn hủy ("thôi hủy giúp tôi") dù luật không xác
+            # nhận được. Không mở khóa ghi; Dialogue hỏi lại đúng trọng tâm "hủy lịch đúng không" thay
+            # vì "hủy hay giữ", và lệnh hủy vẫn chỉ đến từ một lượt xác nhận luật đọc được.
+            intent = Field(Intent.CANCEL, Provenance.FALLBACK, span=outcome.reply_span)
 
     if (
         result.question_id is QuestionId.ASK_INTENT
@@ -328,6 +368,50 @@ def _unclear(span: Optional[str]) -> Field[Agreement]:
     return Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=span)
 
 
+def _hedged_need(
+    question_id: Optional[QuestionId],
+    direction: Optional[Direction],
+    intent: Field[Intent],
+    transcript: str,
+) -> bool:
+    """Hủy / đổi của luật ở câu đọc lịch / "đổi hay hủy" outbound, trong câu chưa phải quyết định.
+    `direction=None`: lúc hợp nhất, câu đã được route nên đã là outbound."""
+    return (
+        question_id in (QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT)
+        and direction in ("outbound", None)
+        and intent.value in (Intent.CANCEL, Intent.RESCHEDULE)
+        and intent.provenance is not Provenance.FALLBACK
+        and undecided_request(transcript, intent.span)
+    )
+
+
+def _need_over_conflict(
+    result: ExtractionResult, outcome: SemanticOutcome, allowed_intents: tuple[Intent, ...]
+) -> ExtractionResult:
+    """Model đọc câu là nhu cầu đổi / hủy (chuyển nhu cầu, hoặc kể lý do cụ thể không đến được)
+    thì `need_over_conflict`; còn lại giữ nguyên kết luận luật và Dialogue hỏi lại có/không.
+    Không mở khóa lệnh ghi: nhánh nhu cầu chỉ tạo lượt yêu cầu, vẫn cần xác nhận ở lượt sau."""
+    kind = outcome.reply_kind
+    if asks_to_keep(result.transcript) or mentions_keeping(result.transcript):
+        # Người gọi tự nói giữ lịch / không hủy: model không được bỏ qua mâu thuẫn đó
+        return result
+    if kind is ReplyKind.CHANGE_INTENT and outcome.intent in (Intent.CANCEL, Intent.RESCHEDULE):
+        if outcome.intent not in allowed_intents:
+            return result
+        intent = Field(outcome.intent, Provenance.FALLBACK, span=outcome.intent_span)
+    elif kind is ReplyKind.INFORM_REASON and outcome.cancel_reason not in (
+        None,
+        DEFAULT_CANCEL_REASON,
+    ):
+        intent = result.intent
+    else:
+        return result
+    reason = result.cancel_reason
+    if outcome.cancel_reason is not None:
+        reason = Field(outcome.cancel_reason, Provenance.FALLBACK, span=outcome.reason_span)
+    return _replace(result, intent=intent, cancel_reason=reason, need_over_conflict=True)
+
+
 def _no_promotion(agreement: Field[Agreement], route_reason: RouteReason) -> Field[Agreement]:
     if route_reason in (RouteReason.CANCEL_CONTRADICTION, RouteReason.CANCEL_REFUSAL_WITH_REASON):
         return Field(Agreement.UNCLEAR, Provenance.FALLBACK, span=agreement.span)
@@ -340,6 +424,10 @@ def _without_model(result: ExtractionResult, route_reason: RouteReason) -> Extra
     Lời từ chối hủy tường minh ("không hủy nữa, dù tôi không đủ tiền") vẫn là từ chối — đó là rule
     rõ, không phải trường đang nghi ngờ. Ngược lại, AGREE trong một câu mâu thuẫn thì hạ UNCLEAR.
     """
+    if route_reason is not RouteReason.NEED_CONFLICT and _hedged_need(
+        result.question_id, None, result.intent, result.transcript
+    ):
+        result = _replace(result, intent=Field.nothing(Intent.NONE))
     if (
         route_reason is RouteReason.CLINICAL_UNRESOLVED
         and result.agreement.value is Agreement.AGREE

@@ -90,6 +90,7 @@ def test_catalog_has_four_registered_short_safe_forms_and_freezes_cancel():
         (t.attendance_readback, "Anh chị đồng ý chứ ạ?"),
         (t.attendance_reread, t.ASK_ATTENDANCE),
         (t.keep_appointment, t.ASK_ATTENDANCE),
+        (t.cancel_readback, t.CANCEL_RECONFIRM),
     ],
 )
 def test_every_attendance_variant_is_guarded_and_has_the_same_facts(variant, render, ending):
@@ -187,7 +188,9 @@ def test_cancel_requires_unchanged_second_confirmation(variant):
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_variant_cancel"))
     asked = _run(bot, "c_variant_cancel", ["Nguyễn Văn A", "14/03/1978", "tôi muốn hủy lịch"])
-    assert asked.utterance == t.CANCEL_RECONFIRM and clinic.writes == []
+    # Lịch đọc lại theo biến thể, câu hỏi xác nhận hủy giữ nguyên văn
+    assert asked.utterance.endswith(t.CANCEL_RECONFIRM) and clinic.writes == []
+    assert t.attendance_facts(APPOINTMENT) in asked.utterance
     clarified = _run(bot, "c_variant_cancel", ["vâng"], start=4)
     assert clarified.utterance == t.CANCEL_CHOICE and clinic.writes == []
     done = _run(bot, "c_variant_cancel", ["hủy lịch giúp tôi"], start=5)

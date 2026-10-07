@@ -209,6 +209,10 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
 
     advice = find_phrase(text, _ADVICE_PHRASES, unaccented=unaccented)
     if advice is not None:
+        if _asks_about_the_booking(text, advice.group(0), unaccented):
+            # "Hủy lịch có sao không em": hỏi về việc hủy, không hỏi về sức khỏe. Chưa chắc nên chỉ là
+            # MENTION — tầng ngữ nghĩa đọc lại (CLINICAL_UNRESOLVED), không chuyển máy chỉ vì cụm này.
+            return Field(ClinicalLevel.MENTION, exact, span=advice.group(0))
         return Field(ClinicalLevel.ADVICE_REQUEST, exact, span=advice.group(0))
 
     # Câu hỏi điều chỉnh thuốc vẫn là tư vấn lâm sàng khi có chữ "khám"/"lịch".
@@ -233,6 +237,44 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
         # "đau bụng thế này có được không" — hỏi đánh giá triệu chứng, không nhắc tới lịch
         return Field(ClinicalLevel.ADVICE_REQUEST, Provenance.NORMALIZED, span=symptom_text)
     return Field(ClinicalLevel.MENTION, exact, span=symptom.group(0))
+
+
+# Hỏi đánh giá mức độ: đối tượng có thể là sức khỏe ("đau thế này có sao không") hoặc chính việc
+# với lịch hẹn ("hủy lịch có sao không", "đổi giờ có ảnh hưởng gì không")
+_ASSESSMENT = compile_phrases(
+    [
+        "có sao không",
+        "có nguy hiểm không",
+        "có nặng không",
+        "có bị làm sao không",
+        "có bình thường không",
+        "có ảnh hưởng gì không",
+    ]
+)
+# Việc với lịch hẹn mà câu hỏi đánh giá có thể nói tới
+_BOOKING_ACTIONS = compile_phrases(
+    [
+        "hủy lịch",
+        "hủy hẹn",
+        "đổi lịch",
+        "đổi giờ",
+        "đổi ngày",
+        "dời lịch",
+        "hủy",
+        "đến muộn",
+        "đến trễ",
+    ]
+)
+
+
+def _asks_about_the_booking(text: str, advice: str, unaccented: bool) -> bool:
+    """Câu hỏi đánh giá về việc với lịch hẹn, không có từ triệu chứng / bệnh / thuốc nào."""
+    if find_phrase(advice, _ASSESSMENT, unaccented=unaccented) is None:
+        return False
+    if find_phrase(text, _BOOKING_ACTIONS, unaccented=unaccented) is None:
+        return False
+    symptom_text = remove_phrases(text, _NOT_SYMPTOM, unaccented)
+    return find_phrase(symptom_text, _SYMPTOMS, unaccented=unaccented) is None
 
 
 def _is_question(text: str, *, unaccented: bool = False) -> bool:

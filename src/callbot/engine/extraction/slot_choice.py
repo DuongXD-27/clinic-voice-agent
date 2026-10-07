@@ -45,8 +45,10 @@ from callbot.engine.extraction.text import (
     PhraseSet,
     clean,
     compile_phrases,
+    drop_leading_words,
     find_phrase,
     is_unaccented,
+    keep_leading_words,
     normalize,
     strip_diacritics,
 )
@@ -414,6 +416,16 @@ def extract_slot_choice(
     presented_slot_ids: Sequence[str],
     now: datetime,
 ) -> Field[SlotChoice]:
+    transcript = _corrected(transcript)
+    text = normalize(transcript)
+    # "3 giờ chiều à không phải 10 giờ 30" là lời tự sửa (R-44, giữ giá trị sau), không phải loại 10:30
+    excluded = None if _self_corrected(transcript, now) else _EXCLUSION.search(text)
+    if excluded is not None and not parse_slot_criteria(excluded.group("out"), now).empty:
+        # Phần bị loại chỉ đến hết mệnh đề: "không lấy giờ này, ngày 21 đi" — "ngày 21" là điều muốn
+        rest = f"{text[: excluded.start()]} , {text[excluded.end() :]}"
+        return _choice_with_exclusion(
+            transcript, excluded.group("out"), rest, slots, presented_slot_ids, now
+        )
     criteria = parse_slot_criteria(transcript, now)
     # "sớm hơn / muộn hơn" trần ở câu chọn khung là xin khung khác (T-10 R033/R034): sớm hơn khung vừa
     # đọc hay lịch cũ là mơ hồ. Có kèm ngày / buổi / giờ thì mới là yêu cầu mới.
@@ -440,6 +452,59 @@ def extract_slot_choice(
     return Field(SlotChoice("NO_MATCH", (), criteria), Provenance.NORMALIZED, span=span)
 
 
+# Tự sửa: "không phải khung 1 mà là khung 2" -> chỉ đọc phần sau "mà (là)"; "khung 2 chứ không phải
+# khung 1" -> chỉ đọc phần trước "chứ không phải". Không chọn theo lần khớp đầu tiên của cả câu.
+_CORRECTION = re.compile(r"(?<!\w)không phải\s+.+?\s+mà(?:\s+là)?\s+(?P<keep>.+)$")
+_KEEP_BEFORE = re.compile(r"^(?P<keep>.+?)\s+chứ không phải(?!\w)")
+# Loại trừ: "trừ khung 1", "khung nào cũng được trừ 10 giờ", "không lấy khung 1"
+_EXCLUSION = re.compile(
+    r"(?<!\w)(?:ngoại trừ|trừ(?! khi)|không lấy|không chọn|không phải|đừng lấy|đừng chọn|bỏ)"
+    r"\s+(?P<out>[^,;.!?…]+)"
+)
+
+
+def _corrected(transcript: str) -> str:
+    """Phần người gọi giữ lại, cắt trên bản còn dấu câu: "không phải 14/10 mà là 15/10" -> "15/10"
+    (`clean` tách "15/10" thành hai số, mất ngày)."""
+    text = clean(transcript)
+    match = _CORRECTION.search(text)
+    if match is not None:
+        return drop_leading_words(transcript, len(text[: match.start("keep")].split()))
+    match = _KEEP_BEFORE.search(text)
+    if match is not None:
+        return keep_leading_words(transcript, len(match.group("keep").split()))
+    return transcript
+
+
+def _choice_with_exclusion(
+    transcript: str,
+    excluded: str,
+    rest: str,
+    slots: Sequence[dict[str, Any]],
+    presented_slot_ids: Sequence[str],
+    now: datetime,
+) -> Field[SlotChoice]:
+    """Khung bị loại bỏ khỏi các khung vừa đọc (hoặc mọi khung khi chưa đọc khung nào), trong số
+    khung thỏa phần còn lại của câu. Còn đúng một khung thì chọn nó — vẫn phải đọc lại để xác nhận;
+    còn nhiều thì hỏi lại trong số đó."""
+    span = clean(transcript)
+    out = parse_slot_criteria(excluded, now)
+    wanted = parse_slot_criteria(rest, now)
+    out_ids = {s["slot_id"] for s in filter_slots(slots, out, presented_slot_ids)}
+    if not wanted.empty:
+        pool = filter_slots(slots, wanted, presented_slot_ids)
+    elif presented_slot_ids:
+        pool = [s for s in slots if s["slot_id"] in presented_slot_ids]
+    else:
+        pool = list(slots)
+    kept = tuple(s["slot_id"] for s in pool if s["slot_id"] not in out_ids)
+    if len(kept) == 1:
+        return Field(SlotChoice("MATCH", kept, wanted), Provenance.NORMALIZED, span=span)
+    if kept:
+        return Field(SlotChoice("AMBIGUOUS", kept, wanted), Provenance.NORMALIZED, span=span)
+    return Field(SlotChoice("NO_MATCH", (), wanted), Provenance.NORMALIZED, span=span)
+
+
 def filter_slots(
     slots: Iterable[dict[str, Any]], criteria: SlotCriteria, presented_slot_ids: Sequence[str] = ()
 ) -> list[dict[str, Any]]:
@@ -451,7 +516,9 @@ def filter_slots(
 
 
 def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
-    text = _prepare(transcript)
+    """Tiêu chí của phần người gọi giữ lại: "không phải 14/10 mà là 15/10" -> 15/10 (`_corrected`), "ngày
+    15… à không, 14" -> 14 (`_corrected_criteria`). IE và Dialogue (yêu cầu mới) đọc cùng một cách."""
+    text = _prepare(_corrected(transcript))
     today = to_local(now).date()
     corrected = _corrected_criteria(text, today)
     found = corrected[1] if corrected is not None else _criteria(text, today, {})
@@ -462,10 +529,14 @@ def parse_slot_criteria(transcript: str, now: datetime) -> SlotCriteria:
 def anchor_relative(criteria: SlotCriteria, anchor: datetime) -> SlotCriteria:
     """Gắn mốc cho "sớm hơn" / "muộn hơn": `anchor` là giờ bắt đầu của lịch hẹn đang đổi."""
     if criteria.relative == "EARLIER":
-        return replace(criteria, before=anchor)
+        return replace(criteria, earlier_than=anchor)
     if criteria.relative == "LATER":
-        return replace(criteria, after=anchor)
+        return replace(criteria, later_than=anchor)
     return criteria
+
+
+def _self_corrected(transcript: str, now: datetime) -> bool:
+    return _corrected_criteria(_prepare(transcript), to_local(now).date()) is not None
 
 
 def without_corrected_part(transcript: str, now: datetime) -> str:
@@ -533,6 +604,16 @@ def _corrected_criteria(text: str, today: date) -> Optional[tuple[str, dict[str,
             # "khung 1, à không, khung 2": chọn theo thứ tự thay cả cách chọn cũ
             return spoken, tail_found
         seed = {k: v for k, v in head_found.items() if k not in ("ordinal", "date_issue")}
+        if _TIME_KEYS & tail_found.keys():
+            # Giờ / khoảng giờ mới thay giờ và khoảng giờ cũ. Buổi của giờ cũ vẫn giữ ("2 giờ chiều, à nhầm,
+            # 3 giờ" là 15:00), trừ khi giờ mới đi với buổi đó thành giờ ngoài ngày làm việc: "3 giờ
+            # chiều, à không phải, 10 giờ 30" là 10:30, không phải 22:30
+            hours = tail_found.get("hours")
+            period = seed.get("period")
+            if hours and period and "period" not in tail_found:
+                if not any(6 <= h <= 20 for h in _candidate_hours(min(hours), period)):
+                    seed.pop("period")
+            seed = {k: v for k, v in seed.items() if k not in _TIME_KEYS}
         merged = _criteria(tail, today, seed)
         if "period" in tail_found and "hours" not in tail_found and "hours" in seed:
             # "9 giờ sáng, à không, chiều": giờ cũ đọc lại theo buổi mới
@@ -541,6 +622,9 @@ def _corrected_criteria(text: str, today: date) -> Optional[tuple[str, dict[str,
                 merged["hours"] = _candidate_hours(hour, merged["period"])
         return spoken, merged
     return None
+
+
+_TIME_KEYS = frozenset({"hours", "minute", "not_before", "before"})
 
 
 def _correction_splits(text: str) -> list[tuple[str, str]]:
@@ -811,9 +895,10 @@ def _take_time(text: str, found: dict[str, Any]) -> None:
     for i, token in enumerate(tokens):
         if token not in ("giờ", "rưỡi"):
             continue
-        hour, _ = _longest_suffix_number(tokens[:i], 0, 23)
+        hour, size = _longest_suffix_number(tokens[:i], 0, 23)
         if hour is None:
             continue
+        bound = tokens[i - size - 1] if i - size - 1 >= 0 else None
         minute = 30 if token == "rưỡi" else 0
         after = tokens[i + 1 :]
         if token != "rưỡi" and after:
@@ -826,9 +911,27 @@ def _take_time(text: str, found: dict[str, Any]) -> None:
             else:
                 parsed, _ = _longest_prefix_number(after, 0, 59)
                 minute = parsed if parsed is not None else 0
+        if bound in _RANGE_BOUNDS:
+            # "sau 10 giờ 30": khoảng giờ, không phải khung 10:30
+            hour = _daytime_hour(_candidate_hours(hour, found.get("period")))
+            if bound == "trước":
+                found["before"] = hour * 60 + minute
+            else:
+                # "từ 10 giờ" gồm cả 10:00; "sau 10 giờ" thì không
+                found["not_before"] = hour * 60 + minute + (1 if bound == "sau" else 0)
+            return
         found["hours"] = _candidate_hours(hour, found.get("period"))
         found["minute"] = minute
         return
+
+
+_RANGE_BOUNDS = frozenset({"sau", "từ", "trước"})
+
+
+def _daytime_hour(hours: frozenset[int]) -> int:
+    """Giờ ứng viên trong giờ làm việc ("sau 2 giờ" -> 14h); không có thì giờ nhỏ nhất."""
+    daytime = sorted(h for h in hours if 6 <= h <= 20)
+    return daytime[0] if daytime else min(hours)
 
 
 def _candidate_hours(hour: int, period: Optional[DayPeriod]) -> frozenset[int]:
@@ -891,6 +994,11 @@ def _matches(slot: dict[str, Any], c: SlotCriteria, ordinal_id: Optional[str]) -
         return False
     if c.minute is not None and starts.minute != c.minute:
         return False
+    minutes = starts.hour * 60 + starts.minute
+    if c.not_before is not None and minutes < c.not_before:
+        return False
+    if c.before is not None and minutes >= c.before:
+        return False
     # Có giờ cụ thể thì buổi đã được dùng để chọn giờ 24h; "6 giờ chiều" (18:00) nằm ngoài khoảng "chiều"
     if c.period is not None and c.hours is None and starts.hour not in _PERIOD_HOURS[c.period]:
         return False
@@ -904,11 +1012,11 @@ def _matches(slot: dict[str, Any], c: SlotCriteria, ordinal_id: Optional[str]) -
         return False
     if c.date_to is not None and starts.date() > c.date_to:
         return False
-    if c.relative is not None and c.before is None and c.after is None:
+    if c.relative is not None and c.earlier_than is None and c.later_than is None:
         return False  # chưa có mốc: là yêu cầu mới, không chọn được khung nào
-    if c.before is not None and starts >= c.before:
+    if c.earlier_than is not None and starts >= c.earlier_than:
         return False
-    if c.after is not None and starts <= c.after:
+    if c.later_than is not None and starts <= c.later_than:
         return False
     return True
 
