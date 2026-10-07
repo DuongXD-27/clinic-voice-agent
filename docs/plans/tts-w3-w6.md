@@ -221,6 +221,8 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T2 05/10 · Đường A — Rà soát và chuẩn hoá câu thoại toàn bộ kịch bản
 
+> **Rà hiện trạng 07/10:** có [kế hoạch chuẩn hoá và cache Vbee](tts-static-cache-plan-2026-10-07.md), [review toàn bộ câu tĩnh/renderer](tts-utterance-review-2026-10-07.md), [phiếu review câu tĩnh](tts-utterance-review-2026-10-07.csv) và [nhánh renderer](tts-renderer-branches-2026-10-07.csv). Snapshot hiện tại có 116 nguyên văn tĩnh, 15 renderer; audit cũ chưa phân loại 90 ID/biến thể. Review văn bản chưa thay thế kết quả nghe; task chưa Done. Cần kiểm tổ hợp OFFER_SLOTS + SILENCE_REPROMPT có thể đạt 320 ký tự và chính sách câu cố định theo PRD v2.1 R-42 trước khi thu.
+
 **Gửi PM:** Rà soát và chuẩn hoá câu thoại cho toàn bộ kịch bản: kiểm tra audio đọc đúng `utterance` cho toàn bộ kịch bản trước khi kịch bản vào bộ chấm. Câu nào đọc sai, đọc thiếu tự nhiên hoặc quá dài sẽ được sửa ngay trong template câu thoại ở Engine để audio luôn khớp đúng lời bot. Chuẩn hoá và cố định câu chữ của các câu không đổi theo cuộc gọi, làm nền cho việc dựng sẵn audio nhằm giảm độ trễ và chi phí TTS.
 
 **Phạm vi:** cả 7 kịch bản của Bảng 1. 5 kịch bản đã nghe ngày 29/09 (Identity, Confirm, No-answer, Cancel, Transfer) được nghe lại, vì template đã đổi sau đợt sửa eval mentor 05–06/10. Reschedule (vào bộ chấm tuần 4) và Booking (tuần 5) nghe lần đầu.
