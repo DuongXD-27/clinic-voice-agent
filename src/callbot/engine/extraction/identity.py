@@ -117,7 +117,8 @@ UNCERTAINTY = compile_phrases(
     ]
 )
 # "A hay B", "A hoặc B": hai giá trị cùng được nêu, không có tín hiệu nào là lời sửa.
-ALTERNATIVES = compile_phrases(["hay là", "hay", "hoặc là", "hoặc"])
+# "or": người gọi nói tiếng Anh ("March 14, 1978 or 1979")
+ALTERNATIVES = compile_phrases(["hay là", "hay", "hoặc là", "hoặc", "or"])
 
 
 def token_index(tokens: list[str], offset: int) -> int:

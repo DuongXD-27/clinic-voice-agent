@@ -36,6 +36,7 @@ from callbot.engine.extraction.agreement import (
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
+    is_greeting,
     is_hold_request,
     is_identity_question,
     is_return_signal,
@@ -82,9 +83,10 @@ MAX_SLOTS_PRESENTED = 2
 # R-29: người gọi nêu tối đa 2 ngày / khoảng thời gian; ngày thứ ba -> giữ lịch cũ, PATIENT_REQUEST (D-5)
 MAX_SLOT_ROUNDS = 2
 # Câu hỏi của người gọi ở bước danh tính phải được trả lời, không phải câu thiếu định danh: "ai đấy?"
-# (R-26, giới thiệu lại) và câu hỏi khác model nhận ra (SF-03: cần xác minh trước). Không dùng lượt hỏi
-# lại R-40. Chung một lần mỗi cuộc gọi; lần sau tính ABSENT như lời chào.
-MAX_IDENTITY_QUESTIONS = 1
+# (R-26, giới thiệu lại) và câu hỏi khác model nhận ra (SF-03: cần xác minh trước). Câu bot đã hiểu
+# nên không dùng lượt hỏi lại R-40 (§1.1.5 chỉ đếm câu không hiểu). Chung hai lần mỗi cuộc gọi (QC
+# qc-id-05: đòi giờ khám hai lần); lần hai nói rõ lý do bảo mật. Từ lần ba tính ABSENT như lời chào.
+MAX_IDENTITY_QUESTIONS = 2
 # Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
 _REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
@@ -312,17 +314,44 @@ class DialogueManager:
                 else t.INTRODUCE_AGAIN_ASK_DOB
             )
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+        if self._opening_greeting(ctx, ex, question):
+            # "Alo" khi vừa bắt máy thường đè lên câu chào mở đầu: người nghe chưa nghe câu hỏi, chưa
+            # phải câu trả lời thiếu tên. Chào lại (nhắc lại AI, R-26), không dùng lượt hỏi lại.
+            ctx.opening_greeting_used = True
+            return Reply(
+                ask(ctx, question, t.greeting_back(ctx.call.direction), "AWAITING_IDENTITY"),
+                "NEUTRAL",
+            )
         if ex.caller_question and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
             # Người gọi hỏi trước khi xác minh ("lịch khám của tôi mấy giờ?", model đọc là QUESTION):
-            # trả lời cần xác minh trước (SF-03), không đọc gì về lịch, không dùng lượt hỏi lại.
+            # trả lời cần xác minh trước (SF-03), không đọc gì về lịch, không dùng lượt hỏi lại. Hỏi
+            # lại lần nữa thì nói rõ vì sao phải xác minh.
             ctx.identity_questions += 1
-            text = (
-                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
-            )
+            ask_name = question is QuestionId.ASK_NAME
+            if ctx.identity_questions > 1:
+                text = t.ASK_NAME_VERIFY_FIRST if ask_name else t.ASK_DOB_VERIFY_FIRST
+            else:
+                text = t.ASK_NAME_FOR_REQUEST if ask_name else t.ASK_DOB_FOR_REQUEST
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         # Nhu cầu không kèm định danh vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40); chỉ đổi lời
         # hỏi lại để người gọi biết bot đã nghe nhu cầu, thay vì "em chưa nghe rõ".
         return self._retry_identity(ctx, question, request=ex.intent.value in _REQUEST_INTENTS)
+
+    @staticmethod
+    def _opening_greeting(ctx: CallContext, ex: ExtractionResult, question: QuestionId) -> bool:
+        """Lời chào trơn trước mọi câu trả lời khác ở bước danh tính, một lần mỗi cuộc gọi.
+
+        Sau lượt này "alo" vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40).
+        """
+        return (
+            question is QuestionId.ASK_NAME
+            and not ctx.opening_greeting_used
+            and not ctx.identity_retries
+            and ctx.identity_questions == 0
+            and ctx.claimed_name is None
+            and ctx.claimed_dob is None
+            and is_greeting(ex.transcript)
+        )
 
     @staticmethod
     def _keep_early_cancel(ctx: CallContext, ex: ExtractionResult) -> None:

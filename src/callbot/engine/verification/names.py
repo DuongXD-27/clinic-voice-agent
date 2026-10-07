@@ -1,9 +1,14 @@
-"""R-22: so từng âm tiết, giữ nguyên dấu; lệch dấu thanh cần hỏi lại khi N chưa chốt."""
+"""R-22: so từng âm tiết, giữ nguyên dấu; lệch dấu thanh cần hỏi lại khi N chưa chốt.
+
+Ngoại lệ (QC qc-stt-05, qc-w6-01): tên khai không có dấu nào ("nguyen van a" — ASR mất dấu, người
+gõ / nói không dấu) không mang thông tin dấu để so, nên so trên bản bỏ hết dấu. Ngày sinh vẫn so
+tuyệt đối. Tên có dấu một phần vẫn theo luật chặt: đã có dấu mà khác hồ sơ là bằng chứng khác tên.
+"""
 
 import unicodedata
 from enum import Enum
 
-from callbot.engine.extraction.text import normalize
+from callbot.engine.extraction.text import is_unaccented, normalize
 
 
 class NameMatch(str, Enum):
@@ -27,6 +32,8 @@ def compare_names(claimed: str, reference: str) -> NameMatch:
     if not left or len(left) != len(right):
         return NameMatch.MISMATCH
     if left == right:
+        return NameMatch.MATCH
+    if is_unaccented(" ".join(left)) and left == [strip_diacritics(s) for s in right]:
         return NameMatch.MATCH
     if [strip_tones(s) for s in left] == [strip_tones(s) for s in right]:
         # N is not calibrated: a tone difference never authenticates a caller.

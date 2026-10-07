@@ -46,7 +46,10 @@ def test_normalize_name_does_not_drop_or_reorder_tokens() -> None:
     "name, dob, expected",
     [
         ("nguyễn văn a", DOB, MatchDetail.NAME_AND_DOB_MATCH),
-        ("Nguyen Van A", DOB, MatchDetail.NAME_MISMATCH),
+        # Tên không dấu nào: so trên bản bỏ dấu, ngày sinh vẫn so tuyệt đối (QC qc-stt-05)
+        ("Nguyen Van A", DOB, MatchDetail.NAME_AND_DOB_MATCH),
+        ("Nguyen Van A", date(1979, 3, 14), MatchDetail.DOB_MISMATCH),
+        ("Nguyễn Van A", DOB, MatchDetail.NAME_MISMATCH),  # có dấu một phần: luật chặt
         ("Nguyễn Văn A", date(1979, 3, 14), MatchDetail.DOB_MISMATCH),
         ("Trần Văn B", DOB, MatchDetail.NAME_MISMATCH),
         ("Trần Văn B", date(1979, 3, 14), MatchDetail.BOTH_MISMATCH),

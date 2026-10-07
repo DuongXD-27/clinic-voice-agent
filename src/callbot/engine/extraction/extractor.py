@@ -680,10 +680,9 @@ def _identity_turn_to_read(
     )
 
 
-# Nhắc tới lịch hẹn: lượt định danh này không phải lời khai tên
-_BOOKING_TOPIC = re.compile(
-    r"(?<!\w)(?:lich|hen|gio kham|ngay kham|kham o|kham luc|co so|bac si|phong kham)(?!\w)"
-)
+# Nhắc tới lịch hẹn: lượt định danh này không phải lời khai tên. "giờ" / "khám" đứng riêng cũng tính
+# ("nói giờ trước đã"): chỉ chọn model nào đọc câu, tầng ngữ nghĩa vẫn quyết câu là gì.
+_BOOKING_TOPIC = re.compile(r"(?<!\w)(?:lich|hen|gio|kham|co so|bac si)(?!\w)")
 
 
 def _talks_about_the_booking(transcript: str) -> bool:

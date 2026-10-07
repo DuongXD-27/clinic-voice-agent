@@ -1645,8 +1645,8 @@ def _identity_with(semantic, call_id: str):
 
 
 def test_a_question_before_verification_is_answered_without_spending_the_retry() -> None:
-    """ "Alo" đã dùng lượt hỏi lại; câu hỏi lịch khám (model: QUESTION) được trả lời là cần xác minh
-    trước, không đọc gì về lịch, không chuyển máy."""
+    """ "Alo" lúc bắt máy được chào lại; câu hỏi lịch khám (model: QUESTION) được trả lời là cần xác
+    minh trước, không đọc gì về lịch, không chuyển máy."""
     line = "Lịch khám của tôi mấy giờ thế em? Nói luôn đi"
     semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.QUESTION, reply_span=line)})
     bot, clinic = _identity_with(semantic, "c_id_question")
@@ -1655,8 +1655,29 @@ def test_a_question_before_verification_is_answered_without_spending_the_retry()
     assert [c.route_reason for c in semantic.seen] == ["IDENTITY_TURN"]
     assert (action.state, action.utterance) == ("AWAITING_IDENTITY", t.ASK_NAME_FOR_REQUEST)
     assert FACTS not in action.utterance and clinic.writes == []
+    assert _context(bot, "c_id_question").identity_retries == {}
 
     done = _run(bot, "c_id_question", ["Nguyễn Văn A", "14/03/1978", "Vâng, đúng giờ đó"], start=3)
+    assert done.outcome == "CONFIRMED"
+
+
+def test_insisting_twice_gets_the_privacy_reason_then_confirms() -> None:
+    """QC qc-id-05: đòi giờ khám hai lần sau "alo". Lần hai nói rõ lý do bảo mật, vẫn không lộ lịch."""
+    lines = [
+        "Lịch khám của tôi mấy giờ thế em? Nói luôn đi",
+        "Tôi đang bận, cứ nói giờ khám trước đã",
+    ]
+    semantic = FakeSemantic({q.lower(): SemanticOutcome(ReplyKind.QUESTION) for q in lines})
+    bot, clinic = _identity_with(semantic, "c_id_insist")
+    actions = [
+        _run(bot, "c_id_insist", [line], start=i) for i, line in enumerate(["Alo", *lines], 1)
+    ]
+    assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
+    assert actions[2].utterance == t.ASK_NAME_VERIFY_FIRST
+    assert all(a.state == "AWAITING_IDENTITY" and FACTS not in a.utterance for a in actions)
+    assert clinic.writes == []
+
+    done = _run(bot, "c_id_insist", ["Nguyễn Văn A", "14/03/1978", "Vâng, đúng giờ đó"], start=4)
     assert done.outcome == "CONFIRMED"
 
 
@@ -1671,18 +1692,20 @@ def test_a_question_before_verification_is_answered_without_spending_the_retry()
 )
 def test_without_a_model_question_the_identity_turn_spends_the_retry(semantic) -> None:
     bot, clinic = _identity_with(semantic, "c_id_no_question")
-    _run(bot, "c_id_no_question", ["Alo"])
-    action = _run(bot, "c_id_no_question", ["Tôi khám hôm nào vậy em?"], start=2)
+    _run(bot, "c_id_no_question", ["Alo", "tôi không rõ"])
+    action = _run(bot, "c_id_no_question", ["Tôi khám hôm nào vậy em?"], start=3)
     assert action.outcome == "TRANSFERRED" and FACTS not in action.utterance
 
 
-def test_only_one_free_question_per_call() -> None:
-    questions = ["Tôi khám hôm nào vậy em?", "Thế khám ở cơ sở nào?"]
+def test_only_two_free_questions_per_call() -> None:
+    questions = ["Tôi khám hôm nào vậy em?", "Thế khám ở cơ sở nào?", "Mấy giờ khám?"]
     semantic = FakeSemantic({q.lower(): SemanticOutcome(ReplyKind.QUESTION) for q in questions})
-    bot, _ = _identity_with(semantic, "c_id_two_questions")
-    _run(bot, "c_id_two_questions", ["Alo", questions[0]])
-    action = _run(bot, "c_id_two_questions", [questions[1]], start=3)
-    assert action.outcome == "TRANSFERRED"
+    bot, _ = _identity_with(semantic, "c_id_three_questions")
+    _run(bot, "c_id_three_questions", ["Alo", *questions[:2]])
+    third = _run(bot, "c_id_three_questions", [questions[2]], start=4)
+    assert third.utterance == t.ASK_NAME_AGAIN  # hết hạn mức: dùng lượt hỏi lại R-40
+    action = _run(bot, "c_id_three_questions", [questions[0]], start=5)
+    assert action.outcome == "TRANSFERRED" and FACTS not in action.utterance
 
 
 @pytest.mark.parametrize("line", ["thôi hủy giúp tôi", "ừm khoan, hủy đi em"])

@@ -58,7 +58,39 @@ MAX_AGE = 110
 _TIGHTEN = re.compile(r"(?<=\d)\s*([/\-.])\s*(?=\d)")
 # "14/3/1978", "14-03-78", "14.3" -> "ngày 14 tháng 3 năm 1978" để đi chung một ngữ pháp với dạng nói
 _NUMERIC_DATE = re.compile(r"(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?")
+# "1978-03-14" (ISO, năm đứng trước)
+_ISO_DATE = re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})")
 _TRIM = ",.;:!?\"'()[]"
+# Người gọi nói tiếng Anh (QC qc-w6-01): "March 14, 1978", "14th of March 1978". Chỉ nhận khi đủ
+# ngày, tháng và năm viết bằng chữ số; số đọc bằng chữ tiếng Anh ("nineteen seventy eight") chưa hỗ trợ.
+EN_MONTHS = {
+    "january": 1,
+    "jan": 1,
+    "february": 2,
+    "feb": 2,
+    "march": 3,
+    "mar": 3,
+    "april": 4,
+    "apr": 4,
+    "may": 5,
+    "june": 6,
+    "jun": 6,
+    "july": 7,
+    "jul": 7,
+    "august": 8,
+    "aug": 8,
+    "september": 9,
+    "sep": 9,
+    "sept": 9,
+    "october": 10,
+    "oct": 10,
+    "november": 11,
+    "nov": 11,
+    "december": 12,
+    "dec": 12,
+}
+_EN_DAY = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?")
+_EN_YEAR = re.compile(r"\d{2}|\d{4}")
 _LUNAR = compile_phrases(["âm lịch", "âm", "lịch âm"])
 _AGE = compile_phrases(["tuổi"])
 _DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
@@ -191,15 +223,80 @@ def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]]]:
         here = (index, index + len(produced) - 1)
         index += len(produced)
         match = _NUMERIC_DATE.fullmatch(chunk.strip(_TRIM))
-        if match is None:
+        iso = _ISO_DATE.fullmatch(chunk.strip(_TRIM))
+        if iso is not None:
+            year, month, day = iso.groups()
+        elif match is not None:
+            day, month, year = match.groups()
+        else:
             tokens += produced
             origin += [(i, i) for i in range(here[0], here[1] + 1)]
             continue
-        day, month, year = match.groups()
         parts = ["ngày", day, "tháng", month] + (["năm", year] if year else [])
         tokens += parts
         origin += [here] * len(parts)
-    return tokens, origin
+    return _english_dates(tokens, origin)
+
+
+def _english_dates(
+    tokens: list[str], origin: list[tuple[int, int]]
+) -> tuple[list[str], list[tuple[int, int]]]:
+    """ "march 14 1978" / "the 14th of march 1978" -> "ngày 14 tháng 3 năm 1978", cùng ngữ pháp.
+
+    Như dạng số, mọi token dựng ra trỏ về cả cụm có thật, nên vùng ngày vẫn là lời người gọi nói.
+    """
+    out_tokens: list[str] = []
+    out_origin: list[tuple[int, int]] = []
+    i = 0
+    while i < len(tokens):
+        found = _english_date_at(tokens, i)
+        if found is None:
+            out_tokens.append(tokens[i])
+            out_origin.append(origin[i])
+            i += 1
+            continue
+        (day, month, year), end = found
+        parts = ["ngày", day, "tháng", str(month), "năm", year]
+        out_tokens += parts
+        out_origin += [(origin[i][0], origin[end - 1][1])] * len(parts)
+        i = end
+    return out_tokens, out_origin
+
+
+def _english_date_at(tokens: list[str], i: int) -> Optional[tuple[tuple[str, int, str], int]]:
+    """((ngày, tháng, năm), token sau cuối) khi tại `i` là ngày tiếng Anh đủ ba phần."""
+
+    def skip(at: int, *words: str) -> int:
+        return at + 1 if at < len(tokens) and tokens[at] in words else at
+
+    def day_at(at: int) -> Optional[str]:
+        match = _EN_DAY.fullmatch(tokens[at]) if at < len(tokens) else None
+        return match.group(1) if match else None
+
+    def year_at(at: int) -> Optional[str]:
+        return tokens[at] if at < len(tokens) and _EN_YEAR.fullmatch(tokens[at]) else None
+
+    # "march 14 1978", "march the 14th, 1978"
+    if tokens[i] in EN_MONTHS:
+        at = skip(i + 1, "the")
+        day = day_at(at)
+        at = skip(at + 1, "of", "in")
+        year = year_at(at)
+        if day is not None and year is not None:
+            return (day, EN_MONTHS[tokens[i]], year), at + 1
+    # "14 march 1978", "the 14th of march, 1978"
+    at = skip(i, "the")
+    day = day_at(at)
+    if day is None:
+        return None
+    month_at = skip(at + 1, "of")
+    if month_at >= len(tokens) or tokens[month_at] not in EN_MONTHS:
+        return None
+    at = skip(month_at + 1, "of", "in")
+    year = year_at(at)
+    if year is None:
+        return None
+    return (day, EN_MONTHS[tokens[month_at]], year), at + 1
 
 
 def _without_lead_ins(tokens: list[str]) -> list[int]:

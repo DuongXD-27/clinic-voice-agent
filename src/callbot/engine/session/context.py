@@ -127,6 +127,9 @@ class CallContext:
     # Câu "ai đấy?" ở bước danh tính đã được giới thiệu lại mà không dùng lượt hỏi lại
     # (MAX_IDENTITY_QUESTIONS)
     identity_questions: int = 0
+    # "Alo" khi vừa bắt máy, trước mọi câu trả lời khác ở bước danh tính: chào lại một lần, không dùng
+    # lượt hỏi lại (QC qc-id-05)
+    opening_greeting_used: bool = False
 
     outcome: Optional[Outcome] = None
     transfer_reason: Optional[TransferReason] = None
@@ -259,6 +262,7 @@ class CallContext:
             "unclear_streak": self.unclear_streak,
             "silent_turns": self.silent_turns,
             "identity_questions": self.identity_questions,
+            "opening_greeting_used": self.opening_greeting_used,
             "outcome": self.outcome,
             "transfer_reason": self.transfer_reason,
             "unreachable_reason": self.unreachable_reason,
@@ -310,6 +314,7 @@ class CallContext:
             silent_turns=data["silent_turns"],
             # Khóa thêm sau T-05 với tên "neutral_greetings": phiên lưu trước đó có thể còn tên cũ
             identity_questions=data.get("identity_questions", data.get("neutral_greetings", 0)),
+            opening_greeting_used=bool(data.get("opening_greeting_used", False)),
             outcome=data["outcome"],
             transfer_reason=data["transfer_reason"],
             unreachable_reason=data["unreachable_reason"],

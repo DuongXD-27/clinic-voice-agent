@@ -22,6 +22,7 @@ hình dạng nhưng thiếu dấu hiệu ("hôm qua ăn phở", "Lê Na") trả 
 import re
 from typing import Optional
 
+from callbot.engine.extraction.dob import EN_MONTHS
 from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import is_honorific, strip_honorific
 from callbot.engine.extraction.identity import (
@@ -88,6 +89,23 @@ _RELATIVES = (
     "bác",
 )
 
+# Người gọi nói tiếng Anh (QC qc-w6-01): "My name is Nguyen Van A", "I'm Nguyen Van A". Chỉ bỏ ở đầu
+# câu như lời tự giới thiệu tiếng Việt; tên còn lại vẫn phải qua kiểm tra hình dạng họ tên.
+_ENGLISH_INTROS = [
+    "yes",
+    "yeah",
+    "my name is",
+    "my full name is",
+    "my name s",
+    "the name is",
+    "name is",
+    "this is",
+    "it is",
+    "it s",
+    "i am",
+    "i m",
+]
+
 # Tiếng đệm đầu câu ("à thì tôi là ...", "ừm, tôi tên ...") bỏ như lời đáp lễ. Không dấu thì giữ:
 # "a", "u", "o", "thi" có thể là một phần tên.
 _FILLERS = ["à", "ừ", "ờ", "ừm", "thì"]
@@ -95,7 +113,8 @@ _PREFIXES = compile_phrases(
     ["dạ", "vâng", "ạ", "alo", "a lô", "vâng ạ", "dạ vâng"]
     + _FILLERS
     + _SELF_INTRO_PHRASES
-    + ["họ tên là", "họ và tên là", "họ tên", "họ và tên", "chào em", "em ơi", "hú hú"],
+    + ["họ tên là", "họ và tên là", "họ tên", "họ và tên", "chào em", "em ơi", "hú hú"]
+    + _ENGLISH_INTROS,
     unaccented_exclude=["ạ", *_FILLERS],  # "a" có thể là tên ("Nguyễn Văn A")
 )
 # Họ tên đầy đủ tối thiểu còn lại sau khi bỏ danh xưng ("ông Nguyễn Văn A" -> 3 từ). Tên ngắn hơn
@@ -126,6 +145,8 @@ _SUFFIXES = compile_phrases(
         "nha",
         "ấy ạ",
         "mà",
+        "speaking",
+        "here",
         *_SELF_OUTRO_PHRASES,
         *_POLITE_ADDRESSES,
         *(f"{phrase} ơi" for phrase in _POLITE_ADDRESSES),
@@ -558,6 +579,24 @@ _DAY_STARTS = frozenset({"ngày", "mùng", "mồng", "ngay", "mung", "mong"})
 # Từ nối còn sót ở cuối phần tên: "Nguyễn Văn A và ngày sinh là ...". Không có "năm" / "sinh":
 # vị trí cắt đã bỏ chúng, còn sót lại thì là tên ("Trần Văn Năm", "Nguyễn Văn Sinh").
 _TRAILING_LINKS = frozenset({"là", "và", "thì", "la", "va", "thi"})
+# Cụm nối tiếng Anh trước ngày sinh: "Nguyen Van A, born on March 14, 1978". Chỉ bỏ cả cụm, không
+# bỏ từ lẻ: "my", "on" một mình có thể là âm tên không dấu ("Nguyen Thi My").
+_ENGLISH_TRAILING_LINKS = [
+    "born on",
+    "born in",
+    "born",
+    "and my date of birth is",
+    "my date of birth is",
+    "date of birth is",
+    "date of birth",
+    "and my birthday is",
+    "my birthday is",
+    "birthday is",
+    "birthday",
+    "dob is",
+    "dob",
+    "and",
+]
 _MONTH = frozenset({"tháng", "thang"})
 _MAX_SPOKEN_DAY = 3  # "hai mươi mốt"
 # Cắt ở "sinh" mà trước đó dưới 3 từ TÊN thì "Sinh" có thể là tên: "Nguyễn Văn Sinh ngày 14 ...",
@@ -594,6 +633,15 @@ def name_before_dob(transcript: str) -> Optional[str]:
 
     while name and name[-1] in _TRAILING_LINKS:
         name.pop()
+    stripped = True
+    while stripped:
+        stripped = False
+        for phrase in _ENGLISH_TRAILING_LINKS:
+            words = phrase.split()
+            if len(name) > len(words) and name[-len(words) :] == words:
+                del name[-len(words) :]
+                stripped = True
+                break
     return " ".join(name) or None
 
 
@@ -629,6 +677,13 @@ def _date_start(tokens: list[str]) -> Optional[tuple[int, bool]]:
     for i, token in enumerate(tokens):
         following = tokens[i + 1] if i + 1 < len(tokens) else ""
         if any(c.isdigit() for c in token) or token in _DAY_STARTS:
+            return i, False
+        if (
+            token in EN_MONTHS
+            # "May" cuối tên ("Nguyen Thi May 14 3 1978") không phải tháng: chỉ cắt ở đầu mệnh đề
+            and (token != "may" or i == 0)
+            and any(c.isdigit() for c in following)
+        ):
             return i, False
         if token == "sinh" and (following in _DATE_WORDS or any(c.isdigit() for c in following)):
             # "năm sinh 1978": phần ngày bắt đầu từ "năm". Nhưng "Nam sinh năm 1978" (không dấu,

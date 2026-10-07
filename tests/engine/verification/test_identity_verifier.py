@@ -179,7 +179,9 @@ def _prepared(fake: FakeClinicAPI, ctx: CallContext) -> tuple[IdentityVerifier, 
     "name, dob, status, detail",
     [
         (NAME, DOB, VerificationStatus.VERIFIED, MatchDetail.NAME_AND_DOB_MATCH),
-        ("nguyen van a", DOB, VerificationStatus.MISMATCH, MatchDetail.NAME_MISMATCH),
+        ("nguyen van a", DOB, VerificationStatus.VERIFIED, MatchDetail.NAME_AND_DOB_MATCH),
+        ("nguyen van a", date(1979, 3, 14), VerificationStatus.MISMATCH, MatchDetail.DOB_MISMATCH),
+        ("tran van b", DOB, VerificationStatus.MISMATCH, MatchDetail.NAME_MISMATCH),
         ("Trần Văn B", DOB, VerificationStatus.MISMATCH, MatchDetail.NAME_MISMATCH),
         (NAME, date(1979, 3, 14), VerificationStatus.MISMATCH, MatchDetail.DOB_MISMATCH),
         ("Trần Văn B", date(1979, 3, 14), VerificationStatus.MISMATCH, MatchDetail.BOTH_MISMATCH),
@@ -358,3 +360,22 @@ def test_verify_works_after_context_roundtrip() -> None:
 
     assert result.status is VerificationStatus.VERIFIED
     assert unavailable.calls == []
+
+
+def test_verify_inbound_unaccented_name_matching_two_records_is_ambiguous() -> None:
+    # Tên không dấu khớp cả "Lê Văn Hà" lẫn "Lê Văn Hạ" cùng ngày sinh: không tự chọn hồ sơ
+    fake = FakeClinicAPI()
+    for patient_id, full_name in (("pt_ha", "Lê Văn Hà"), ("pt_ha_nang", "Lê Văn Hạ")):
+        fake.seed_patient(
+            {
+                "patient_id": patient_id,
+                "phone": "0912345611",
+                "verify": {"full_name": full_name, "dob": "1978-03-14"},
+            }
+        )
+    ctx = _inbound("0912345611")
+    verifier, _ = _prepared(fake, ctx)
+
+    assert verifier.verify(_claim(ctx, "le van ha")).detail is MatchDetail.AMBIGUOUS
+    # Có dấu thì vẫn phân biệt được hai hồ sơ
+    assert verifier.verify(_claim(ctx, "Lê Văn Hạ")).patient_id == "pt_ha_nang"
