@@ -681,7 +681,7 @@ def _conversation(client: TestClient, call_id: str, lines: list[Optional[str]], 
         (
             "c_ie_resched",
             {},
-            ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng", "Được"],
+            ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng"],
             "RESCHEDULED",
             ("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"}),
         ),

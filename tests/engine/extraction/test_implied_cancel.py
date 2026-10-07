@@ -5,6 +5,7 @@ request model). Mọi ca âm tính đi đường cũ.
 """
 
 from datetime import datetime
+from typing import Optional
 
 import pytest
 
@@ -12,6 +13,7 @@ from callbot.engine.extraction import InformationExtractor, Intent, Provenance, 
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.implied_cancel import implied_cancel
 from callbot.engine.extraction.schema import VN_TZ, TurnContext
+from callbot.engine.extraction.text import normalize
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)
 QUESTIONS = (QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT)
@@ -205,7 +207,6 @@ def test_name_huy_does_not_hide_a_cancel_request_in_the_same_turn() -> None:
     [
         "Nguyễn Văn A, tôi không muốn hủy đâu",
         "14/03/1978, không hủy nữa nhé",
-        "Nguyễn Văn A, không đi được, đổi sang chiều nhé",  # đổi lịch thắng hủy
         "14/03/1978, thôi tôi vẫn đi khám, không hủy nữa",
         "14/03/1978, tôi đổi ý rồi",
         "14/03/1978, để tôi nghĩ lại đã",
@@ -221,6 +222,42 @@ def test_identity_turn_with_other_content_drops_the_kept_cancel(text: str) -> No
     result = _identity_turn(text)
     assert result.deferred_intent.found and result.deferred_intent.value is Intent.NONE
     assert result.deferred_cancel_reason.found is False
+
+
+@pytest.mark.parametrize(
+    "text, question, said",
+    [
+        # đổi lịch thắng hủy; lời yêu cầu không còn tên
+        (
+            "Nguyễn Văn A, không đi được, đổi sang chiều nhé",
+            QuestionId.ASK_NAME,
+            "không đi được, đổi sang chiều nhé",
+        ),
+        # ngày sinh không thành tiêu chí; "15:30" giữ nguyên dấu
+        (
+            "14/03/1978, tôi muốn đổi sang 15:30 chiều ngày 20",
+            QuestionId.ASK_DOB,
+            "tôi muốn đổi sang 15:30 chiều ngày 20",
+        ),
+        ("đổi lịch sang chiều ngày 14 được không em", QuestionId.ASK_DOB, None),
+    ],
+)
+def test_reschedule_said_with_identity_is_kept_aside(
+    text: str, question: QuestionId, said: Optional[str]
+) -> None:
+    """PRD R-43: yêu cầu đổi lịch nói ở bước danh tính được giữ như yêu cầu hủy (thay yêu cầu hủy đã
+    giữ); câu hỏi lịch sự "… được không" vẫn là yêu cầu."""
+    result = _identity_turn(text, question)
+    assert result.deferred_intent.value is Intent.RESCHEDULE
+    assert result.deferred_request == (said or normalize(text))
+
+
+@pytest.mark.parametrize(
+    "text", ["14/03/1978, chắc là đổi lịch", "14/03/1978, vợ tôi bảo đổi lịch"]
+)
+def test_undecided_reschedule_at_the_identity_step_is_not_kept(text: str) -> None:
+    result = _identity_turn(text, QuestionId.ASK_DOB)
+    assert result.deferred_intent.found and result.deferred_intent.value is Intent.NONE
 
 
 @pytest.mark.parametrize(

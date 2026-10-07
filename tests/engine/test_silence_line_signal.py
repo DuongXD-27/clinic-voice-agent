@@ -29,7 +29,8 @@ OUTBOUND_STEPS = {
     QuestionId.CONFIRM_READBACK: [NAME, DOB],
     QuestionId.ASK_INTENT: [NAME, DOB, "không"],
     QuestionId.OFFER_SLOTS: [NAME, DOB, "tôi muốn đổi lịch"],
-    QuestionId.SLOT_READBACK: [NAME, DOB, "tôi muốn đổi lịch", "khung 1"],
+    # "khung 1" là chọn rõ nên ghi ngay (R-29 v2.1); "khung 1 được không" tới câu chốt
+    QuestionId.SLOT_READBACK: [NAME, DOB, "tôi muốn đổi lịch", "khung 1 được không"],
     QuestionId.CANCEL_RECONFIRM: [NAME, DOB, "tôi muốn hủy lịch"],
 }
 INBOUND_STEPS = {

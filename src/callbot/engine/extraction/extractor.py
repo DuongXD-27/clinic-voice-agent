@@ -9,8 +9,8 @@ Thứ tự trong một lượt:
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
 4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
 5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
-   Outbound: ý định hủy nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm trên phần
-   NGOÀI tên — Dialogue chỉ dùng sau khi xác minh xong.
+   Outbound: ý định hủy / đổi lịch nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm
+   trên phần NGOÀI tên và ngày sinh — Dialogue chỉ dùng sau khi xác minh xong (QC qc-cn-08, R-43).
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
    trả lời không phải tên / ngày sinh.
 6. slot_choice  — câu hỏi chọn slot: OFFER_SLOTS, SLOT_READBACK, SLOT_REFUSE_CHOICE, ASK_SLOT_PREFERENCE.
@@ -23,7 +23,7 @@ Thứ tự trong một lượt:
 import logging
 import re
 from dataclasses import replace
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from callbot.engine.extraction.agreement import (
     asks_or_hesitates,
@@ -32,6 +32,8 @@ from callbot.engine.extraction.agreement import (
     corrected_tail,
     extract_agreement,
     has_question_cue,
+    slot_answer,
+    undecided_request,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
@@ -67,6 +69,7 @@ from callbot.engine.extraction.schema import (
     IDENTITY_QUESTIONS,
     Agreement,
     ClinicalLevel,
+    DobValue,
     ExtractionResult,
     Field,
     Intent,
@@ -82,11 +85,12 @@ from callbot.engine.extraction.semantic_router import (
     merge_semantic,
     route_semantic,
 )
-from callbot.engine.extraction.slot_choice import extract_slot_choice
+from callbot.engine.extraction.slot_choice import extract_slot_choice, without_corrected_part
 from callbot.engine.extraction.text import (
     clean,
     is_unaccented,
     normalize,
+    remove_words,
     strip_diacritics,
 )
 from callbot.engine.types import CancelReason
@@ -248,6 +252,20 @@ def _promotion_rejection(
     return promotion_rejection(result.transcript, outcome.reply_span)
 
 
+def _without_identity(
+    transcript: str, names: list[str], dob_reading: Optional[Reading[DobValue]]
+) -> str:
+    """Lời yêu cầu nói cùng lượt danh tính, đã bỏ vùng ngày sinh và tên (R-43): ngày sinh không được
+    thành tiêu chí thời gian của việc đổi, dù khách nói ý định trước hay sau danh tính.
+
+    Bỏ cả vùng ngày đọc hỏng: ở đây sót ngày sinh nguy hiểm hơn mất một từ của lời yêu cầu.
+    Cắt trên bản còn dấu câu: bộ parse cần "/" và ":" để đọc "20/10", "9:00" (`clean` tách thành hai số).
+    """
+    spans = [dob_reading.zone if dob_reading is not None else None]
+    spans += [clean(name) for name in names]
+    return remove_words(transcript, spans)
+
+
 def _within(outer: str, inner: str) -> bool:
     return f" {inner} " in f" {outer} "
 
@@ -367,18 +385,30 @@ class InformationExtractor:
                 intent = fallback_intent
 
         slot_choice = skipped
+        slot_request: Optional[str] = None
         if question in _SLOT_QUESTIONS:
+            # "Nếu không còn 5 giờ thì 3 giờ cũng được", "3 giờ chiều thì thôi, lấy khung 2": giờ ở vế
+            # điều kiện / vế bị bỏ không phải khung được chọn; khung nằm ở vế sau
+            slot_request = slot_answer(transcript)
             slot_choice = extract_slot_choice(
-                transcript, ctx.slots, ctx.presented_slot_ids, ctx.now
+                slot_request, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
 
         agreement: Field[Agreement] = skipped
+        # R-44: "9 giờ, à không, 10 giờ" — "không" của lời tự sửa không phải lời từ chối khung (R-41).
+        # Có / không chỉ đọc trên phần nói sau cùng; AGREE vẫn qua confirmation_veto trên NGUYÊN câu
+        # (`extract`), nên lời đồng ý lẫn phủ định vẫn bị hạ về UNCLEAR như cũ.
+        answer = (
+            without_corrected_part(transcript, ctx.now)
+            if question in _SLOT_QUESTIONS
+            else transcript
+        )
         if question in CONFIRMATION_QUESTIONS:
-            agreement = self._agreement(question, transcript, intent, clinical)
+            agreement = self._agreement(question, answer, intent, clinical)
         elif question in _SLOT_QUESTIONS and not slot_choice.found:
             # Chỉ để nhận lời từ chối chọn slot ("thôi không đổi nữa"). Các câu hỏi này không có ngưỡng
             # AGREE trong agreement._agree_span nên kết quả không bao giờ là AGREE, không mở khóa ghi.
-            agreement = extract_agreement(transcript, question)
+            agreement = extract_agreement(answer, question)
 
         cancel_reason = skipped
         if early_reason is not None:
@@ -403,11 +433,9 @@ class InformationExtractor:
         ):
             route_reason = RouteReason.IDENTITY_TURN
         name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
-        deferred_intent, deferred_reason = skipped, skipped
+        deferred = _Deferred(skipped, skipped, None)
         if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
-            deferred_intent, deferred_reason = _deferred_cancel(
-                transcript, full_name, _read_zone(dob_reading)
-            )
+            deferred = _deferred_request(transcript, full_name, dob_reading)
         result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
@@ -420,8 +448,10 @@ class InformationExtractor:
             slot_choice=slot_choice,
             cancel_reason=cancel_reason,
             line_signal=line_signal,
-            deferred_intent=deferred_intent,
-            deferred_cancel_reason=deferred_reason,
+            deferred_intent=deferred.intent,
+            deferred_cancel_reason=deferred.cancel_reason,
+            deferred_request=deferred.request,
+            slot_request=slot_request,
             name_identity=name_identity,
             dob_identity=(
                 identity_value(dob_reading, transcript, confidence=ctx.asr_confidence)
@@ -469,7 +499,12 @@ class InformationExtractor:
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
         tail = corrected_tail(transcript) if not identity_step else None
-        if tail is not None and result.value in _BUSINESS_INTENTS:
+        if (
+            tail is not None
+            and result.value in _BUSINESS_INTENTS
+            # Lời tự sửa GIÁ TRỊ ("đổi sang ngày 17 à không 16", R-44) giữ nguyên nhu cầu: chỉ ngày giờ đổi
+            and without_corrected_part(transcript, ctx.now) == transcript
+        ):
             # "Tôi muốn đổi lịch, à thôi hủy đi": nhu cầu là phần nói sau lời tự sửa, không phải cụm
             # khớp trước theo thứ tự ưu tiên. Phần đó không có nhu cầu thì để tuyến sau đọc cả câu.
             result = extract_intent(tail, ctx.direction, allowed)
@@ -635,33 +670,48 @@ _IDENTITY_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _IDENTITY_F
 _CLAUSE_BREAK = re.compile(r"[,;.!?…]")
 
 
-def _deferred_cancel(
-    transcript: str, full_name: Field[str], dob_zone: Optional[str]
-) -> tuple[Field[Intent], Field[CancelReason]]:
-    """Nhu cầu nói cùng lượt định danh (QC qc-cn-08), xét trên phần ngoài tên và vùng ngày sinh:
-    "Trần Văn Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent: "không đi được, đổi sang
-    chiều" là đổi lịch.
+class _Deferred(NamedTuple):
+    intent: Field[Intent]
+    cancel_reason: Field[CancelReason]
+    # Đổi lịch: lời yêu cầu đã bỏ tên và ngày sinh — tiêu chí thời gian của việc đổi
+    request: Optional[str]
+
+
+def _deferred_request(
+    transcript: str, full_name: Field[str], dob_reading: Optional[Reading[DobValue]]
+) -> _Deferred:
+    """Nhu cầu nói cùng lượt định danh (QC qc-cn-08, PRD R-43), xét trên phần ngoài tên và vùng ngày
+    sinh: "Trần Văn Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent: "không đi được, đổi
+    sang chiều" là đổi lịch. Lượt sau thay lượt trước (R-44), Dialogue chỉ dùng sau khi xác minh xong.
 
     - CANCEL: yêu cầu hủy rõ ràng — không phải câu hỏi, không có "nhưng", không ngập ngừng.
-    - NONE có span: lượt này còn nội dung khác (đổi ý, đổi lịch, hỏi han...). Dialogue bỏ yêu cầu hủy
+    - RESCHEDULE: yêu cầu đổi lịch đã quyết (câu hỏi lịch sự "đổi sang chiều được không?" vẫn là yêu
+      cầu), kèm lời yêu cầu để lọc khung sau khi xác minh.
+    - NONE có span: lượt này còn nội dung khác (đổi ý, hỏi han, chưa quyết...). Dialogue bỏ yêu cầu
       đã giữ; sau xác minh bot đọc lịch và hỏi có đến được không, tức là hỏi lại nhu cầu.
     - skipped: chỉ có tên / ngày sinh / từ đệm, giữ nguyên những gì đã giữ.
     """
+    dob_zone = _read_zone(dob_reading)
+    names = _spoken_names(transcript, full_name, dob_zone)
     text = clean(transcript)
-    for part in (dob_zone, *_spoken_names(transcript, full_name, dob_zone)):
+    for part in (dob_zone, *names):
         if part:
             text = re.sub(rf"(?<!\w){re.escape(clean(part))}(?!\w)", " ", text, count=1)
     text = _mask_unclear_huy(text)
     intent = extract_intent(text, "outbound", PRIORITY)
     if intent.value is Intent.CANCEL and "?" not in transcript and not asks_or_hesitates(text):
-        return intent, extract_cancel_reason(text)
+        return _Deferred(intent, extract_cancel_reason(text), None)
+    if intent.value is Intent.RESCHEDULE and not undecided_request(text, intent.span):
+        return _Deferred(intent, Field.skipped(), _without_identity(transcript, names, dob_reading))
     unaccented = is_unaccented(text)
     filler = _IDENTITY_FILLER_UNACCENTED if unaccented else _IDENTITY_FILLER
     leftover = [w for w in text.split() if w != ";" and w not in filler and not w.isdigit()]
     if leftover:
         provenance = Provenance.NORMALIZED if unaccented else Provenance.EXACT
-        return Field(Intent.NONE, provenance, span=" ".join(leftover)), Field.skipped()
-    return Field.skipped(), Field.skipped()
+        return _Deferred(
+            Field(Intent.NONE, provenance, span=" ".join(leftover)), Field.skipped(), None
+        )
+    return _Deferred(Field.skipped(), Field.skipped(), None)
 
 
 def _spoken_names(transcript: str, full_name: Field[str], dob_zone: Optional[str]) -> list[str]:

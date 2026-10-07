@@ -6,11 +6,15 @@ import pytest
 
 from callbot.engine.extraction.schema import VN_TZ, Provenance
 from callbot.engine.extraction.slot_choice import (
+    anchor_relative,
     asks_back,
     extract_slot_choice,
+    filter_slots,
     parse_slot_criteria,
     requested_slot_count,
+    requests_time,
     resolve_request,
+    strip_slot_phrases,
 )
 
 NOW = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)  # thứ hai
@@ -288,3 +292,164 @@ def test_corrections_exclusions_and_ranges(text: str, kind: str, ids: tuple[str,
     now = datetime(2026, 10, 12, 9, 0, tzinfo=VN_TZ)
     result = extract_slot_choice(text, _THREE, ["s1000", "s1430"], now)
     assert (result.value.kind, result.value.slot_ids) == (kind, ids)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sáng mai khoảng 9 giờ có được không?",
+        "Cho tôi ba giờ kém mười lăm chiều ngày 14",
+        "Có 4 giờ chiều ngày 16 không em",
+        "Còn khung sáng thứ Sáu không ạ?",
+        "có lịch 2 giờ chiều mai không",
+        # Câu cầu khiến kết bằng "đi"
+        "5 giờ chiều ngày 14 đi em",
+        "chiều thứ Sáu đi",
+    ],
+)
+def test_requests_time_accepts_asking_for_or_about_a_time(text: str) -> None:
+    assert requests_time(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Không phải 8 giờ à?",
+        "Tưởng là 9 giờ chứ",
+        "8 giờ sáng ngày 15",
+        "Hôm đó 9 giờ tôi bận",
+        "Sao lại 8 giờ?",
+        # Tiểu từ sau chủ ngữ / trạng từ là câu kể việc đi khám, không phải lời xin
+        "3 giờ tôi đi",
+        "Thứ Tư tôi vẫn đi nhé",
+        "vâng, 3 giờ chiều nhé",  # hỏi lại giờ hẹn (confirm eval)
+    ],
+)
+def test_requests_time_rejects_doubts_and_plain_statements(text: str) -> None:
+    assert not requests_time(text)
+
+
+# --- "sớm hơn / muộn hơn": so với lịch đang đổi, Dialogue gắn mốc -----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "relative"),
+    [("sớm hơn chút", "EARLIER"), ("cho tôi muộn hơn được không", "LATER"), ("trễ hơn", "LATER")],
+)
+def test_earlier_or_later_is_a_relative_criterion(text: str, relative: str) -> None:
+    assert parse_slot_criteria(text, NOW).relative == relative
+
+
+def test_relative_without_an_anchor_matches_no_slot() -> None:
+    criteria = parse_slot_criteria("ngày 14 nhưng sớm hơn chút", NOW)
+    assert criteria.day == 14 and criteria.relative == "EARLIER"
+    choice = extract_slot_choice("ngày 14 nhưng sớm hơn chút", SLOTS, [], NOW).value
+    assert choice.kind == "NO_MATCH"
+
+
+def test_anchored_relative_keeps_only_slots_on_that_side() -> None:
+    anchor = datetime(2026, 10, 14, 15, 30, tzinfo=VN_TZ)
+    slots = [
+        {"slot_id": "s1500", "starts_at": "2026-10-14T15:00:00+07:00"},
+        {"slot_id": "s1600", "starts_at": "2026-10-14T16:00:00+07:00"},
+    ]
+    earlier = anchor_relative(parse_slot_criteria("ngày 14 sớm hơn", NOW), anchor)
+    later = anchor_relative(parse_slot_criteria("ngày 14 muộn hơn", NOW), anchor)
+    assert [s["slot_id"] for s in filter_slots(slots, earlier)] == ["s1500"]
+    assert [s["slot_id"] for s in filter_slots(slots, later)] == ["s1600"]
+
+
+def test_bare_earlier_at_a_slot_question_asks_for_other_slots() -> None:
+    """T-10 R033: "sớm hơn" trần ở câu chọn khung là xin khung khác, không phải yêu cầu mới."""
+    assert extract_slot_choice("có giờ nào sớm hơn không", SLOTS, [], NOW).value.kind == "MORE"
+
+
+# --- Review PR 06/10 (evidence §10): lời xin giờ phải giải thích hết câu ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Sáng mai khoảng 9 giờ có được không?", True),
+        ("Cho tôi 9h ngày 20/10", True),
+        ("Còn chỗ sáng ngày 21 không em", True),
+        ("ngày mai tôi có phải nhịn ăn không", False),
+        ("thứ Sáu tôi có cần mang thẻ bảo hiểm không", False),
+        ("tôi muốn hỏi ngày mai phòng khám mở cửa lúc mấy giờ", False),
+        ("9 giờ hả em?", False),
+    ],
+)
+def test_requests_time_needs_the_whole_sentence_to_be_a_request(text: str, expected: bool) -> None:
+    assert requests_time(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "rest"),
+    [
+        ("vâng khung hai", "vâng"),
+        ("lấy cái số một đi", "lấy đi"),
+        ("đúng rồi 3 giờ chiều ngày 14", "đúng rồi"),
+        ("khung khác", "khung khác"),
+    ],
+)
+def test_strip_slot_phrases_removes_ordinals_and_times(text: str, rest: str) -> None:
+    assert strip_slot_phrases(text) == rest
+
+
+# --- Merge main 07/10: khoảng giờ (main) và "sớm / muộn hơn" (nhánh) là hai tiêu chí riêng ---------------
+
+
+def test_time_range_and_anchored_relative_filter_together() -> None:
+    """main: `not_before` / `before` là phút trong ngày; nhánh: `earlier_than` / `later_than` là mốc lịch
+    đang đổi. Cùng tên trường thì so int với datetime và lỗi lượt (SYSTEM_ERROR)."""
+    anchor = datetime(2026, 10, 14, 14, 30, tzinfo=VN_TZ)
+    criteria = anchor_relative(parse_slot_criteria("ngày 14 sau 9 giờ sớm hơn", NOW), anchor)
+    assert (criteria.not_before, criteria.relative) == (9 * 60 + 1, "EARLIER")
+    assert [s["slot_id"] for s in filter_slots(_THREE, criteria)] == ["s1000", "s1030"]
+
+
+@pytest.mark.parametrize(
+    ("text", "ids"),
+    [
+        # Lời tự sửa không có dấu câu (ASR): "không phải" sau "à" không loại giờ nói sau
+        ("2 giờ chiều à không phải 10 giờ 30", ("s1030",)),
+        # Buổi của giờ cũ vẫn giữ khi hợp giờ mới
+        ("10 giờ sáng, à nhầm, 10 giờ 30", ("s1030",)),
+    ],
+)
+def test_self_correction_is_not_an_exclusion(text: str, ids: tuple[str, ...]) -> None:
+    result = extract_slot_choice(text, _THREE, ["s1000", "s1430"], NOW)
+    assert result.value.slot_ids == ids
+
+
+def test_correction_keeps_the_date_punctuation() -> None:
+    slots = [*_THREE, {"slot_id": "s15", "starts_at": "2026-10-15T09:00:00+07:00"}]
+    criteria = parse_slot_criteria("không phải 14/10 mà là 15/10", NOW)
+    assert (criteria.day, criteria.month) == (15, 10)
+    assert extract_slot_choice("không phải 14/10 mà là 15/10", slots, [], NOW).value.slot_ids == (
+        "s15",
+    )
+
+
+# --- Review lần 2 (07/10, evidence §12 ý 2): câu không dấu khớp lời xin trên một dạng ---------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("sang mai khoang 9 gio co duoc khong", True),
+        ("cho toi 9 gio sang mai duoc khong", True),
+        ("de sang thu nam duoc khong em", True),
+        ("5 gio chieu ngay 14 di em", True),
+        ("con khung sang thu sau khong a", True),
+        # Thắc mắc / câu kể / câu hỏi việc khác vẫn không phải lời xin
+        ("9 gio ha em", False),
+        ("toi tuong hen 9 gio", False),
+        ("khong phai 9 gio a", False),
+        ("3 gio toi di", False),
+        ("ngay mai toi co phai nhin an khong", False),
+        ("mai toi co can mang giay to gi khong", False),
+    ],
+)
+def test_requests_time_reads_unaccented_sentences(text: str, expected: bool) -> None:
+    assert requests_time(text) is expected

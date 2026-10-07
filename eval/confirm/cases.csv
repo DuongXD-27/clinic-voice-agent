@@ -191,3 +191,8 @@ holdout,cannot_attend,CONFIRM_READBACK,tuần sau tôi khám chỗ khác rồi,A
 holdout,cannot_attend,CONFIRM_READBACK,tôi định khám chỗ khác rồi,ASK_CHANGE_OR_CANCEL,yes,
 holdout,cannot_attend,CONFIRM_READBACK,Tôi đã đặt hẹn ở bệnh viện khác,ASK_CHANGE_OR_CANCEL,yes,
 holdout,unclear,CONFIRM_READBACK,"không cần nữa, tôi tự đến",CONFIRM|REREAD,yes,
+prompt,review2_unaccented_request,CONFIRM_READBACK,sang mai khoang 9 gio co duoc khong,RESCHEDULE,no,
+prompt,review2_unaccented_request,CONFIRM_READBACK,cho toi 9 gio sang mai duoc khong,RESCHEDULE,no,
+prompt,review2_unaccented_request,CONFIRM_READBACK,5 gio chieu ngay 14 di em,RESCHEDULE,no,
+prompt,review2_unaccented_doubt,CONFIRM_READBACK,9 gio ha em,REREAD|NOT_UNDERSTOOD,no,
+prompt,review2_unaccented_doubt,CONFIRM_READBACK,toi tuong hen 9 gio,REREAD|NOT_UNDERSTOOD,no,

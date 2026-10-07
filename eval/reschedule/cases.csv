@@ -68,15 +68,15 @@ R066,holdout,refuse,outbound,SLOT_READBACK,1,tôi không đi được giờ này
 R067,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,không,REFUSE_CHOICE,no,Câu A/B cần hỏi lại rõ
 R068,holdout,refuse,outbound,SLOT_REFUSE_CHOICE,2,"không, nghe khung khác",MORE,no,Từ chối kèm yêu cầu tiếp tục
 R069,holdout,refuse,outbound,OFFER_SLOTS,2,không lấy khung nào cả,REFUSE_CHOICE,yes,Q-4: từ chối các khung chưa phải bỏ đổi lịch -> hỏi A/B
-R070,holdout,refuse,outbound,SLOT_READBACK,1,không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,KEEP_OLD,no,Bỏ đổi lịch rõ ràng
-R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,KEEP_OLD,no,Bỏ đổi lịch sau câu A/B
-R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,KEEP_OLD,no,Bỏ đổi lịch sau hết slot
-R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,KEEP_OLD,yes,Không tiếp tục reschedule
-R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,KEEP_OLD,no,Giữ lịch cũ
-R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,KEEP_OLD,no,Giữ lịch cũ
-R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,KEEP_OLD,no,Giữ lịch cũ
+R070,holdout,refuse,outbound,SLOT_READBACK,1,không đổi nữa,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
+R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau câu A/B — giữ lịch cũ + chuyển máy (qc-rs-08)
+R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau hết slot — giữ lịch cũ + chuyển máy (qc-rs-08)
+R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,TRANSFER:PATIENT_REQUEST,yes,Không tiếp tục reschedule — giữ lịch cũ + chuyển máy (qc-rs-08)
+R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
+R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
+R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
 R079,prompt,agreement,outbound,SLOT_READBACK,1,được,WRITE,no,Đồng ý rõ ràng
 R080,prompt,agreement,outbound,SLOT_READBACK,1,đồng ý,WRITE,no,Đồng ý rõ ràng
 R081,prompt,agreement,outbound,SLOT_READBACK,1,ok,WRITE,no,Đồng ý rõ ràng
@@ -121,7 +121,7 @@ R120,holdout,safety_transfer,outbound,SLOT_READBACK,1,tôi đang lái xe,REREAD_
 R121,prompt,unaccented,outbound,OFFER_SLOTS,2,khung khac,MORE,no,ASR không dấu
 R122,holdout,unaccented,outbound,OFFER_SLOTS,2,lay cai dau,PICK:1,no,ASR không dấu
 R123,holdout,unaccented,outbound,OFFER_SLOTS,2,doi sang ngay 19,NEW_TIME:19/10,no,ASR không dấu
-R124,holdout,unaccented,outbound,OFFER_SLOTS,2,thoi khong doi nua,KEEP_OLD,no,ASR không dấu
+R124,holdout,unaccented,outbound,OFFER_SLOTS,2,thoi khong doi nua,TRANSFER:PATIENT_REQUEST,no,ASR không dấu — giữ lịch cũ + chuyển máy (qc-rs-08)
 R125,holdout,unaccented,outbound,SLOT_READBACK,1,dong y,WRITE,no,ASR không dấu
 R126,holdout,unaccented,outbound,SLOT_READBACK,1,vang,WRITE,no,ASR không dấu (D-2)
 R127,holdout,unaccented,outbound,SLOT_READBACK,1,da,REREAD_YESNO,no,"ASR không dấu: ""da"" = dạ, không phải đồng ý"
@@ -150,3 +150,23 @@ R149,holdout,book,inbound,SLOT_READBACK,2,dạ,REREAD_YESNO,no,BOOK: dạ không
 R150,holdout,book,inbound,OFFER_SLOTS,2,thôi không đặt nữa,KEEP_OLD,no,BOOK: bỏ đặt lịch
 R151,holdout,book,inbound,SLOT_READBACK,2,vâng,WRITE,no,BOOK theo D-2; cần PM chốt §1.1.10 có nhận vâng không
 R152,holdout,book,inbound,SLOT_READBACK,2,"không, khung khác",MORE,no,BOOK
+R153,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"vâng, 9 giờ sáng ngày 20",NEW_TIME:20/10,no,Review ý 1: đồng ý kèm giờ khung khác không ghi khung đang chốt
+R154,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"ừ, ngày 20",NEW_TIME:20/10,no,Review ý 1
+R155,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"được, 8 giờ sáng ngày 20",NEW_TIME:20/10,no,Review ý 1: khớp khung chưa đọc
+R156,prompt,review_previous_page,outbound,OFFER_SLOTS,2-trang2,3 giờ chiều ngày 14,PICK_SLOT,no,Review ý 2: khung trang trước qua câu chốt, không SYSTEM_ERROR
+R157,prompt,review_previous_page,outbound,OFFER_SLOTS,2-trang2,9 giờ sáng thứ Sáu,PICK:2,no,Review ý 2: khung trang vừa đọc ghi ngay
+R158,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"3 giờ chiều thì thôi, lấy khung 2",PICK:2,no,Review ý 5: vế sau lời bỏ là câu trả lời
+R159,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"vậy thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review ý 5
+R160,prompt,review_ordinal,outbound,OFFER_SLOTS,2,lấy khung hai,PICK:2,no,Review ý 6: khung + số đọc bằng chữ
+R161,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: giờ sau cụm giữ lịch là lịch cũ
+R162,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,"thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư",TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1
+R163,prompt,review2_keep_old,outbound,SLOT_READBACK,1,thôi giữ lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: xét bỏ đổi lịch ở câu chốt
+R164,prompt,review2_keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: câu A/B
+R165,prompt,review2_keep_old,outbound,ASK_SLOT_PREFERENCE,1,thôi để nguyên lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: câu hỏi ngày
+R166,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,thoi de nguyen lich 3 ruoi chieu thu tu di,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: không dấu
+R167,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,"thì thôi, giữ 8 giờ sáng thứ Năm",TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: lớp chặn thứ hai (vế sau chỉ là lịch đang đổi: apt_00418 8 giờ sáng thứ Năm 15/10)
+R168,prompt,review2_keep_then_pick,outbound,OFFER_SLOTS,2,"giữ lịch cũ, à mà thôi lấy khung 2",PICK:2,no,Review lần 2 ý 1: tự sửa sau cụm giữ lịch
+R169,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"9 giờ thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review lần 2 ý 3: yêu cầu mới từ vế sau
+R170,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3
+R171,prompt,review2_drop_then_answer,outbound,SLOT_REFUSE_CHOICE,2,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3: câu A/B
+R172,prompt,review2_drop_then_answer,outbound,ASK_SLOT_PREFERENCE,1,"9 giờ thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review lần 2 ý 3: câu hỏi ngày
