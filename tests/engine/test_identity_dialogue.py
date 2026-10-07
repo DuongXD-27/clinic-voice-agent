@@ -4,6 +4,7 @@ Hỏi mở tên / ngày sinh, nhận phần còn thiếu, ngày sinh không hợ
 từ chối cung cấp, tra cứu lượt 0 thất bại. Mọi lượt trước khi xác minh xong không được lộ lịch (SF-03).
 """
 
+import copy
 from typing import Optional
 
 import pytest
@@ -14,7 +15,7 @@ from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
-from clinic_mock_sim import FakeClinicAPI
+from clinic_mock_sim import FakeClinicAPI, store
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -530,6 +531,10 @@ def test_name_and_dob_in_one_turn_over_http(client) -> None:
         ["Hello?", "My name is Nguyen Van A, born on March 14th 1978"],
         ["I'm Nguyen Van A", "1978-03-14"],
         ["NGUYEN VAN A, 14/3/1978"],
+        # Review 5b2a496: tách tên đúng ở vùng ngày tiếng Anh mà bộ đọc ngày nhận ra
+        ["Nguyen Van A, March the 14th, 1978"],
+        ["Nguyen Van A, the 14th of March 1978"],
+        ["My name is Nguyen Van A and my birthday is March 14th 1978"],
     ],
 )
 def test_unaccented_or_english_identity_verifies(lines) -> None:
@@ -550,4 +555,34 @@ def test_unaccented_name_still_needs_the_exact_dob(lines) -> None:
     actions, clinic = _call(_outbound("c_unaccented_fail"), lines)
     _ended(actions[-1], "TRANSFERRED", "IDENTITY_FAILED")
     assert [w for w in clinic.writes if w[1] != "TRANSFERRED"] == []
+    _assert_no_disclosure(actions)
+
+
+@pytest.mark.parametrize(
+    "dob",
+    [
+        "not March 14, 1978",
+        "maybe March 14, 1978",
+        "March 14, 1978 or April 15",
+        "March 14, 1978 or May 15",
+    ],
+)
+def test_hedged_or_competing_english_dob_never_verifies(dob) -> None:
+    # Review 5b2a496: sau tên đúng, câu ngày sinh còn phủ định / phân vân / hai giá trị phải hỏi lại
+    actions, clinic = _call(_outbound("c_hedged_dob"), [NAME, dob])
+    assert actions[2].state == "AWAITING_IDENTITY"
+    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+def test_born_on_may_name_boundary_uses_the_date_zone() -> None:
+    # Review 5b2a496: "born on May 14, 1978" không được để "born on may" dính vào tên
+    clinic = FakeClinicAPI()
+    appointment = copy.deepcopy(store.DEFAULT_APPOINTMENT)
+    appointment["patient"]["verify"]["dob"] = "1978-05-14"
+    clinic.seed_appointment(appointment)
+    start = CallStart(call_id="c_born_may", direction="outbound", appointment_id="apt_00417")
+    actions, _ = _call(start, ["My name is Nguyen Van A, born on May 14, 1978"], clinic)
+    assert actions[1].state == "AWAITING_INTENT"
     _assert_no_disclosure(actions)

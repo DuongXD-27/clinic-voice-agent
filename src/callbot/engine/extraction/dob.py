@@ -34,6 +34,7 @@ from callbot.engine.extraction.identity import (
     UNCERTAINTY,
     Reading,
     Reason,
+    english_hedge,
     token_index,
 )
 from callbot.engine.extraction.schema import INVALID, DobValue, Field, Provenance
@@ -61,8 +62,9 @@ _NUMERIC_DATE = re.compile(r"(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?")
 # "1978-03-14" (ISO, năm đứng trước)
 _ISO_DATE = re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})")
 _TRIM = ",.;:!?\"'()[]"
-# Người gọi nói tiếng Anh (QC qc-w6-01): "March 14, 1978", "14th of March 1978". Chỉ nhận khi đủ
-# ngày, tháng và năm viết bằng chữ số; số đọc bằng chữ tiếng Anh ("nineteen seventy eight") chưa hỗ trợ.
+# Người gọi nói tiếng Anh (QC qc-w6-01): "March 14, 1978", "14th of March 1978". Ngày, tháng, năm viết
+# bằng chữ số; số đọc bằng chữ tiếng Anh ("nineteen seventy eight") chưa hỗ trợ. Ngày thiếu năm
+# ("April 15") vẫn được chuyển để kiểm tra thiếu năm / nhiều giá trị nhìn thấy nó.
 EN_MONTHS = {
     "january": 1,
     "jan": 1,
@@ -196,8 +198,11 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     # sau chỉ phải hỏi lại ngày sinh chứ không hỏi lại cả tên.
     value, lo, hi = parsed
     zone = " ".join(words[origin[start + lo][0] : origin[start + hi - 1][1] + 1])
-    if find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None:
-        # "14/3/1978 thì phải": người gọi đã tự nói là không chắc — hỏi lại, đừng xác minh hộ
+    if find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None or english_hedge(
+        text, bare_no=True
+    ):
+        # "14/3/1978 thì phải", "maybe March 14", "not 14/3/1978": người gọi đã tự nói là không
+        # chắc hoặc bác bỏ — hỏi lại, đừng xác minh hộ
         return invalid(Reason.UNCERTAIN, zone)
     if _ambiguous(segment):
         return invalid(Reason.AMBIGUOUS, zone)
@@ -256,15 +261,20 @@ def _english_dates(
             i += 1
             continue
         (day, month, year), end = found
-        parts = ["ngày", day, "tháng", str(month), "năm", year]
+        parts = ["ngày", day, "tháng", str(month)] + (["năm", year] if year else [])
         out_tokens += parts
         out_origin += [(origin[i][0], origin[end - 1][1])] * len(parts)
         i = end
     return out_tokens, out_origin
 
 
-def _english_date_at(tokens: list[str], i: int) -> Optional[tuple[tuple[str, int, str], int]]:
-    """((ngày, tháng, năm), token sau cuối) khi tại `i` là ngày tiếng Anh đủ ba phần."""
+def _english_date_at(
+    tokens: list[str], i: int
+) -> Optional[tuple[tuple[str, int, Optional[str]], int]]:
+    """((ngày, tháng, năm), token sau cuối) khi tại `i` là ngày tiếng Anh; năm `None` khi thiếu.
+
+    Thiếu năm chỉ nhận với tháng không trùng tiếng Việt không dấu: "may 5" có thể là "mấy 5".
+    """
 
     def skip(at: int, *words: str) -> int:
         return at + 1 if at < len(tokens) and tokens[at] in words else at
@@ -276,14 +286,21 @@ def _english_date_at(tokens: list[str], i: int) -> Optional[tuple[tuple[str, int
     def year_at(at: int) -> Optional[str]:
         return tokens[at] if at < len(tokens) and _EN_YEAR.fullmatch(tokens[at]) else None
 
-    # "march 14 1978", "march the 14th, 1978"
+    def partial(month: str) -> bool:
+        return month != "may"
+
+    # "march 14 1978", "march the 14th, 1978", "april 15"
     if tokens[i] in EN_MONTHS:
         at = skip(i + 1, "the")
         day = day_at(at)
-        at = skip(at + 1, "of", "in")
-        year = year_at(at)
-        if day is not None and year is not None:
-            return (day, EN_MONTHS[tokens[i]], year), at + 1
+        if day is not None:
+            after_day = at + 1
+            at = skip(after_day, "of", "in")
+            year = year_at(at)
+            if year is not None:
+                return (day, EN_MONTHS[tokens[i]], year), at + 1
+            if partial(tokens[i]):
+                return (day, EN_MONTHS[tokens[i]], None), after_day
     # "14 march 1978", "the 14th of march, 1978"
     at = skip(i, "the")
     day = day_at(at)
@@ -295,7 +312,9 @@ def _english_date_at(tokens: list[str], i: int) -> Optional[tuple[tuple[str, int
     at = skip(month_at + 1, "of", "in")
     year = year_at(at)
     if year is None:
-        return None
+        if not partial(tokens[month_at]):
+            return None
+        return (day, EN_MONTHS[tokens[month_at]], None), month_at + 1
     return (day, EN_MONTHS[tokens[month_at]], year), at + 1
 
 
@@ -357,8 +376,8 @@ def _affirmed_start(tokens: list[str]) -> Optional[int]:
 def _ambiguous(tokens: list[str]) -> bool:
     """ "14 hay 15 tháng 3", "... năm 1978 hoặc 1979": hai cách đọc, không chọn hộ.
 
-    Chỉ tính khi hai bên của từ nối đều là số — "hay" ở chỗ khác trong câu không phải lựa
-    chọn giữa hai ngày.
+    Chỉ tính khi hai bên của từ nối đều là số (bên sau có thể là tên tháng tiếng Anh) — "hay" ở chỗ
+    khác trong câu không phải lựa chọn giữa hai ngày.
     """
     if tokens.count("tháng") > 1:
         return True
@@ -370,7 +389,9 @@ def _ambiguous(tokens: list[str]) -> bool:
             if after < len(tokens) and tokens[after] == "ngày":
                 after += 1  # Numeric dates expand to "ngày 15 tháng ...".
             if before > 0 and after < len(tokens):
-                if is_number_token(tokens[before - 1]) and is_number_token(tokens[after]):
+                # "March 14, 1978 or May 15": tên tháng tiếng Anh sau từ nối cũng là giá trị thứ hai
+                second = is_number_token(tokens[after]) or tokens[after] in EN_MONTHS
+                if is_number_token(tokens[before - 1]) and second:
                     return True
     return False
 

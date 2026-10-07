@@ -33,6 +33,7 @@ from callbot.engine.extraction.identity import (
     UNCERTAINTY,
     Reading,
     Reason,
+    english_hedge,
 )
 from callbot.engine.extraction.schema import Field, Provenance
 from callbot.engine.extraction.spoken_numbers import is_number_token, parse_number
@@ -392,9 +393,11 @@ def read_full_name(
     named = " ".join(c for c in name_clauses if c and not is_greeting(c) and not _is_dob_aside(c))
     if not named:
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
-    if find_phrase(named, UNCERTAINTY, mixed=True) is not None:
-        # "chắc là Nguyễn Văn A": chưa đủ chắc để đi xác minh — hỏi lại, và mô hình cũng
-        # không được biến câu này thành một tên.
+    if find_phrase(named, UNCERTAINTY, mixed=True) is not None or english_hedge(
+        named, bare_no=False
+    ):
+        # "chắc là Nguyễn Văn A", "maybe Nguyen Van A": chưa đủ chắc để đi xác minh — hỏi lại, và
+        # mô hình cũng không được biến câu này thành một tên.
         return Reading(Field.nothing(), Reason.UNCERTAIN, text)
 
     segment = _affirmed_segment(named)
@@ -604,14 +607,19 @@ _MAX_SPOKEN_DAY = 3  # "hai mươi mốt"
 _MIN_WORDS_BEFORE_SINH = 3
 
 
-def name_before_dob(transcript: str) -> Optional[str]:
+def name_before_dob(transcript: str, dob_zone: Optional[str] = None) -> Optional[str]:
     """Phần tên đứng trước ngày sinh trong một câu, vd. "Nguyễn Văn A, sinh ngày 14/3/1978".
 
     Chỉ gọi khi đã nhận ra một vùng ngày trong câu. Không tìm được ranh giới chắc chắn -> None:
     thà hỏi lại tên còn hơn đưa một tên bị cắt nhầm vào Verifier (tên sai -> chuyển máy ngay).
     Tên có thể là từ chỉ số ("Nguyễn Văn Tám", "Trần Văn Năm"), nên chỉ cắt ở dãy số đọc bằng
     chữ khi dãy đó không dính vào cuối tên.
+
+    Ngày tiếng Anh ("born on May 14, 1978", "March the 14th, 1978") cắt đúng ở vùng `dob_zone` mà
+    `read_dob` đã nhận, để hai bộ phân tích không dùng hai luật ranh giới khác nhau.
     """
+    if dob_zone and _english_zone(dob_zone):
+        return _name_before_zone(transcript, dob_zone)
     name: list[str] = []
     for segment in normalize(transcript).split(","):
         tokens = clean(segment).split()
@@ -630,7 +638,37 @@ def name_before_dob(transcript: str) -> Optional[str]:
         break
     else:
         return None  # không thấy phần ngày sinh
+    return _without_trailing_links(name)
 
+
+def _english_zone(zone: str) -> bool:
+    """Vùng ngày do bộ đọc ngày tiếng Anh dựng ra (có tên tháng tiếng Anh)."""
+    return any(word in EN_MONTHS for word in zone.split())
+
+
+def _zone_at(words: list[str], zone: str) -> Optional[int]:
+    target = zone.split()
+    return next(
+        (i for i in range(len(words) - len(target) + 1) if words[i : i + len(target)] == target),
+        None,
+    )
+
+
+def _name_before_zone(transcript: str, zone: str) -> Optional[str]:
+    words = clean(transcript).split()
+    at = _zone_at(words, zone)
+    if not at:
+        return None  # vùng ngày ở đầu câu (tên đứng sau) hoặc không tìm thấy
+    name = words[:at]
+    if name[-1] == "sinh":
+        if _claim_length(name[:-1]) < _MIN_WORDS_BEFORE_SINH:
+            return None  # "Nguyễn Văn Sinh March 14 1978": không đoán
+        name.pop()
+    return _without_trailing_links(name)
+
+
+def _without_trailing_links(name: list[str]) -> Optional[str]:
+    name = list(name)
     while name and name[-1] in _TRAILING_LINKS:
         name.pop()
     stripped = True
@@ -645,7 +683,7 @@ def name_before_dob(transcript: str) -> Optional[str]:
     return " ".join(name) or None
 
 
-def name_after_dob(transcript: str) -> Optional[str]:
+def name_after_dob(transcript: str, dob_zone: Optional[str] = None) -> Optional[str]:
     """Phần tên đứng SAU ngày sinh: "14/3/1978, tôi là Nguyễn Văn A".
 
     Chỉ nhận khi có lời tự giới thiệu rõ ràng. Không có nó thì phần đuôi câu có thể là bất
@@ -656,7 +694,11 @@ def name_after_dob(transcript: str) -> Optional[str]:
     if match is None:
         return None
     tail = text[match.start() :].strip()
-    if not tail or _date_start(tail.split()) is not None:
+    if (
+        not tail
+        or _date_start(tail.split()) is not None
+        or (dob_zone is not None and _zone_at(tail.split(), dob_zone) is not None)
+    ):
         return None  # còn phần ngày tháng phía sau: đây không phải đuôi tên thuần
     return tail
 
@@ -677,13 +719,6 @@ def _date_start(tokens: list[str]) -> Optional[tuple[int, bool]]:
     for i, token in enumerate(tokens):
         following = tokens[i + 1] if i + 1 < len(tokens) else ""
         if any(c.isdigit() for c in token) or token in _DAY_STARTS:
-            return i, False
-        if (
-            token in EN_MONTHS
-            # "May" cuối tên ("Nguyen Thi May 14 3 1978") không phải tháng: chỉ cắt ở đầu mệnh đề
-            and (token != "may" or i == 0)
-            and any(c.isdigit() for c in following)
-        ):
             return i, False
         if token == "sinh" and (following in _DATE_WORDS or any(c.isdigit() for c in following)):
             # "năm sinh 1978": phần ngày bắt đầu từ "năm". Nhưng "Nam sinh năm 1978" (không dấu,

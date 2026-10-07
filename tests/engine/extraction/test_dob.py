@@ -140,6 +140,20 @@ def test_english_and_iso_dates(text: str) -> None:
         "Feb 30 1978",
         "March 14 or 15 1978",  # hai giá trị
         "March 14, 1978 or 1979",
+        # Review 5b2a496: ngày thay thế thiếu năm vẫn là giá trị thứ hai
+        "March 14, 1978 or April 15",
+        "March 14, 1978 or May 15",
+        "14 March 1978 or 15 April",
+        "March 14 or April 15, 1978",
+        # Review 5b2a496: phủ định / phân vân / tự sửa tiếng Anh không được thành ngày chắc chắn
+        "not March 14, 1978",
+        "maybe March 14, 1978",
+        "I think March 14, 1978",
+        "March 14, 1978 I guess",
+        "probably 14 March 1978",
+        "not 14/3/1978",
+        "March 14, 1978, no, March 15, 1978",
+        "sorry, I mean March 15, 1978",
     ],
 )
 def test_unusable_english_dates_are_invalid(text: str) -> None:

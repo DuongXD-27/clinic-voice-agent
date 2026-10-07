@@ -261,3 +261,15 @@ def test_english_self_introduction(text: str) -> None:
 
 def test_english_alternatives_are_multiple_names() -> None:
     assert read_full_name("Nguyen Van A or Tran Van B").reason is Reason.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "maybe Nguyen Van A",
+        "I think it's Nguyen Van A",
+        "My name is not Tran Van B, it's Nguyen Van A",
+    ],
+)
+def test_english_hedged_name_is_uncertain(text: str) -> None:
+    assert read_full_name(text).reason is Reason.UNCERTAIN

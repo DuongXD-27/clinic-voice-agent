@@ -15,6 +15,7 @@ So khớp ở chế độ `mixed`: ASR hay bỏ dấu một phần ("Dạ toi la
 thật ("Nguyễn Văn A"), không phải lời tự sửa.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Generic, Optional, TypeVar
@@ -134,3 +135,23 @@ def token_index(tokens: list[str], offset: int) -> int:
             return index
         at += 1
     return max(len(tokens) - 1, 0)
+
+
+# Người gọi nói tiếng Anh: phủ định, phân vân, tự sửa ("not March 14", "maybe …", "I think …",
+# "sorry, I mean …"). Không gỡ câu tiếng Anh như "không phải A mà là B": có tín hiệu là không chắc,
+# hỏi lại — thà hỏi lại còn hơn xác minh nhầm. So trên `clean(...)` (còn dấu, "isn't" -> "isn t"),
+# nên "nó" có dấu không khớp "no".
+_ENGLISH_HEDGE = re.compile(
+    r"(?<!\w)(?:not|never|isn t|wasn t|don t|doesn t|didn t|can t|maybe|perhaps|probably|possibly|"
+    r"i think|i guess|i believe|i suppose|i m not sure|around|about|approximately|or so|"
+    r"something like|actually|sorry|i mean|wait)(?!\w)"
+)
+_ENGLISH_NO = re.compile(r"(?<!\w)no(?!\w)")
+
+
+def english_hedge(text: str, *, bare_no: bool) -> bool:
+    """`text` đã qua `clean`. `bare_no`: tính cả "no" đứng riêng — không dùng cho tên, vì tên không
+    dấu có thể có âm "no" (Nô)."""
+    return _ENGLISH_HEDGE.search(text) is not None or (
+        bare_no and _ENGLISH_NO.search(text) is not None
+    )

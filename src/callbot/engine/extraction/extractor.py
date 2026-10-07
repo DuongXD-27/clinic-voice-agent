@@ -336,7 +336,9 @@ class InformationExtractor:
                 # Vùng ngày cũng được nhận khi ngày không hợp lệ ("Nguyễn Văn A, sinh ngày
                 # 31/02/1978" -> giữ tên, hỏi lại ngày), nhưng câu chỉ tình cờ có chữ số
                 # ("bảo hiểm có chi trả 80% không") thì không có vùng nào để cắt.
-                zone = name_before_dob(transcript) or name_after_dob(transcript)
+                zone = name_before_dob(transcript, dob_reading.zone) or name_after_dob(
+                    transcript, dob_reading.zone
+                )
                 name_reading = self._full_name(zone, transcript, ctx) if zone else name_reading
             else:
                 name_reading = self._full_name(transcript, transcript, ctx)
