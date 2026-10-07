@@ -149,11 +149,13 @@ def route_semantic(
     cancel_reason: Field[CancelReason],
     direction: Direction = "outbound",
     cancel_promotion: bool = False,
+    exact_time_proposal: bool = False,
 ) -> Optional[RouteReason]:
     """`None` = chỉ dùng rule. Gọi sau khi rule của mọi trường liên quan đã chạy.
 
     `cancel_promotion` (flag tắt mặc định) chỉ tách `CANCEL_LEFTOVER` khỏi `CANCEL_CONTRADICTION`;
-    tắt thì route y hệt trước đây.
+    tắt thì route y hệt trước đây. `exact_time_proposal`: câu chỉ xin một giờ cụ thể (`proposed_time` có
+    giờ) ở câu hỏi gọi ra; Dialogue tự quyết bằng luật.
     """
     text = clean(transcript)
     if not text:
@@ -213,6 +215,11 @@ def route_semantic(
     # ý định dùng được VÀ cũng không có câu trả lời có/không dứt khoát. Một lượt đã nói rõ nhu cầu
     # ("tôi muốn hủy lịch") đi thẳng nhánh nghiệp vụ, không tốn thêm một request.
     if intent.value in (Intent.NONE, None) and agreement.value not in _DECISIVE_AGREEMENTS:
+        if exact_time_proposal:
+            # "Cho tôi ba giờ kém mười lăm chiều ngày 14": Dialogue đối chiếu với lịch đang đọc — giờ
+            # khác thì mở đổi lịch (R-29), trùng thì đọc lại. Model không thấy giờ lịch hẹn nên có thể
+            # đọc thành ngoài phạm vi / xác nhận đến khám và đè đường luật đó (QC qc-rs-04)
+            return None
         return RouteReason.INTENT_UNCLEAR
     return None
 
@@ -251,8 +258,13 @@ def merge_semantic(
     outcome: Optional[SemanticOutcome],
     route_reason: RouteReason,
     allowed_intents: tuple[Intent, ...],
+    *,
+    time_proposal: bool = False,
 ) -> ExtractionResult:
-    """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật."""
+    """Bảng quyền §8.3.4. Mọi giá trị nhận từ model mang `Provenance.FALLBACK` và span thật.
+
+    `time_proposal`: câu chỉ xin một thời điểm (`proposed_time`) ở câu hỏi gọi ra.
+    """
     if outcome is None:
         return _without_model(result, route_reason)
     if route_reason is RouteReason.IDENTITY_TURN:
@@ -266,6 +278,13 @@ def merge_semantic(
     clinical = result.clinical
     if outcome.clinical is ClinicalLevel.MENTION and clinical.value is ClinicalLevel.NONE:
         clinical = Field(ClinicalLevel.MENTION, Provenance.FALLBACK, span=outcome.clinical_span)
+    if time_proposal and not (
+        outcome.reply_kind is ReplyKind.CHANGE_INTENT and outcome.intent is Intent.RESCHEDULE
+    ):
+        # "Tuần sau cho tôi khám được không": khoảng thời gian có thể chứa lịch đang đọc, nên luật chỉ
+        # đọc lại lịch; model được thêm nhu cầu đổi lịch. Nhãn khác (ngoài phạm vi, từ chối, xác nhận
+        # đến khám) không đè đường luật của Dialogue (QC qc-rs-04)
+        return _replace(result, clinical=clinical)
     if outcome.intent is Intent.OUT_OF_SCOPE and outcome.intent in allowed_intents:
         # Ngoài phạm vi thắng mọi kiểu trả lời, như thứ tự PRIORITY của luật ("vâng, à mà địa chỉ ở
         # đâu"): Policy chuyển máy. Bỏ tín hiệu đồng ý để không lượt nào dùng nó làm bằng chứng ghi.
