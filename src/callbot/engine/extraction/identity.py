@@ -163,11 +163,16 @@ _ENGLISH_NO = re.compile(r"(?<!\w)no(?!\w)")
 
 
 def english_hedge(text: str, *, date: bool) -> bool:
-    """`text` đã qua `clean`. `date`: câu khai ngày sinh — tính thêm lời ước chừng và "no" đứng riêng.
-    Không dùng cho tên, vì tên không dấu có thể có âm "no" (Nô)."""
+    """`text` đã qua `clean`. `date`: câu khai ngày sinh — tính thêm lời ước chừng."""
     if _ENGLISH_HEDGE.search(text) or _ENGLISH_MID_CORRECTION.search(text):
         return True
-    return date and bool(_ENGLISH_APPROX.search(text) or _ENGLISH_NO.search(text))
+    return date and _ENGLISH_APPROX.search(text) is not None
+
+
+def english_no(zone: str) -> bool:
+    """ "no" tự sửa NẰM TRONG vùng ngày sinh ("March 14, 1978, no, March 15, 1978"). Ngoài vùng ngày,
+    văn bản không dấu có "no" là "nó", "nợ", "nô" hay tên Nô ("Le Van No, sinh 14/3/1978")."""
+    return _ENGLISH_NO.search(zone) is not None
 
 
 def strip_english_opener(clause: str) -> str:

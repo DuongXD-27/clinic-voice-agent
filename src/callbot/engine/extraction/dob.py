@@ -35,6 +35,7 @@ from callbot.engine.extraction.identity import (
     Reading,
     Reason,
     english_hedge,
+    english_no,
     token_index,
 )
 from callbot.engine.extraction.schema import INVALID, DobValue, Field, Provenance
@@ -198,8 +199,10 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     # sau chỉ phải hỏi lại ngày sinh chứ không hỏi lại cả tên.
     value, lo, hi = parsed
     zone = " ".join(words[origin[start + lo][0] : origin[start + hi - 1][1] + 1])
-    if find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None or english_hedge(
-        text, date=True
+    if (
+        find_last_phrase(joined, UNCERTAINTY, mixed=True) is not None
+        or english_hedge(text, date=True)
+        or english_no(zone)
     ):
         # "14/3/1978 thì phải", "maybe March 14", "not 14/3/1978": người gọi đã tự nói là không
         # chắc hoặc bác bỏ — hỏi lại, đừng xác minh hộ

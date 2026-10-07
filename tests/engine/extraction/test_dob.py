@@ -177,6 +177,24 @@ def test_english_politeness_is_not_a_hedge(text: str) -> None:
     assert extract_dob(text, TODAY).value == date(1978, 3, 14)
 
 
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # không dấu: "no" là tên Nô, "nó", "nợ" — nằm ngoài vùng ngày sinh
+        ("Le Van No, sinh 14/3/1978", date(1978, 3, 14)),
+        ("con toi no sinh ngay 14/3/2010", date(2010, 3, 14)),
+        ("sinh 14/3/1978, no da noi roi ma", date(1978, 3, 14)),
+    ],
+)
+def test_unaccented_no_outside_the_date_is_not_a_hedge(text: str, expected: date) -> None:
+    assert extract_dob(text, TODAY).value == expected
+
+
+@pytest.mark.parametrize("text", ["14/3/1978, no, 15/3/1978", "March 14, no, March 15, 1978"])
+def test_no_inside_the_date_is_still_a_correction(text: str) -> None:
+    assert extract_dob(text, TODAY).value == INVALID
+
+
 def test_may_is_a_month_only_inside_a_full_english_date() -> None:
     assert extract_dob("May 5, 1990", TODAY).value == date(1990, 5, 5)
     assert extract_dob("nguyen thi may", TODAY).value is None
