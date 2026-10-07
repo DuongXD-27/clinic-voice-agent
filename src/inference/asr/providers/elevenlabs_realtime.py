@@ -60,11 +60,14 @@ class ElevenLabsRealtimeASR:
         audio_sample_rate: int = NARROWBAND_RATE,
         silence_classifier: FrameClassifier | None = None,
         end_silence_ms: int = 600,
+        pre_speech_ms: int | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """`frames`: PCM liên tục ở `audio_sample_rate` (8000 hoặc 16000 — xem
         `_SUPPORTED_RATES`, không resample, gửi thẳng ở rate nguồn). Endpoint hoá turn
         bằng cùng chiến lược energy/webrtc classifier như ZipFormer.stream(), KHÔNG dùng
         VAD nội bộ của ElevenLabs (xem docstring module).
+
+        `pre_speech_ms` không áp dụng: mọi frame đều đã gửi lên server.
 
         `AsrSegmentEnd.DISCARD` bị bỏ qua: audio đã gửi lên server không rút lại được, và
         commit để rồi bỏ kết quả có thể trả về sau khi bot dứt lời, thành turn giả."""

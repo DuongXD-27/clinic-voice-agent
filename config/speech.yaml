@@ -39,6 +39,42 @@ turn_max_wait_after_vad_end_ms: 300
 turn_max_wait_for_asr_ms: 3000
 # Lời bắt đầu quá sát lúc bot vừa dứt lời phải dài thêm — chống dư âm/tiếng vọng phòng.
 turn_post_bot_guard_ms: 500
+# Lượt đã đủ điều kiện chốt (có final) vẫn chờ thêm chừng này; người gọi nói tiếp trong lúc đó
+# ("14 tháng 3" … ừm … "năm 1978") thì nối vào cùng lượt thay vì thành hai lượt. Cộng thẳng vào
+# độ trễ MỌI lượt. 0 = tắt. Bật 08/10 theo yêu cầu owner để thử trực tiếp — chưa đo trên GipFormer.
+turn_merge_window_ms: 700
+
+# Audio giữ trước lúc VAD của ASR nhận ra tiếng nói, đưa kèm vào ASR streaming (Silero bật cờ
+# trễ 250-700 ms). null = theo pre_speech_ms của provider trong asr.yaml (300 ms).
+asr_pre_speech_ms: null
+
+# Cuộc gọi điện thoại (participant SIP của LiveKit) ghi đè các khoá trên. Chỉ ghi khoá đã đo.
+#   asr_pre_speech_ms 1000: đo 07/10 trên kênh điện thoại mô phỏng (noise-bench --channel phone,
+#   8 kHz G.711): WER lượt bộ golden sạch 0,147 -> 0,087, office@8 0,413 -> 0,263; sửa "KHÔNG
+#   ĐƯỢC" -> "CŨNG ĐƯỢC" ở bộ câu ngắn. Đổi lại thêm lượt "ĐÂY" (1 ở office@3, 2 từ clip "Ừ").
+#   Trên web (16 kHz) kết quả trái chiều nên web giữ 300.
+#   docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+phone_overrides:
+  asr_pre_speech_ms: 1000
+
+# --- Câu chỉ có từ đệm ("ừ", "à", "ờ", "dạ"…) ---
+# false = gửi engine ("ừ/ờ" là đồng ý, "dạ" hỏi lại, "à/ừm" đang nghĩ); true = bỏ (trước 07/10).
+# Từ đệm nói lúc bot đang nói luôn bỏ (tiếng đệm "tôi đang nghe").
+# Bật 07/10 theo yêu cầu owner để thử trực tiếp — CHƯA có số đo hợp lệ (bộ short sai nhãn,
+# docs/evidence/stt-phone-echo-speaker-2026-10-07.md). Rủi ro đã biết: nhiễu lớn đôi khi bị ASR
+# nghe thành "Ừ/À" (7/240 đoạn ~3 s nhiễu văn phòng, kênh điện thoại) = đồng ý giả.
+turn_drop_filler_words: false
+
+# --- THỬ NGHIỆM: cổng giọng người gọi (speaker embedding, speech/audio/speaker_gate.py) ---
+# off | log (chỉ ghi similarity) | enforce (bỏ lượt dài không giống người gọi). Giọng mẫu = lượt
+# dài đầu tiên của cuộc gọi; chỉ xét lượt có >= speaker_gate_min_speech_ms tiếng nói. Đo 07/10
+# (giọng mẫu cùng cuộc gọi, đoạn 2 s): EER 7% điện thoại / 0,9% web; ngưỡng 0,2 giữ ~98% câu
+# thật. Model: sherpa-onnx speaker-recongition-models, nemo_en_titanet_small.onnx.
+# Bật enforce 08/10 theo yêu cầu owner để thử trực tiếp — chưa thử trong cuộc gọi thật.
+speaker_gate_mode: "enforce"
+speaker_gate_model_path: temp/models/speaker/nemo_en_titanet_small.onnx
+speaker_gate_threshold: 0.2
+speaker_gate_min_speech_ms: 2000
 
 # --- Turn Validator: lọc lượt ảo giác theo SNR + độ ổn định transcript ---
 # Bật 28/09/2026 cùng lúc đổi sang Silero (quyết định owner) — chưa có số đo tách riêng.

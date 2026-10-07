@@ -7,7 +7,7 @@ TurnController + Validator). Đo cả text ASR final lẫn turn thực sự gử
 
 Bộ dữ liệu (`--dataset`):
 - `web` (mặc định): câu thật của người thử nghiệm, 16 kHz đầy đủ dải, cắt từ dump
-  `temp/audio/livekit_debug_web-*.wav` Confident. Can you go? tĩnh. Không có nhãn — tham chiếu là
+  `temp/audio/livekit_debug_web-*.wav` của các cuộc gọi yên tĩnh. Không có nhãn — tham chiếu là
   chính model decode đoạn sạch đó.
 - `golden`: 40 câu có nhãn của `eval/stt-bench` (8 kHz điện thoại, nâng lên 16 kHz).
 - `short`: câu trả lời 1-3 từ ("dạ", "vâng", "có", "đúng rồi", "hủy lịch"...) cắt từ cùng các
@@ -28,6 +28,14 @@ Nguồn nhiễu:
 - `office`: đoạn không có giọng nói (theo Silero) cắt tự động từ các bản dump — nhiễu thật
   qua mic + trình duyệt + LiveKit.
 - `babble`: 3 luồng giọng người khác (bộ golden) cộng lại — người nói xung quanh.
+- `voice2`: MỘT người khác nói chuyện bình thường, có ngắt nghỉ giữa các câu — người nhà hay
+  đồng nghiệp bên cạnh. Giọng lấy từ bộ khác người với bộ đang đo (golden <-> web). Mức trộn
+  tính trên đoạn có giọng, không tính khoảng nghỉ.
+
+Kênh (`--channel`): `web` đưa thẳng 16 kHz như LiveKit web. `phone` mô phỏng đường SIP: trộn
+nhiễu ở 16 kHz (nhiễu tới mic trước codec) -> hạ 8 kHz -> G.711 μ-law -> nâng lại 16 kHz như
+LiveKit đưa vào AudioStream. Tham chiếu `clean_batch` cũng qua cùng kênh, nên `*_drift` chỉ đo
+ảnh hưởng của nhiễu; ảnh hưởng của kênh nằm trong `wer_golden`/`wer_turn` (so với nhãn).
 
 Chỉ số chính:
 - `wer_turn_drift`/`wer_turn`: WER của turn gửi lên core so với decode sạch / so với nhãn.
@@ -60,7 +68,7 @@ import sys
 import time
 import wave
 from pathlib import Path
-from typing import AsyncIterator
+from typing import AsyncIterator, NamedTuple
 
 import numpy as np
 import yaml
@@ -78,9 +86,11 @@ from inference.asr import create_asr_gateway  # noqa: E402
 from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.asr.recognizer import SpeechRecognizer  # noqa: E402
 from speech.audio.codec import resample  # noqa: E402
-from speech.bundle import build_streaming_bundle  # noqa: E402
+from speech.audio.g711 import mulaw_to_pcm16  # noqa: E402
+from speech.bundle import build_streaming_bundle, turn_controller_options  # noqa: E402
 from speech.settings import SpeechSettings  # noqa: E402
 from speech.turn.controller import TurnController  # noqa: E402
+from speech.turn.interruption import InterruptionController, InterruptionState  # noqa: E402
 from speech.types import AudioSegment  # noqa: E402
 
 RATE = 16_000
@@ -90,6 +100,8 @@ TAIL_S = 2.0
 WORK_DIR = ROOT / "temp" / "noise-bench"
 GOLDEN = ROOT / "eval" / "stt-bench" / "golden-cases.yaml"
 DEFAULT_CONDITIONS = "clean,office@15,office@8,office@3,babble@12,babble@6"
+PHONE_RATE = 8_000
+CHANNELS = ("web", "phone")
 NOISE_ONLY_TRIALS = 12
 FRAME_S = FRAME / RATE
 # Phải khớp config/speech.yaml: deploy đổi sang Silero + Validator từ 28/09
@@ -215,6 +227,44 @@ def build_babble(speech_clips: list[np.ndarray], seed: int = 7) -> np.ndarray:
     return babble * (1000.0 / _rms(babble))
 
 
+def build_voice2(speech_clips: list[np.ndarray], seed: int = 11) -> np.ndarray:
+    """Một người khác nói chuyện: các câu nối nhau, nghỉ 0,3-1,5 s giữa hai câu."""
+    rng = np.random.default_rng(seed)
+    parts = []
+    for i in rng.permutation(len(speech_clips)):
+        parts.append(speech_clips[i] / max(_active_rms(speech_clips[i]), 1.0))
+        parts.append(np.zeros(int(rng.uniform(0.3, 1.5) * RATE), dtype=np.float32))
+    stream = np.concatenate(parts)
+    return stream * (1000.0 / _active_rms(stream))
+
+
+# Nguồn nhiễu là giọng người có khoảng nghỉ: đo mức trên đoạn có giọng, như với câu người gọi.
+_SPEECH_LIKE_NOISE = frozenset({"voice2"})
+
+
+def _mulaw_encode(samples: np.ndarray) -> bytes:
+    """Lượng tử G.711 μ-law về mức gần nhất trong chính bảng giải mã của `speech.audio.g711`."""
+    levels = np.frombuffer(mulaw_to_pcm16(bytes(range(256))), dtype=np.int16).astype(np.int32)
+    order = np.argsort(levels, kind="stable")
+    ordered = levels[order]
+    x = samples.astype(np.int32)
+    upper = np.clip(np.searchsorted(ordered, x), 1, len(ordered) - 1)
+    lower = upper - 1
+    nearest = np.where(x - ordered[lower] <= ordered[upper] - x, lower, upper)
+    return order[nearest].astype(np.uint8).tobytes()
+
+
+def phone_channel(samples: np.ndarray) -> np.ndarray:
+    """16 kHz -> 8 kHz -> G.711 μ-law -> 16 kHz, giữ nguyên số mẫu."""
+    pcm = np.clip(np.round(samples), -32768, 32767).astype(np.int16).tobytes()
+    narrow = np.frombuffer(resample(pcm, RATE, PHONE_RATE), dtype=np.int16)
+    coded = mulaw_to_pcm16(_mulaw_encode(narrow))
+    wide = np.frombuffer(resample(coded, PHONE_RATE, RATE), dtype=np.int16)
+    out = np.zeros(len(samples), dtype=np.int16)
+    out[: min(len(wide), len(out))] = wide[: len(out)]
+    return out
+
+
 def make_trial(
     speech: np.ndarray | None,
     noise: np.ndarray | None,
@@ -222,6 +272,7 @@ def make_trial(
     rng: np.random.Generator,
     *,
     noise_rms_target: float | None = None,
+    speech_like_noise: bool = False,
 ) -> np.ndarray:
     speech_len = 0 if speech is None else len(speech)
     total = int(LEAD_S * RATE) + speech_len + int(TAIL_S * RATE)
@@ -234,10 +285,11 @@ def make_trial(
     else:
         start = int(rng.integers(0, len(noise) - total))
         segment = noise[start : start + total].astype(np.float64)
+        level = max((_active_rms if speech_like_noise else _rms)(segment), 1e-6)
         if noise_rms_target is not None:
-            gain = noise_rms_target / max(_rms(segment), 1e-6)
+            gain = noise_rms_target / level
         else:
-            gain = _active_rms(speech) / (max(_rms(segment), 1e-6) * 10 ** (snr_db / 20))
+            gain = _active_rms(speech) / (level * 10 ** (snr_db / 20))
         mix += gain * segment
     return np.clip(np.round(mix), -32768, 32767).astype(np.int16)
 
@@ -353,9 +405,27 @@ def _livekit_queues() -> dict[str, int]:
     }
 
 
-async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRecognizer) -> dict:
-    """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core và thời điểm
-    (giây audio) chốt từng turn. Xác định: xem docstring module."""
+class BotTurn(NamedTuple):
+    """Bot nói câu `text` trong [start_s, end_s) (giây trong trial). `echo`: tiếng bot vọng về
+    mic người gọi, cùng độ dài trial, chỉ cộng vào khi bot còn đang phát — ngắt lời được xác
+    nhận thì echo dừng như CallBridge xoá hàng đợi phát."""
+
+    start_s: float
+    end_s: float
+    text: str
+    echo: np.ndarray
+
+
+async def run_pipeline(
+    pcm: np.ndarray,
+    settings: SpeechSettings,
+    asr: SpeechRecognizer,
+    bot: BotTurn | None = None,
+) -> dict:
+    """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core, thời điểm (giây
+    audio) chốt từng turn. Có `bot`: thêm mốc ứng viên ngắt lời
+    (`barge_in_candidates`) và lúc ngắt lời được xác nhận (`barge_in_at`), dùng
+    InterruptionController như worker. Xác định: xem docstring module."""
     recognizer = _CapturingRecognizer(asr)
     clock = VirtualTime()
     bundle = build_streaming_bundle(
@@ -367,21 +437,59 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
     # Bundle dựng TurnController theo đồng hồ thật; bộ đo đẩy audio nhanh hơn thời gian thực nên
     # dựng lại cùng cấu hình, chạy theo đồng hồ ảo.
     controller = TurnController(
-        min_speech_ms=settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
         validator=bundle.validator,
         clock=clock.now,
         sleep=clock.sleep,
+        **turn_controller_options(settings),
     )
     frame_ms = FRAME * 1000 // RATE
+
+    interruption = None
+    barge_in: dict[str, object] = {"at": None, "candidates": []}
+    if bot is not None:
+
+        class _Playout:
+            async def cancel(self) -> None:
+                barge_in["at"] = clock.now()
+
+        interruption = InterruptionController(
+            _Playout(),
+            clock=clock.now,
+            validator=bundle.validator,
+            min_snr_db=settings.interruption_min_snr_db,
+        )
+        on_speech_started = interruption.on_speech_started
+
+        async def recording_speech_started(event) -> None:
+            await on_speech_started(event)
+            if interruption.state == InterruptionState.INTERRUPTION_CANDIDATE:
+                barge_in["candidates"].append(clock.now())
+
+        interruption.on_speech_started = recording_speech_started
+    bot_state = {"speaking": False, "done": bot is None}
+
+    def update_bot(now: float) -> None:
+        """Như CallBridge._speak: báo bot bắt đầu nói; dừng khi phát hết hoặc bị ngắt lời."""
+        if bot_state["done"]:
+            return
+        if not bot_state["speaking"] and now >= bot.start_s:
+            bot_state["speaking"] = True
+            controller.on_bot_speaking_changed(True)
+            interruption.on_bot_started_speaking(bot.text)
+        elif bot_state["speaking"] and (barge_in["at"] is not None or now >= bot.end_s):
+            bot_state.update(speaking=False, done=True)
+            controller.on_bot_speaking_changed(False, preserve_candidate=barge_in["at"] is not None)
+            interruption.on_bot_stopped_speaking()
 
     async def frames() -> AsyncIterator[bytes]:
         for i in range(0, len(pcm) - FRAME + 1, FRAME):
             clock.advance(frame_ms)
             await _settle(recognizer)
-            yield pcm[i : i + FRAME].tobytes()
+            update_bot(clock.now())
+            frame = pcm[i : i + FRAME]
+            if bot_state["speaking"]:
+                frame = np.clip(frame + bot.echo[i : i + FRAME], -32768, 32767).astype(np.int16)
+            yield frame.tobytes()
             await _settle(recognizer)
         # Hết audio: cho các hẹn giờ còn chờ (timeout sau speech_end) kịp chạy.
         for _ in range(2000 // frame_ms):
@@ -390,7 +498,9 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
 
     turns: list[str] = []
     turn_times: list[float] = []
-    async for turn in bundle.stt_pipeline.stream(frames(), turn_controller=controller):
+    async for turn in bundle.stt_pipeline.stream(
+        frames(), turn_controller=controller, interruption=interruption
+    ):
         turns.append(turn.text)
         turn_times.append(clock.now())
     return {
@@ -398,6 +508,8 @@ async def run_pipeline(pcm: np.ndarray, settings: SpeechSettings, asr: SpeechRec
         "final_confidences": recognizer.final_confidences,
         "turns": turns,
         "turn_times": turn_times,
+        "barge_in_candidates": barge_in["candidates"],
+        "barge_in_at": barge_in["at"],
     }
 
 
@@ -581,6 +693,7 @@ def run(
     repeats: int,
     profile: str,
     overrides: dict,
+    channel: str = "web",
 ) -> dict:
     overrides = {**PROFILES[profile], **overrides}
     settings = SpeechSettings(**overrides)
@@ -588,21 +701,26 @@ def run(
     meter = DecodeMeter()
 
     golden_cases = load_golden()
+    web_cases = build_web_set(asr, settings.silero_vad_model_path)
     if dataset == "golden":
         cases = golden_cases
     elif dataset == "short":
         cases = build_short_set(asr, settings.silero_vad_model_path)
     else:
-        cases = build_web_set(asr, settings.silero_vad_model_path)
+        cases = web_cases
+    to_channel = phone_channel if channel == "phone" else (lambda x: x)
     clean_ref: dict[str, str] = {}
     for case in cases:
-        segment = AudioSegment(pcm=case["speech"].astype(np.int16).tobytes(), sample_rate=RATE)
-        clean_ref[case["id"]] = asr.transcribe(segment).text
+        clean = to_channel(case["speech"]).astype(np.int16).tobytes()
+        clean_ref[case["id"]] = asr.transcribe(AudioSegment(pcm=clean, sample_rate=RATE)).text
 
+    # Giọng người khác lấy từ bộ khác người với bộ đang đo: golden (nhiều người gọi điện thoại)
+    # cho bộ web/short (người thử nghiệm), và ngược lại.
+    others = web_cases if dataset == "golden" else golden_cases
     noises = {
         "office": build_office_noise(settings.silero_vad_model_path),
-        # Giọng nền lấy từ bộ nhãn (người khác, không phải người thử nghiệm của bộ web).
         "babble": build_babble([c["speech"] for c in golden_cases]),
+        "voice2": build_voice2([c["speech"] for c in others]),
     }
     median_speech_rms = float(np.median([_active_rms(c["speech"]) for c in cases]))
 
@@ -610,6 +728,7 @@ def run(
         "label": label,
         "dataset": dataset,
         "profile": profile,
+        "channel": channel,
         "repeats": repeats,
         "settings": {k: getattr(settings, k) for k in sorted(overrides)},
         "conditions": {},
@@ -617,6 +736,7 @@ def run(
     for condition in conditions:
         noise_name, _, snr = condition.partition("@")
         noise = None if noise_name == "clean" else noises[noise_name]
+        speech_like = noise_name in _SPEECH_LIKE_NOISE
         snr_db = float(snr) if snr else None
         rng = np.random.default_rng(1234)
         started = time.monotonic()
@@ -624,7 +744,9 @@ def run(
         rows = []
         for repeat in range(repeats if noise is not None else 1):
             for case in cases:
-                pcm = make_trial(case["speech"], noise, snr_db, rng)
+                pcm = to_channel(
+                    make_trial(case["speech"], noise, snr_db, rng, speech_like_noise=speech_like)
+                )
                 out = asyncio.run(run_pipeline(pcm, settings, asr))
                 finals, turns = out["finals"], out["turns"]
                 prediction = " ".join(finals)
@@ -655,7 +777,16 @@ def run(
         if noise is not None:
             noise_rms = median_speech_rms / 10 ** (snr_db / 20)
             for _ in range(NOISE_ONLY_TRIALS):
-                pcm = make_trial(None, noise, None, rng, noise_rms_target=noise_rms)
+                pcm = to_channel(
+                    make_trial(
+                        None,
+                        noise,
+                        None,
+                        rng,
+                        noise_rms_target=noise_rms,
+                        speech_like_noise=speech_like,
+                    )
+                )
                 out = asyncio.run(run_pipeline(pcm, settings, asr))
                 noise_only_rows.append(
                     {
@@ -748,6 +879,7 @@ def main() -> None:
     parser.add_argument("--label")
     parser.add_argument("--dataset", choices=("web", "golden", "short"), default="web")
     parser.add_argument("--profile", choices=sorted(PROFILES), default="production")
+    parser.add_argument("--channel", choices=CHANNELS, default="web")
     parser.add_argument("--conditions", default=DEFAULT_CONDITIONS)
     parser.add_argument(
         "--repeats", type=int, default=2, help="số đoạn nhiễu khác nhau cho mỗi câu"
@@ -767,7 +899,15 @@ def main() -> None:
     if not args.label:
         parser.error("--label hoặc --compare là bắt buộc")
     overrides = dict(item.split("=", 1) for item in args.set)
-    run(args.label, args.dataset, args.conditions.split(","), args.repeats, args.profile, overrides)
+    run(
+        args.label,
+        args.dataset,
+        args.conditions.split(","),
+        args.repeats,
+        args.profile,
+        overrides,
+        args.channel,
+    )
 
 
 if __name__ == "__main__":

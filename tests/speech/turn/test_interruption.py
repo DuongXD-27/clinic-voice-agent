@@ -415,3 +415,20 @@ async def test_high_snr_real_barge_in_still_confirms_with_snr_threshold() -> Non
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+async def test_bot_sentence_echoed_with_misheard_words_does_not_confirm_barge_in() -> None:
+    """Đo 07/10 qua kênh điện thoại: đuôi câu bot bị chép sai ("VỀ VIỆC", "HẢ") vẫn là echo."""
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=200, clock=clock)
+    controller.on_bot_started_speaking("Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?")
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.25)
+
+    confirmed = await controller.on_partial_transcript(
+        TranscriptEvent(text="DẠ ANH CHỊ MUỐN ĐỔI LỊCH HAY HỦY LỊCH HẢ", is_final=False)
+    )
+
+    assert confirmed is False
+    assert tts.cancel_calls == 0

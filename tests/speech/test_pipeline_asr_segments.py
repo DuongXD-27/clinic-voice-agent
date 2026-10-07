@@ -9,6 +9,7 @@ các frame nó nhận. Bot bắt đầu nói giữa câu người dùng — câu
 import asyncio
 from typing import AsyncIterator
 
+import pytest
 from tests.speech.pipeline_factory import make_stt_pipeline
 
 from speech.asr.vad.base import VadEvent
@@ -154,6 +155,64 @@ async def test_confirmed_barge_in_keeps_asr_segment() -> None:
 
     assert interruption.state == InterruptionState.INTERRUPTED
     assert AsrSegmentEnd.DISCARD not in asr.items
+
+
+class _FinalASR(_RecordingASR):
+    """Phát một final `text` khi đã nhận `final_after` frame."""
+
+    def __init__(self, text: str, final_after: int) -> None:
+        super().__init__()
+        self._text = text
+        self._final_after = final_after
+
+    async def stream(self, frames: AsyncIterator) -> AsyncIterator[TranscriptEvent]:
+        async for item in frames:
+            self.items.append(item)
+            if len(self.items) == self._final_after:
+                yield TranscriptEvent(text=self._text, is_final=True)
+
+
+@pytest.mark.parametrize(
+    ("final_text", "turns"),
+    [
+        ("ANH CHỊ CHẮC CHẮN MUỐN HỦY LỊCH KHÁM NÀY", []),
+        ("ANH CHỊ CHẮC CHẮN MUỐN HỦY TÔI LÀ NGUYỄN VĂN A", ["TÔI LÀ NGUYỄN VĂN A"]),
+    ],
+)
+async def test_bot_stopping_with_unconfirmed_candidate_keeps_only_caller_words(
+    final_text: str, turns: list[str]
+) -> None:
+    """Tiếng bot vọng lại giữ ứng viên ngắt lời tới hết câu bot (VAD không có speech_end), chưa
+    được xác nhận. Đo 07/10 (eval/noise-bench/barge_in_eval.py, echo nhỏ hơn giọng người gọi
+    30 dB): final của đoạn đó thành lượt chép lại câu bot ở 11-12/12 câu; bỏ cả đoạn thì người
+    gọi chen vào mất luôn câu của mình. Giữ đoạn, chỉ bỏ phần đầu là câu bot."""
+    controller = TurnController(min_speech_ms=0, max_wait_after_vad_end_ms=20)
+    controller.on_bot_speaking_changed(True)
+    interruption = InterruptionController(_FakeCancellableTTS(), min_speech_ms=0)
+    interruption.on_bot_started_speaking("Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?")
+    vad = _FakeAsyncVAD([VadEvent("speech_start")] + [VadEvent("speech", b"x")] * 9)
+    asr = _FinalASR(final_text, final_after=8)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
+
+    def _bot_stops_at_frame_5(index: int) -> None:
+        if index == 5:
+            controller.on_bot_speaking_changed(False)
+            interruption.on_bot_stopped_speaking()
+
+    frames = [_make_frame(i) for i in range(1, 11)]
+    result = await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames, _bot_stops_at_frame_5),
+                turn_controller=controller,
+                interruption=interruption,
+            )
+        ),
+        timeout=2.0,
+    )
+
+    assert AsrSegmentEnd.DISCARD not in asr.items
+    assert [turn.text for turn in result] == turns
 
 
 async def test_no_marker_when_asr_received_nothing() -> None:

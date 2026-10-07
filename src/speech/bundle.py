@@ -19,6 +19,7 @@ from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
+from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
 from speech.turn.controller import TurnController
@@ -148,6 +149,18 @@ class StreamingSpeechBundle:
     validator: Optional[TurnValidator] = None
 
 
+def turn_controller_options(settings: SpeechSettings) -> dict[str, object]:
+    """Tham số TurnController theo cấu hình — dùng chung với bộ đo (eval/noise-bench)."""
+    return {
+        "min_speech_ms": settings.turn_min_speech_ms,
+        "max_wait_after_vad_end_ms": settings.turn_max_wait_after_vad_end_ms,
+        "max_wait_for_asr_ms": settings.turn_max_wait_for_asr_ms,
+        "post_bot_guard_ms": settings.turn_post_bot_guard_ms,
+        "merge_window_ms": settings.turn_merge_window_ms,
+        "drop_filler_words": settings.turn_drop_filler_words,
+    }
+
+
 def build_streaming_bundle(
     settings: SpeechSettings,
     *,
@@ -164,6 +177,7 @@ def build_streaming_bundle(
     (config/livekit.yaml), không có mặc định ở đây. Một bộ phân loại theo `vad_provider`, phân
     loại mỗi frame đúng một lần, dùng chung cho VAD chính và bộ chốt câu của ASR.
     """
+    asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     queue_max_frames = max(1, input_queue_ms // frame_ms)
     asr_queue_max_frames = max(1, asr_queue_ms // frame_ms)
     preroll_frames = max(1, barge_in_preroll_ms // frame_ms)
@@ -172,7 +186,6 @@ def build_streaming_bundle(
         _build_classifier(settings, sample_rate),
         capacity=queue_max_frames + asr_queue_max_frames + preroll_frames,
     )
-    asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     validator = None
     evidence = None
     if settings.turn_validator_enabled:
@@ -183,6 +196,14 @@ def build_streaming_bundle(
             if settings.vad_provider == "silero"
             else _build_silero(settings, sample_rate),
             frame_ms=frame_ms,
+        )
+    speaker_gate = None
+    if settings.speaker_gate_mode != "off":
+        speaker_gate = SpeakerGate.from_model(
+            settings.speaker_gate_model_path,
+            enforce=settings.speaker_gate_mode == "enforce",
+            threshold=settings.speaker_gate_threshold,
+            min_speech_ms=settings.speaker_gate_min_speech_ms,
         )
     stt_pipeline = STTPipeline(
         asr,
@@ -196,18 +217,14 @@ def build_streaming_bundle(
             "audio_sample_rate": sample_rate,
             "silence_classifier": detector.view(),
             "end_silence_ms": settings.vad_end_silence_ms,
+            "pre_speech_ms": settings.asr_pre_speech_ms,
         },
         queue_max_frames=queue_max_frames,
         asr_queue_max_frames=asr_queue_max_frames,
         barge_in_preroll_frames=preroll_frames,
+        speaker_gate=speaker_gate,
     )
-    turn_controller = TurnController(
-        min_speech_ms=settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
-        validator=validator,
-    )
+    turn_controller = TurnController(validator=validator, **turn_controller_options(settings))
     tts = SpeechSynthesizer(
         create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
     )

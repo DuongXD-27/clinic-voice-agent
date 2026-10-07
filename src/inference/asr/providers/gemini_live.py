@@ -3,7 +3,8 @@
 Manual activity boundaries use the same local classifier/endpoint as ZipFormer.
 Each segment has an isolated socket, so a discarded or duplicate remote response
 cannot become the next caller's transcript. Audio is streamed while speaking;
-only the last small chunk is buffered. No SDK schema conversion.
+only the last small chunk is buffered. No SDK schema conversion. The next segment's
+socket is opened and set up in the background, so the handshake is off the speech path.
 
 Khi một đoạn lỗi (hết hạn chờ final, mất kết nối, server từ chối — kể cả hết credit) và có
 `fallback` (cấu hình `fallback_provider`), PCM của chính đoạn đó được decode bằng model cục bộ
@@ -22,6 +23,7 @@ from typing import Any, Optional, Protocol
 
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosed
+from websockets.protocol import State
 
 from inference.asr.base import ASRResult
 from inference.asr.config import GeminiLiveASRConfig
@@ -36,6 +38,9 @@ LIVE_WS_URL = (
     "google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
 )
 _DONE = object()
+# Socket setup xong rồi để rảnh: 30 s vẫn dùng được, 60 s vẫn báo OPEN nhưng audio gửi vào bị
+# server cắt 1008 (đo 07/10). Quá tuổi này thì mở socket khác.
+_SPARE_MAX_AGE_S = 25.0
 
 
 class _FallbackASR(Protocol):
@@ -93,6 +98,64 @@ class _PCMChunks:
         return chunks
 
 
+class _Session:
+    """Socket Live đã setup xong nhưng chưa có activity nào. Mở trước được để handshake
+    (0,65–4 s mỗi lần, đo 07/10) không nằm trên đường nói; chưa nhận audio nên vẫn giữ nguyên
+    nguyên tắc mỗi đoạn một socket."""
+
+    def __init__(self, config: GeminiLiveASRConfig, connect: Callable[..., Any]) -> None:
+        self._config = config
+        self.context = connect(
+            LIVE_WS_URL,
+            additional_headers={"x-goog-api-key": config.api_key.get_secret_value()},
+            open_timeout=config.connect_timeout_s,
+            close_timeout=1,
+            max_queue=16,
+        )
+        self.socket = None
+
+    async def open(self) -> "_Session":
+        timeout = self._config.connect_timeout_s
+        try:
+            self.socket = await self.context.__aenter__()
+            setup = {
+                "setup": {
+                    "model": f"models/{self._config.model.removeprefix('models/')}",
+                    "generationConfig": {"responseModalities": ["TEXT"]},
+                    "inputAudioTranscription": {
+                        "languageCodes": [self._config.language_code],
+                        "mode": "VERBATIM",
+                    },
+                    "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
+                }
+            }
+            await asyncio.wait_for(self.socket.send(json.dumps(setup)), timeout=timeout)
+            reply = json.loads(await asyncio.wait_for(self.socket.recv(), timeout=timeout))
+            if "error" in reply:
+                raise _remote_error(reply)
+            if "setupComplete" not in reply:
+                raise RuntimeError("Gemini Live STT did not acknowledge session setup")
+        except BaseException:
+            await self.close()
+            raise
+        return self
+
+    @property
+    def usable(self) -> bool:
+        """Server có thể đã đóng socket chờ quá lâu."""
+        state = getattr(self.socket, "state", State.OPEN)
+        return self.socket is not None and state is State.OPEN
+
+    async def close(self) -> None:
+        if self.socket is not None:
+            self.socket = None
+            await self.context.__aexit__(None, None, None)
+
+
+async def _open_session(config: GeminiLiveASRConfig, connect: Callable[..., Any]) -> _Session:
+    return await _Session(config, connect).open()
+
+
 class _LiveTurn:
     def __init__(
         self,
@@ -113,6 +176,7 @@ class _LiveTurn:
         self.invalidated = context.invalidated
         self.finished = asyncio.Event()
         self.end_sent = False
+        self._last_text = ""
         # Lỗi phát hiện ở luồng nhận; finalize() ném ra để pump xử lý theo đoạn.
         self.error: Optional[Exception] = None
         # PCM của đoạn ở tần số nguồn — decode lại bằng fallback nếu đoạn lỗi.
@@ -129,35 +193,11 @@ class _LiveTurn:
             self._socket.send(json.dumps(message)), timeout=self._config.connect_timeout_s
         )
 
-    async def open(self) -> None:
-        self._socket_context = self._connect(
-            LIVE_WS_URL,
-            additional_headers={"x-goog-api-key": self._config.api_key.get_secret_value()},
-            open_timeout=self._config.connect_timeout_s,
-            close_timeout=1,
-            max_queue=16,
-        )
-        self._socket = await self._socket_context.__aenter__()
-        await self._send(
-            {
-                "setup": {
-                    "model": f"models/{self._config.model.removeprefix('models/')}",
-                    "generationConfig": {"responseModalities": ["TEXT"]},
-                    "inputAudioTranscription": {
-                        "languageCodes": [self._config.language_code],
-                        "mode": "VERBATIM",
-                    },
-                    "realtimeInputConfig": {"automaticActivityDetection": {"disabled": True}},
-                }
-            }
-        )
-        reply = json.loads(
-            await asyncio.wait_for(self._socket.recv(), timeout=self._config.connect_timeout_s)
-        )
-        if "error" in reply:
-            raise _remote_error(reply)
-        if "setupComplete" not in reply:
-            raise RuntimeError("Gemini Live STT did not acknowledge session setup")
+    async def open(self, session: Optional[_Session] = None) -> None:
+        """`session`: socket đã setup sẵn (`_open_session`), None = mở mới."""
+        if session is None:
+            session = await _open_session(self._config, self._connect)
+        self._socket_context, self._socket = session.context, session.socket
         self._reader = asyncio.create_task(self._receive())
         await self._send({"realtimeInput": {"activityStart": {}}})
 
@@ -185,6 +225,7 @@ class _LiveTurn:
                 final = content.get("inputTranscription")
                 if final is not None:
                     text = final.get("text") or ""
+                    self._last_text = text
                     authoritative = self.end_sent and final.get("finished") is not False
                     await self._emit(text, final=authoritative)
                     if authoritative:
@@ -192,6 +233,18 @@ class _LiveTurn:
                 elif content.get("turnComplete") and self.end_sent:
                     # A valid empty turn must settle instead of waiting indefinitely.
                     await self._emit("", final=True)
+                    self.finished.set()
+                activity = message.get("voiceActivity") or {}
+                if (
+                    activity.get("type") == "ACTIVITY_END"
+                    and self.end_sent
+                    and not self.finished.is_set()
+                ):
+                    # transcribe-live không gửi turnComplete. Đoạn không có lời (tiếng ồn,
+                    # tiếng vọng) chỉ nhận ACTIVITY_END; có lời thì final tới trước hoặc cùng
+                    # message (đo 07/10: 43/43 đoạn). Không chốt ở đây thì đoạn rỗng nào cũng
+                    # chờ hết final_timeout_s rồi rơi xuống fallback.
+                    await self._emit(self._last_text, final=True)
                     self.finished.set()
         except asyncio.CancelledError:
             raise
@@ -207,10 +260,10 @@ class _LiveTurn:
             self.error = exc if isinstance(exc, RuntimeError) else _transport_error(exc)
         self.finished.set()
 
-    async def start(self) -> None:
+    async def start(self, session: Optional[_Session] = None) -> None:
         """`open()` nhưng lỗi kết nối/setup được ghi vào đoạn thay vì ném ngay."""
         try:
-            await self.open()
+            await self.open(session)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -372,7 +425,9 @@ class GeminiLiveASR:
         silence_classifier: FrameClassifier | None = None,
         end_silence_ms: int = 600,
         stream_context: ASRStreamContext | None = None,
+        pre_speech_ms: int | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
+        """`pre_speech_ms`: audio giữ trước lúc nhận ra tiếng nói, None = config."""
         if audio_sample_rate not in (8_000, 16_000):
             raise ValueError("Gemini Live stream supports PCM16 mono at 8000 or 16000 Hz")
         if end_silence_ms <= 0:
@@ -382,13 +437,54 @@ class GeminiLiveASR:
 
             silence_classifier = EnergyFrameClassifier()
         context = stream_context or ASRStreamContext()
+        pre_roll_ms = self._config.pre_speech_ms if pre_speech_ms is None else pre_speech_ms
         events: asyncio.Queue = asyncio.Queue(maxsize=256)
         turn: _LiveTurn | None = None
+        # Socket setup sẵn cho đoạn kế tiếp; lỗi thì đoạn đó tự mở socket mới.
+        spare: asyncio.Task | None = None
+        loop = asyncio.get_running_loop()
+        spare_born = 0.0
+
+        def prewarm() -> None:
+            nonlocal spare, spare_born
+            spare = asyncio.create_task(_open_session(self._config, self._connect))
+            spare_born = loop.time()
+
+        def spare_stale() -> bool:
+            return loop.time() - spare_born > _SPARE_MAX_AGE_S
+
+        async def take_spare() -> _Session | Exception | None:
+            """Socket mở sẵn, hoặc lỗi lúc mở (đoạn đi thẳng xuống fallback, không mở lại để
+            khỏi chờ handshake hai lần khi Gemini đang lỗi), None = tự mở mới."""
+            nonlocal spare
+            task, spare, stale = spare, None, spare_stale()
+            prewarm()
+            if task is None:
+                return None
+            try:
+                session = await task
+            except Exception as exc:
+                return exc
+            if session.usable and not stale:
+                return session
+            await session.close()
+            return None
+
+        async def drop_spare() -> None:
+            nonlocal spare
+            task, spare = spare, None
+            if task is None:
+                return
+            task.cancel()
+            (result,) = await asyncio.gather(task, return_exceptions=True)
+            if isinstance(result, _Session):
+                await result.close()
 
         async def pump() -> None:
             nonlocal turn
+            prewarm()
             pre_speech = bytearray()
-            pre_speech_max = audio_sample_rate * self._config.pre_speech_ms // 1000 * 2
+            pre_speech_max = audio_sample_rate * pre_roll_ms // 1000 * 2
             silent_ms = speech_ms = 0.0
             try:
                 async for item in frames:
@@ -412,6 +508,9 @@ class GeminiLiveASR:
                     if len(pcm) % 2:
                         raise ValueError("Gemini Live STT expects PCM16 mono frames")
                     voiced = silence_classifier.is_speech(pcm)
+                    if turn is None and not voiced and spare_stale():
+                        await drop_spare()
+                        prewarm()
                     if turn is None and not voiced:
                         pre_speech.extend(pcm)
                         del pre_speech[: max(0, len(pre_speech) - pre_speech_max)]
@@ -430,7 +529,11 @@ class GeminiLiveASR:
                             else context.segment_id,
                             audio_sample_rate,
                         )
-                        await turn.start()
+                        session = await take_spare()
+                        if isinstance(session, Exception):
+                            turn._fail(session)
+                        else:
+                            await turn.start(session)
                         if turn.generation != context.generation:
                             await turn.close()
                             turn = None
@@ -458,6 +561,7 @@ class GeminiLiveASR:
             finally:
                 if turn is not None:
                     await turn.close()
+                await drop_spare()
                 if not asyncio.current_task().cancelling():
                     await events.put(_DONE)
 
@@ -480,3 +584,4 @@ class GeminiLiveASR:
             # interrupt that close. Complete cleanup from the consumer as well.
             if turn is not None:
                 await turn.close()
+            await drop_spare()

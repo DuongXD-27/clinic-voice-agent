@@ -431,3 +431,39 @@ async def test_partial_interval_ratio_spaces_out_decodes_for_long_utterance() ->
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+async def test_stream_pre_speech_override_replaces_config_for_this_stream() -> None:
+    """Profile điện thoại đặt pre-roll riêng cho từng cuộc gọi; ASR dùng chung không đổi config."""
+    frame_bytes = 8000 * 30 // 1000 * 2
+    frames = [bytes((marker, 0)) * (frame_bytes // 2) for marker in range(1, 31)]
+
+    class _ScriptedClassifier:
+        index = 0
+
+        def is_speech(self, _frame: bytes) -> bool:
+            self.index += 1
+            return 20 < self.index <= 24
+
+    class _CapturingASR(_RecordingASR):
+        def __init__(self) -> None:
+            super().__init__(_GrowingFakeRecognizer())
+            self.decoded: list[bytes] = []
+
+        def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
+            self.decoded.append(pcm)
+            return _Decoded("CÓ")
+
+    asr = _CapturingASR()
+    async for _ in asr.stream(
+        _aiter(frames),
+        silence_classifier=_ScriptedClassifier(),
+        end_silence_ms=60,
+        min_emit_interval_ms=10_000,
+        min_decode_ms=60,
+        pre_speech_ms=450,
+    ):
+        pass
+
+    # 450 ms pre-roll (15 frame) trước frame nói đầu tiên; chốt sau 60 ms im lặng (2 frame).
+    assert asr.decoded == [b"".join(frames[20 - 450 // 30 : 26])]

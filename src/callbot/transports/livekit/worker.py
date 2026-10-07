@@ -43,6 +43,19 @@ def prewarm(proc: "JobProcess") -> None:
     proc.userdata[_PREWARMED_ASR] = asr
 
 
+def speech_settings_for(participant_kind: int, livekit_settings: LiveKitSettings) -> SpeechSettings:
+    """Cấu hình speech cho một cuộc gọi: ASR riêng của LiveKit, và `phone_overrides` khi người
+    gọi vào qua SIP (âm thanh điện thoại 8 kHz G.711)."""
+    from livekit import rtc
+
+    settings = SpeechSettings()
+    if livekit_settings.asr_provider:
+        settings = settings.model_copy(update={"asr_provider": livekit_settings.asr_provider})
+    if participant_kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+        settings = settings.for_phone()
+    return settings
+
+
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
     # Chờ browser join trước khi đọc direction/caller_number/appointment_id giả lập
@@ -55,11 +68,12 @@ async def entrypoint(ctx: JobContext) -> None:
     appointment_id = attrs.get("appointment_id") or None
 
     livekit_settings = LiveKitSettings()
-    speech_settings = SpeechSettings()
-    if livekit_settings.asr_provider:
-        speech_settings = speech_settings.model_copy(
-            update={"asr_provider": livekit_settings.asr_provider}
-        )
+    speech_settings = speech_settings_for(participant.kind, livekit_settings)
+    logger.info(
+        "worker: participant kind=%s asr_pre_speech_ms=%s",
+        participant.kind,
+        speech_settings.asr_pre_speech_ms,
+    )
     prewarmed_asr: Any = ctx.proc.userdata.get(_PREWARMED_ASR)
     bundle = build_streaming_bundle(
         speech_settings,

@@ -30,10 +30,16 @@ docker compose up -d --build livekit-worker
   Resample 8k → 16k có trạng thái, gửi chunk 100 ms và flush phần dư trước end.
 - WebSocket BidiGenerateContent, TEXT, `vi-VN`, `VERBATIM`; automatic VAD tắt.
   Ranh giới `activityStart`/`activityEnd` theo classifier/endpoint local.
-- Mỗi segment có socket riêng để cô lập kết quả từ đoạn đã discard.
-  Có chi phí handshake mỗi segment; chưa tối ưu reuse session.
+- Mỗi segment có socket riêng để cô lập kết quả từ đoạn đã discard. Socket của đoạn kế tiếp
+  được mở và setup sẵn ở nền (handshake 0,65–4 s, đo 07/10) nên không chặn đầu câu; mỗi cuộc
+  gọi giữ thêm một socket rảnh. Server đóng socket rảnh sau khoảng 1–3 phút (30 s vẫn dùng
+  được, 180 s bị đóng 1008) — khi đó đoạn đó tự mở socket mới.
 - Interim là partial, transcription sau end là final; confidence là `None`.
   Engine chỉ nhận final ở đường này; không tự chốt partial khi thiếu final.
+- `gemini-3.5-transcribe-live` không gửi `turnComplete`. Sau `activityEnd` server luôn trả
+  `voiceActivity: ACTIVITY_END`, cùng lúc hoặc sau final; đoạn không có lời (tiếng ồn, tiếng
+  vọng) CHỈ nhận `ACTIVITY_END`. Đoạn được chốt ở đó (final rỗng nếu không có lời) — trước đây
+  đoạn rỗng nào cũng chờ hết 3 s rồi rơi xuống ZipFormer, ZipFormer bịa ra "ĐÂY" (6/6 lần đo).
 - Generation/segment ID ngăn final đến muộn ghép vào câu sau. Trong CÙNG một lượt
   (TurnController nối đoạn khi người gọi nói tiếp lúc lượt còn dở), final của đoạn trước tới
   muộn vẫn được nhận và ghép đúng thứ tự đoạn; lượt chỉ chốt khi mọi đoạn đã có final.

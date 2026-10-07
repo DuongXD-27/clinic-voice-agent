@@ -76,6 +76,7 @@ class ZipFormerASR:
         min_emit_interval_ms: int = 300,
         min_decode_ms: int | None = None,
         max_turn_speech_ms: int | None = None,
+        pre_speech_ms: int | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """Chunked-offline: gom từng câu theo `silence_classifier`, decode lại cả câu để phát
         partial, phát final khi đủ `end_silence_ms` im lặng hoặc nói liền quá
@@ -83,13 +84,15 @@ class ZipFormerASR:
 
         - Câu có ít hơn `min_decode_ms` tiếng nói không bao giờ được decode: ZipFormer bịa cả
           cụm từ từ "à"/"ờm" quá ngắn.
-        - Giữ `pre_speech_ms` (config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
+        - Giữ `pre_speech_ms` (None = config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
         - `AsrSegmentEnd.DISCARD`: bỏ câu dở, không phát event.
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
         if max_turn_speech_ms is None:
             max_turn_speech_ms = self._config.max_turn_speech_ms
+        if pre_speech_ms is None:
+            pre_speech_ms = self._config.pre_speech_ms
         if silence_classifier is None:
             from speech.asr.vad.energy import EnergyFrameClassifier
 
@@ -97,7 +100,7 @@ class ZipFormerASR:
         if audio_sample_rate not in (8_000, 16_000):
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
-        utterance = _Utterance(audio_sample_rate, self._config.pre_speech_ms)
+        utterance = _Utterance(audio_sample_rate, pre_speech_ms)
 
         async def decode() -> _Decoded:
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.

@@ -23,7 +23,9 @@ _SILENCE = b"\x00\x00" * 480
 
 
 class _Socket:
-    def __init__(self, *, text="không đồng ý", final_gate=None, setup_error=None):
+    def __init__(
+        self, *, text="không đồng ý", final_gate=None, setup_error=None, activity_end=False
+    ):
         self.messages = []
         self.replies = asyncio.Queue()
         self.ended = asyncio.Event()
@@ -31,6 +33,8 @@ class _Socket:
         self.text = text
         self.final_gate = final_gate
         self.setup_error = setup_error
+        # transcribe-live thật: không có turnComplete; text=None là đoạn không có lời.
+        self.activity_end = activity_end
         self.final_task = None
         self.partial_sent = False
 
@@ -64,9 +68,15 @@ class _Socket:
     async def _final(self):
         if self.final_gate is not None:
             await self.final_gate.wait()
-        reply = {"serverContent": {"inputTranscription": {"text": self.text}}}
-        self.replies.put_nowait(reply)
-        self.replies.put_nowait(reply)  # Duplicate callbacks must not duplicate engine turns.
+        end = {"voiceActivity": {"type": "ACTIVITY_END"}}
+        if self.text is not None:
+            reply = {"serverContent": {"inputTranscription": {"text": self.text}}}
+            if self.activity_end:
+                reply = {**reply, **end}
+            self.replies.put_nowait(reply)
+            self.replies.put_nowait(reply)  # Duplicate callbacks must not duplicate engine turns.
+        elif self.activity_end:
+            self.replies.put_nowait(end)
 
     @property
     def audio(self):
@@ -84,7 +94,10 @@ class _Connector:
 
     def __call__(self, url, **kwargs):
         self.calls.append((url, kwargs))
-        return self.sockets[len(self.calls) - 1]
+        # Socket mở sẵn cho đoạn sau cùng không bao giờ được dùng.
+        return (
+            self.sockets[len(self.calls) - 1] if len(self.calls) <= len(self.sockets) else _Socket()
+        )
 
 
 def _provider(*sockets, fallback=None, **config):
@@ -186,10 +199,72 @@ async def test_discard_closes_old_socket_and_never_commits_its_audio():
     assert second.ended.is_set() and second.closed
 
 
-async def test_noise_only_does_not_open_paid_session():
-    provider, connector = _provider()
+async def test_noise_only_sends_no_audio_and_closes_prewarmed_socket():
+    spare = _Socket()
+    provider, _ = _provider(spare)
     assert await _collect(provider.stream(_frames([_SILENCE] * 30))) == []
-    assert connector.calls == []
+    assert all("realtimeInput" not in message for message in spare.messages)
+    assert spare.closed
+
+
+async def test_segment_without_words_settles_on_activity_end_without_fallback():
+    socket = _Socket(text=None, activity_end=True)
+    fallback = _FakeFallback()
+    provider, _ = _provider(socket, fallback=fallback, final_timeout_s=30)
+
+    events = await asyncio.wait_for(_collect(provider.stream(_frames([_VOICE] * 4))), 1)
+
+    assert [(event.text, event.is_final) for event in events][-1] == ("", True)
+    assert fallback.calls == []
+    assert socket.closed
+
+
+async def test_final_sharing_a_message_with_activity_end_is_kept_once():
+    socket = _Socket(text="đồng ý", activity_end=True)
+    provider, _ = _provider(socket)
+
+    events = await _collect(provider.stream(_frames([_VOICE] * 4)))
+
+    assert [event.text for event in events if event.is_final] == ["đồng ý"]
+
+
+async def test_socket_is_set_up_before_the_caller_starts_speaking():
+    socket = _Socket(text="đồng ý")
+    provider, _ = _provider(socket)
+    setup_before_speech = []
+
+    async def frames():
+        for _ in range(5):
+            yield _SILENCE
+            await asyncio.sleep(0)
+        setup_before_speech.append(any("setup" in message for message in socket.messages))
+        for _ in range(4):
+            yield _VOICE
+
+    events = await _collect(provider.stream(frames()))
+
+    assert setup_before_speech == [True]
+    assert events[-1].text == "đồng ý" and events[-1].is_final
+
+
+async def test_idle_prewarmed_socket_is_replaced_before_server_drops_it(monkeypatch):
+    from inference.asr.providers import gemini_live
+
+    monkeypatch.setattr(gemini_live, "_SPARE_MAX_AGE_S", 0.05)
+    stale, fresh = _Socket(text="cũ"), _Socket(text="đồng ý")
+    provider, _ = _provider(stale, fresh)
+
+    async def frames():
+        yield _SILENCE
+        await asyncio.sleep(0.1)
+        yield _SILENCE  # quá tuổi: thay socket trong lúc im lặng
+        for _ in range(4):
+            yield _VOICE
+
+    events = await _collect(provider.stream(frames()))
+
+    assert stale.closed and all("realtimeInput" not in m for m in stale.messages)
+    assert [event.text for event in events if event.is_final] == ["đồng ý"]
 
 
 async def test_missing_final_raises_instead_of_committing_partial():
@@ -238,7 +313,7 @@ async def test_setup_failure_is_recovered_by_local_fallback_and_next_segment_ret
     finals = [event.text for event in events if event.is_final]
     assert finals[0] == "tôi muốn hủy lịch"
     assert finals[-1] == "đồng ý"
-    assert len(connector.calls) == 2
+    assert len(connector.calls) == 3  # + socket mở sẵn cho đoạn sau
     assert rejected.closed and healthy.closed
 
 

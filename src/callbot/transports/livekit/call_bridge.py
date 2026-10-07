@@ -160,9 +160,7 @@ class CallBridge:
         self._silence_timeout_ms = silence_timeout_ms
         self._silence_task: Optional[asyncio.Task] = None
         self._silence_generation = 0
-        # THỬ NGHIỆM (docs/evidence §8): mặc định false — đo offline cho thấy Krisp VIVA làm
-        # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
-        # thật; không phải khuyến nghị bật cho production.
+        # Lọc ồn Krisp VIVA, mặc định bật (config/livekit.yaml krisp_noise_suppression_enabled).
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
         # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
         # tạo sẵn theo SpeechSettings).
@@ -441,7 +439,7 @@ class CallBridge:
             task.cancel()
 
     def _krisp_processor(self) -> object | None:
-        """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
+        """None nếu tắt hoặc package chưa cài. Processor tạo
         mới mỗi lần pump (không tái dùng qua re-publish): auto_close mặc định của AudioStream
         đóng nó khi stream đóng, tái dùng instance đã đóng sẽ lỗi."""
         if not self._krisp_noise_suppression_enabled:

@@ -71,6 +71,10 @@ class InterruptionController:
     def state(self) -> InterruptionState:
         return self._state
 
+    @property
+    def bot_text(self) -> str:
+        return self._bot_text
+
     def on_bot_started_speaking(self, bot_text: str = "") -> None:
         """`bot_text`: câu đầy đủ bot sắp đọc; "" tắt kiểm tra tiếng vọng."""
         self._state = InterruptionState.BOT_SPEAKING
