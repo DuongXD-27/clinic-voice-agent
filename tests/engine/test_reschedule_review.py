@@ -293,3 +293,106 @@ def test_corrected_date_keeps_the_reschedule_intent(mode: str) -> None:
         bot, call_id, [*IDENTITY, "Đổi sang ngày 15... à không, vẫn ngày 14 nhưng sớm hơn"]
     )
     assert "ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance and clinic.writes == []
+
+
+# --- Review lần 2 (07/10, evidence §12) -----------------------------------------------------------
+# Ý 1: cụm giữ lịch kèm giờ của lịch cũ là bỏ đổi lịch, ở cả 4 câu hỏi chọn khung
+# Ý 2: câu không dấu xin giờ khác ở câu đọc lịch vẫn vào đổi lịch
+# Ý 3: vế sau lời bỏ là câu trả lời ở cả 4 câu hỏi chọn khung (Dialogue dùng `slot_request` của IE)
+
+REFUSE_CHOICE = [*OFFER, "không"]  # câu A/B "nghe khung khác hay giữ lịch cũ"
+PREFERENCE = [*OFFER, "tháng sau"]  # ngày quá rộng: hỏi lại ngày (ASK_SLOT_PREFERENCE)
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    ("setup", "line"),
+    [
+        (OFFER, "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi"),
+        (OFFER, "thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư"),
+        (OFFER, "thôi để nguyên lịch cũ đi"),
+        (OFFER, "thoi de nguyen lich 3 ruoi chieu thu tu di"),
+        # Lớp chặn thứ hai: vế sau lời bỏ chỉ nêu đúng lịch hẹn đang đổi (đối chiếu dữ liệu mock)
+        (OFFER, "thì thôi, giữ 3 rưỡi chiều thứ Tư"),
+        (OFFER, "vậy thì thôi, lấy 3 rưỡi chiều thứ Tư như cũ"),
+        (SLOT_READBACK, "thôi giữ lịch 3 rưỡi chiều thứ Tư"),
+        (REFUSE_CHOICE, "giữ lịch 3 rưỡi chiều thứ Tư"),
+        (PREFERENCE, "thôi để nguyên lịch 3 rưỡi chiều thứ Tư"),
+    ],
+)
+def test_keeping_the_old_time_ends_the_reschedule(mode: str, setup: list, line: str) -> None:
+    call_id = f"r2-keep-{mode}-{len(setup)}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*setup, line])
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    assert _rescheduled(clinic) == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    "line", ["giữ lịch cũ, à mà thôi lấy khung 2", "để nguyên lịch cũ, à không, cho tôi khung 2"]
+)
+def test_a_pick_after_correcting_a_keep_is_the_answer(mode: str, line: str) -> None:
+    call_id = f"r2-keep-pick-{mode}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*OFFER, line])
+    assert action.state == "AWAITING_CONFIRMATION" and "10 giờ 30 sáng" in action.utterance
+    assert clinic.writes == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    ("setup", "line", "said"),
+    [
+        (SLOT_READBACK, "9 giờ thì thôi, cho tôi ngày 16", "ngày 16 tháng 10"),
+        (SLOT_READBACK, "10 giờ sáng thì thôi, lấy ngày 20 đi", "ngày 20 tháng 10"),
+        (REFUSE_CHOICE, "10 giờ sáng thì thôi, lấy ngày 20 đi", "ngày 20 tháng 10"),
+        (PREFERENCE, "10 giờ sáng thì thôi, lấy ngày 20 đi", "ngày 20 tháng 10"),
+    ],
+)
+def test_the_part_after_giving_up_a_time_is_the_new_request(
+    mode: str, setup: list, line: str, said: str
+) -> None:
+    call_id = f"r2-after-{mode}-{len(setup)}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*setup, line])
+    assert not action.ended and said in action.utterance
+    # Giờ đã bỏ không còn là tiêu chí: không báo "chưa thấy khung giờ đó", không chốt khung giờ đó
+    assert "chưa thấy khung giờ đó" not in action.utterance
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    "line",
+    [
+        "sang mai khoang 9 gio co duoc khong",
+        "cho toi 9 gio sang mai duoc khong",
+        "de sang thu nam duoc khong em",
+        "5 gio chieu ngay 14 di em",
+    ],
+)
+def test_an_unaccented_request_for_another_time_starts_the_reschedule(mode: str, line: str) -> None:
+    call_id = f"r2-unacc-{mode}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*IDENTITY, line])
+    assert "khung" in action.utterance and clinic.slot_reads > 0 and clinic.writes == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize(
+    "line",
+    [
+        "9 gio ha em",
+        "toi tuong hen 9 gio",
+        "khong phai 9 gio a",
+        "ngay mai toi co phai nhin an khong",
+        "mai toi co can mang giay to gi khong",
+    ],
+)
+def test_an_unaccented_question_about_a_time_is_not_a_reschedule(mode: str, line: str) -> None:
+    call_id = f"r2-unacc-no-{mode}-{line}"
+    clinic, bot = _outbound_call(call_id, mode)
+    action = _run(bot, call_id, [*IDENTITY, line])
+    assert action.state != "OFFERING_SLOTS" and "khung" not in action.utterance
+    assert clinic.slot_reads == 0 and clinic.writes == []

@@ -254,6 +254,10 @@ class ExtractionResult:
     deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
     # Đổi lịch: lời yêu cầu đã bỏ tên và ngày sinh (tiêu chí thời gian), giữ dấu câu ("20/10", "15:30")
     deferred_request: Optional[str] = None
+    # Câu hỏi chọn khung: đoạn câu là câu trả lời về thời gian (vế sau lời bỏ, bỏ vế điều kiện ở đầu), giữ
+    # dấu câu. IE tìm khung trên đoạn này và Dialogue tạo yêu cầu mới từ chính đoạn này — một nguồn cho cả
+    # hai tầng ("9 giờ thì thôi, cho tôi ngày 16" -> "cho tôi ngày 16"). None ở các câu hỏi khác.
+    slot_request: Optional[str] = None
 
     @property
     def model_failed(self) -> bool:

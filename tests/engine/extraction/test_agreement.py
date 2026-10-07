@@ -3,6 +3,7 @@
 import pytest
 
 from callbot.engine.extraction.agreement import (
+    answer_after_give_up,
     conflicting_confirmation,
     explicit_slot_pick,
     extract_agreement,
@@ -637,3 +638,43 @@ def test_dropping_the_change_even_with_a_time_in_the_sentence(text: str) -> None
 )
 def test_bare_thoi_is_not_dropping_the_change(text: str) -> None:
     assert not gives_up_if_unavailable(text)
+
+
+# --- Review lần 2 (07/10, evidence §12): cụm giữ lịch và cụm bỏ điều kiện khác vai với phần sau ---------
+
+
+@pytest.mark.parametrize(
+    ("text", "answer"),
+    [
+        # Bỏ điều kiện: phần sau là câu trả lời mới
+        ("3 giờ chiều thì thôi, lấy khung 2", "lấy khung 2"),
+        ("9 giờ thì thôi, cho tôi ngày 16", "cho tôi ngày 16"),
+        # Giữ lịch rồi tự sửa / chọn lại: phần sau lời sửa hoặc lời chọn là câu trả lời
+        ("giữ lịch cũ, à mà thôi lấy khung 2", "lấy khung 2"),
+        ("giữ lịch 3 rưỡi, à mà thôi lấy khung 2", "lấy khung 2"),
+        ("để nguyên lịch cũ, à không, cho tôi khung 2", "cho tôi khung 2"),
+        ("giữ lịch cũ nhé, cho tôi khung 2", "cho tôi khung 2"),
+        ("giu lich cu, a ma thoi lay khung 2", "lay khung 2"),
+    ],
+)
+def test_the_part_after_giving_up_that_is_a_new_answer(text: str, answer: str) -> None:
+    assert answer_after_give_up(text) == answer
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Cụm bỏ ở cuối câu
+        "Không có 5 giờ thì thôi",
+        "thế thì thôi vậy em",
+        # Giữ lịch: phần sau chỉ nhắc lịch cũ
+        "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi",
+        "thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư",
+        "giữ lịch 3 rưỡi chiều thứ Tư cho tôi",
+        "thoi de nguyen lich 3 ruoi chieu thu tu di",
+        # "mà thôi" ở cuối câu là "thế thôi", không phải lời tự sửa
+        "giữ lịch cũ mà thôi",
+    ],
+)
+def test_keeping_the_old_time_has_no_new_answer(text: str) -> None:
+    assert answer_after_give_up(text) is None

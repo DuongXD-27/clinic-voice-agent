@@ -1,0 +1,207 @@
+{
+  "label": "review2-rules",
+  "mode": "baseline",
+  "today": "2026-09-29T10:00:00+07:00",
+  "model": null,
+  "repeats": 1,
+  "ran_at": "2026-10-07T06:59:14+00:00",
+  "runs": [
+    {
+      "cases": 171,
+      "failed_cases": 8,
+      "holdout_cases": 121,
+      "holdout_passed": 113,
+      "holdout_accuracy": 0.9339,
+      "rule_cases": 100,
+      "rule_passed": 97,
+      "inference_cases": 21,
+      "inference_passed": 16,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 6,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 6,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 6,
+          "ok": 5,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 11,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 6,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 0,
+      "model_statuses": {},
+      "turn_latency_ms": {
+        "n": 171,
+        "p50": 3.4,
+        "p95": 4.4,
+        "max": 5.3
+      },
+      "failures": [
+        {
+          "id": "R056",
+          "group": "any",
+          "question_id": "ASK_SLOT_PREFERENCE",
+          "transcript": "lúc nào thuận tiện cũng được",
+          "needs_inference": true,
+          "expect": "ANY",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Dạ, em chưa hiểu rõ. Anh chị nói lại giúp em ạ."
+        },
+        {
+          "id": "R060",
+          "group": "any",
+          "question_id": "ASK_SLOT_PREFERENCE",
+          "transcript": "không biết nữa",
+          "needs_inference": true,
+          "expect": "ASK_DAY",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Em chưa nắm rõ ý vừa rồi. Anh chị nhắc lại giúp em ạ."
+        },
+        {
+          "id": "R075",
+          "group": "keep_old",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tôi đổi ý",
+          "needs_inference": true,
+          "expect": "TRANSFER:PATIENT_REQUEST",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Dạ, em chưa hiểu ý anh chị. Anh chị nói lại giúp em được không ạ?"
+        },
+        {
+          "id": "R105",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ 5 hoặc thứ 6",
+          "needs_inference": false,
+          "expect": "NEW_TIME:01/10|02/10",
+          "observed": "AMBIGUOUS",
+          "observed_dates": "15/10 15/10",
+          "observed_full_day": "",
+          "utterance": "Dạ, có nhiều khung giờ phù hợp. Em xin đọc các khung trống: khung 1 là 10 giờ 30 sáng thứ Năm ngày 15 tháng 10; khung 2 là 3 giờ 30 chiều thứ Năm ngày 15 tháng 10. Ngoài ra còn 9 khung khác. Anh chị chọn khung nào ạ?"
+        },
+        {
+          "id": "R112",
+          "group": "safety_transfer",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tôi có câu hỏi về bệnh",
+          "needs_inference": false,
+          "expect": "TRANSFER:CLINICAL_QUESTION",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Em chưa nắm rõ ý vừa rồi. Anh chị nhắc lại giúp em ạ."
+        },
+        {
+          "id": "R113",
+          "group": "safety_transfer",
+          "question_id": "SLOT_READBACK",
+          "transcript": "tôi không nhớ là đã đặt lịch này",
+          "needs_inference": true,
+          "expect": "TRANSFER:OUT_OF_SCOPE",
+          "observed": "REFUSE_CHOICE",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Dạ, em đã đọc hết khung trống phù hợp. Anh chị muốn đổi sang ngày khác hay giữ lịch cũ ạ?"
+        },
+        {
+          "id": "R118",
+          "group": "safety_transfer",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tôi cần tư vấn bác sĩ",
+          "needs_inference": false,
+          "expect": "TRANSFER:CLINICAL_QUESTION",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị có thể nói lại ý vừa rồi giúp em không ạ?"
+        },
+        {
+          "id": "R120",
+          "group": "safety_transfer",
+          "question_id": "SLOT_READBACK",
+          "transcript": "tôi đang lái xe",
+          "needs_inference": true,
+          "expect": "REREAD_YESNO",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị có thể nói lại ý vừa rồi giúp em không ạ?"
+        }
+      ]
+    }
+  ]
+}

@@ -380,11 +380,13 @@ class InformationExtractor:
                 intent = fallback_intent
 
         slot_choice = skipped
+        slot_request: Optional[str] = None
         if question in _SLOT_QUESTIONS:
             # "Nếu không còn 5 giờ thì 3 giờ cũng được", "3 giờ chiều thì thôi, lấy khung 2": giờ ở vế
             # điều kiện / vế bị bỏ không phải khung được chọn; khung nằm ở vế sau
+            slot_request = slot_answer(transcript)
             slot_choice = extract_slot_choice(
-                slot_answer(transcript), ctx.slots, ctx.presented_slot_ids, ctx.now
+                slot_request, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
 
         agreement: Field[Agreement] = skipped
@@ -444,6 +446,7 @@ class InformationExtractor:
             deferred_intent=deferred.intent,
             deferred_cancel_reason=deferred.cancel_reason,
             deferred_request=deferred.request,
+            slot_request=slot_request,
             name_identity=name_identity,
             dob_identity=(
                 identity_value(dob_reading, transcript, confidence=ctx.asr_confidence)

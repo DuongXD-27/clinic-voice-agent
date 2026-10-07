@@ -277,16 +277,24 @@ _TIME_REQUEST = compile_phrases(
         "khám được",
     ]
 )
-_TIME_DOUBT = compile_phrases(["tưởng", "không phải", "hả", "à", "sao lại", "nhầm"])
+# Không dấu: "a" / "ha" trùng "ạ" / "hạ" -> chỉ tin bản có dấu của "à", "hả"
+_TIME_DOUBT = compile_phrases(
+    ["tưởng", "không phải", "hả", "à", "sao lại", "nhầm"], unaccented_exclude=["hả", "à"]
+)
 # Hỏi còn chỗ: "có 4 giờ chiều ngày 16 không em", "còn khung sáng thứ Sáu không ạ"
 _AVAILABILITY = re.compile(r"(?:^| )(?:có|còn) (?:\S+ ){1,8}?không(?: (?:em|ạ|nhỉ|nhé|vậy|thế))?$")
+_AVAILABILITY_UNACCENTED = re.compile(
+    r"(?:^| )(?:co|con) (?:\S+ ){1,8}?khong(?: (?:em|a|nhi|nhe|vay|the))?$"
+)
 # Câu cầu khiến kết bằng "đi": "5 giờ chiều ngày 14 đi em". Từ ngay trước "đi" là chủ ngữ / trạng từ
 # ("tôi đi", "vẫn đi") thì là câu kể việc đi khám. "nhé" không tính: "vâng, 3 giờ chiều nhé" là hỏi lại
 # giờ hẹn, không phải xin giờ khác.
 _IMPERATIVE_TAIL = re.compile(r"(?:^| )(\S+) đi(?: (?:em|ạ|nhé|nha|nhá))*$")
+_IMPERATIVE_TAIL_UNACCENTED = re.compile(r"(?:^| )(\S+) di(?: (?:em|a|nhe|nha))*$")
 _NOT_IMPERATIVE_HEAD = frozenset(
     ["tôi", "em", "mình", "anh", "chị", "cô", "chú", "bác", "cháu", "con", "vẫn", "sẽ", "cũng", "được"]
 )  # fmt: skip
+_NOT_IMPERATIVE_HEAD_UNACCENTED = frozenset(strip_diacritics(w) for w in _NOT_IMPERATIVE_HEAD)
 
 
 # Từ được phép còn lại trong câu xin giờ, sau khi bỏ cụm thời gian (`strip_slot_phrases`): lời xin, khung
@@ -317,17 +325,28 @@ def requests_time(transcript: str) -> bool:
 
     Cần lời xin, và CẢ CÂU chỉ gồm cụm thời gian, lời xin và từ đệm (danh sách cho phép): "ngày mai tôi có
     phải nhịn ăn không" có "có … không" nhưng còn "phải nhịn ăn" -> không phải xin giờ.
+
+    Câu gốc không dấu: `_prepare` chỉ khôi phục dấu cho từ chỉ giờ / ngày, nên câu thành nửa có dấu nửa
+    không ("cho toi 9 giờ sáng mai duoc không"). Lời xin khớp trên MỘT dạng là bản bỏ dấu toàn bộ; cụm thời
+    gian vẫn bỏ trên bản `_prepare` (có dấu), nơi `strip_slot_phrases` nhận ra chúng.
     """
-    text = _prepare(transcript)
-    if find_phrase(text, _TIME_DOUBT) is not None:
+    prepared = _prepare(transcript)
+    unaccented = is_unaccented(clean(normalize(transcript)))
+    text = strip_diacritics(prepared) if unaccented else prepared
+    if find_phrase(text, _TIME_DOUBT, unaccented=unaccented) is not None:
         return False
-    tail = _IMPERATIVE_TAIL.search(text)
+    tail = (_IMPERATIVE_TAIL_UNACCENTED if unaccented else _IMPERATIVE_TAIL).search(text)
+    heads = _NOT_IMPERATIVE_HEAD_UNACCENTED if unaccented else _NOT_IMPERATIVE_HEAD
+    availability = _AVAILABILITY_UNACCENTED if unaccented else _AVAILABILITY
     asked = (
-        find_phrase(text, _TIME_REQUEST) is not None
-        or _AVAILABILITY.search(text) is not None
-        or (tail is not None and tail.group(1) not in _NOT_IMPERATIVE_HEAD)
+        find_phrase(text, _TIME_REQUEST, unaccented=unaccented) is not None
+        or availability.search(text) is not None
+        or (tail is not None and tail.group(1) not in heads)
     )
-    return asked and all(w in _TIME_REQUEST_ALLOWED for w in strip_slot_phrases(text).split())
+    rest = strip_slot_phrases(prepared).split()
+    if unaccented:
+        rest = [strip_diacritics(w) for w in rest]
+    return asked and all(w in _TIME_REQUEST_ALLOWED for w in rest)
 
 
 # Cụm thời gian / thứ tự khung trong câu chọn khung (PRD R-23 v2.1): nhắc lại giờ, ngày hay thứ tự khung là

@@ -158,3 +158,15 @@ R157,prompt,review_previous_page,outbound,OFFER_SLOTS,2-trang2,9 giờ sáng th�
 R158,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"3 giờ chiều thì thôi, lấy khung 2",PICK:2,no,Review ý 5: vế sau lời bỏ là câu trả lời
 R159,prompt,review_drop_then_pick,outbound,OFFER_SLOTS,2,"vậy thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review ý 5
 R160,prompt,review_ordinal,outbound,OFFER_SLOTS,2,lấy khung hai,PICK:2,no,Review ý 6: khung + số đọc bằng chữ
+R161,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: giờ sau cụm giữ lịch là lịch cũ
+R162,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,"thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư",TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1
+R163,prompt,review2_keep_old,outbound,SLOT_READBACK,1,thôi giữ lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: xét bỏ đổi lịch ở câu chốt
+R164,prompt,review2_keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: câu A/B
+R165,prompt,review2_keep_old,outbound,ASK_SLOT_PREFERENCE,1,thôi để nguyên lịch 3 rưỡi chiều thứ Tư,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: câu hỏi ngày
+R166,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,thoi de nguyen lich 3 ruoi chieu thu tu di,TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: không dấu
+R167,prompt,review2_keep_old,outbound,OFFER_SLOTS,2,"thì thôi, giữ 8 giờ sáng thứ Năm",TRANSFER:PATIENT_REQUEST,no,Review lần 2 ý 1: lớp chặn thứ hai (vế sau chỉ là lịch đang đổi: apt_00418 8 giờ sáng thứ Năm 15/10)
+R168,prompt,review2_keep_then_pick,outbound,OFFER_SLOTS,2,"giữ lịch cũ, à mà thôi lấy khung 2",PICK:2,no,Review lần 2 ý 1: tự sửa sau cụm giữ lịch
+R169,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"9 giờ thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review lần 2 ý 3: yêu cầu mới từ vế sau
+R170,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3
+R171,prompt,review2_drop_then_answer,outbound,SLOT_REFUSE_CHOICE,2,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3: câu A/B
+R172,prompt,review2_drop_then_answer,outbound,ASK_SLOT_PREFERENCE,1,"9 giờ thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review lần 2 ý 3: câu hỏi ngày

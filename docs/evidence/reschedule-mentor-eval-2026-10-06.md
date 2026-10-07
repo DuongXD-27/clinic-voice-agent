@@ -963,3 +963,163 @@ Không câu nào ghi ngay: lời loại trừ / tự sửa có "không" nên kh�
   tên không được đọc khi cùng lượt có lời yêu cầu mà không có ngày sinh. Lượt "Alo" trước đó đã dùng lượt hỏi lại.
 - **Bộ đọc ngày sinh coi ngày thứ hai trong lượt danh tính là một phần ngày sinh (10.5):** ví dụ "14/03/1978, tôi muốn
   đổi sang 20/10". Ngày sinh bị hỏi lại; lời yêu cầu bị bỏ cùng vùng ngày sinh, nên sau xác minh bot mời khung sớm nhất.
+
+## 12. Review PR lần 2 (07/10/2026): kiểm tra và hướng sửa
+
+Reviewer báo thêm 3 ý. Đã chạy đúng các câu của reviewer trên ba bản: main (`6e706a0`), nhánh trước bản sửa 8 ý
+(`95a5cbb`) và HEAD (`9834824`). Chế độ chỉ luật, sim `mentor_mock`.
+
+### 12.1 Kết luận
+
+| Ý | Có phải lỗi? | Ai gây ra |
+| --- | --- | --- |
+| 1. Bỏ đổi lịch kèm giờ lịch cũ → bot mời khung mới | Đúng | Ở câu mời khung: **bản sửa 8 ý (P2, ý 5)** gây ra; trước đó bot giữ lịch cũ và chuyển máy. Ở câu chốt khung: có sẵn trên cả main và nhánh |
+| 2. Câu không dấu xin giờ khác không còn được nhận ra | Đúng | **Bản sửa 8 ý (P2, ý 4)** gây ra |
+| 3. "Vế sau lời bỏ là câu trả lời" chưa áp ở câu chốt khung | Đúng | Có sẵn (main cũng vậy); P2 chỉ áp `slot_answer` ở câu mời khung. Cùng lỗi ở câu A/B và câu hỏi ngày |
+
+| Câu | Câu hỏi | main | `95a5cbb` | HEAD |
+| --- | --- | --- | --- | --- |
+| "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi" | mời khung | mời khung (sai) | giữ lịch, chuyển máy | "thứ Tư ngày 7 đã kín" + mời khung (sai) |
+| "thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư" | mời khung | mời khung (sai) | giữ lịch, chuyển máy | mời khung (sai) |
+| "thôi giữ lịch 3 rưỡi chiều thứ Tư" | chốt khung | mời khung (sai) | mời khung (sai) | mời khung (sai) |
+| "sang mai khoang 9 gio co duoc khong" | đọc lịch | hỏi lại "có đến được không" | mời khung | hỏi lại (sai) |
+| "cho toi 9 gio sang mai duoc khong" | đọc lịch | hỏi lại | mời khung | hỏi lại (sai) |
+| "de sang thu nam duoc khong em" | đọc lịch | hỏi lại | câu chốt khung | hỏi lại (sai) |
+| "9 giờ thì thôi, cho tôi ngày 16" | chốt khung | chốt 9 giờ ngày 16 (sai) | như main | như main |
+| "10 giờ sáng thì thôi, lấy ngày 20 đi" | chốt khung | "chưa thấy khung giờ đó" (sai) | như main | như main |
+
+`requests_time` trên 4 câu không dấu của reviewer: `95a5cbb` trả True cả 4, HEAD trả False cả 4.
+
+### 12.2 Nguyên nhân
+
+- **Ý 1.** `answer_after_give_up` coi mọi thứ đứng sau cụm bỏ cuối cùng là câu trả lời mới. Nhưng `_DROP_CHANGE` gộp
+  hai loại cụm khác vai:
+  - **Cụm giữ lịch** ("giữ lịch", "để nguyên", "không đổi nữa", "khỏi đổi"): phần sau là lịch cũ ("giữ lịch 3 rưỡi
+    chiều thứ Tư").
+  - **Cụm bỏ điều kiện** ("thì thôi", "thì bỏ qua", "thôi vậy"): phần sau mới là câu trả lời ("3 giờ chiều thì thôi,
+    lấy khung 2").
+
+  Ở câu chốt khung, `_slot_readback` không xét bỏ đổi lịch trước khi hiểu giờ trong câu là yêu cầu mới.
+- **Ý 2.** `requests_time` chạy trên `_prepare(transcript)`. `_prepare` chỉ thêm dấu cho từ chỉ giờ / ngày và cho
+  "không", nên câu thành nửa có dấu nửa không ("cho toi 9 giờ sáng mai duoc không"). Cụm `_TIME_REQUEST`,
+  `_AVAILABILITY`, `_IMPERATIVE_TAIL` khớp theo chế độ tự nhận dấu, nên bản có dấu không khớp "duoc", bản không dấu
+  không khớp "không". Eval không bắt được vì `eval/reschedule` và `eval/confirm` chưa có câu xin giờ không dấu ở câu
+  đọc lịch.
+- **Ý 3.** IE tìm khung trên `slot_answer(transcript)`, nhưng Dialogue tạo yêu cầu mới bằng nguyên câu
+  (`_new_request(ctx, now, ex.transcript)`) ở `_slot_readback`, `_slot_refuse_choice`, `_slot_preference`. Hai tầng
+  đọc hai đoạn khác nhau của cùng một câu.
+
+### 12.3 Hướng sửa (luật)
+
+| Ý | Sửa | Chỗ |
+| --- | --- | --- |
+| 1 | Tách `_DROP_CHANGE` thành `_KEEP_OLD` (giữ lịch) và `_DROP_CONDITION` (bỏ điều kiện). Sau cụm giữ lịch, phần sau chỉ là câu trả lời khi mở đầu bằng lời tự sửa ("à mà thôi", "à không") hoặc động từ chọn / dời ("lấy", "chọn", "cho tôi", "đổi sang"); còn lại là lịch cũ → bỏ đổi lịch. Lớp chặn thứ hai ở Dialogue: câu có cụm bỏ mà tiêu chí chỉ khớp chính lịch hẹn hiện tại (đọc qua cổng một-lần-mỗi-lượt) → bỏ đổi lịch | `agreement.py`, `manager._gives_up` |
+| 1 | Xét `_gives_up` ở đầu cả 4 handler chọn khung, trước khi hiểu giờ trong câu là yêu cầu mới | `manager._slot_readback`, `_slot_refuse_choice`, `_slot_preference` |
+| 2 | Câu gốc không dấu thì khớp lời xin trên **một** dạng: bỏ dấu toàn bộ bản `_prepare` (`strip_diacritics`), dùng bộ cụm không dấu và bản không dấu của hai regex. `_TIME_DOUBT` thêm `unaccented_exclude` cho "à", "hả" ("a", "ha" trùng "ạ"). Cụm thời gian vẫn bỏ trên bản `_prepare` (có dấu) | `slot_choice.requests_time` |
+| 3 | IE trả `ExtractionResult.slot_request` (đoạn câu là yêu cầu thời gian, hiện là `slot_answer`). Dialogue dùng trường này ở mọi `_new_request` của 4 handler, không tự cắt lại câu. Một nguồn cho cả IE và Dialogue; tầng LLM (12.4) cũng điền vào đúng trường này | `schema.py`, `extractor.py`, `manager.py` |
+
+**Test và eval cần thêm:**
+- Mọi câu ở 12.1, cả chế độ chỉ luật và model timeout.
+- Đối chứng: "3 giờ chiều thì thôi, lấy khung 2", "thôi để nguyên lịch cũ đi", "giữ lịch cũ, à mà thôi lấy khung 2".
+- Bản không dấu của các câu xin giờ đã có trong test `requests_time`.
+- Thêm dòng vào `eval/reschedule/cases.csv` (split `holdout`) cho cả 3 nhóm, để lần sau eval bắt được.
+
+### 12.4 Tầng LLM cho câu hỏi chọn khung
+
+Cả 3 ý đều là câu có **nhiều vế đóng vai khác nhau** (lịch cũ, giờ bị bỏ, giờ muốn) hoặc **sai lệch hình thức** (không
+dấu). Luật chỉ phủ được đến đâu có từ khóa đến đó; mỗi bản sửa luật lại mở một chỗ hở mới. Thiết kế tầng LLM fallback
+cho 4 câu hỏi chọn khung ở [plans/t10-slot-semantic-fallback.md](../plans/t10-slot-semantic-fallback.md).
+
+**Đề xuất thứ tự:**
+1. Sửa luật ở 12.3 trước. Đây là đường chạy khi model tắt / lỗi, nên phải đúng dù có LLM.
+2. Test local.
+3. Làm tầng LLM theo plan.
+
+Plan LLM đã được review và sửa 07/10 (plan §13): Dialogue theo kết quả model qua `_slot_by_model` thay vì thứ tự
+nhánh của luật; lỗi model ở route chọn khung không đi đường "model lỗi" chung; `pick` chỉ cho cách gọi theo thứ tự;
+tối đa 2 đoạn giờ; cờ tắt thì router không chạy.
+
+### 12.5 Đã sửa luật (07/10/2026)
+
+**Ý 1. Cụm giữ lịch kèm giờ của lịch cũ là bỏ đổi lịch** (`agreement.py`, `manager.py`)
+
+- `_DROP_CHANGE` tách thành hai danh sách: `_KEEP_OLD_WORDS` (giữ lịch: "giữ lịch", "để nguyên", "không đổi nữa", …)
+  và `_DROP_CONDITION_WORDS` (bỏ điều kiện: "thì thôi", "thôi khỏi", "thôi vậy", …). `gives_up_if_unavailable` vẫn
+  nhận cả hai.
+- `answer_after_give_up`: sau cụm **bỏ điều kiện**, phần sau là câu trả lời như cũ. Sau cụm **giữ lịch**, phần sau chỉ
+  là câu trả lời khi người gọi mở lại việc chọn (`_reopened`):
+  - có lời tự sửa ở bất kỳ đâu, và sau lời sửa còn nội dung ("giữ lịch 3 rưỡi, à mà thôi lấy khung 2" -> "lấy khung 2");
+  - hoặc vế sau mở đầu bằng lời chọn / dời, sau khi bỏ từ đệm và "lịch cũ" ("giữ lịch cũ nhé, cho tôi khung 2").
+  - Còn lại phần sau là lịch cũ: "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi", "giữ lịch 3 rưỡi chiều thứ Tư cho tôi",
+    "giữ lịch cũ mà thôi" -> bỏ đổi lịch.
+- **Lớp chặn thứ hai** (`DialogueManager._gives_up`, `_names_current_appointment`): câu có cụm bỏ mà tiêu chí của vế
+  sau chỉ khớp chính lịch hẹn đang đổi -> bỏ đổi lịch ("thì thôi, giữ 3 rưỡi chiều thứ Tư"). Đối chiếu trên dữ liệu
+  mock, tiêu chí chưa quy thứ trần (R-30), đọc lịch qua cổng một-lần-mỗi-lượt. `_current_matches` dùng chung với
+  `_proposes_other_time`.
+- `_gives_up` được xét **ở đầu cả 4 handler** chọn khung (`_slot_choice`, `_slot_readback`, `_slot_refuse_choice`,
+  `_slot_preference`), trước khi hiểu giờ trong câu là chọn khung hay yêu cầu mới.
+
+**Ý 2. Câu không dấu xin giờ khác** (`slot_choice.requests_time`)
+
+- Câu gốc không dấu: lời xin, câu hỏi chỗ ("co … khong") và câu cầu khiến ("… di em") khớp trên **bản bỏ dấu toàn
+  bộ** của `_prepare`, bằng bộ cụm không dấu và bản không dấu của hai regex. Cụm thời gian vẫn bỏ trên bản `_prepare`
+  (có dấu); phần còn lại bỏ dấu rồi so với danh sách cho phép.
+- `_TIME_DOUBT` không dùng bản không dấu của "à", "hả" ("a", "ha" trùng "ạ", "hạ").
+- Câu có dấu đi đúng đường cũ.
+
+**Ý 3. Một nguồn cho đoạn câu là yêu cầu thời gian** (`schema.py`, `extractor.py`, `manager.py`)
+
+- `ExtractionResult.slot_request`: đoạn IE dùng để tìm khung (`slot_answer`: vế sau lời bỏ, bỏ vế điều kiện đầu câu).
+- Dialogue tạo yêu cầu mới từ trường này ở cả 4 handler (`_slot_request(ex)`), không tự cắt lại câu. Tầng LLM sau này
+  điền vào đúng trường này.
+
+**Kết quả trên các câu của 12.1** (chế độ chỉ luật và model timeout như nhau; sim `mentor_mock`):
+
+| Câu | Câu hỏi | HEAD (`9834824`) | Sau khi sửa |
+| --- | --- | --- | --- |
+| "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi" | mời khung | "thứ Tư ngày 7 đã kín" + mời khung | giữ lịch, chuyển PATIENT_REQUEST |
+| "thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư" | mời khung | mời khung | giữ lịch, chuyển PATIENT_REQUEST |
+| "thôi giữ lịch 3 rưỡi chiều thứ Tư" | chốt khung | mời khung | giữ lịch, chuyển PATIENT_REQUEST |
+| "sang mai khoang 9 gio co duoc khong" | đọc lịch | hỏi lại | "thứ Ba ngày 6 đã kín" + mời khung |
+| "cho toi 9 gio sang mai duoc khong" | đọc lịch | hỏi lại | như trên |
+| "de sang thu nam duoc khong em" | đọc lịch | hỏi lại | "thứ Năm ngày 8 đã kín" + câu chốt khung gần nhất (R-30) |
+| "9 giờ thì thôi, cho tôi ngày 16" | chốt khung | chốt 9 giờ ngày 16 | mời 2 khung ngày 16 |
+| "10 giờ sáng thì thôi, lấy ngày 20 đi" | chốt khung | "chưa thấy khung giờ đó" | mời khung ngày 20 |
+
+Đối chứng giữ nguyên: "3 giờ chiều thì thôi, lấy khung 2" (câu chốt khung 2), "thôi để nguyên lịch cũ đi" (chuyển
+máy), "giữ lịch cũ, à mà thôi lấy khung 2" (câu chốt khung 2), "thôi khỏi, 3 giờ cũng được" (câu chốt 3 giờ). Câu
+không dấu thắc mắc / hỏi việc khác ("9 gio ha em", "toi tuong hen 9 gio", "ngay mai toi co phai nhin an khong") vẫn
+không vào đổi lịch.
+
+**Test:**
+
+- `tests/engine/test_reschedule_review.py`: 48 ca mới (chế độ chỉ luật và model timeout) cho 3 ý ở cả 4 câu hỏi chọn
+  khung, gồm lớp chặn thứ hai và các câu đối chứng. Trên HEAD trước khi sửa: 26 ca fail, đo trước khi thêm 3 câu
+  (bản không dấu và 2 câu lớp chặn thứ hai); các câu đối chứng pass ở cả hai bản.
+- `tests/engine/extraction/test_agreement.py`: `answer_after_give_up` — 7 câu có câu trả lời mới, 7 câu không.
+- `tests/engine/extraction/test_slot_choice.py`: `requests_time` với 11 câu không dấu (5 xin giờ, 6 không).
+
+**Eval** (chỉ luật, `NAME_FALLBACK_PROVIDER=none`, `SEMANTIC_FALLBACK_ENABLED=false`; kết quả ở
+`result/07-10-2026/*/review2-rules/`):
+
+- Thêm R161–R172 vào `eval/reschedule/cases.csv` và 5 dòng `review2_*` vào `eval/confirm/cases.csv`, split `prompt`
+  như R153–R160: các câu này đã dùng để sửa luật nên không tính vào holdout (plan LLM §10). Cả 17 dòng đều đạt.
+- R167 dùng giờ của lịch trong eval (`apt_00418`, 8 giờ sáng thứ Năm 15/10), không phải lịch của sim `mentor_mock`.
+
+| Eval | Trước (§11.4) | Sau |
+| --- | --- | --- |
+| `reschedule_eval.py --baseline` (holdout) | 113/121, 0 ghi sai, 0 ghi nhầm khung | **113/121**, 0 / 0; 8 ca fail trùng trước |
+| `confirm_eval.py --baseline` | 122/181, ghi sai 0 | **122/181**, ghi sai 0 |
+| `cancel_eval.py --baseline` (holdout) | 0.7473, ghi sai 0 | **0.7473**, ghi sai 0 |
+| `identity_eval.py` | 118/201 | **118/201** |
+| `no_answer_eval.py --baseline` | 83/83 | **83/83** |
+
+**Ngoài phạm vi, còn lại:** 8 ca holdout fail như trước (R056, R060, R075, R105, R112, R113, R118, R120). R118 nên sửa
+ở `clinical.py` (plan LLM §1); các ca còn lại thuộc tầng LLM.
+
+| Command | Kết quả |
+| --- | --- |
+| `python -m ruff check src tests scripts` | Pass |
+| `python -m ruff format --check src tests` | Pass |
+| `python -m pytest tests/engine -q` (`PYTHONUTF8=1`) | Pass (3681 passed, 1 skipped); gồm 7 case mentor × 3 chế độ model |
+| `python -m pytest -q` (`PYTHONUTF8=1`) | 4728 passed, 15 skipped; 17 fail đều ở speech / audio do `.venv` local thiếu `soxr`, trùng §11.4 |

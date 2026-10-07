@@ -429,3 +429,27 @@ def test_correction_keeps_the_date_punctuation() -> None:
     assert extract_slot_choice("không phải 14/10 mà là 15/10", slots, [], NOW).value.slot_ids == (
         "s15",
     )
+
+
+# --- Review lần 2 (07/10, evidence §12 ý 2): câu không dấu khớp lời xin trên một dạng ---------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("sang mai khoang 9 gio co duoc khong", True),
+        ("cho toi 9 gio sang mai duoc khong", True),
+        ("de sang thu nam duoc khong em", True),
+        ("5 gio chieu ngay 14 di em", True),
+        ("con khung sang thu sau khong a", True),
+        # Thắc mắc / câu kể / câu hỏi việc khác vẫn không phải lời xin
+        ("9 gio ha em", False),
+        ("toi tuong hen 9 gio", False),
+        ("khong phai 9 gio a", False),
+        ("3 gio toi di", False),
+        ("ngay mai toi co phai nhin an khong", False),
+        ("mai toi co can mang giay to gi khong", False),
+    ],
+)
+def test_requests_time_reads_unaccented_sentences(text: str, expected: bool) -> None:
+    assert requests_time(text) is expected

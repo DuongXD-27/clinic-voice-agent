@@ -905,24 +905,44 @@ def mentions_cancel(transcript: str) -> bool:
 # Bỏ việc đổi lịch dù câu có nhắc giờ: "không có 5 giờ thì thôi", "thế thì thôi, giữ lịch cũ", "không
 # được thì để nguyên", "thôi khỏi đổi". Khác `_GIVE_UP_SLOT`, KHÔNG có "thôi" trần: "thôi, 3 giờ cũng
 # được" là chấp nhận khung. Giờ trong các câu này là điều kiện vừa không có, không phải yêu cầu mới.
-_DROP_CHANGE = compile_phrases(
-    [
-        *_KEEP_WORDS,
-        *_NOT_CHANGE_WORDS,
-        "giữ lịch cũ",
-        "để nguyên",
-        "để lịch cũ",
-        "thì thôi",
-        "thôi khỏi",
-        "thôi bỏ đi",
-        "thì bỏ qua",
-        "thì bỏ đi",
-        "thôi vậy",
-        "không đặt nữa",
-    ]
+# Hai loại cụm khác vai với phần đứng sau (evidence §12.2):
+# - Giữ lịch: phần sau là lịch cũ ("giữ lịch 3 rưỡi chiều thứ Tư"), trừ khi người gọi tự sửa / chọn lại.
+# - Bỏ điều kiện: phần sau là câu trả lời mới ("3 giờ chiều thì thôi, lấy khung 2").
+_KEEP_OLD_WORDS = [
+    *_KEEP_WORDS,
+    *_NOT_CHANGE_WORDS,
+    "giữ lịch cũ",
+    "để nguyên",
+    "để lịch cũ",
+    "không đặt nữa",
+]
+_DROP_CONDITION_WORDS = [
+    "thì thôi",
+    "thôi khỏi",
+    "thôi bỏ đi",
+    "thì bỏ qua",
+    "thì bỏ đi",
+    "thôi vậy",
+]
+_DROP_CHANGE = compile_phrases([*_KEEP_OLD_WORDS, *_DROP_CONDITION_WORDS])
+_KEEP_OLD_PHRASES = frozenset(clean(w) for w in _KEEP_OLD_WORDS) | frozenset(
+    strip_diacritics(clean(w)) for w in _KEEP_OLD_WORDS
 )
 # Còn đứng sau cụm bỏ ở cuối câu mà không thành vế mới: "thì thôi thôi", "thôi khỏi đi"
 _DROP_TAIL = frozenset({"thôi", "thoi", "khỏi", "khoi"})
+# Sau cụm giữ lịch, người gọi mở lại việc chọn: tự sửa ở bất kỳ đâu ("giữ lịch 3 rưỡi, à mà thôi lấy khung
+# 2"), hoặc vế sau mở đầu bằng lời chọn / dời ("giữ lịch cũ nhé, cho tôi khung 2"). Còn lại phần sau chỉ nhắc
+# lịch cũ ("để nguyên lịch 3 rưỡi chiều thứ Tư đi").
+_REOPEN_CORRECTION = compile_phrases(
+    ["à mà thôi", "mà thôi", "à thôi", "à không", "à mà không", "à nhầm", "nhầm rồi", "nghĩ lại",
+     "thôi để", "ý tôi là", "ý là"]
+)  # fmt: skip
+_REOPEN_PICK = compile_phrases(
+    ["lấy", "chọn", "cho tôi", "cho em", "cho mình", "cho chị", "cho anh", "đổi sang", "chuyển sang",
+     "dời sang", "đổi qua", "chuyển qua", "dời qua"]
+)  # fmt: skip
+# Từ nhắc lại lịch cũ, bỏ qua trước khi xét lời chọn ở đầu vế sau
+_OLD_BOOKING_WORDS = frozenset({"lịch", "lich", "cũ", "cu", "hẹn", "hen"})
 
 
 def gives_up_if_unavailable(transcript: str) -> bool:
@@ -934,16 +954,45 @@ def gives_up_if_unavailable(transcript: str) -> bool:
 
 
 def answer_after_give_up(transcript: str) -> Optional[str]:
-    """Vế sau cụm bỏ cuối cùng, khi vế đó còn nội dung: "3 giờ chiều thì thôi, lấy khung 2" -> "lấy khung
-    2". Cụm bỏ ở cuối câu ("Không có 5 giờ thì thôi", "thế thì thôi vậy em") -> None. Giữ dấu câu."""
+    """Vế sau cụm bỏ cuối cùng, khi vế đó là câu trả lời mới: "3 giờ chiều thì thôi, lấy khung 2" -> "lấy
+    khung 2". Giữ dấu câu. Trả None (cụm bỏ đứng vững) khi:
+    - cụm bỏ ở cuối câu ("Không có 5 giờ thì thôi", "thế thì thôi vậy em");
+    - cụm là giữ lịch và phần sau chỉ nhắc lịch cũ ("thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi").
+    """
     text = clean(transcript)
     last = find_last_phrase(text, _DROP_CHANGE)
     if last is None:
         return None
-    filler = _FILLER_UNACCENTED if is_unaccented(text) else _FILLER
-    if all(word in filler or word in _DROP_TAIL for word in text[last.end() :].split()):
+    unaccented = is_unaccented(text)
+    filler = _FILLER_UNACCENTED if unaccented else _FILLER
+    after = text[last.end() :].split()
+    if all(word in filler or word in _DROP_TAIL for word in after):
         return None
-    return drop_leading_words(transcript, len(text[: last.end()].split()))
+    start = len(text[: last.end()].split())
+    if " ".join(last.group(0).split()) in _KEEP_OLD_PHRASES:
+        reopened = _reopened(" ".join(after), unaccented, filler)
+        if reopened is None:
+            return None
+        start += reopened
+    return drop_leading_words(transcript, start)
+
+
+def _reopened(after: str, unaccented: bool, filler: frozenset[str]) -> Optional[int]:
+    """Số từ của vế sau cụm giữ lịch cần bỏ để tới câu trả lời mới; None nếu vế sau chỉ là lịch cũ."""
+    correction = find_last_phrase(after, _REOPEN_CORRECTION, unaccented)
+    if correction is not None:
+        rest = after[correction.end() :].split()
+        if any(word not in filler and word not in _DROP_TAIL for word in rest):
+            return len(after[: correction.end()].split())
+    words = after.split()
+    skipped = 0
+    while skipped < len(words) and (
+        words[skipped] in filler or words[skipped] in _OLD_BOOKING_WORDS
+    ):
+        skipped += 1
+    head = " ".join(words[skipped:])
+    opens = any(pattern.match(head) for _, pattern in _REOPEN_PICK.for_text(head, unaccented))
+    return skipped if opens else None
 
 
 def gives_up_slot_change(transcript: str) -> bool:
