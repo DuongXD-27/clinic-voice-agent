@@ -1482,22 +1482,39 @@ def test_cancel_at_the_identity_step_without_identity_still_spends_the_retry() -
     assert clinic.writes == []
 
 
-@pytest.mark.parametrize(
-    "change_of_mind",
-    [
-        "14/03/1978, thôi tôi vẫn đi khám, không hủy nữa",
-        "14/03/1978, tôi đổi ý rồi, tôi muốn đổi lịch sang tuần sau",
-    ],
-)
-def test_taking_the_cancel_back_at_the_identity_step_drops_it(change_of_mind: str) -> None:
+def test_taking_the_cancel_back_at_the_identity_step_drops_it() -> None:
     bot, clinic = _outbound("c_early_revoked")
     _run(bot, "c_early_revoked", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
-    action = _run(bot, "c_early_revoked", [change_of_mind], start=3)
+    action = _run(
+        bot, "c_early_revoked", ["14/03/1978, thôi tôi vẫn đi khám, không hủy nữa"], start=3
+    )
     assert action.state == "AWAITING_INTENT" and FACTS in action.utterance
     assert t.CANCEL_RECONFIRM not in action.utterance
     ctx = _context(bot, "c_early_revoked")
     assert (ctx.pending_action, ctx.early_cancel, ctx.evidence) == (None, None, [])
     assert ctx.question.question_id is QuestionId.CONFIRM_READBACK and clinic.writes == []
+
+
+def test_switching_to_a_reschedule_at_the_identity_step_replaces_the_kept_cancel() -> None:
+    """R-43 + R-44: yêu cầu nói sau cùng ở bước danh tính thắng — đổi lịch thay yêu cầu hủy đã giữ, xác
+    minh xong đi thẳng vào luồng đổi lịch; không hỏi xác nhận hủy, không ghi gì."""
+    bot, clinic = _outbound("c_early_switch")
+    _run(bot, "c_early_switch", ["Nguyễn Văn A", "tôi muốn hủy lịch"])
+    action = _run(
+        bot,
+        "c_early_switch",
+        ["14/03/1978, tôi đổi ý rồi, tôi muốn đổi lịch sang tuần sau"],
+        start=3,
+    )
+    assert action.state in ("OFFERING_SLOTS", "AWAITING_CONFIRMATION")
+    assert t.CANCEL_RECONFIRM not in action.utterance
+    ctx = _context(bot, "c_early_switch")
+    assert (ctx.pending_action, ctx.early_cancel, ctx.early_reschedule) == (
+        "RESCHEDULE",
+        None,
+        None,
+    )
+    assert ctx.evidence == [] and clinic.writes == []
 
 
 def test_asking_whether_cancelling_is_possible_is_not_kept_as_a_request() -> None:

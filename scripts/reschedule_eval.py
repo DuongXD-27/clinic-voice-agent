@@ -11,8 +11,9 @@ Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator th
 (`direction`, `question_id`, `page_size`) — bảng `SETUP`:
 
     outbound OFFER_SLOTS 2          "Tôi muốn đổi lịch"            -> trang [14/10 15:00, 15/10 10:30]
+    outbound OFFER_SLOTS 2-trang2   + "khung khác"                  -> trang [15/10 15:30, 16/10 9:00]
     outbound SLOT_READBACK 1        "đổi sang ngày 14 tháng 10"    -> câu có/không khung duy nhất 14/10 15:00
-    outbound SLOT_READBACK 2        + "khung 1"                     -> câu chốt 14/10 15:00, trang 2 khung
+    outbound SLOT_READBACK 2        + "khung nào cũng được"         -> câu chốt 14/10 15:00, trang 2 khung
     outbound SLOT_REFUSE_CHOICE 2   + "không"                       -> "nghe khung khác hay giữ lịch cũ"
     outbound ASK_SLOT_PREFERENCE 1  14/10 + "không"                 -> hết khung, hỏi ngày khác (vòng 1)
     inbound  OFFER_SLOTS / SLOT_READBACK 2: như trên với "Tôi muốn đặt lịch" (BOOK, SĐT 0901234501)
@@ -22,7 +23,8 @@ Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dướ
     WRITE           Ghi RESCHEDULED / BOOKED.
     TRANSFER:<lý do> Chuyển máy, kèm transfer_reason.
     SWITCH:CANCEL   Rời nhánh đổi lịch sang hỏi xác nhận hủy (chưa ghi).
-    KEEP_OLD        Bỏ đổi / đặt, giữ lịch cũ (không còn hành động chờ).
+    KEEP_OLD        Bỏ đặt lịch (inbound): không còn hành động chờ. Bỏ đổi lịch (outbound) thì giữ lịch cũ và
+                    chuyển máy PATIENT_REQUEST (qc-rs-08), nhãn TRANSFER:PATIENT_REQUEST.
     NOT_UNDERSTOOD  "Dạ, em chưa hiểu ý anh chị..." — tính §1.1.5.
     ASK_DATE        Hỏi lại ngày kèm lý do (đã qua / không tồn tại / quá rộng / trùng hôm nay) — R-30.
     REFUSE_CHOICE   Hỏi "nghe khung khác / đổi ngày khác hay giữ lịch cũ" — không đoán (Q-4).
@@ -33,8 +35,9 @@ Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dướ
                     còn lại mọi khung đọc ra phải thuộc ngày / buổi đó. Đọc câu chốt một khung ngoài trang
                     khớp thời gian đó (PICK_SLOT) cũng tính.
     ANY             Đọc lại từ khung sớm nhất, không tiêu chí ("ngày nào cũng được").
-    PICK:<n>        Đọc câu chốt khung thứ n của trang vừa đọc.
-    PICK_SLOT       Đọc câu chốt một khung không nằm trong trang vừa đọc.
+    PICK:<n>        Đọc câu chốt khung thứ n của trang vừa đọc. Đổi lịch chốt luôn khi chọn khung (ghi
+                    ngay, không đọc lại): ghi đúng khung thứ n từ câu đọc khung cũng là PICK:<n>.
+    PICK_SLOT       Đọc câu chốt (hoặc, khi đổi lịch, ghi) một khung không nằm trong trang vừa đọc.
     MORE            Đọc khung chưa đọc (trang kế), không lặp khung vừa đọc / vừa từ chối.
     REREAD_YESNO    Hỏi lại câu có/không của đúng khung đang chốt, không ghi.
     REREAD_PAGE     Đọc lại đúng trang vừa đọc.
@@ -81,17 +84,21 @@ from callbot.engine.dialogue import templates as t  # noqa: E402
 from callbot.engine.extraction.schema import VN_TZ, QuestionId  # noqa: E402
 from callbot.engine.extraction.semantic import SemanticContext, SemanticOutcome  # noqa: E402
 from callbot.engine.session import CallContext, RedisSessionStore  # noqa: E402
+from callbot.engine.session.fsm import DIRECT_PICK_QUESTION_FOR  # noqa: E402
 from clinic_mock_sim import FakeClinicAPI  # noqa: E402
 
 CASES = ROOT / "eval" / "reschedule" / "cases.csv"
+# Câu hỏi mà chọn rõ một khung vừa đọc là ghi đổi lịch luôn (R-29 v2.1), không đọc lại câu chốt
+SLOT_PICK_QUESTIONS = frozenset(DIRECT_PICK_QUESTION_FOR.values())
 NOW = datetime(2026, 9, 29, 10, 0, tzinfo=VN_TZ)  # thứ Ba
 APPOINTMENT = "apt_00418"
 PHONE = "0901234501"
 VERIFIED = ["Trần Thị Bình", "21 tháng 6 năm 1990"]
 SETUP: dict[tuple[str, str, str], list[str]] = {
     ("outbound", "OFFER_SLOTS", "2"): ["Tôi muốn đổi lịch"],
+    ("outbound", "OFFER_SLOTS", "2-trang2"): ["Tôi muốn đổi lịch", "khung khác"],
     ("outbound", "SLOT_READBACK", "1"): ["đổi sang ngày 14 tháng 10"],
-    ("outbound", "SLOT_READBACK", "2"): ["Tôi muốn đổi lịch", "khung 1"],
+    ("outbound", "SLOT_READBACK", "2"): ["Tôi muốn đổi lịch", "khung nào cũng được"],
     ("outbound", "SLOT_REFUSE_CHOICE", "2"): ["Tôi muốn đổi lịch", "không"],
     ("outbound", "ASK_SLOT_PREFERENCE", "1"): ["đổi sang ngày 14 tháng 10", "không"],
     ("inbound", "OFFER_SLOTS", "2"): ["Tôi muốn đặt lịch"],
@@ -157,6 +164,15 @@ def _slot_times(ctx: CallContext, slot_ids: list[str]) -> tuple[tuple[str, ...],
 
 
 def _observe(action, before: CallContext, after: Optional[CallContext], clinic: FakeClinicAPI):
+    rescheduled = [w[2].get("new_slot_id") for w in clinic.writes if w[1] == "RESCHEDULED"]
+    was = before.question.question_id if before.question else None
+    if rescheduled and was in SLOT_PICK_QUESTIONS:
+        # Đổi lịch chốt luôn khi chọn khung vừa đọc: chấm theo khung được ghi, như câu chốt khung đó
+        dates, hours = _slot_times(before, rescheduled[:1])
+        if rescheduled[0] in before.presented_slot_ids:
+            index = before.presented_slot_ids.index(rescheduled[0]) + 1
+            return Observed(f"PICK:{index}", dates, hours)
+        return Observed("PICK_SLOT", dates, hours)
     if any(status in ("RESCHEDULED", "BOOKED") for _, status, _ in clinic.writes):
         return Observed("WRITE")
     if action.outcome == "TRANSFERRED":
@@ -197,12 +213,12 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
         )
         return Observed(label, dates, hours, full_day)
 
-    was = before.question.question_id if before.question else None
     if asked is QuestionId.SLOT_READBACK:
         selected = after.selected_slot_id
         if was is QuestionId.SLOT_READBACK and selected == before.selected_slot_id:
             return Observed("REREAD_YESNO")
-        if selected in before.presented_slot_ids and "em xác nhận" in utterance:
+        # Câu chốt khung (mọi biến thể của `t.slot_readback`), không phải câu có/không khung duy nhất
+        if selected in before.presented_slot_ids and utterance.endswith("Anh chị đồng ý chứ ạ?"):
             return Observed(f"PICK:{before.presented_slot_ids.index(selected) + 1}", dates, hours)
         if "còn khung" in utterance:  # đọc khung duy nhất còn lại, chưa đọc trước đó
             return Observed("MORE", dates, hours)
@@ -295,11 +311,17 @@ def _run_case(
     seen = _observe(action, before, after, clinic)
     behaviour_ok = _accepted(row["expect"], seen)
     slot_writes = [w for w in clinic.writes if w[1] in ("RESCHEDULED", "BOOKED")]
-    wrong_slot = any(
+    # Đổi lịch chốt luôn khi chọn khung vừa đọc: ghi đúng khung mong đợi (PICK đúng) là an toàn
+    pick_write = (
+        before.question.question_id in SLOT_PICK_QUESTIONS
+        and behaviour_ok
+        and seen.label.startswith("PICK")
+    )
+    wrong_slot = not pick_write and any(
         (body.get("new_slot_id") or body.get("slot_id")) != before.selected_slot_id
         for _, _, body in slot_writes
     )
-    unsafe = bool(slot_writes) and "WRITE" not in row["expect"].split("|")
+    unsafe = bool(slot_writes) and not pick_write and "WRITE" not in row["expect"].split("|")
     semantic_status, semantic_ms = semantic.last if semantic and semantic.last else ("", None)
     outcome = semantic.outcome if semantic else None
     return {

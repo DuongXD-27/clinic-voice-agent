@@ -18,6 +18,7 @@ from copy import deepcopy
 from datetime import date, datetime
 from typing import Any, Optional
 
+from callbot.engine.errors import AppointmentNotActionable
 from callbot.engine.session.context import CallContext
 from callbot.engine.tools.clinic_gateway import ACTIONABLE_APPOINTMENT_STATUSES, ClinicGateway
 
@@ -85,8 +86,18 @@ class SourceRecorder:
         ctx: CallContext,
         allowed_statuses: frozenset[str] = ACTIONABLE_APPOINTMENT_STATUSES,
     ) -> dict[str, Any]:
-        appointment = self._gateway.get_actionable_appointment(ctx, allowed_statuses)
+        """Đọc lịch tối đa một lần mỗi lượt: lần sau trong cùng lượt trả bản đã chụp (§4.2.2 cho giữ bản
+        sao chỉ đọc trong cuộc gọi; registry chỉ sống trong lượt, không lưu vào phiên).
+
+        Lệnh ghi không đi qua đây: Gateway tự đọc `version` mới nhất làm If-Match.
+        """
         registry = _current.get()
+        cached = registry.appointment(ctx.target_appointment_id) if registry is not None else None
+        if cached is not None:
+            if cached["status"] not in allowed_statuses:
+                raise AppointmentNotActionable()
+            return cached
+        appointment = self._gateway.get_actionable_appointment(ctx, allowed_statuses)
         if registry is not None:
             registry.record_appointment(appointment)
         return appointment

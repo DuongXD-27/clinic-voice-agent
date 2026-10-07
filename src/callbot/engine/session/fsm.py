@@ -7,14 +7,15 @@ nằm ở bản ghi lượt trong session store, không thêm vào enum HTTP.
 from typing import Optional
 
 from callbot.engine.extraction.schema import CONFIRMATION_QUESTIONS, QuestionId
-from callbot.engine.session.context import CallContext, PendingAction
+from callbot.engine.session.context import CallContext, PendingAction, Question
 from callbot.engine.types import CallState
 
 TRANSITIONS: dict[CallState, set[CallState]] = {
     "AWAITING_IDENTITY": {
         "AWAITING_IDENTITY",
         "AWAITING_INTENT",
-        # Yêu cầu hủy nói cùng lượt danh tính: xác minh xong hỏi thẳng câu xác nhận hủy (QC qc-cn-08).
+        # Yêu cầu hủy / đổi lịch nói cùng lượt danh tính: xác minh xong hỏi thẳng câu xác nhận hủy
+        # (QC qc-cn-08), hoặc đọc khung duy nhất hợp yêu cầu đổi và hỏi có/không (R-43).
         # Vẫn chịu kiểm tra "state khác AWAITING_IDENTITY cần xác minh xong" bên dưới.
         "AWAITING_CONFIRMATION",
         "OFFERING_SLOTS",
@@ -57,12 +58,35 @@ CONFIRMATION_QUESTION_FOR: dict[PendingAction, QuestionId] = {
     "BOOK": QuestionId.SLOT_READBACK,
 }
 
+# PRD R-29 (v2.1): người gọi chọn rõ một khung bot vừa đọc là khẳng định rõ (R-23) — ghi đổi lịch
+# ngay từ câu mời khung, không hỏi thêm "đồng ý chứ ạ?". Đặt lịch vẫn đọc lại slot (§1.1.10, R-10).
+DIRECT_PICK_QUESTION_FOR: dict[PendingAction, QuestionId] = {"RESCHEDULE": QuestionId.OFFER_SLOTS}
+
+
+def confirmation_questions(action: PendingAction) -> frozenset[QuestionId]:
+    """Các câu hỏi mà câu trả lời đồng ý / chọn rõ mở khóa lệnh ghi của `action`."""
+    direct = DIRECT_PICK_QUESTION_FOR.get(action)
+    base = CONFIRMATION_QUESTION_FOR[action]
+    return frozenset({base, direct}) if direct is not None else frozenset({base})
+
+
+def question_offers_slot(ctx: CallContext, question: Question, slot_id: Optional[str]) -> bool:
+    """Câu hỏi `question` có mời đúng khung `slot_id` không — guardrail và Dialogue dùng chung.
+
+    Câu chốt khung hỏi đúng một khung. Câu mời khung (R-29 v2.1: "giờ bot vừa mời") chỉ mời các khung
+    của trang vừa đọc; khung của trang trước phải qua câu chốt.
+    """
+    if question.question_id is QuestionId.OFFER_SLOTS:
+        return slot_id is not None and slot_id in ctx.presented_slot_ids
+    return question.slot_id == slot_id
+
+
 # Outbound gộp tóm tắt lịch + đọc lại + hỏi đến được không vào một lượt (Figure 0 rev 1.1),
 # nên xác nhận đến khám được ghi cả từ AWAITING_INTENT.
 _WRITE_STATES: dict[PendingAction, frozenset[CallState]] = {
     "CONFIRM": frozenset({"AWAITING_INTENT", "AWAITING_CONFIRMATION"}),
     "CANCEL": frozenset({"AWAITING_CONFIRMATION"}),
-    "RESCHEDULE": frozenset({"AWAITING_CONFIRMATION"}),
+    "RESCHEDULE": frozenset({"AWAITING_CONFIRMATION", "OFFERING_SLOTS"}),
     "BOOK": frozenset({"AWAITING_CONFIRMATION"}),
 }
 
@@ -158,7 +182,7 @@ def check_write(ctx: CallContext, action: PendingAction, slot_id: Optional[str] 
         raise InconsistentSession(
             f"{ctx.call_id}: ghi slot {slot_id}, slot đang chọn {ctx.selected_slot_id}"
         )
-    if ctx.question is None or ctx.question.question_id != CONFIRMATION_QUESTION_FOR[action]:
+    if ctx.question is None or ctx.question.question_id not in confirmation_questions(action):
         raise InconsistentSession(f"{ctx.call_id}: câu hỏi đang chờ không xác nhận {action}")
 
 

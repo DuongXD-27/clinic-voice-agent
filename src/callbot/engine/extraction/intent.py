@@ -25,6 +25,7 @@ from callbot.engine.extraction.text import (
     clean,
     compile_phrases,
     find_phrase,
+    is_negated,
     is_unaccented,
     strip_diacritics,
 )
@@ -381,6 +382,20 @@ def allowed_in_direction(intent: Intent, direction: Direction) -> bool:
     return _DIRECTION_ONLY.get(intent, direction) == direction
 
 
+# Động từ dời lịch + (giúp / cho / hộ) + xưng hô + "sang / qua": "đổi cho tôi sang thứ Sáu", "chuyển
+# giúp chị qua tuần sau", "dời lịch hộ em sang chiều". Cụm cố định ở _KEYWORDS chỉ có động từ liền "sang".
+_ADDRESSEE = r"(?:tôi|em|mình|chị|anh|cô|chú|bác|con|cháu|ông|bà|tớ|tao)"
+_MOVE_SOURCE = (
+    r"(?<!\w)(?:đổi|dời|chuyển|lùi|hoãn)(?: lịch(?: khám| hẹn)?)?"
+    rf"(?: (?:giúp|cho|hộ)(?: {_ADDRESSEE})?| {_ADDRESSEE})(?: (?:với|nhé|nha))? (?:sang|qua)(?!\w)"
+)
+_MOVE_PATTERN = re.compile(_MOVE_SOURCE)
+# "doi" không dấu trùng đợi / đói: bản không dấu chỉ nhận "chuyển / lùi / hoãn"
+_MOVE_PATTERN_UNACCENTED = re.compile(
+    strip_diacritics(_MOVE_SOURCE).replace("(?:doi|doi|chuyen|lui|hoan)", "(?:chuyen|lui|hoan)")
+)
+
+
 def _match(intent: Intent, text: str, unaccented: bool) -> Optional[str]:
     if intent is Intent.NOT_PATIENT:
         for pattern in _NOT_PATIENT_PATTERNS_UNACCENTED if unaccented else _NOT_PATIENT_PATTERNS:
@@ -398,6 +413,11 @@ def _match(intent: Intent, text: str, unaccented: bool) -> Optional[str]:
     if found and intent is Intent.NOT_PATIENT and _first_person_before(text, found, unaccented):
         # "Tôi đi vắng nên muốn đổi lịch": chính người bệnh nói mình vắng, không phải người khác nghe
         return None
+    if found is None and intent is Intent.RESCHEDULE:
+        pattern = _MOVE_PATTERN_UNACCENTED if unaccented else _MOVE_PATTERN
+        move = pattern.search(text)
+        if move is not None and not is_negated(text, move.start(), unaccented):
+            return move.group(0)
     return found.group(0) if found else None
 
 

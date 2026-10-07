@@ -120,6 +120,8 @@ DayPeriod = Literal["MORNING", "NOON", "AFTERNOON", "EVENING"]
 # Ngày người gọi nói nhưng không dùng được để tra (PRD R-30): đã qua, không tồn tại, quá rộng
 # ("tháng sau"), hoặc thứ trần trùng hôm nay (hôm nay hay tuần sau?) -> hỏi lại, không đoán
 DateIssue = Literal["PAST", "INVALID", "TOO_BROAD", "TODAY"]
+# "sớm hơn" / "muộn hơn" so với lịch đang đổi
+Relative = Literal["EARLIER", "LATER"]
 
 
 @dataclass(frozen=True)
@@ -141,6 +143,12 @@ class SlotCriteria:
     # 631), "trước 10 giờ 30" -> before = 630. Không phải giờ chính xác.
     not_before: Optional[int] = None
     before: Optional[int] = None
+    # "sớm hơn / muộn hơn" so với lịch đang đổi. IE không biết giờ lịch hẹn (nguyên tắc 2): Dialogue gắn
+    # mốc vào `earlier_than` / `later_than` (`anchor_relative`). Chưa có mốc thì không khung nào khớp —
+    # là yêu cầu mới, không phải chọn khung.
+    relative: Optional[Relative] = None
+    earlier_than: Optional[datetime] = None  # khung phải bắt đầu trước mốc này
+    later_than: Optional[datetime] = None  # khung phải bắt đầu sau mốc này
 
     @property
     def empty(self) -> bool:
@@ -236,13 +244,20 @@ class ExtractionResult:
     # Bước danh tính, lượt không có tên / ngày sinh: model đọc là người gọi HỎI (route IDENTITY_TURN) —
     # "lịch khám của tôi mấy giờ?", "bên nào gọi?". Dialogue trả lời cần xác minh trước.
     caller_question: bool = False
-    # Outbound, bước danh tính: ý định hủy (và lý do) nói gộp với tên / ngày sinh — "tôi là Nguyễn Văn A,
-    # sinh ..., gọi để hủy lịch vì đi công tác" (QC qc-cn-08). Không phải `intent`: Policy và Dialogue
-    # không dùng trước khi xác minh xong; Dialogue chỉ giữ lại để hỏi xác nhận hủy sau VERIFIED.
-    # NONE có span: lượt định danh còn nội dung khác ngoài tên / ngày sinh (đổi ý, đổi lịch...): bỏ
+    # Outbound, bước danh tính: ý định hủy (và lý do) hoặc đổi lịch nói gộp với tên / ngày sinh — "tôi là
+    # Nguyễn Văn A, sinh ..., gọi để hủy lịch vì đi công tác" (QC qc-cn-08), "..., tôi muốn đổi sang chiều
+    # ngày 14" (PRD R-43). Không phải `intent`: Policy và Dialogue không dùng trước khi xác minh xong;
+    # Dialogue chỉ giữ lại để đi thẳng vào luồng đó sau VERIFIED.
+    # NONE có span: lượt định danh còn nội dung khác ngoài tên / ngày sinh (đổi ý, chưa quyết...): bỏ
     # yêu cầu đã giữ.
     deferred_intent: Field[Intent] = field(default_factory=Field.skipped)
     deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
+    # Đổi lịch: lời yêu cầu đã bỏ tên và ngày sinh (tiêu chí thời gian), giữ dấu câu ("20/10", "15:30")
+    deferred_request: Optional[str] = None
+    # Câu hỏi chọn khung: đoạn câu là câu trả lời về thời gian (vế sau lời bỏ, bỏ vế điều kiện ở đầu), giữ
+    # dấu câu. IE tìm khung trên đoạn này và Dialogue tạo yêu cầu mới từ chính đoạn này — một nguồn cho cả
+    # hai tầng ("9 giờ thì thôi, cho tôi ngày 16" -> "cho tôi ngày 16"). None ở các câu hỏi khác.
+    slot_request: Optional[str] = None
 
     @property
     def model_failed(self) -> bool:

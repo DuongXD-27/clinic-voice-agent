@@ -201,7 +201,7 @@ def test_cancel_requires_unchanged_second_confirmation(variant):
 def test_slot_paging_and_confirmation_write_only_the_selected_slot(variant):
     clinic, bot, page = _call("c_variant_slot", "Tôi đổi sang buổi chiều được không?")
     assert page.state == "OFFERING_SLOTS" and "Ngoài ra còn 4 khung khác" in page.utterance
-    readback = _say(bot, "c_variant_slot", "khung 2")
+    readback = _say(bot, "c_variant_slot", "khung 2 được không")
     assert readback.utterance.endswith("Anh chị đồng ý chứ ạ?")
     assert clinic.writes == []
     done = _say(bot, "c_variant_slot", "đồng ý")
