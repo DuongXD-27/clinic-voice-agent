@@ -171,10 +171,11 @@ def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(_outbound("c_taken"))
-    _run(bot, "c_taken", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch", "hai giờ rưỡi chiều"])
+    _run(bot, "c_taken", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
 
     clinic.taken_slots.add("slot_91d2")  # người khác vừa lấy
-    action = _run(bot, "c_taken", ["Được"], start=5)
+    # Chọn rõ khung vừa đọc -> ghi ngay (R-29 v2.1), mock báo SLOT_TAKEN
+    action = _run(bot, "c_taken", ["hai giờ rưỡi chiều"], start=4)
     # Đọc lại /slots: chỉ còn một khung -> hỏi có/không luôn (Hình 0), vẫn cần xác nhận mới
     assert action.state == "AWAITING_CONFIRMATION" and action.utterance.startswith(t.SLOT_TAKEN)
     assert "2 giờ 30 chiều" not in action.utterance and "10 giờ sáng" in action.utterance
@@ -182,7 +183,7 @@ def test_reschedule_slot_taken_reoffers_and_needs_new_confirmation() -> None:
     assert ctx.selected_slot_id == "slot_aa01" and ctx.evidence == []
     assert clinic.writes == []
 
-    action = _run(bot, "c_taken", ["được"], start=6)
+    action = _run(bot, "c_taken", ["được"], start=5)
     assert action.outcome == "RESCHEDULED"
     assert clinic.writes == [("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"})]
 
@@ -207,12 +208,10 @@ def test_refusing_slots_drops_pending_action_without_writing() -> None:
     bot.start_call(_outbound("c_refuse_slot"))
     _run(bot, "c_refuse_slot", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
 
+    # PRD R-29 v2.1 (GC-RES-09): bỏ ngang giữa đổi lịch -> giữ lịch cũ, chuyển PATIENT_REQUEST
     action = _run(bot, "c_refuse_slot", ["thôi không đổi nữa"], start=4)
-    assert action.state == "AWAITING_INTENT"
-    ctx = _context(bot, "c_refuse_slot")
-    assert ctx.pending_action is None and ctx.selected_slot_id is None
-    assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
-    assert clinic.writes == []
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "PATIENT_REQUEST"})]
 
 
 def test_cancel_requires_explicit_second_confirmation(monkeypatch) -> None:

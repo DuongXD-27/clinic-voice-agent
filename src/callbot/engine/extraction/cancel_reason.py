@@ -82,6 +82,18 @@ def reason_matches(text: str, reason: CancelReason, unaccented: bool) -> list[re
     ]
 
 
+# Người gọi bác bỏ lý do: "hủy, không phải vì không đủ tiền", "chẳng phải do bận". Lý do bị bác bỏ
+# không được ghi; không còn lý do nào thì ra UNSPECIFIED như câu không nêu lý do.
+_DENIAL = re.compile(r"(?<!\w)(?:chứ )?(?:không|chẳng|chả|đâu) phải(?: là)?(?: \w+){0,2}\s*$")
+_DENIAL_UNACCENTED = re.compile(
+    r"(?<!\w)(?:chu )?(?:khong|chang|cha) phai(?: la)?(?: \w+){0,2}\s*$"
+)
+
+
+def _denied(before: str, unaccented: bool) -> bool:
+    return (_DENIAL_UNACCENTED if unaccented else _DENIAL).search(before.strip()) is not None
+
+
 def extract_cancel_reason(transcript: str) -> Field[CancelReason]:
     text = clean(transcript)
     unaccented = is_unaccented(text)
@@ -89,7 +101,7 @@ def extract_cancel_reason(transcript: str) -> Field[CancelReason]:
     for reason, phrases in _PHRASES.items():
         # "không bận" không phải lý do bận
         match = find_phrase(text, phrases, allow_negated=False, unaccented=unaccented)
-        if match is not None:
+        if match is not None and not _denied(text[: match.start()], unaccented):
             hits[reason] = match.group(0)
 
     if not hits:

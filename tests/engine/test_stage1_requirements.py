@@ -59,6 +59,15 @@ def context(question=QuestionId.CANCEL_RECONFIRM):
         ("Nguyễn Văn A", "Nguyễn Van A", NameMatch.MISMATCH),
         ("Đặng Văn A", "Dang Van A", NameMatch.MISMATCH),
         ("Văn A", "Nguyễn Văn A", NameMatch.MISMATCH),
+        # Tên khai không có dấu nào (QC qc-stt-05, qc-w6-01): so trên bản bỏ hết dấu. Đánh đổi: các
+        # tên chỉ khác dấu ("Lê Văn Hạ" / "Lê Văn Hà") không còn phân biệt được bằng tên, chỉ bằng
+        # ngày sinh và quy tắc đúng một hồ sơ khớp.
+        ("nguyen van a", "Nguyễn Văn A", NameMatch.MATCH),
+        ("NGUYEN Van A", "Nguyễn Văn A", NameMatch.MATCH),
+        ("Dang Van A", "Đặng Văn A", NameMatch.MATCH),
+        ("le van ha", "Lê Văn Hạ", NameMatch.MATCH),
+        ("nguyen van b", "Nguyễn Văn A", NameMatch.MISMATCH),
+        ("van a", "Nguyễn Văn A", NameMatch.MISMATCH),
     ],
 )
 def test_name_matching_preserves_syllables_and_never_accepts_tone_differences(

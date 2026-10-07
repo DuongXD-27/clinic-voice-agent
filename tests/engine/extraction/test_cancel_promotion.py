@@ -54,6 +54,8 @@ from inference.llm.prompt.semantic import (
     PROMPT_VERSION,
     PROMPT_VERSION_CANCEL_CONFIRM,
     PROMPT_VERSION_LUNA,
+    PROMPT_VERSION_LUNA_V7,
+    PROMPT_VERSION_LUNA_V8,
     build_messages,
 )
 from tests.engine.extraction.test_agreement import (
@@ -391,6 +393,25 @@ def test_the_gate_rechecks_every_condition_itself(
     assert kept.agreement.value is Agreement.UNCLEAR
 
 
+@pytest.mark.parametrize("other", [Intent.RESCHEDULE, Intent.OUT_OF_SCOPE])
+def test_a_rejected_promotion_keeps_another_need_the_rule_read(other: Intent) -> None:
+    """ "hủy đi, à thôi đổi sang tuần sau": CONFIRM_ACTION bị bác không được đè RESCHEDULE thành hủy."""
+    result = _promoted(GATE_TRANSCRIPT, GATE_SPAN, intent=Field(other, Provenance.EXACT, span="x"))
+    kept = _keep_cancel_threshold(RULE, result, _turn_context(), CONFIRM, promotion_enabled=True)
+    assert kept.intent.value is other
+
+
+def test_a_rejected_promotion_is_still_a_cancel_intent() -> None:
+    kept = _keep_cancel_threshold(
+        RULE,
+        _promoted(GATE_TRANSCRIPT, GATE_SPAN),
+        _turn_context(question_turn=2),
+        CONFIRM,
+        promotion_enabled=True,
+    )
+    assert kept.intent.value is Intent.CANCEL
+
+
 def test_the_gate_drops_a_promotion_when_the_flag_is_off() -> None:
     kept = _keep_cancel_threshold(
         RULE,
@@ -504,6 +525,23 @@ def test_luna_prompt_is_smaller_and_keeps_the_runtime_contract() -> None:
     assert payload["allowed_intents"] == ["CONFIRM", "CANCEL", "RESCHEDULE", "OUT_OF_SCOPE"]
 
 
+def test_compact_luna_prompt_preserves_examples_and_runtime_context() -> None:
+    context = _prompt_context()
+    previous = build_messages(context, version=PROMPT_VERSION_LUNA_V7)
+    compact = build_messages(context, version=PROMPT_VERSION_LUNA_V8)
+    assert compact[0]["content"].startswith(previous[0]["content"])
+    assert compact[-1] == previous[-1]
+    assert len(compact) == len(previous)
+    for old, new in zip(previous[1:-1], compact[1:-1], strict=True):
+        assert old["role"] == new["role"]
+        before, after = json.loads(old["content"]), json.loads(new["content"])
+        if old["role"] == "assistant":
+            assert after == before
+        else:
+            assert after == {key: before[key] for key in ("question_id", "transcript")}
+    assert sum(len(m["content"]) for m in compact) < 0.8 * sum(len(m["content"]) for m in previous)
+
+
 @pytest.mark.parametrize(
     "enabled, model, version",
     [
@@ -533,3 +571,14 @@ def _memory_store():
     from callbot.engine.session import RedisSessionStore
 
     return RedisSessionStore(fakeredis.FakeRedis(decode_responses=True), key_prefix="promo")
+
+
+def test_v9_prompt_extends_v8_without_changing_it() -> None:
+    from inference.llm.prompt.semantic import LUNA_V9_RULES
+
+    context = _prompt_context()
+    v8 = build_messages(context, version=PROMPT_VERSION_LUNA_V8)
+    v9 = build_messages(context, version=PROMPT_VERSION_LUNA)
+    assert LUNA_V9_RULES in v9[0]["content"] and LUNA_V9_RULES not in v8[0]["content"]
+    assert v9[1 : len(v8) - 1] == v8[1:-1]  # ví dụ v8 giữ nguyên, v9 chỉ thêm
+    assert v9[-1] == v8[-1]

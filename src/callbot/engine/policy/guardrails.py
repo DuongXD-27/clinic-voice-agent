@@ -2,10 +2,10 @@
 
 from typing import Optional
 
-from callbot.engine.extraction.agreement import confirmation_veto
+from callbot.engine.extraction.agreement import confirmation_veto, without_fallback_lead
 from callbot.engine.extraction.schema import Agreement, Intent
 from callbot.engine.session.context import CallContext, PendingAction
-from callbot.engine.session.fsm import CONFIRMATION_QUESTION_FOR
+from callbot.engine.session.fsm import confirmation_questions, question_offers_slot
 
 
 class SevereFailureBlocked(Exception):
@@ -55,13 +55,13 @@ def assert_action_confirmed(
     SF-05: hủy lịch cần thêm yêu cầu hủy ở một lượt TRƯỚC lượt xác nhận — hai lượt khác nhau.
     """
     question = ctx.question
-    expected_question = CONFIRMATION_QUESTION_FOR[action]
+    expected_questions = confirmation_questions(action)
     confirmations = [
         item
         for item in ctx.evidence_for("CONFIRMATION", action, slot_id)
         if item.label == Agreement.AGREE.value
         and item.turn == ctx.turn
-        and item.question_id is expected_question
+        and item.question_id in expected_questions
         and question is not None
         and item.question_id is question.question_id
         and item.question_turn == question.turn
@@ -69,7 +69,7 @@ def assert_action_confirmed(
         # trả lời câu nhắc đó, không phải câu hỏi xác nhận của vài lượt trước (T-08)
         and question.turn == item.turn - 1
         and question.action == action
-        and question.slot_id == slot_id
+        and question_offers_slot(ctx, question, slot_id)
     ]
     code = "SF-05" if action == "CANCEL" else "CONFIRMATION"
     if ctx.business_write_blocked:
@@ -82,9 +82,15 @@ def assert_action_confirmed(
         ),
         None,
     )
-    if caller is not None and confirmation_veto(caller):
+
+    def vetoed(text: str) -> bool:
+        # "Không có thì 3 giờ cũng được": "không" nói về khung vừa thiếu, không phải từ chối khung chọn.
+        # Hủy không bao giờ bỏ vế này (SF-05).
+        return confirmation_veto(without_fallback_lead(text) if action != "CANCEL" else text)
+
+    if caller is not None and vetoed(caller):
         raise SevereFailureBlocked(code, "Caller confirmation contains a veto")
-    if any(confirmation_veto(item.transcript) for item in confirmations):
+    if any(vetoed(item.transcript) for item in confirmations):
         raise SevereFailureBlocked(code, "Confirmation evidence contains a veto")
     if not confirmations:
         raise SevereFailureBlocked(code, f"Chưa có xác nhận hợp lệ cho {action} ({slot_id})")

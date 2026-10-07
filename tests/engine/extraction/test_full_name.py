@@ -239,3 +239,59 @@ def test_unanchored_real_names_are_deferred_not_rejected(text: str, model_name: 
     assert not reading.field.found
     assert reading.reason is Reason.UNANCHORED
     assert valid_name_span(model_name)
+
+
+# --- Người gọi nói tiếng Anh (QC qc-w6-01) ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "My name is Nguyen Van A",
+        "I'm Nguyen Van A",
+        "Yes, this is Nguyen Van A",
+        "it's Nguyen Van A",
+        "This is Nguyen Van A speaking",
+        "Nguyen Van A here",
+    ],
+)
+def test_english_self_introduction(text: str) -> None:
+    assert extract_full_name(text).value == "nguyen van a"
+
+
+def test_english_alternatives_are_multiple_names() -> None:
+    assert read_full_name("Nguyen Van A or Tran Van B").reason is Reason.AMBIGUOUS
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "maybe Nguyen Van A",
+        "I think it's Nguyen Van A",
+        "My name is not Tran Van B, it's Nguyen Van A",
+    ],
+)
+def test_english_hedged_name_is_uncertain(text: str) -> None:
+    assert read_full_name(text).reason is Reason.UNCERTAIN
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sorry, my name is Nguyen Van A",
+        "Actually, my name is Nguyen Van A",
+        "sorry my name is Nguyen Van A",
+    ],
+)
+def test_english_politeness_is_not_a_hedge(text: str) -> None:
+    assert read_full_name(text).field.value == "nguyen van a"
+
+
+def test_calling_about_something_is_not_a_hedge() -> None:
+    # Luật chưa đọc tên sau một mệnh đề kể chuyện; không phân vân thì model đọc tên vẫn được hỏi
+    reading = read_full_name("I'm calling about my appointment, my name is Nguyen Van A")
+    assert reading.reason is not Reason.UNCERTAIN
+
+
+def test_a_mid_sentence_sorry_is_a_correction() -> None:
+    assert read_full_name("Nguyen Van A, sorry, Nguyen Van B").reason is Reason.UNCERTAIN

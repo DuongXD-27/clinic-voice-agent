@@ -243,7 +243,7 @@ def test_contact_then_reported_name_sentence_verifies_over_http(client, clinic) 
     _start(client, "c_spoken_identity")
     contact = _turn(client, "c_spoken_identity", 1, "hú hú em ơi")
     assert contact.status_code == 200
-    assert contact.json()["utterance"] == t.ASK_NAME_AGAIN
+    assert contact.json()["utterance"] == t.GREETING_BACK_OUTBOUND  # lời chào lúc bắt máy
     name = _turn(client, "c_spoken_identity", 2, "à thì anh tên là Nguyễn Văn A nhé em")
     assert name.status_code == 200 and name.json()["utterance"] == t.ASK_DOB
     dob = _turn(client, "c_spoken_identity", 3, "14/03/1978")
@@ -681,7 +681,7 @@ def _conversation(client: TestClient, call_id: str, lines: list[Optional[str]], 
         (
             "c_ie_resched",
             {},
-            ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng", "Được"],
+            ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng"],
             "RESCHEDULED",
             ("apt_00417", "RESCHEDULED", {"new_slot_id": "slot_aa01"}),
         ),

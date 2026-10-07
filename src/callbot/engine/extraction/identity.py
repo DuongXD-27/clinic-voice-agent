@@ -15,6 +15,7 @@ So khớp ở chế độ `mixed`: ASR hay bỏ dấu một phần ("Dạ toi la
 thật ("Nguyễn Văn A"), không phải lời tự sửa.
 """
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Generic, Optional, TypeVar
@@ -117,7 +118,8 @@ UNCERTAINTY = compile_phrases(
     ]
 )
 # "A hay B", "A hoặc B": hai giá trị cùng được nêu, không có tín hiệu nào là lời sửa.
-ALTERNATIVES = compile_phrases(["hay là", "hay", "hoặc là", "hoặc"])
+# "or": người gọi nói tiếng Anh ("March 14, 1978 or 1979")
+ALTERNATIVES = compile_phrases(["hay là", "hay", "hoặc là", "hoặc", "or"])
 
 
 def token_index(tokens: list[str], offset: int) -> int:
@@ -133,3 +135,46 @@ def token_index(tokens: list[str], offset: int) -> int:
             return index
         at += 1
     return max(len(tokens) - 1, 0)
+
+
+# Người gọi nói tiếng Anh: phủ định, phân vân, tự sửa ("not March 14", "maybe …", "I think …",
+# "sorry, I mean …"). Không gỡ câu tiếng Anh như "không phải A mà là B": có tín hiệu là không chắc,
+# hỏi lại — thà hỏi lại còn hơn xác minh nhầm. So trên `clean(...)` (còn dấu, "isn't" -> "isn t"),
+# nên "nó" có dấu không khớp "no".
+_ENGLISH_HEDGE = re.compile(
+    r"(?<!\w)(?:not|never|isn t|wasn t|don t|doesn t|didn t|can t|maybe|perhaps|probably|possibly|"
+    r"i think|i guess|i believe|i suppose|i m not sure|something like|i mean)(?!\w)"
+)
+# "sorry", "wait", "actually" mở câu là lễ phép / lấy hơi ("Sorry, my name is Nguyen Van A"); nói
+# giữa câu mới là tự sửa ("March 14, sorry, March 15").
+_ENGLISH_OPENER_WORDS = r"sorry|wait|actually"
+_ENGLISH_MID_CORRECTION = re.compile(rf"(?<=\w )(?:{_ENGLISH_OPENER_WORDS})(?!\w)")
+_ENGLISH_OPENER = re.compile(rf"^(?:(?:{_ENGLISH_OPENER_WORDS})(?:\s+|$))+")
+# Ước chừng chỉ là phân vân khi đứng sát giá trị ngày ("around 1978", "about March 14", "1978 or
+# so"): "I'm calling about my appointment" không phải phân vân.
+_EN_MONTH = (
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|january|february|march|april|june|july|"
+    r"august|september|october|november|december"
+)
+_ENGLISH_APPROX = re.compile(
+    rf"(?<!\w)(?:(?:around|about|approximately)\s+(?:the\s+)?(?=\d|(?:{_EN_MONTH})(?!\w))|or so(?!\w))"
+)
+_ENGLISH_NO = re.compile(r"(?<!\w)no(?!\w)")
+
+
+def english_hedge(text: str, *, date: bool) -> bool:
+    """`text` đã qua `clean`. `date`: câu khai ngày sinh — tính thêm lời ước chừng."""
+    if _ENGLISH_HEDGE.search(text) or _ENGLISH_MID_CORRECTION.search(text):
+        return True
+    return date and _ENGLISH_APPROX.search(text) is not None
+
+
+def english_no(zone: str) -> bool:
+    """ "no" tự sửa NẰM TRONG vùng ngày sinh ("March 14, 1978, no, March 15, 1978"). Ngoài vùng ngày,
+    văn bản không dấu có "no" là "nó", "nợ", "nô" hay tên Nô ("Le Van No, sinh 14/3/1978")."""
+    return _ENGLISH_NO.search(zone) is not None
+
+
+def strip_english_opener(clause: str) -> str:
+    """Bỏ "sorry" / "wait" / "actually" mở mệnh đề (đã qua `clean`): "sorry my name is …"."""
+    return _ENGLISH_OPENER.sub("", clause)

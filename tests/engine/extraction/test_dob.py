@@ -109,3 +109,92 @@ def test_self_correction_takes_last_value() -> None:
 def test_provenance_distinguishes_digits_from_spoken_numbers() -> None:
     assert extract_dob("14/3/1978", TODAY).provenance is Provenance.EXACT
     assert extract_dob("mười bốn tháng ba năm bảy tám", TODAY).provenance is Provenance.NORMALIZED
+
+
+# --- Người gọi nói tiếng Anh / dạng ISO (QC qc-w6-01) ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "March 14, 1978",
+        "14 March 1978",
+        "the 14th of March, 1978",
+        "March the 14th 1978",
+        "Mar 14 1978",
+        "born on March 14, 1978",
+        "My birthday is March 14th 1978",
+        "1978-03-14",
+        "1978/3/14",
+        "14 march 78",
+    ],
+)
+def test_english_and_iso_dates(text: str) -> None:
+    assert extract_dob(text, TODAY).value == date(1978, 3, 14)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "March 14",  # thiếu năm: không điền năm hiện tại
+        "Feb 30 1978",
+        "March 14 or 15 1978",  # hai giá trị
+        "March 14, 1978 or 1979",
+        # Review 5b2a496: ngày thay thế thiếu năm vẫn là giá trị thứ hai
+        "March 14, 1978 or April 15",
+        "March 14, 1978 or May 15",
+        "14 March 1978 or 15 April",
+        "March 14 or April 15, 1978",
+        # Review 5b2a496: phủ định / phân vân / tự sửa tiếng Anh không được thành ngày chắc chắn
+        "not March 14, 1978",
+        "maybe March 14, 1978",
+        "I think March 14, 1978",
+        "March 14, 1978 I guess",
+        "probably 14 March 1978",
+        "not 14/3/1978",
+        "March 14, 1978, no, March 15, 1978",
+        "sorry, I mean March 15, 1978",
+        "March 14, sorry, March 15, 1978",
+        "March 14, wait, March 15, 1978",
+        "around March 14, 1978",
+        "about the 14th of March 1978",
+        "March 14, 1978 or so",
+    ],
+)
+def test_unusable_english_dates_are_invalid(text: str) -> None:
+    assert extract_dob(text, TODAY).value == INVALID
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sorry, March 14, 1978",
+        "Wait, March 14, 1978",
+        "I'm calling about my appointment, March 14, 1978",
+    ],
+)
+def test_english_politeness_is_not_a_hedge(text: str) -> None:
+    assert extract_dob(text, TODAY).value == date(1978, 3, 14)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # không dấu: "no" là tên Nô, "nó", "nợ" — nằm ngoài vùng ngày sinh
+        ("Le Van No, sinh 14/3/1978", date(1978, 3, 14)),
+        ("con toi no sinh ngay 14/3/2010", date(2010, 3, 14)),
+        ("sinh 14/3/1978, no da noi roi ma", date(1978, 3, 14)),
+    ],
+)
+def test_unaccented_no_outside_the_date_is_not_a_hedge(text: str, expected: date) -> None:
+    assert extract_dob(text, TODAY).value == expected
+
+
+@pytest.mark.parametrize("text", ["14/3/1978, no, 15/3/1978", "March 14, no, March 15, 1978"])
+def test_no_inside_the_date_is_still_a_correction(text: str) -> None:
+    assert extract_dob(text, TODAY).value == INVALID
+
+
+def test_may_is_a_month_only_inside_a_full_english_date() -> None:
+    assert extract_dob("May 5, 1990", TODAY).value == date(1990, 5, 5)
+    assert extract_dob("nguyen thi may", TODAY).value is None

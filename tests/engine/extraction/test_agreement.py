@@ -2,7 +2,16 @@
 
 import pytest
 
-from callbot.engine.extraction.agreement import extract_agreement, gives_up_slot_change, is_bare_da
+from callbot.engine.extraction.agreement import (
+    answer_after_give_up,
+    conflicting_confirmation,
+    explicit_slot_pick,
+    extract_agreement,
+    gives_up_if_unavailable,
+    gives_up_slot_change,
+    is_bare_da,
+    without_fallback_lead,
+)
 from callbot.engine.extraction.schema import Agreement, Provenance, QuestionId
 
 CANCEL = QuestionId.CANCEL_RECONFIRM
@@ -421,8 +430,7 @@ def test_polite_position_keeps_priorities(
         "chắc được",
         "hy vọng là được",
         "nếu rảnh thì được",
-        # giờ khác, câu hỏi đuôi "chứ"
-        "vâng, 3 giờ chiều nhé",
+        # câu hỏi đuôi "chứ"
         "tôi đến trễ không sao chứ",
     ],
 )
@@ -433,11 +441,35 @@ def test_affirmative_word_inside_another_statement_never_agrees(
     assert result.value is Agreement.UNCLEAR and result.found
 
 
+def test_restated_time_is_explicit_only_at_the_slot_readback() -> None:
+    """PRD R-23 / GC-RES-03 (v2.1): nhắc lại giờ của khung là khẳng định rõ ở câu chốt khung; ở câu
+    hỏi đến khám, giờ khác vẫn là nội dung chưa giải thích (đọc lại)."""
+    assert extract_agreement("vâng, 3 giờ chiều nhé", SLOT).value is Agreement.AGREE
+    assert extract_agreement("Đúng rồi, 15 giờ", SLOT).value is Agreement.AGREE
+    assert extract_agreement("vâng, 3 giờ chiều nhé", CONFIRM).value is Agreement.UNCLEAR
+
+
 @pytest.mark.parametrize("text", ["à", "ạ", "ừm"])
 def test_filler_sound_alone_is_not_a_confirmation(text: str) -> None:
     """T-04 §8: "à?" là hỏi lại, "ừm" là đang nghĩ; "vâng / dạ / ừ / ờ" vẫn là xác nhận."""
     result = extract_agreement(text, CONFIRM)
     assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize("question", ALL_CONFIRMATIONS)
+@pytest.mark.parametrize(
+    "text", ["ờ.... ừ ..... à", "ờ...", "ừ…", "ờ ừ", "ừm... à", "ờ ờ...", "hmm ờ"]
+)
+def test_hesitation_sounds_are_not_a_confirmation(question: QuestionId, text: str) -> None:
+    """Người gọi ậm ừ khi đang nghĩ: chưa trả lời, hỏi lại."""
+    result = extract_agreement(text, question)
+    assert result.value is Agreement.UNCLEAR and result.found
+
+
+@pytest.mark.parametrize("question", [SLOT, CONFIRM, QuestionId.ASK_ATTENDANCE])
+@pytest.mark.parametrize("text", ["ờ", "ừ", "ờ.", "ừ ừ", "ờ... vâng"])
+def test_a_short_o_or_u_still_agrees(question: QuestionId, text: str) -> None:
+    assert extract_agreement(text, question).value is Agreement.AGREE
 
 
 @pytest.mark.parametrize(
@@ -506,3 +538,159 @@ def test_giving_up_a_slot_change(text: str) -> None:
 def test_bare_refusal_is_not_giving_up(text: str) -> None:
     """Q-4: "không" trần chưa rõ muốn gì — Dialogue hỏi A/B, không đoán là bỏ đổi lịch."""
     assert not gives_up_slot_change(text)
+
+
+# --- Mâu thuẫn đồng ý / phủ định: từ khẳng định chỉ tính khi mở đầu câu trả lời -------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # "phải" = bắt buộc, "có" = có việc, "đúng" = đúng giờ: từ thường trong câu kể
+        "Hôm đó tôi phải đưa con đi viện nên chắc không đi được",
+        "tôi phải đi làm nên không đến được",
+        "hôm đó tôi có việc phải về quê, không đi được",
+        "tôi có việc bận đột xuất, không đến được",
+        "nhà tôi có đám cưới nên không đi được",
+        "tôi phải trực ca nên không đi khám được",
+        "tôi sẽ đến đúng giờ, không trễ đâu",
+    ],
+)
+def test_affirmative_word_inside_a_statement_is_not_a_conflict(text: str) -> None:
+    assert not conflicting_confirmation(text, QuestionId.CONFIRM_READBACK)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "vâng, à không, chắc không đến được",
+        "có đến, à không đâu",
+        "được, nhưng mà không chắc lắm",
+        "đúng rồi, không đi được",
+        "vâng, không",
+    ],
+)
+def test_answer_that_opens_with_agreement_then_negates_is_a_conflict(text: str) -> None:
+    assert conflicting_confirmation(text, QuestionId.CONFIRM_READBACK)
+
+
+@pytest.mark.parametrize("question", [QuestionId.CONFIRM_READBACK, QuestionId.CANCEL_RECONFIRM])
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Từ khẳng định mạnh không phải từ thường trong câu kể: tính ở mọi vị trí
+        "không, à vâng đúng rồi",
+        "chưa, à đồng ý",
+        "không đâu, đúng rồi tôi đến",
+        "khong, a vang dung roi",
+        "tôi đồng ý nhưng không đi được",
+    ],
+)
+def test_strong_agreement_after_a_negation_is_a_conflict(text: str, question: QuestionId) -> None:
+    assert conflicting_confirmation(text, question)
+
+
+def test_negated_strong_agreement_is_not_a_conflict() -> None:
+    assert not conflicting_confirmation("không đồng ý", QuestionId.CONFIRM_READBACK)
+
+
+# --- Đổi lịch: vế điều kiện, chọn rõ khung, bỏ đổi lịch -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "rest"),
+    [
+        ("20/10", "20/10"),
+        ("đổi sang 19/10 buổi sáng", "đổi sang 19/10 buổi sáng"),
+        ("Không có thì 3 giờ cũng được", "3 giờ cũng được"),
+        ("Nếu không còn 5 giờ thì 15:30 ngày 14/10 cũng được", "15:30 ngày 14/10 cũng được"),
+        ("Hết 5 giờ rồi, thì lấy 3 giờ vậy", "lấy 3 giờ vậy"),
+    ],
+)
+def test_fallback_lead_keeps_dates_and_times_of_the_rest(text: str, rest: str) -> None:
+    """Bỏ vế "không có … thì" nhưng không được tách "19/10", "15:30" thành hai số (eval R139, R140)."""
+    assert without_fallback_lead(text) == rest
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Không có thì 3 giờ cũng được",
+        "Thế ba giờ cũng được",
+        "Vâng, 3 giờ được",
+        "Vậy thì 3 giờ",
+        "Thế thì khung đó",
+    ],
+)
+def test_explicit_slot_pick(text: str) -> None:
+    assert explicit_slot_pick(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "3 giờ thì hơi sớm",
+        "Vậy thì để tôi xem đã",
+        "3 giờ được không em?",
+        "Dạ",
+        "Không, 3 giờ",
+        "Chắc là 3 giờ",
+    ],
+)
+def test_not_an_explicit_slot_pick(text: str) -> None:
+    assert not explicit_slot_pick(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Không có 5 giờ thì thôi", "Thôi, giữ lịch cũ", "Không được thì để nguyên", "Thôi khỏi đổi"],
+)
+def test_dropping_the_change_even_with_a_time_in_the_sentence(text: str) -> None:
+    assert gives_up_if_unavailable(text)
+
+
+@pytest.mark.parametrize(
+    "text", ["Không, tôi chỉ đi được 5 giờ chiều thôi", "Thôi, 3 giờ cũng được", "thôi lấy khung 2"]
+)
+def test_bare_thoi_is_not_dropping_the_change(text: str) -> None:
+    assert not gives_up_if_unavailable(text)
+
+
+# --- Review lần 2 (07/10, evidence §12): cụm giữ lịch và cụm bỏ điều kiện khác vai với phần sau ---------
+
+
+@pytest.mark.parametrize(
+    ("text", "answer"),
+    [
+        # Bỏ điều kiện: phần sau là câu trả lời mới
+        ("3 giờ chiều thì thôi, lấy khung 2", "lấy khung 2"),
+        ("9 giờ thì thôi, cho tôi ngày 16", "cho tôi ngày 16"),
+        # Giữ lịch rồi tự sửa / chọn lại: phần sau lời sửa hoặc lời chọn là câu trả lời
+        ("giữ lịch cũ, à mà thôi lấy khung 2", "lấy khung 2"),
+        ("giữ lịch 3 rưỡi, à mà thôi lấy khung 2", "lấy khung 2"),
+        ("để nguyên lịch cũ, à không, cho tôi khung 2", "cho tôi khung 2"),
+        ("giữ lịch cũ nhé, cho tôi khung 2", "cho tôi khung 2"),
+        ("giu lich cu, a ma thoi lay khung 2", "lay khung 2"),
+    ],
+)
+def test_the_part_after_giving_up_that_is_a_new_answer(text: str, answer: str) -> None:
+    assert answer_after_give_up(text) == answer
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Cụm bỏ ở cuối câu
+        "Không có 5 giờ thì thôi",
+        "thế thì thôi vậy em",
+        # Giữ lịch: phần sau chỉ nhắc lịch cũ
+        "thôi để nguyên lịch 3 rưỡi chiều thứ Tư đi",
+        "thôi không đổi nữa, giữ lịch 3 rưỡi chiều thứ Tư",
+        "giữ lịch 3 rưỡi chiều thứ Tư cho tôi",
+        "thoi de nguyen lich 3 ruoi chieu thu tu di",
+        # "mà thôi" ở cuối câu là "thế thôi", không phải lời tự sửa
+        "giữ lịch cũ mà thôi",
+    ],
+)
+def test_keeping_the_old_time_has_no_new_answer(text: str) -> None:
+    assert answer_after_give_up(text) is None

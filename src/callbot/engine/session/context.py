@@ -102,6 +102,14 @@ class CallContext:
     selected_slot_id: Optional[str] = None
     evidence: list[ActionEvidence] = field(default_factory=list)
     cancel_reason: Optional[CancelReason] = None
+    # Yêu cầu hủy nói ở bước danh tính (bằng chứng REQUEST đã dựng sẵn) và lý do kèm theo. Chỉ dùng
+    # sau khi xác minh xong, để hỏi thẳng câu xác nhận hủy (QC qc-cn-08); không phải hành động đang chờ.
+    early_cancel: Optional[ActionEvidence] = None
+    early_cancel_reason: Optional[CancelReason] = None
+    # PRD R-43: lời yêu cầu đổi lịch nói ở bước danh tính (đã bỏ tên, ngày sinh). Như `early_cancel`:
+    # chỉ dùng sau khi xác minh xong, để mời khung theo lời đó. Hai yêu cầu loại trừ nhau: lượt sau thay
+    # lượt trước (R-44).
+    early_reschedule: Optional[str] = None
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
@@ -120,8 +128,12 @@ class CallContext:
     failed_understandings: int = 0
     unclear_streak: int = 0
     silent_turns: int = 0
-    # Lời chào ở bước danh tính đã được hỏi lại mà không tính §1.1.5 (MAX_NEUTRAL_GREETINGS)
-    neutral_greetings: int = 0
+    # Câu "ai đấy?" ở bước danh tính đã được giới thiệu lại mà không dùng lượt hỏi lại
+    # (MAX_IDENTITY_QUESTIONS)
+    identity_questions: int = 0
+    # "Alo" khi vừa bắt máy, trước mọi câu trả lời khác ở bước danh tính: chào lại một lần, không dùng
+    # lượt hỏi lại (QC qc-id-05)
+    opening_greeting_used: bool = False
 
     outcome: Optional[Outcome] = None
     transfer_reason: Optional[TransferReason] = None
@@ -241,6 +253,9 @@ class CallContext:
             "selected_slot_id": self.selected_slot_id,
             "evidence": [_evidence_to_dict(item) for item in self.evidence],
             "cancel_reason": self.cancel_reason,
+            "early_cancel": _evidence_to_dict(self.early_cancel) if self.early_cancel else None,
+            "early_cancel_reason": self.early_cancel_reason,
+            "early_reschedule": self.early_reschedule,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
@@ -251,7 +266,8 @@ class CallContext:
             "failed_understandings": self.failed_understandings,
             "unclear_streak": self.unclear_streak,
             "silent_turns": self.silent_turns,
-            "neutral_greetings": self.neutral_greetings,
+            "identity_questions": self.identity_questions,
+            "opening_greeting_used": self.opening_greeting_used,
             "outcome": self.outcome,
             "transfer_reason": self.transfer_reason,
             "unreachable_reason": self.unreachable_reason,
@@ -285,6 +301,13 @@ class CallContext:
             selected_slot_id=data["selected_slot_id"],
             evidence=[_evidence_from_dict(item) for item in data["evidence"]],
             cancel_reason=data["cancel_reason"],
+            # Khóa thêm ở QC qc-cn-08: phiên lưu trước đó chưa có
+            early_cancel=(
+                _evidence_from_dict(data["early_cancel"]) if data.get("early_cancel") else None
+            ),
+            early_cancel_reason=data.get("early_cancel_reason"),
+            # Khóa thêm ở R-43: phiên lưu trước đó chưa có
+            early_reschedule=data.get("early_reschedule"),
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có
@@ -296,8 +319,9 @@ class CallContext:
             failed_understandings=data["failed_understandings"],
             unclear_streak=data["unclear_streak"],
             silent_turns=data["silent_turns"],
-            # Khóa thêm sau T-05: phiên lưu trước đó chưa có
-            neutral_greetings=data.get("neutral_greetings", 0),
+            # Khóa thêm sau T-05 với tên "neutral_greetings": phiên lưu trước đó có thể còn tên cũ
+            identity_questions=data.get("identity_questions", data.get("neutral_greetings", 0)),
+            opening_greeting_used=bool(data.get("opening_greeting_used", False)),
             outcome=data["outcome"],
             transfer_reason=data["transfer_reason"],
             unreachable_reason=data["unreachable_reason"],

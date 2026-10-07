@@ -509,27 +509,26 @@ def test_previous_attendance_reason_is_replaced_or_cleared_on_changed_intent(
     assert clinic.writes == [("apt_00417", "CANCELLED", {"cancel_reason": expected_reason})]
 
 
-@pytest.mark.parametrize(
-    "change_request, abandon",
-    [
-        ("hủy giúp tôi", "không hủy nữa"),
-        ("tôi muốn đổi lịch", "thôi không đổi nữa"),
-    ],
-)
-def test_returning_to_attendance_reads_department_before_confirmation(
-    change_request, abandon
-) -> None:
+def test_returning_to_attendance_reads_department_before_confirmation() -> None:
     bot, clinic, _ = _at_readback("c_return_readback")
-    action = _run(bot, "c_return_readback", [change_request, abandon], start=3)
+    action = _run(bot, "c_return_readback", ["hủy giúp tôi", "không hủy nữa"], start=3)
     assert "Nội tổng quát" in action.utterance and FACTS in action.utterance
     assert clinic.writes == []
     assert _run(bot, "c_return_readback", ["vâng"], start=5).outcome == "CONFIRMED"
 
 
+def test_giving_up_a_reschedule_keeps_the_appointment_and_transfers() -> None:
+    """PRD R-29 v2.1 (GC-RES-09): bỏ ngang đổi lịch -> giữ lịch cũ, chuyển PATIENT_REQUEST."""
+    bot, clinic, _ = _at_readback("c_return_resched")
+    action = _run(bot, "c_return_resched", ["tôi muốn đổi lịch", "thôi không đổi nữa"], start=3)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_REQUEST")
+    assert [w[1] for w in clinic.writes] == ["TRANSFERRED"]
+
+
 def test_a_statement_at_the_slot_readback_does_not_reschedule() -> None:
     """Cùng lỗi ở câu đọc lại slot: "tôi có việc bận" từng ghi RESCHEDULED."""
     bot, clinic, _ = _at_readback("c_t04s8_slot")
-    action = _run(bot, "c_t04s8_slot", ["tôi muốn đổi lịch", "khung 1"], start=3)
+    action = _run(bot, "c_t04s8_slot", ["tôi muốn đổi lịch", "khung 1 được không"], start=3)
     assert _context(bot, "c_t04s8_slot").question.question_id is QuestionId.SLOT_READBACK
     action = _run(bot, "c_t04s8_slot", ["hôm đó tôi có việc bận"], start=5)
     assert not action.ended and clinic.writes == []

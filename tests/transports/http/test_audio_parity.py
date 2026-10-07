@@ -27,7 +27,7 @@ SCENARIOS = [
     (
         "reschedule",
         {},
-        ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng", "Được"],
+        ["Nguyễn Văn A", "14/03/1978", "Cho tôi đổi lịch", "10 giờ sáng"],
         "RESCHEDULED",
     ),
     ("no_answer", {}, [None, None, None], "UNREACHABLE"),

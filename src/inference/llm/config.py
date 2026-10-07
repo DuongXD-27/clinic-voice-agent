@@ -3,7 +3,7 @@
 Giá trị mặc định ở config/llm.yaml (mỗi provider một section); API key chỉ đặt qua env.
 """
 
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
@@ -39,6 +39,7 @@ class ProviderConfig(YamlSettings):
 class OpenAIConfig(ProviderConfig):
     model_config = yaml_config("llm.yaml", "openai", env_prefix="OPENAI_")
     key_env = "OPENAI_API_KEY"
+    service_tier: Literal["auto", "default", "fast", "priority", "flex"]
     # Secret: chỉ từ env, rỗng = chưa cấu hình (require_api_key báo lỗi)
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENAI_API_KEY")
 
