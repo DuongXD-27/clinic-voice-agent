@@ -58,13 +58,14 @@ from callbot.engine.extraction.schema import (
     SlotCriteria,
 )
 from callbot.engine.extraction.slot_choice import (
+    TIME_PROPOSAL_QUESTIONS,
     anchor_relative,
     asks_back,
     filter_slots,
     parse_slot_criteria,
+    proposed_time,
     requested_date,
     requested_slot_count,
-    requests_time,
     resolve_request,
 )
 from callbot.engine.policy.guardrails import SevereFailureBlocked
@@ -222,7 +223,7 @@ class DialogueManager:
         if question is QuestionId.CONFIRM_READBACK:
             return self._attendance(ctx, extraction, now, proposal)
         if question is QuestionId.ASK_INTENT:
-            return self._intent(ctx, extraction, now)
+            return self._intent(ctx, extraction, now, proposal)
         if question is QuestionId.OFFER_SLOTS:
             return self._slot_choice(ctx, extraction, now)
         if question is QuestionId.SLOT_READBACK:
@@ -530,7 +531,7 @@ class DialogueManager:
         khung giờ (chỉ đọc); lệnh ghi của lượt vẫn bị chặn, các câu xác nhận vẫn hỏi lại như đợt 1.
         """
         question = ctx.question.question_id if ctx.question else None
-        return question is QuestionId.CONFIRM_READBACK and self._proposes_other_time(ctx, ex, now)
+        return question in TIME_PROPOSAL_QUESTIONS and self._proposes_other_time(ctx, ex, now)
 
     def _proposes_other_time(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> bool:
         """Câu chỉ nêu một thời điểm khác lịch hiện tại, không đồng ý / từ chối / báo bận."""
@@ -539,14 +540,11 @@ class DialogueManager:
             Agreement.REFUSE,
         ):
             return False
-        if _busy(ex.transcript) or not requests_time(ex.transcript):
+        if _busy(ex.transcript):
             return False
-        # Đối chiếu trên tiêu chí CHƯA quy thứ trần về tuần này: "8 giờ sáng thứ Năm" là nhắc lại lịch
-        # thứ Năm đang đọc, không phải thứ Năm tuần này
-        criteria = replace(parse_slot_criteria(ex.transcript, now), ordinal=None)
-        if criteria.empty or criteria.date_issue is not None:
-            return False
-        return not self._current_matches(ctx, criteria)
+        # IE dùng cùng `proposed_time` để không gọi model ở lượt này: nhãn model không đè được đường luật
+        criteria = proposed_time(ex.transcript, now)
+        return criteria is not None and not self._current_matches(ctx, criteria)
 
     def _current_matches(self, ctx: CallContext, criteria: SlotCriteria) -> bool:
         """Lịch hẹn đang thao tác thỏa tiêu chí; lịch đọc qua cổng một-lần-mỗi-lượt (evidence §10 ý 8)."""
@@ -556,9 +554,21 @@ class DialogueManager:
 
     # --- Câu hỏi ý định mở ---------------------------------------------------------------
 
-    def _intent(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+    def _intent(
+        self,
+        ctx: CallContext,
+        ex: ExtractionResult,
+        now: datetime,
+        proposal: Optional[bool] = None,
+    ) -> Reply:
         intent = ex.intent.value
         if ctx.call.direction == "outbound":
+            if intent is Intent.NONE and (
+                proposal if proposal is not None else self._proposes_other_time(ctx, ex, now)
+            ):
+                # "Đổi hay hủy?" -> "cho tôi 3 giờ chiều ngày 14": nêu giờ khác lịch là chọn đổi lịch,
+                # như ở câu đọc lịch (R-29)
+                return self._start(ctx, Intent.RESCHEDULE, ex, now)
             if intent is Intent.CONFIRM:
                 ctx.set_pending("CONFIRM")
                 appointment = self._reads.get_actionable_appointment(ctx)

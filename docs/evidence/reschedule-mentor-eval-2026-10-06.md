@@ -1123,3 +1123,97 @@ không vào đổi lịch.
 | `python -m ruff format --check src tests` | Pass |
 | `python -m pytest tests/engine -q` (`PYTHONUTF8=1`) | Pass (3681 passed, 1 skipped); gồm 7 case mentor × 3 chế độ model |
 | `python -m pytest -q` (`PYTHONUTF8=1`) | 4728 passed, 15 skipped; 17 fail đều ở speech / audio do `.venv` local thiếu `soxr`, trùng §11.4 |
+
+### 12.6 qc-rs-04 trên giao diện: model đọc câu xin giờ khác thành ngoài phạm vi (07/10/2026)
+
+#### Hiện tượng
+
+Chạy tay trên giao diện demo (có model thật), qc-rs-04 bị chuyển máy ở lượt "Cho tôi ba giờ kém mười lăm chiều ngày
+14" (câu đọc lịch): `Trích xuất: LLM (FALLBACK) · CONFIRM_READBACK · Chuyển máy: OUT_OF_SCOPE · 1426 ms`. Test mentor
+vẫn pass vì model giả của test luôn trả CHANGE_INTENT / RESCHEDULE.
+
+#### Nguyên nhân
+
+1. Câu không có intent theo luật, agreement không dứt khoát -> router gọi model (`INTENT_UNCLEAR`), dù Dialogue đã có
+   đường luật cho câu này (`_proposes_other_time`: nêu giờ khác lịch đang đọc -> đổi lịch, R-29).
+2. Model trả CHANGE_INTENT / OUT_OF_SCOPE. Khi hợp nhất, OUT_OF_SCOPE thắng mọi kiểu trả lời -> Policy chuyển máy.
+   `_proposes_other_time` chỉ chạy khi intent còn NONE và agreement không phải AGREE / REFUSE, nên nhãn khác của model
+   (từ chối, xác nhận đến khám) cũng chặn được đường luật.
+3. Model không thấy giờ lịch hẹn (§8.3.2). Prompt chỉ cho CHANGE_INTENT khi khách "nói rõ muốn đổi", còn "xin đến
+   muộn" nằm trong danh sách ngoài phạm vi -> "cho tôi [giờ khác]" dễ bị đọc thành ngoài phạm vi. Model lúc đúng lúc
+   sai (§2.2: lần chạy trước model trả CHANGE_INTENT).
+
+Cùng loại với lỗi phải sửa số 1 trong review plan LLM (model đè đường chắc của luật), ở câu đọc lịch.
+
+#### Failure cases
+
+Model giả trả từng loại nhãn sai, sim `mentor_mock`, không gọi API (HEAD `229a111`):
+
+| Câu (câu đọc lịch) | Chỉ luật | Model: ngoài phạm vi | Model: từ chối | Model: xác nhận đến khám |
+| --- | --- | --- | --- | --- |
+| qc-rs-03 "Sáng mai khoảng 9 giờ có được không?" | đạt | chuyển máy | "em chưa hiểu" | kẹt đọc lại lịch |
+| qc-rs-04 "Cho tôi ba giờ kém mười lăm chiều ngày 14" | đạt | **chuyển máy** | "em chưa hiểu" | kẹt đọc lại lịch |
+| "Cho tôi 3 giờ chiều ngày 14", rồi "Vâng" | đạt | chuyển máy | "em chưa hiểu" | **ghi CONFIRMED lịch cũ** |
+| "Lấy cho tôi 3 giờ chiều ngày 14 nhé", rồi "Vâng" | đạt | chuyển máy | "em chưa hiểu" | **ghi CONFIRMED lịch cũ** |
+| "Cho tôi 3 giờ chiều ngày 14" ở câu "đổi hay hủy" | "em chưa hiểu" | chuyển máy | "em chưa hiểu" | đọc lại lịch cũ |
+
+qc-rs-02, 05, 06, 07, 08 không bị ảnh hưởng: luật đã có intent đổi lịch nên không gọi model.
+
+#### Cách sửa
+
+- `slot_choice.proposed_time(transcript, now)`: câu chỉ xin một thời điểm (`requests_time`, có tiêu chí, ngày hợp lệ),
+  trả tiêu chí chưa quy thứ trần. IE và Dialogue dùng chung; `TIME_PROPOSAL_QUESTIONS` = câu đọc lịch, "đổi hay hủy".
+- **Giờ cụ thể** (tiêu chí có giờ): router không gọi model (`route_semantic(exact_time_proposal=True)`). Dialogue tự
+  quyết: giờ khác lịch -> đổi lịch; trùng lịch -> đọc lại như cũ.
+- **Khoảng thời gian** ("tuần sau cho tôi khám được không em"): khoảng có thể chứa lịch đang đọc, luật chỉ đọc lại lịch,
+  nên vẫn gọi model. Khi hợp nhất (`merge_semantic(time_proposal=True)`), model chỉ được thêm CHANGE_INTENT / RESCHEDULE;
+  nhãn khác (ngoài phạm vi, từ chối, xác nhận đến khám, câu hỏi) bị bỏ, giữ kết quả luật. Nhãn lâm sàng vẫn như cũ.
+  Lý do tách: eval confirm `--semantic` ngày 23/09 có câu holdout này pass 3/3 nhờ model; không gọi model thì mất.
+- IE chỉ đánh dấu khi gọi ra, câu không báo bận (`mentions_busy`), như Dialogue. Câu có nội dung lâm sàng vẫn đi
+  `CLINICAL_UNRESOLVED` trước. Inbound không đổi.
+- Dialogue: `_intent` (gọi ra) có cùng nhánh "nêu giờ khác -> đổi lịch" như `_attendance`;
+  `_time_proposal_without_model` xét cả câu "đổi hay hủy".
+- Không sửa prompt.
+
+#### Kết quả
+
+Cùng bảng trên sau khi sửa: mọi câu, mọi nhãn model -> đổi lịch đúng `slot_91d2` (câu "đổi hay hủy" -> câu chốt 3 giờ
+chiều 14/10). Model không còn được gọi ở các lượt này (nhanh hơn khoảng 1,4 s mỗi lượt).
+
+Còn lại, ngoài phạm vi: "Để tôi 3 giờ chiều ngày 14" không có lời xin trong `_TIME_REQUEST` nên vẫn đi model, và model
+đọc sai vẫn có thể chuyển máy. Thêm "để tôi" là nới cửa vào đổi lịch ("để tôi xem đã") — cần câu âm tính, chưa làm.
+
+**Test:**
+
+- `tests/engine/test_mentor_eval_reschedule.py`: thêm 3 model đọc sai (ngoài phạm vi, từ chối, xác nhận đến khám) vào
+  bộ model chạy 7 case mentor; ca hồi quy "cho tôi 3 giờ chiều ngày 14" + "vâng" không bao giờ ghi CONFIRMED; câu nêu
+  giờ ở "đổi hay hủy" mở đổi lịch; "tuần sau" chỉ mở đổi lịch khi model đọc là đổi lịch, đọc sai thì không chuyển máy.
+  Trên code trước khi sửa: 15/69 ca fail — qc-rs-03 / 04 × 3 model đọc sai, "vâng" sau câu xin giờ × 3, "tuần sau" với
+  model ngoài phạm vi, câu "đổi hay hủy" × 5 (cả chỉ luật). Sau khi sửa: 69/69.
+- `tests/engine/extraction/test_semantic.py`: router không gọi model với giờ cụ thể, vẫn gọi khi có nội dung lâm sàng;
+  IE không gọi model với 4 câu xin giờ (có dấu, không dấu) ở cả hai câu hỏi; vẫn gọi với câu hỏi lại giờ, báo bận, hỏi
+  việc khác, ngày đã qua, inbound; khoảng thời gian: 4 nhãn sai bị bỏ, RESCHEDULE được giữ.
+- Hai hàm giả `merge_semantic` trong `test_semantic.py`, `test_cancel_promotion.py` nhận thêm `**_kwargs`.
+
+**Eval** (không gọi API; kết quả ở `result/07-10-2026/*/rs04-{before,after}-*`):
+
+| Eval | Trước | Sau |
+| --- | --- | --- |
+| `reschedule_eval.py --baseline` (holdout) | 113/121, 0 ghi sai, 0 ghi nhầm khung | **113/121**, 0 / 0 |
+| `reschedule_eval.py --route-only` | 112/121, 2 lượt gọi model | **112/121**, 2 lượt |
+| `confirm_eval.py --baseline` | 122/181, ghi sai 0 | **122/181**, ghi sai 0 |
+| `confirm_eval.py --route-only` | 120/181, 106 lượt gọi model | **120/181**, **103 lượt** (3 câu giờ cụ thể không gọi) |
+| `cancel_eval.py --baseline` / `--adversarial` (holdout) | 0.7473 / 0.8447, ghi sai 0 | **0.7473 / 0.8447**, ghi sai 0 |
+| `identity_eval.py` | 118 PASS | **118 PASS** |
+| `no_answer_eval.py --baseline` | 83/83 | **83/83** |
+
+`cancel_eval.py --fake` lỗi sẵn trước khi sửa (thiếu `eval/cancel/fake_outcomes.json`), không liên quan.
+
+Chưa đo với model thật: tỷ lệ model trả OUT_OF_SCOPE cho các câu này, và `confirm_eval.py --semantic` sau khi sửa.
+
+| Command | Kết quả |
+| --- | --- |
+| `python -m ruff check src tests scripts` | Pass |
+| `python -m ruff format --check src tests` | Pass |
+| `python -m pytest tests/engine -q` | Pass (3877 passed, 1 skipped) |
+| `python -m pytest -q` (`PYTHONUTF8=1`) | 4924 passed, 15 skipped; 17 fail đều ở speech / audio do `.venv` local thiếu `soxr`, trùng §12.5 |

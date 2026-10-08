@@ -86,7 +86,30 @@ class _ModelDown:
         raise TimeoutError("model slow")
 
 
-MODELS = {"rule": None, "llm": _ModelReadsChangeIntent, "timeout": _ModelDown}
+class _ModelMisreads:
+    """Model đọc sai câu nêu giờ khác (model thật không thấy giờ lịch hẹn): qc-rs-04 trên giao diện ra
+    OUT_OF_SCOPE -> chuyển máy. Câu chỉ nêu thời điểm do Dialogue tự quyết, nhãn sai không được đè."""
+
+    def __init__(self, kind: ReplyKind, intent: Optional[Intent] = None) -> None:
+        self._kind, self._intent = kind, intent
+
+    def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
+        return SemanticOutcome(
+            self._kind,
+            intent=self._intent,
+            intent_span=context.transcript if self._intent else None,
+            reply_span=None if self._intent else context.transcript,
+        )
+
+
+MODELS = {
+    "rule": None,
+    "llm": _ModelReadsChangeIntent,
+    "timeout": _ModelDown,
+    "out-of-scope": lambda: _ModelMisreads(ReplyKind.CHANGE_INTENT, Intent.OUT_OF_SCOPE),
+    "declines": lambda: _ModelMisreads(ReplyKind.DECLINE_ACTION),
+    "will-attend": lambda: _ModelMisreads(ReplyKind.CHANGE_INTENT, Intent.CONFIRM),
+}
 
 
 def _outbound_call(call_id: str, model: Optional[str] = None, clinic=None):
@@ -113,6 +136,43 @@ def test_mentor_reschedule_case(case: str, model: str) -> None:
     assert [w for w in clinic.writes if w[1] == "RESCHEDULED"] == writes
     if outcome == "TRANSFERRED":
         assert clinic.appointments["apt_00417"]["starts_at"].startswith("2026-10-14T15:30")
+
+
+@pytest.mark.parametrize("model", list(MODELS))
+def test_asking_for_another_time_never_confirms_the_old_appointment(model: str) -> None:
+    """Model đọc "cho tôi 3 giờ chiều ngày 14" thành xác nhận đến khám thì "vâng" sau đó từng ghi
+    CONFIRMED lịch 15:30 cũ. Câu xin giờ khác luôn mở đổi lịch."""
+    clinic, bot = _outbound_call(f"other-time-{model}", model)
+    action = _run(bot, f"other-time-{model}", [*IDENTITY, "Cho tôi 3 giờ chiều ngày 14", "Vâng"])
+    assert action.outcome == "RESCHEDULED"
+    assert [w[1] for w in clinic.writes] == ["RESCHEDULED"]
+
+
+@pytest.mark.parametrize("model", list(MODELS))
+def test_a_time_range_holding_the_appointment_is_read_by_the_model_only_as_a_reschedule(
+    model: str,
+) -> None:
+    """ "Tuần sau" chứa lịch 14/10 đang đọc: luật chỉ đọc lại lịch, model (thấy ý đổi) mới mở đổi lịch.
+    Model đọc sai thì giữ đường luật, không chuyển máy, không ghi."""
+    clinic, bot = _outbound_call(f"range-{model}", model)
+    action = _run(bot, f"range-{model}", [*IDENTITY, "Tuần sau cho tôi khám được không em"])
+    assert action.outcome is None and clinic.writes == []
+    assert (clinic.slot_reads > 0) is (model == "llm")
+
+
+@pytest.mark.parametrize("model", list(MODELS))
+def test_a_time_at_change_or_cancel_starts_the_reschedule(model: str) -> None:
+    """ "Đổi hay hủy?" -> "cho tôi 3 giờ chiều ngày 14": chọn đổi lịch, như ở câu đọc lịch (R-29). Trước
+    đây chỉ model mới đọc được câu này; chỉ có luật thì "em chưa hiểu"."""
+    clinic, bot = _outbound_call(f"ask-intent-{model}", model)
+    action = _run(bot, f"ask-intent-{model}", [*IDENTITY, "Không"])
+    assert action.state == "AWAITING_INTENT"
+    action = _run(bot, f"ask-intent-{model}", ["Cho tôi 3 giờ chiều ngày 14"], start=5)
+    assert "Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
+    assert clinic.writes == []
+    action = _run(bot, f"ask-intent-{model}", ["Vâng"], start=6)
+    assert action.outcome == "RESCHEDULED"
+    assert [w for w in clinic.writes if w[1] == "RESCHEDULED"] == RESCHEDULED[2]
 
 
 # --- "sớm hơn": mốc là giờ lịch hẹn, không phụ thuộc dữ liệu mock (contract §4.3: seed từng case) ----

@@ -137,6 +137,8 @@ def test_provider_exception_reprompts_instead_of_using_the_suspect_name():
         ("Nguyễn Văn A em nhé", "nguyễn văn a"),
         ("Nguyễn Văn A em ạ", "nguyễn văn a"),
         ("Nguyễn Văn Em nhé", "nguyễn văn em"),
+        ("Anh là NGuyễn Văn A Em Nhá", "nguyễn văn a"),
+        ("Nguyễn Văn A em nhé ạ", "nguyễn văn a"),
     ],
 )
 def test_ambiguous_suffix_must_use_slot_filling_instead_of_a_truncated_rule_name(text, expected):
@@ -162,6 +164,8 @@ def test_ambiguous_suffix_must_use_slot_filling_instead_of_a_truncated_rule_name
         "Lê Nha",
         "Nguyễn Văn A em nhé",
         "Nguyễn Văn Em nhé",
+        "Anh là NGuyễn Văn A Em Nhá",
+        "Nguyễn Văn A em nhé ạ",
     ],
 )
 def test_ambiguous_suffix_never_falls_back_to_a_wrong_rule_guess(text):
