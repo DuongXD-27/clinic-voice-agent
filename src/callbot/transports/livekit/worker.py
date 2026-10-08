@@ -83,7 +83,13 @@ async def entrypoint(ctx: JobContext) -> None:
         caller_identity=participant.identity,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
-        on_close=(lambda: hangup_sip_caller(ctx, participant.identity)) if call.is_sip else None,
+        on_close=(
+            lambda: hangup_sip_caller(
+                ctx, participant.identity, playout_grace_ms=livekit_settings.sip_hangup_grace_ms
+            )
+        )
+        if call.is_sip
+        else None,
     )
     try:
         await bridge.run()

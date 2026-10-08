@@ -19,6 +19,8 @@ asr_queue_ms: 30000
 barge_in_preroll_ms: 500
 # Queue phát càng dài thì barge-in càng chậm (default LiveKit AudioSource là 1000)
 output_queue_ms: 200
+# Extra time after draining the local TTS queue, before SIP BYE (browser calls unaffected).
+sip_hangup_grace_ms: 2000
 # Mỗi process nạp một bản ZipFormer; 1 process idle hợp máy demo 2 vCPU/2 GB
 worker_num_idle_processes: 1
 # Rỗng = LiveKit tự chia job cho MỌI worker không đặt tên trong cùng project — nhiều người

@@ -1,5 +1,6 @@
 """Call context at the WebRTC/SIP boundary; SIP caller ID comes from LiveKit."""
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Literal
@@ -32,12 +33,17 @@ def participant_call(participant: rtc.RemoteParticipant) -> ParticipantCall:
     )
 
 
-async def hangup_sip_caller(ctx, identity: str) -> None:
+async def hangup_sip_caller(ctx, identity: str, *, playout_grace_ms: int = 0) -> None:
     """Remove only this caller, after the bridge has drained its final TTS audio.
 
+    AudioSource drains the agent's local queue, not the handset jitter buffer.
+    A bounded grace period lets the final frames traverse the SIP media path.
     Leaving the agent room alone does not send BYE to the SIP caller. A caller
     that already hung up needs no second removal. API errors propagate to the job.
     """
+    if identity in ctx.room.remote_participants and playout_grace_ms > 0:
+        logger.info("SIP hangup: waiting %d ms for remote media playout", playout_grace_ms)
+        await asyncio.sleep(playout_grace_ms / 1000)
     if identity in ctx.room.remote_participants:
         logger.info("SIP hangup: removing caller")
         await ctx.api.room.remove_participant(

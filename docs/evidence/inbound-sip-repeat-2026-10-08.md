@@ -2,8 +2,9 @@
 
 ## Trạng thái
 
-**Chưa đạt ba BOOKED liên tiếp. Cuộc đầu được trả lời nhưng người dùng không nghe bot;
-hai cuộc tiếp theo chưa chạy, cần giải quyết đường âm thanh trước.** Không tính các cuộc
+**Chưa đạt ba BOOKED liên tiếp. Phiên UDP đầu thiếu downlink; sau khi TLS khôi phục
+âm thanh, cuộc booking đầu phiên TLS chuyển nhân viên ở bước tên.** Hai cuộc tiếp theo
+chưa chạy. Không tính các cuộc
 âm báo chẩn đoán là booking hoặc thay thế kiểm tra giọng nói live.
 
 Phiên này chạy code PR #103, commit `69688a9`, đã rebase main. Bằng chứng live ngày 07/10
@@ -81,14 +82,47 @@ Chỉ mã hóa báo hiệu TLS trong thử nghiệm này; media vẫn RTP, chưa
 Đã khôi phục worker booking thật `AW_B4VkyYsyr3n3` (PID 7524). Profile hiện dùng TLS
 và policy NAT baseline; cùng mạng router, không chỉnh firewall hay yêu cầu IP tĩnh.
 Collector mới tách riêng phiên TLS; mock vẫn một SCHEDULED và mười slot tương lai,
-không reset giữa các cuộc. Chuỗi ba booking mới đang chờ caller nói thử, chưa được tính pass.
+không reset giữa các cuộc.
+
+## Booking TLS và lời cuối bị cắt
+
+Cuộc TLS thực lúc 11:35:54–11:36:23, room `RM_nLShkqRUbVKv`, job
+`AJ_imtvMK3YWpZe`: caller nghe bot, trả lời tên nhưng Core chuyển TRANSFERRED ở lượt 2.
+Không có BOOKED mới, dữ liệu mock cũ không đổi. Hai cuộc tiếp theo chưa chạy; đã dừng
+collector phiên này thay vì tính ba lần kết nối là ba booking thành công.
+
+Lượt 1 có ASR confidence 0,905 nhưng không trích được tên; lượt 2 confidence 0,987,
+trích được tên nhưng đi nhánh tên không khớp hồ sơ. Transcript live không được giữ ở
+INFO trace và nội dung session được xóa khi terminal. Giải mã offline từ RTP caller ra
+“TÔI TÊN LÀ NGUYỄN ĐĂNG AN” ở cửa sổ lượt 1 và “TÔI TÊN LÀ NGUYỄN VĂN AN” ở lượt 2.
+Đây là cửa sổ decode lại, không khẳng định đúng transcript ASR live. Caller báo đã nói
+“Nguyễn Văn A”. Text chuẩn “Nguyễn Văn A” qua extractor/verifier vẫn MATCH; chưa đổi
+fixture, chưa thêm fuzzy matching hoặc tự sửa “An” thành “A” trong xác thực danh tính.
+
+Capture local có 1260 RTP nhận từ media SIP, không có sequence gap. Caller báo câu
+chuyển máy chưa nói hết đã ngắt. TTS cuối dài 3456,125 ms, không bị barge-in hoặc lỗi
+provider theo trace; local playout kết thúc 11:36:22.971202, RemoveParticipant bắt đầu
+11:36:22.974299. SDK `AudioSource.wait_for_playout` theo thời gian queue local, không có
+acknowledgement đã nghe hết ở softphone.
+
+Đã bổ sung `sip_hangup_grace_ms` (mặc định 2000, giới hạn 0–5000): chờ thêm sau local
+drain trước BYE của caller SIP, rồi kiểm tra lại caller còn trong room. Browser không có
+callback SIP nên không thêm thời gian này. Kiểm thử đảm bảo chưa gửi removal khi đang
+đợi, caller tự ngắt trong khoảng đệm không bị remove lại, lỗi removal vẫn được báo rõ.
+75 kiểm thử LiveKit/transport/token và Ruff lint/format pass; chưa nghe lại lời cuối live
+trên bản sửa này. Một khoảng đệm hữu hạn không chứng minh playback acknowledgement.
+
+Worker booking thật mới `AW_t8Hk6FwNbxwV` (PID 17332) đã đăng ký với bản sửa và log
+ASR riêng cho chẩn đoán local. Không bật transcript logging ở worker production trong
+source. Fixture vẫn “Nguyễn Văn A”; đang chờ chọn hướng debug ASR hay dùng tên mock
+đầy đủ “Nguyễn Văn An” trước khi chạy lại chuỗi booking.
 
 ## Phần cần xác minh
 
 Đổi về hotspot chỉ là phép thử phân biệt đường mạng, không phải giải pháp nghiệm thu.
 Không giả định IP 4G giữ nguyên. Đã chứng minh SDP bị sửa ở UDP và TLS với NAT baseline
 khôi phục downlink ở một cuộc âm báo. Chưa khẳng định TLS giải quyết mọi NAT hoặc mạng,
-chưa kiểm chứng giọng người dùng, ba booking liên tiếp và BYE/200 của các cuộc TLS thật.
+chưa đạt ba booking liên tiếp hoặc kiểm chứng hết cắt lời cuối trên bản sửa mới.
 Nếu đường trực tiếp không đáp ứng môi trường sử dụng, cần thiết kế media relay phù hợp,
 rồi kiểm chứng cả chuỗi booking và các mạng dự kiến dùng; chưa triển khai relay ở phiên này.
 
@@ -100,6 +134,7 @@ Nguồn kỹ thuật:
 Bằng chứng có thể chia sẻ:
 [booking-repeat-attempt-1-no-downlink.json](../../result/08-10-2026/sip-baseline/booking-repeat-attempt-1-no-downlink.json).
 [tls-baseline-nat-tone-summary.json](../../result/08-10-2026/sip-baseline/tls-baseline-nat-tone-summary.json).
+[booking-tls-attempt-1-transferred.json](../../result/08-10-2026/sip-baseline/booking-tls-attempt-1-transferred.json).
 Log, profile và PCAP gốc giữ local trong `temp`, không đưa mật khẩu hoặc IP public của
 người dùng vào bản tóm tắt. Chuỗi ba booking sẽ bắt đầu lại sau khi cấu hình âm thanh ổn
 định; không gộp các cuộc thuộc cấu hình khác nhau để tuyên bố gate đã đạt.

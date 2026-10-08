@@ -607,14 +607,9 @@ class CallBridge:
                     try:
                         await asyncio.wait_for(wait_for_playout(), timeout=_PLAYOUT_TIMEOUT_S)
                     except TimeoutError:
-                        # wait_for_playout() chờ track TTS được phía client thực sự phát
-                        # hết (_join_fut nội bộ của AudioSource) — nếu track không bao
-                        # giờ được browser subscribe/consume (mất kết nối, tab đóng đột
-                        # ngột, lỗi network), future đó không bao giờ resolve và cuộc gọi
-                        # bị khoá vô thời hạn (bug thật đã gặp: 56s im lặng rồi room mới
-                        # tự ngắt). Timeout ở đây không phải để "đúng" mọi trường hợp —
-                        # chỉ đảm bảo CallBridge luôn tự giải phóng, không bao giờ treo
-                        # cứng chờ 1 sự kiện WebRTC có thể không bao giờ tới.
+                        # SDK _join_fut tracks local AudioSource queue time, not
+                        # acknowledgement of client playback. Bound that local wait;
+                        # SIP hangup adds a separate remote-media grace period.
                         logger.warning(
                             "call_bridge: wait_for_playout timeout sau %.0fs, tiếp tục turn tiếp theo",
                             _PLAYOUT_TIMEOUT_S,

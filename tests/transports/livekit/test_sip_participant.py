@@ -1,5 +1,6 @@
 """SIP boundary regressions. No server, carrier, ASR or TTS provider is invoked."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -10,6 +11,7 @@ require_livekit()
 
 from livekit import rtc  # noqa: E402
 
+from callbot.transports.livekit import participant as participant_module  # noqa: E402
 from callbot.transports.livekit.participant import (  # noqa: E402
     ParticipantCall,
     hangup_sip_caller,
@@ -77,6 +79,52 @@ async def test_hangup_api_failure_is_visible():
     )
     with pytest.raises(ConnectionError):
         await hangup_sip_caller(ctx, "sip-caller")
+
+
+@pytest.mark.parametrize("caller_disconnects", [False, True])
+async def test_sip_bye_waits_for_remote_playout_and_rechecks_caller(
+    monkeypatch, caller_disconnects
+):
+    entered, release = asyncio.Event(), asyncio.Event()
+    remove = AsyncMock()
+    ctx = SimpleNamespace(
+        room=SimpleNamespace(name="sip-booking", remote_participants={"sip-caller": object()}),
+        api=SimpleNamespace(room=SimpleNamespace(remove_participant=remove)),
+    )
+
+    async def remote_playout_delay(seconds):
+        assert seconds == 2
+        entered.set()
+        await release.wait()
+
+    monkeypatch.setattr(participant_module.asyncio, "sleep", remote_playout_delay)
+    closing = asyncio.create_task(hangup_sip_caller(ctx, "sip-caller", playout_grace_ms=2000))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        remove.assert_not_awaited()
+        if caller_disconnects:
+            ctx.room.remote_participants.clear()
+        release.set()
+        await asyncio.wait_for(closing, timeout=1)
+        assert remove.await_count == (0 if caller_disconnects else 1)
+    finally:
+        release.set()
+        if not closing.done():
+            closing.cancel()
+            await asyncio.gather(closing, return_exceptions=True)
+
+
+async def test_disconnected_caller_needs_no_playout_delay(monkeypatch):
+    delay = AsyncMock()
+    monkeypatch.setattr(participant_module.asyncio, "sleep", delay)
+    remove = AsyncMock()
+    ctx = SimpleNamespace(
+        room=SimpleNamespace(name="sip-booking", remote_participants={}),
+        api=SimpleNamespace(room=SimpleNamespace(remove_participant=remove)),
+    )
+    await hangup_sip_caller(ctx, "sip-caller", playout_grace_ms=2000)
+    delay.assert_not_awaited()
+    remove.assert_not_awaited()
 
 
 @pytest.mark.parametrize("kind", [rtc.ParticipantKind.PARTICIPANT_KIND_SIP, 0])
