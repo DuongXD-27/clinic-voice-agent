@@ -73,6 +73,12 @@ class SpeechSettings(YamlSettings):
     # Câu chỉ có từ đệm ("ừ", "à", "dạ"…): False = gửi engine (engine hiểu "ừ/ờ" là đồng ý, "dạ"
     # là hỏi lại); True = bỏ.
     turn_drop_filler_words: bool
+    # Bỏ chữ bot vọng lại khỏi lượt người gọi: text | acoustic | three_state
+    # (speech.turn.interruption.EchoPolicy).
+    turn_echo_policy: Literal["text", "acoustic", "three_state"]
+    # Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời: giữ riêng, decode khi bot
+    # dứt lời, thành lượt nếu còn chữ sau khi bỏ tiếng vọng. False = bỏ (trước 08/10).
+    turn_keep_unconfirmed_barge_in: bool
 
     # THỬ NGHIỆM cổng giọng người gọi (speech/audio/speaker_gate.py): off | log | enforce.
     speaker_gate_mode: Literal["off", "log", "enforce"]

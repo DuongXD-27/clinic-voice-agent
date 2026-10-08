@@ -221,6 +221,16 @@ def test_strip_echo_prefix(text: str, bot_text: str, expected: str) -> None:
     assert strip_echo_prefix(text, bot_text) == expected
 
 
+def test_echo_prefix_does_not_consume_caller_start_on_an_isolated_shared_word() -> None:
+    assert (
+        strip_echo_prefix(
+            "DẠ VINM XIN NGHE TÔI LÀ NGUYỄN VĂN A",
+            "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài",
+        )
+        == "TÔI LÀ NGUYỄN VĂN A"
+    )
+
+
 async def test_user_can_speak_normally_right_after_bot_stops() -> None:
     """Sau khi candidate cũ bị discard, user nói bình thường (speech_start mới) MUỘN sau
     khi bot dừng (đã qua khỏi post-bot echo guard) vẫn phải tạo turn được — reset không
@@ -516,12 +526,8 @@ async def test_filler_heard_while_bot_was_speaking_is_still_dropped() -> None:
     assert controller._queue.empty()
 
 
-if __name__ == "__main__":
-    pytest.main([__file__])
-
-
 async def _segment(controller: TurnController, segment_id: int, text: str) -> None:
-    """Một câu của ASR remote (Gemini server VAD): final tới trước speech_end."""
+    """Một câu của ASR remote: final tới trước speech_end."""
     await controller.on_vad_event(VadEvent("speech_start"))
     controller.expect_final(segment_id)
     await controller.on_transcript_event(
@@ -561,3 +567,41 @@ async def test_without_merge_window_continuation_is_a_new_turn() -> None:
 
     assert (await _next_turn(controller)).text == "14 tháng 3"
     assert (await _next_turn(controller)).text == "năm 1978"
+
+
+async def test_empty_final_after_partial_does_not_leave_the_turn_hanging() -> None:
+    """ASR remote (final bắt buộc): đã có partial nên timeout không bỏ lượt, rồi final tới rỗng.
+    Lượt phải được bỏ — giữ lại thì silence_elapsed_s() mãi là None, bot không bao giờ nhắc
+    khi người gọi im lặng."""
+    controller = TurnController(max_wait_after_vad_end_ms=20, min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    await controller.on_transcript_event(TranscriptEvent(text="anh", is_final=False, segment_id=1))
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await asyncio.sleep(0.05)  # timeout đã chạy, còn chờ final
+    await controller.on_transcript_event(TranscriptEvent(text="", is_final=True, segment_id=1))
+
+    assert controller.silence_elapsed_s() is not None
+    assert not controller.has_pending_turn()
+
+
+async def test_final_that_is_only_bot_echo_does_not_leave_the_turn_hanging() -> None:
+    controller = TurnController(max_wait_after_vad_end_ms=20, min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    controller.expect_echo("Dạ Vinmec xin nghe, em là trợ lý ảo AI")
+    await controller.on_transcript_event(
+        TranscriptEvent(text="dạ vin", is_final=False, segment_id=1)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await controller.on_transcript_event(
+        TranscriptEvent(text="DẠ VINMEC XIN NGHE EM LÀ", is_final=True, segment_id=1)
+    )
+
+    assert controller.silence_elapsed_s() is not None
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

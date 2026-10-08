@@ -50,11 +50,12 @@ class LiveKitSettings(YamlSettings):
     # Gửi lượt im lặng cho core sau chừng này ms không có tiếng nói (0 = tắt). Core đã có luật
     # im lặng (max_silent_turns) nhưng đường LiveKit trước đây luôn gửi silence_ms=0.
     silence_timeout_ms: int
-    # Lọc ồn Krisp VIVA — bật mặc định 08/10/2026 theo quyết định owner (config/livekit.yaml).
-    # Đo offline 28/09 (docs/evidence §8) từng cho WER tệ hơn kể cả audio sạch. Cần cài
-    # `livekit-plugins-krisp` (không có sẵn trong pyproject.toml — xem cảnh báo về nâng cấp
-    # livekit-agents/openai ngoài ý muốn trong evidence); chưa cài thì chạy không lọc.
-    krisp_noise_suppression_enabled: bool = True
+    # THỬ NGHIỆM (28/09/2026, xem docs/evidence §8): đo offline cho thấy Krisp VIVA làm WER
+    # tệ hơn ở gần mọi điều kiện kể cả audio sạch — mặc định TẮT. Bật tạm để nghe thử qua
+    # LiveKit thật (streaming, có network/jitter thật) trước khi quyết định cuối cùng; không
+    # phải khuyến nghị bật cho production. Cần cài `livekit-plugins-krisp` (không có sẵn trong
+    # pyproject.toml — xem cảnh báo về nâng cấp livekit-agents/openai ngoài ý muốn trong evidence).
+    krisp_noise_suppression_enabled: bool = False
 
     @field_validator("agent_name", mode="before")
     @classmethod

@@ -58,20 +58,28 @@ phone_overrides:
   asr_pre_speech_ms: 1000
 
 # --- Câu chỉ có từ đệm ("ừ", "à", "ờ", "dạ"…) ---
-# false = gửi engine ("ừ/ờ" là đồng ý, "dạ" hỏi lại, "à/ừm" đang nghĩ); true = bỏ (trước 07/10).
+# false = gửi engine; true = bỏ từ đệm đứng riêng, vẫn giữ câu trả lời "có/không".
 # Từ đệm nói lúc bot đang nói luôn bỏ (tiếng đệm "tôi đang nghe").
-# Bật 07/10 theo yêu cầu owner để thử trực tiếp — CHƯA có số đo hợp lệ (bộ short sai nhãn,
-# docs/evidence/stt-phone-echo-speaker-2026-10-07.md). Rủi ro đã biết: nhiễu lớn đôi khi bị ASR
-# nghe thành "Ừ/À" (7/240 đoạn ~3 s nhiễu văn phòng, kênh điện thoại) = đồng ý giả.
-turn_drop_filler_words: false
+# 08/10: khôi phục bộ lọc như main sau khi cuộc gọi thật có lượt giả "Ừ/À" khi không bật Krisp.
+# Chỉ mở lại khi có tập câu ngắn có nhãn và đánh giá cả nhiễu thuần.
+turn_drop_filler_words: true
+
+# --- ĐANG ĐÁNH GIÁ (08/10, review): tiếng bot vọng lại và lời chen chưa xác nhận ---
+# text: luôn bỏ phần đầu lượt trùng câu bot (trước 08/10; xoá cả lời người gọi nhắc lại câu bot)
+# acoustic: chỉ bỏ khi mic có tiếng vọng | three_state: chưa biết/có vọng thì như text, chỉ
+# không bỏ khi đã chắc đường truyền không vọng. Số đo: docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+turn_echo_policy: "acoustic"
+# true: lời chen lúc bot nói chưa được xác nhận ngắt lời được giữ riêng, decode khi bot dứt lời.
+turn_keep_unconfirmed_barge_in: true
 
 # --- THỬ NGHIỆM: cổng giọng người gọi (speaker embedding, speech/audio/speaker_gate.py) ---
 # off | log (chỉ ghi similarity) | enforce (bỏ lượt dài không giống người gọi). Giọng mẫu = lượt
 # dài đầu tiên của cuộc gọi; chỉ xét lượt có >= speaker_gate_min_speech_ms tiếng nói. Đo 07/10
 # (giọng mẫu cùng cuộc gọi, đoạn 2 s): EER 7% điện thoại / 0,9% web; ngưỡng 0,2 giữ ~98% câu
 # thật. Model: sherpa-onnx speaker-recongition-models, nemo_en_titanet_small.onnx.
-# Bật enforce 08/10 theo yêu cầu owner để thử trực tiếp — chưa thử trong cuộc gọi thật.
-speaker_gate_mode: "enforce"
+# 08/10: tắt cổng thử nghiệm khi xử lý regression; tránh bỏ lời thật do giọng mẫu sai.
+# Có thể bật log/enforce để đo riêng sau khi pipeline ổn định.
+speaker_gate_mode: "off"
 speaker_gate_model_path: temp/models/speaker/nemo_en_titanet_small.onnx
 speaker_gate_threshold: 0.2
 speaker_gate_min_speech_ms: 2000

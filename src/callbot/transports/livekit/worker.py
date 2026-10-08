@@ -101,6 +101,7 @@ async def entrypoint(ctx: JobContext) -> None:
         turn_controller=bundle.turn_controller,
         interruption_validator=bundle.validator,
         interruption_min_snr_db=speech_settings.interruption_min_snr_db,
+        interruption_echo_policy=speech_settings.turn_echo_policy,
         sample_rate=livekit_settings.input_sample_rate,
         frame_ms=livekit_settings.frame_ms,
         input_queue_ms=livekit_settings.input_queue_ms,

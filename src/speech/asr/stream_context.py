@@ -11,6 +11,8 @@ class StreamingFrame:
     pcm: bytes
     generation: int
     segment_id: int
+    # Audio replayed by the transport must survive the provider's smaller onset buffer.
+    is_preroll: bool = False
 
 
 class ASRStreamContext:

@@ -353,6 +353,53 @@ async def test_discard_marker_drops_utterance_without_event() -> None:
     assert await _finals(_LabellingASR(), frames, min_decode_ms=0) == ["B"]
 
 
+async def test_transport_preroll_survives_the_smaller_asr_onset_buffer() -> None:
+    from speech.asr.stream_context import StreamingFrame
+
+    decoded = []
+
+    class Capture(_RecordingASR):
+        def _decode_stream_scored(self, pcm, source_rate):
+            decoded.append(pcm)
+            return _Decoded("không được")
+
+    class Onset:
+        def is_speech(self, pcm):
+            return pcm == _LOUD
+
+    prefix = [bytes((marker, 0)) * 240 for marker in range(1, 17)]
+    # VAD only notices speech after the bot stops: retain replay plus onset delay.
+    items = [StreamingFrame(pcm, 0, 0, is_preroll=True) for pcm in prefix]
+    items += [_SILENT] * 8 + [_LOUD] * 14
+    events = await _finals(Capture(_GrowingFakeRecognizer()), items, silence_classifier=Onset())
+
+    assert events == ["không được"]
+    assert decoded[-1].startswith(b"".join(prefix))
+
+
+async def test_replayed_noise_cannot_satisfy_minimum_speech_duration() -> None:
+    from speech.asr.stream_context import StreamingFrame
+
+    asr = _RecordingASR(_GrowingFakeRecognizer())
+    items = [StreamingFrame(_SILENT, 0, 0, is_preroll=True)] * 16 + [_LOUD] * 3
+
+    assert await _finals(asr, items) == []
+    assert asr._growing.decode_calls == 0
+
+
+async def test_replayed_prefix_ages_out_after_long_silence() -> None:
+    from speech.asr.stream_context import StreamingFrame
+
+    items = [StreamingFrame(_UTTERANCE_A, 0, 0, is_preroll=True)] * 16
+
+    class OnlyB:
+        def is_speech(self, pcm):
+            return pcm == _UTTERANCE_B
+
+    items += [_SILENT] * 40 + [_UTTERANCE_B] * 14
+    assert await _finals(_LabellingASR(), items, silence_classifier=OnlyB()) == ["B"]
+
+
 class _ScoredFakeRecognizer:
     """Recognizer giả trả text + ys_log_probs như sherpa-onnx OfflineRecognizer thật."""
 

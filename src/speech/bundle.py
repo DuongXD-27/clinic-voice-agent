@@ -220,7 +220,8 @@ def build_streaming_bundle(
     speaker_gate = _build_speaker_gate(settings) if settings.speaker_gate_mode != "off" else None
     stt_pipeline = STTPipeline(
         asr,
-        AsyncStreamingVAD(
+        keep_unconfirmed_barge_in=settings.turn_keep_unconfirmed_barge_in,
+        vad=AsyncStreamingVAD(
             detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
         ),
         sample_rate=sample_rate,

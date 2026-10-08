@@ -121,6 +121,20 @@ async def _collect(iterator):
     return [item async for item in iterator]
 
 
+async def test_transport_preroll_is_not_trimmed_before_remote_speech_onset():
+    from speech.asr.stream_context import StreamingFrame
+
+    socket = _Socket()
+    provider, _ = _provider(socket)
+    prefix = [bytes((marker, 0)) * 480 for marker in range(1, 17)]
+    items = [StreamingFrame(pcm, 0, 0, is_preroll=True) for pcm in prefix]
+    items += [_SILENCE] * 8 + [_VOICE] * 5
+    events = await _collect(provider.stream(_frames(items)))
+
+    assert events[-1].is_final
+    assert socket.audio == b"".join(prefix + [_SILENCE] * 8 + [_VOICE] * 5)
+
+
 async def test_stream_preserves_final_equal_to_partial_and_repeated_turns():
     first, second = _Socket(text="đồng ý"), _Socket(text="đồng ý")
     provider, connector = _provider(first, second)
@@ -555,3 +569,52 @@ async def test_prepaid_credit_error_is_actionable_without_leaking_upstream_reaso
         await provider.check_connection()
     assert "test-key" not in str(error.value)
     assert socket.closed
+
+
+async def test_sentence_split_at_max_length_keeps_the_first_part():
+    """Câu dài bị tách ở max_turn_speech_ms: phần sau cùng segment_id, final của nó từng ghi
+    đè phần trước — lượt chỉ còn "phần hai"."""
+    provider, _ = _provider(
+        _Socket(text="phần một"), _Socket(text="phần hai"), max_turn_speech_ms=90
+    )
+
+    events = await _collect(
+        provider.stream(_frames([_VOICE] * 5 + [_SILENCE] * 3), end_silence_ms=60)
+    )
+
+    assert [(event.text, event.segment_id) for event in events if event.is_final] == [
+        ("phần một phần hai", 1)
+    ]
+    assert {event.segment_id for event in events} == {1}
+
+
+async def test_caller_stopping_right_at_the_split_still_gets_a_final():
+    provider, _ = _provider(
+        _Socket(text="phần một"), _Socket(text=None, activity_end=True), max_turn_speech_ms=90
+    )
+
+    events = await _collect(provider.stream(_frames([_VOICE] * 3)))
+
+    assert [event.text for event in events if event.is_final] == ["phần một"]
+
+
+async def test_gemini_final_arriving_during_fallback_is_not_a_second_final():
+    """Hết final_timeout_s thì fallback decode lại; final Gemini tới muộn trong lúc đó từng
+    vẫn được phát, rồi final fallback ghi đè: một đoạn ra hai final."""
+    import time
+
+    gate = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    class _SlowFallback(_FakeFallback):
+        def transcribe(self, pcm):
+            loop.call_soon_threadsafe(gate.set)  # Gemini trả final đúng lúc fallback decode
+            time.sleep(0.1)
+            return super().transcribe(pcm)
+
+    socket = _Socket(text="bản gemini", final_gate=gate)
+    provider, _ = _provider(socket, fallback=_SlowFallback("bản fallback"), final_timeout_s=0.01)
+
+    events = await _collect(provider.stream(_frames([_VOICE] * 4)))
+
+    assert [event.text for event in events if event.is_final] == ["bản fallback"]

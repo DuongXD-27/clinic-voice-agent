@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, NamedTuple, Optional
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
+from speech.asr.stream_context import StreamingFrame
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
 from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
@@ -36,6 +37,7 @@ class _Decoded(NamedTuple):
 
 class ZipFormerASR:
     input_sample_rate = 16_000
+    supports_preroll_frames = True
 
     def __init__(self, config: ZipFormerConfig, *, recognizer: Any = None) -> None:
         self._config = config
@@ -68,7 +70,7 @@ class ZipFormerASR:
 
     async def stream(
         self,
-        frames: AsyncIterator[bytes | AsrSegmentEnd],
+        frames: AsyncIterator[bytes | StreamingFrame | AsrSegmentEnd],
         *,
         audio_sample_rate: int = NARROWBAND_RATE,
         silence_classifier: FrameClassifier | None = None,
@@ -112,10 +114,13 @@ class ZipFormerASR:
             if isinstance(frame, AsrSegmentEnd):
                 utterance.discard()
                 continue
+            is_preroll = isinstance(frame, StreamingFrame) and frame.is_preroll
+            if isinstance(frame, StreamingFrame):
+                frame = frame.pcm
             if not frame:
                 continue
             is_speech = silence_classifier.is_speech(frame)
-            if not utterance.add(frame, is_speech):
+            if not utterance.add(frame, is_speech, is_preroll=is_preroll):
                 continue
             has_min_speech = utterance.speech_ms >= min_decode_ms
             # Mỗi partial decode lại cả câu; partial_interval_ratio giãn nhịp cho câu dài.
@@ -180,6 +185,7 @@ class _Utterance:
         self._rate = sample_rate
         self._pre_speech = bytearray()
         self._pre_speech_max = sample_rate * pre_speech_ms // 1000 * 2
+        self._pre_speech_limit = self._pre_speech_max
         self.pcm = bytearray()
         self.in_speech = False
         # Chỉ đếm frame có tiếng nói: đuôi im lặng không được giúp câu "à" vượt min_decode_ms.
@@ -192,15 +198,22 @@ class _Utterance:
     def duration_ms(self) -> float:
         return len(self.pcm) / 2 / self._rate * 1000
 
-    def add(self, frame: bytes, is_speech: bool) -> bool:
+    def add(self, frame: bytes, is_speech: bool, *, is_preroll: bool = False) -> bool:
         """False khi frame chỉ vào pre-roll (chưa có câu nào đang mở)."""
         if not self.in_speech and not is_speech:
             self._pre_speech.extend(frame)
-            del self._pre_speech[: max(0, len(self._pre_speech) - self._pre_speech_max)]
+            if is_preroll:
+                # Replay is bounded upstream. Keep it plus the usual onset allowance;
+                # later silence still ages it out instead of retaining it indefinitely.
+                self._pre_speech_limit = max(
+                    self._pre_speech_limit, len(self._pre_speech) + self._pre_speech_max
+                )
+            del self._pre_speech[: max(0, len(self._pre_speech) - self._pre_speech_limit)]
             return False
         if not self.in_speech:
             self.pcm.extend(self._pre_speech)
             self._pre_speech.clear()
+            self._pre_speech_limit = self._pre_speech_max
             self.in_speech = True
         self.pcm.extend(frame)
         frame_ms = len(frame) / 2 / self._rate * 1000
@@ -218,6 +231,7 @@ class _Utterance:
         self.in_speech = still_speaking
         self.speech_ms = self.silent_ms = self.since_partial_ms = 0.0
         self.last_partial = ""
+        self._pre_speech_limit = self._pre_speech_max
 
     def discard(self) -> None:
         """Pipeline ngừng đưa audio: audio trước và sau chỗ ngắt không liền nhau."""

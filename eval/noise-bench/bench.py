@@ -327,12 +327,24 @@ class _CapturingRecognizer:
         self._inner = inner
         self.name = inner.name
         self.input_sample_rate = inner.input_sample_rate
+        self.supports_preroll_frames = getattr(inner, "supports_preroll_frames", False)
+        self.supports_stream_context = getattr(inner, "supports_stream_context", False)
         self.finals: list[str] = []
         self.final_confidences: list[float | None] = []
         self.waiting = True
+        # Decode cả đoạn (lời chen giữ riêng, STTPipeline keep_unconfirmed_barge_in): đang chạy, và
+        # thời gian thật từng lần — đồng hồ ảo không tính phần này.
+        self.batch_busy = 0
+        self.batch_seconds: list[float] = []
 
     def transcribe(self, segment):
-        return self._inner.transcribe(segment)
+        started = time.perf_counter()
+        self.batch_busy += 1
+        try:
+            return self._inner.transcribe(segment)
+        finally:
+            self.batch_busy -= 1
+            self.batch_seconds.append(time.perf_counter() - started)
 
     async def stream(self, frames: AsyncIterator[bytes], **kwargs):
         async def pulled():
@@ -361,7 +373,7 @@ async def _settle(recognizer: _CapturingRecognizer) -> None:
     stable = 0
     while stable < 4:
         await asyncio.sleep(0)
-        if recognizer.waiting:
+        if recognizer.waiting and not recognizer.batch_busy:
             stable += 1
         else:
             stable = 0
@@ -406,26 +418,29 @@ def _livekit_queues() -> dict[str, int]:
 
 
 class BotTurn(NamedTuple):
-    """Bot nói câu `text` trong [start_s, end_s) (giây trong trial). `echo`: tiếng bot vọng về
-    mic người gọi, cùng độ dài trial, chỉ cộng vào khi bot còn đang phát — ngắt lời được xác
-    nhận thì echo dừng như CallBridge xoá hàng đợi phát."""
+    """Bot nói câu `text` (audio TTS `audio`) trong [start_s, end_s) (giây trong trial). `echo`:
+    tiếng bot vọng về mic người gọi, cùng độ dài trial, chỉ cộng vào khi bot còn đang phát —
+    ngắt lời được xác nhận thì echo dừng như CallBridge xoá hàng đợi phát."""
 
     start_s: float
     end_s: float
     text: str
     echo: np.ndarray
+    audio: np.ndarray
 
 
 async def run_pipeline(
     pcm: np.ndarray,
     settings: SpeechSettings,
     asr: SpeechRecognizer,
-    bot: BotTurn | None = None,
+    bot: BotTurn | list[BotTurn] | None = None,
 ) -> dict:
     """Trả ASR finals (+ confidence), turn TurnController chốt gửi lên core, thời điểm (giây
     audio) chốt từng turn. Có `bot`: thêm mốc ứng viên ngắt lời
     (`barge_in_candidates`) và lúc ngắt lời được xác nhận (`barge_in_at`), dùng
-    InterruptionController như worker. Xác định: xem docstring module."""
+    InterruptionController như worker. Nhiều `BotTurn` = các câu bot lần lượt trong cùng cuộc
+    gọi (một InterruptionController); mốc ngắt lời là của câu cuối. Xác định: xem docstring module."""
+    bots = [bot] if isinstance(bot, BotTurn) else list(bot or [])
     recognizer = _CapturingRecognizer(asr)
     clock = VirtualTime()
     bundle = build_streaming_bundle(
@@ -446,7 +461,7 @@ async def run_pipeline(
 
     interruption = None
     barge_in: dict[str, object] = {"at": None, "candidates": []}
-    if bot is not None:
+    if bots:
 
         class _Playout:
             async def cancel(self) -> None:
@@ -457,6 +472,7 @@ async def run_pipeline(
             clock=clock.now,
             validator=bundle.validator,
             min_snr_db=settings.interruption_min_snr_db,
+            echo_policy=settings.turn_echo_policy,
         )
         on_speech_started = interruption.on_speech_started
 
@@ -466,20 +482,25 @@ async def run_pipeline(
                 barge_in["candidates"].append(clock.now())
 
         interruption.on_speech_started = recording_speech_started
-    bot_state = {"speaking": False, "done": bot is None}
+    bot_state = {"speaking": False, "index": 0}
 
     def update_bot(now: float) -> None:
         """Như CallBridge._speak: báo bot bắt đầu nói; dừng khi phát hết hoặc bị ngắt lời."""
-        if bot_state["done"]:
+        if bot_state["index"] >= len(bots):
             return
+        bot = bots[bot_state["index"]]
         if not bot_state["speaking"] and now >= bot.start_s:
             bot_state["speaking"] = True
             controller.on_bot_speaking_changed(True)
             interruption.on_bot_started_speaking(bot.text)
+            pcm = np.clip(np.round(bot.audio), -32768, 32767).astype(np.int16).tobytes()
+            interruption.on_bot_audio(pcm, RATE, complete=True)
         elif bot_state["speaking"] and (barge_in["at"] is not None or now >= bot.end_s):
-            bot_state.update(speaking=False, done=True)
+            bot_state.update(speaking=False, index=bot_state["index"] + 1)
             controller.on_bot_speaking_changed(False, preserve_candidate=barge_in["at"] is not None)
             interruption.on_bot_stopped_speaking()
+
+    frames_ended = asyncio.Event()
 
     async def frames() -> AsyncIterator[bytes]:
         for i in range(0, len(pcm) - FRAME + 1, FRAME):
@@ -488,21 +509,36 @@ async def run_pipeline(
             update_bot(clock.now())
             frame = pcm[i : i + FRAME]
             if bot_state["speaking"]:
-                frame = np.clip(frame + bot.echo[i : i + FRAME], -32768, 32767).astype(np.int16)
+                echo = bots[bot_state["index"]].echo[i : i + FRAME]
+                frame = np.clip(frame + echo, -32768, 32767).astype(np.int16)
             yield frame.tobytes()
             await _settle(recognizer)
         # Hết audio: cho các hẹn giờ còn chờ (timeout sau speech_end) kịp chạy.
         for _ in range(2000 // frame_ms):
             clock.advance(frame_ms)
             await _settle(recognizer)
+        frames_ended.set()
+
+    async def drain_clock() -> None:
+        # ASR có thể trả final hoặc khôi phục lời chen sau EOF. Lúc đó TurnController mới
+        # đặt hẹn giờ gộp lượt; tiếp tục đồng hồ đến khi pipeline đóng hết lượt.
+        await frames_ended.wait()
+        while True:
+            await _settle(recognizer)
+            clock.advance(frame_ms)
 
     turns: list[str] = []
     turn_times: list[float] = []
-    async for turn in bundle.stt_pipeline.stream(
-        frames(), turn_controller=controller, interruption=interruption
-    ):
-        turns.append(turn.text)
-        turn_times.append(clock.now())
+    drain_task = asyncio.create_task(drain_clock())
+    try:
+        async for turn in bundle.stt_pipeline.stream(
+            frames(), turn_controller=controller, interruption=interruption
+        ):
+            turns.append(turn.text)
+            turn_times.append(clock.now())
+    finally:
+        drain_task.cancel()
+        await asyncio.gather(drain_task, return_exceptions=True)
     return {
         "finals": recognizer.finals,
         "final_confidences": recognizer.final_confidences,
@@ -510,6 +546,7 @@ async def run_pipeline(
         "turn_times": turn_times,
         "barge_in_candidates": barge_in["candidates"],
         "barge_in_at": barge_in["at"],
+        "batch_decode_s": recognizer.batch_seconds,
     }
 
 

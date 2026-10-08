@@ -177,6 +177,13 @@ class _LiveTurn:
         self.finished = asyncio.Event()
         self.end_sent = False
         self._last_text = ""
+        # Câu dài bị tách ở `max_turn_speech_ms` thành nhiều phần cùng segment_id: chữ các phần
+        # trước (`prefix`) đi kèm mọi event của phần này, và final của phần chưa phải phần cuối
+        # (`more_follows`) phát thành partial — TurnController giữ một đoạn, final mới ghi đè.
+        self.prefix = ""
+        self.more_follows = False
+        # Đoạn đã có kết quả (final của Gemini hoặc fallback) — chỉ một lần.
+        self.result_text: Optional[str] = None
         # Lỗi phát hiện ở luồng nhận; finalize() ném ra để pump xử lý theo đoạn.
         self.error: Optional[Exception] = None
         # PCM của đoạn ở tần số nguồn — decode lại bằng fallback nếu đoạn lỗi.
@@ -202,10 +209,13 @@ class _LiveTurn:
         await self._send({"realtimeInput": {"activityStart": {}}})
 
     async def _emit(self, text: str, *, final: bool, confidence: Optional[float] = None) -> None:
+        text = " ".join(part for part in (self.prefix, text.strip()) if part)
+        if final:
+            self.result_text = text
         await self._events.put(
             TranscriptEvent(
-                text=text.strip(),
-                is_final=final,
+                text=text,
+                is_final=final and not self.more_follows,
                 confidence=confidence,
                 generation=self.generation,
                 segment_id=self.segment_id,
@@ -322,11 +332,15 @@ class _LiveTurn:
             discarded.cancel()
             await asyncio.gather(finished, discarded, return_exceptions=True)
 
-    async def close(self) -> None:
-        self._context.pending.discard((self.generation, self.segment_id))
+    async def stop_receiving(self) -> None:
+        """Không phát thêm event nào từ Gemini cho đoạn này."""
         if self._reader is not None:
             self._reader.cancel()
             await asyncio.gather(self._reader, return_exceptions=True)
+
+    async def close(self) -> None:
+        self._context.pending.discard((self.generation, self.segment_id))
+        await self.stop_receiving()
         if self._socket is not None:
             await self._socket_context.__aexit__(None, None, None)
             self._socket = None
@@ -335,6 +349,7 @@ class _LiveTurn:
 class GeminiLiveASR:
     input_sample_rate = 16_000
     supports_stream_context = True
+    supports_preroll_frames = True
 
     def __init__(
         self,
@@ -368,6 +383,11 @@ class GeminiLiveASR:
         không có fallback hoặc đoạn đã bị bỏ (DISCARD/bot nói) — khi đó lỗi nổi lên như cũ."""
         if self._fallback is None or turn.invalidated.is_set():
             return False
+        # Luồng nhận còn chạy thì final Gemini tới muộn (trong lúc fallback decode) vẫn được
+        # phát rồi bị final fallback ghi đè: một đoạn ra hai final.
+        await turn.stop_receiving()
+        if turn.result_text is not None:
+            return True  # final của Gemini đã tới ngay trước khi dừng nhận
         logger.warning(
             "gemini_live: segment %d lỗi (%s), decode lại bằng fallback cục bộ",
             turn.segment_id,
@@ -480,11 +500,34 @@ class GeminiLiveASR:
             if isinstance(result, _Session):
                 await result.close()
 
+        async def open_turn(segment_id: int, *, prefix: str = "") -> _LiveTurn | None:
+            """None nếu đoạn đã bị bỏ (DISCARD) trong lúc mở socket."""
+            opened = _LiveTurn(
+                self._config,
+                self._connect,
+                context,
+                events,
+                context.generation,
+                segment_id,
+                audio_sample_rate,
+            )
+            opened.prefix = prefix
+            session = await take_spare()
+            if isinstance(session, Exception):
+                opened._fail(session)
+            else:
+                await opened.start(session)
+            if opened.generation != context.generation:
+                await opened.close()
+                return None
+            return opened
+
         async def pump() -> None:
             nonlocal turn
             prewarm()
             pre_speech = bytearray()
             pre_speech_max = audio_sample_rate * pre_roll_ms // 1000 * 2
+            pre_speech_limit = pre_speech_max
             silent_ms = speech_ms = 0.0
             try:
                 async for item in frames:
@@ -495,6 +538,7 @@ class GeminiLiveASR:
                             await turn.close()
                             turn = None
                         pre_speech.clear()
+                        pre_speech_limit = pre_speech_max
                         silent_ms = speech_ms = 0.0
                         continue
                     if isinstance(item, StreamingFrame):
@@ -513,43 +557,42 @@ class GeminiLiveASR:
                         prewarm()
                     if turn is None and not voiced:
                         pre_speech.extend(pcm)
-                        del pre_speech[: max(0, len(pre_speech) - pre_speech_max)]
+                        if isinstance(item, StreamingFrame) and item.is_preroll:
+                            pre_speech_limit = max(
+                                pre_speech_limit, len(pre_speech) + pre_speech_max
+                            )
+                        del pre_speech[: max(0, len(pre_speech) - pre_speech_limit)]
                         continue
                     if turn is None:
                         if stream_context is None:
                             context.start_utterance()
-                        turn = _LiveTurn(
-                            self._config,
-                            self._connect,
-                            context,
-                            events,
-                            context.generation,
+                        turn = await open_turn(
                             item.segment_id
                             if isinstance(item, StreamingFrame)
-                            else context.segment_id,
-                            audio_sample_rate,
+                            else context.segment_id
                         )
-                        session = await take_spare()
-                        if isinstance(session, Exception):
-                            turn._fail(session)
-                        else:
-                            await turn.start(session)
-                        if turn.generation != context.generation:
-                            await turn.close()
-                            turn = None
+                        if turn is None:
                             pre_speech.clear()
+                            pre_speech_limit = pre_speech_max
                             continue
                         await turn.audio(bytes(pre_speech))
                         pre_speech.clear()
+                        pre_speech_limit = pre_speech_max
                     await turn.audio(pcm)
                     frame_ms = len(pcm) / 2 / audio_sample_rate * 1000
                     silent_ms = 0.0 if voiced else silent_ms + frame_ms
                     speech_ms += frame_ms if voiced else 0.0
-                    if silent_ms >= end_silence_ms or speech_ms >= self._config.max_turn_speech_ms:
+                    too_long = speech_ms >= self._config.max_turn_speech_ms
+                    if silent_ms >= end_silence_ms or too_long:
+                        turn.more_follows = too_long and silent_ms < end_silence_ms
                         await self._finish(turn)
                         await turn.close()
-                        turn = None
+                        done, turn = turn, None
                         silent_ms = speech_ms = 0.0
+                        if done.more_follows:
+                            # Câu chưa hết: mở ngay phần sau, kể cả khi người gọi ngừng đúng lúc
+                            # tách — phần sau phát final của cả câu.
+                            turn = await open_turn(done.segment_id, prefix=done.result_text or "")
                 if turn is not None and turn.generation == context.generation:
                     await self._finish(turn)
             except asyncio.CancelledError:

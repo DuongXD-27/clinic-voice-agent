@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from speech.asr.vad.base import VadEvent
@@ -243,6 +244,25 @@ async def test_validator_wait_does_not_confirm_barge_in() -> None:
     assert tts.cancel_calls == 0
 
 
+@pytest.mark.parametrize(("snr", "confirmed"), [(20.0, True), (-20.0, False)])
+async def test_final_reply_can_confirm_without_a_second_partial_but_still_checks_snr(
+    snr: float, confirmed: bool
+) -> None:
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, clock=clock, validator=TurnValidator(), min_snr_db=0)
+    controller.on_bot_started_speaking("Xin cho biết họ tên")
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.advance(0.5)
+    controller.on_evidence_updated(noise_evidence=NoiseEvidence(1000, 100, snr))
+
+    assert await controller.on_partial_transcript(TranscriptEvent("ĐÚNG RỒI", True)) is confirmed
+    assert tts.cancel_calls == int(confirmed)
+
+
 async def test_no_validator_keeps_old_behavior() -> None:
     tts = _FakeTTS()
     clock = _FakeClock()
@@ -313,6 +333,18 @@ async def test_exact_short_fragment_of_bot_text_is_still_echo() -> None:
     )
 
     assert confirmed is False
+
+
+@pytest.mark.parametrize("text", ["A LÔ", "A LÔ ANH CHỊ CÒN NGHE MÁY KHÔNG Ạ"])
+async def test_split_alo_echo_cannot_cancel_bot_playout(text: str) -> None:
+    tts = _FakeTTS()
+    clock = _FakeClock()
+    controller = InterruptionController(tts, min_speech_ms=0, clock=clock)
+    controller.on_bot_started_speaking("Alo, anh chị còn nghe máy không ạ?")
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    assert not await controller.on_partial_transcript(TranscriptEvent(text, is_final=False))
+    assert tts.cancel_calls == 0
 
 
 async def test_no_bot_text_keeps_old_behavior_for_echo_check() -> None:
@@ -413,8 +445,163 @@ async def test_high_snr_real_barge_in_still_confirms_with_snr_threshold() -> Non
     assert tts.cancel_calls == 1
 
 
-if __name__ == "__main__":
-    pytest.main([__file__])
+_BOT = "Dạ anh chị muốn đặt lịch khám ngày mai hay ngày kia ạ"
+_RATE = 16_000
+_FRAME_S = 0.03
+
+
+def _voice(seconds: float, seed: int) -> np.ndarray:
+    """Giọng giả: nhiễu có đường bao lên xuống theo âm tiết (60 ms, độ to ngẫu nhiên)."""
+    rng = np.random.default_rng(seed)
+    envelope = np.repeat(rng.uniform(0.05, 1.0, int(seconds / 0.06)), int(0.06 * _RATE))
+    return rng.normal(0.0, 3000.0, envelope.size) * envelope
+
+
+async def _echo_text_heard_at(seconds: float, *, echo: bool, interrupted: bool = False) -> str:
+    """Câu bot `_BOT` phát 4 s từ t=0; mic nhận frame 30 ms; ứng viên ngắt lời ở `seconds`,
+    pre-roll 0,5 s; bot dừng 0,6 s sau đó. `echo`: mic là tiếng bot trễ 0,1 s, nhỏ đi 20 dB
+    (AEC không khử hết); không thì mic là giọng khác (người gọi, AEC đã khử tiếng bot)."""
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), min_speech_ms=0, clock=clock)
+    controller.on_bot_started_speaking(_BOT)
+    bot = _voice(4.0, seed=1)
+    controller.on_bot_audio(bot.astype(np.int16).tobytes(), _RATE, complete=True)
+    if echo:
+        mic = np.concatenate([np.zeros(int(0.1 * _RATE)), bot * 0.1, np.zeros(_RATE)])
+    else:
+        mic = _voice(5.0, seed=2)
+    frame = int(_FRAME_S * _RATE)
+
+    def hear_until(t: float) -> None:
+        while clock.now + _FRAME_S <= t + 1e-9:
+            i = int(round(clock.now * _RATE))
+            clock.advance(_FRAME_S)
+            controller.on_caller_audio(mic[i : i + frame].astype(np.int16).tobytes())
+
+    hear_until(seconds)
+    await controller.on_speech_started(VadEvent("speech_start"))
+    if interrupted:
+        await controller.on_partial_transcript(TranscriptEvent(text="khoan đã", is_final=False))
+    hear_until(seconds + 0.6)
+    controller.on_bot_stopped_speaking()
+    return controller.echo_text(lookback_s=0.5)
+
+
+async def test_caller_repeating_bot_words_without_echo_in_the_mic_is_not_echo() -> None:
+    """Người gọi nhắc lại chữ bot vừa nói ("đặt lịch khám ngày mai") khi mic không có tiếng bot
+    vọng lại (AEC đã khử): chỉ so chữ thì bị bỏ sạch, mất yêu cầu của người gọi."""
+    from speech.turn.controller import strip_echo_prefix
+
+    echo = await _echo_text_heard_at(3.0, echo=False)
+
+    assert echo == ""
+    assert strip_echo_prefix("Đặt lịch khám ngày mai", echo) == "Đặt lịch khám ngày mai"
+
+
+async def test_echo_text_covers_bot_words_played_while_asr_listened() -> None:
+    from speech.turn.controller import strip_echo_prefix
+
+    echo = await _echo_text_heard_at(0.2, echo=True)
+
+    assert echo == _BOT
+    assert strip_echo_prefix("DẠ ANH CHỊ MUỐN ĐẶT LỊCH KHÁM NGÀY MAI HAY", echo) == ""
+
+
+async def test_echo_text_excludes_bot_words_finished_before_asr_listened() -> None:
+    echo = await _echo_text_heard_at(3.0, echo=True)
+
+    assert echo == "khám ngày mai hay ngày kia ạ"
+
+
+async def test_echo_text_stops_where_confirmed_barge_in_cut_the_bot() -> None:
+    echo = await _echo_text_heard_at(0.2, echo=True, interrupted=True)
+
+    assert echo == "Dạ anh chị muốn đặt"
+
+
+def _play(controller, clock: _FakeClock, text: str, bot: np.ndarray, mic: np.ndarray) -> None:
+    """Một câu bot từ lúc này tới hết `mic` (frame 30 ms), không ai ngắt lời."""
+    controller.on_bot_started_speaking(text)
+    controller.on_bot_audio(bot.astype(np.int16).tobytes(), _RATE, complete=True)
+    frame = int(_FRAME_S * _RATE)
+    for i in range(0, len(mic) - frame + 1, frame):
+        clock.advance(_FRAME_S)
+        controller.on_caller_audio(mic[i : i + frame].astype(np.int16).tobytes())
+    controller.on_bot_stopped_speaking()
+
+
+def _echo_of(bot: np.ndarray) -> np.ndarray:
+    return np.concatenate([np.zeros(int(0.1 * _RATE)), bot * 0.1, np.zeros(_RATE // 2)])
+
+
+async def _barge_in_after(echo_in_previous_sentence: bool) -> str:
+    """Câu bot trước (có hoặc không có tiếng vọng), rồi `_BOT` mà người gọi nói to át ngay từ
+    đầu — tiếng vọng của câu này không đo ra được."""
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), min_speech_ms=0, clock=clock)
+    greeting = _voice(4.0, seed=3)
+    _play(
+        controller,
+        clock,
+        "Dạ Vinmec xin nghe",
+        greeting,
+        _echo_of(greeting) if echo_in_previous_sentence else np.zeros(5 * _RATE),
+    )
+    controller.on_bot_started_speaking(_BOT)
+    controller.on_bot_audio(_voice(4.0, seed=1).astype(np.int16).tobytes(), _RATE, complete=True)
+    clock.advance(0.2)
+    await controller.on_speech_started(VadEvent("speech_start"))
+    caller = _voice(4.0, seed=2)
+    frame = int(_FRAME_S * _RATE)
+    for i in range(0, len(caller) - frame + 1, frame):
+        clock.advance(_FRAME_S)
+        controller.on_caller_audio(caller[i : i + frame].astype(np.int16).tobytes())
+    controller.on_bot_stopped_speaking()
+    return controller.echo_text(lookback_s=0.5)
+
+
+async def test_echo_heard_earlier_in_the_call_still_counts_when_the_caller_drowns_it_out() -> None:
+    assert await _barge_in_after(echo_in_previous_sentence=True) == _BOT
+
+
+async def test_call_without_echo_never_strips_caller_words() -> None:
+    assert await _barge_in_after(echo_in_previous_sentence=False) == ""
+
+
+@pytest.mark.parametrize("echo", [True, False])
+async def test_first_sentence_remembers_echo_before_the_caller_drowns_it_out(echo: bool) -> None:
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), min_speech_ms=0, clock=clock)
+    controller.on_bot_started_speaking(_BOT)
+    bot = _voice(4.0, seed=1)
+    controller.on_bot_audio(bot.astype(np.int16).tobytes(), _RATE, complete=True)
+    mic = _echo_of(bot) if echo else np.zeros(len(_echo_of(bot)))
+    caller = _voice(3.0, seed=2) * 0.4
+    start = int(1.2 * _RATE)
+    mic[start : start + len(caller)] += caller
+    frame = int(_FRAME_S * _RATE)
+    for i in range(0, len(mic) - frame + 1, frame):
+        clock.advance(_FRAME_S)
+        controller.on_caller_audio(
+            np.clip(mic[i : i + frame], -32768, 32767).astype(np.int16).tobytes()
+        )
+        if i == 9 * frame:
+            await controller.on_speech_started(VadEvent("speech_start"))
+    controller.on_bot_stopped_speaking()
+
+    # The final mixed envelope alone no longer shows echo; the earlier evidence must survive.
+    assert not controller._echo_heard(*controller._echo_evidence())
+    assert controller.echo_text(lookback_s=0.5) == (_BOT if echo else "")
+
+
+async def test_echo_text_without_tts_audio_strips_nothing() -> None:
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), min_speech_ms=0, clock=clock)
+    controller.on_bot_started_speaking(_BOT)
+    clock.advance(1.0)
+    await controller.on_speech_started(VadEvent("speech_start"))
+
+    assert controller.echo_text(lookback_s=0.5) == ""
 
 
 async def test_bot_sentence_echoed_with_misheard_words_does_not_confirm_barge_in() -> None:
@@ -432,3 +619,7 @@ async def test_bot_sentence_echoed_with_misheard_words_does_not_confirm_barge_in
 
     assert confirmed is False
     assert tts.cancel_calls == 0
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

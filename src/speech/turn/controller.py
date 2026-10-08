@@ -55,8 +55,8 @@ _PUNCTUATION_ONLY_RE = re.compile(r"^[\W_]+$", re.UNICODE)
 _PUNCTUATION_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _ASR_POLL_S = 0.05
 # `strip_echo_prefix`: khối từ trùng câu bot bắt đầu trong chừng này từ đầu, hai khối cách nhau
-# không quá chừng này từ (ASR chép sai tên riêng "VINMEC" -> "VIN BÁCH"); cần đủ số từ trùng và
-# chiếm phần lớn đoạn bị bỏ.
+# không quá chừng này từ (ASR chép sai/tách tên riêng "VINMEC" -> "VI MAX", "ALO" -> "A LÔ"); cần
+# đủ số từ trùng và chiếm phần lớn đoạn bị bỏ.
 _ECHO_PREFIX_MAX_GAP = 2
 _ECHO_PREFIX_MIN_WORDS = 3
 _ECHO_PREFIX_MIN_COVERAGE = 0.6
@@ -72,7 +72,10 @@ def strip_echo_prefix(text: str, bot_text: str) -> str:
 
     Người gọi chen vào khi tiếng bot còn vọng trong mic: ASR chép câu bot trước rồi tới lời
     người gọi ("ANH CHỊ CHẮC CHẮN MUỐN HỦY TÔI LÀ NGUYỄN VĂN A"). So khớp theo TỪ (difflib),
-    không theo ký tự: so mờ ký tự trên cả đoạn đầu ăn luôn lời người gọi ("TÔI TÊN LÀ" mất)."""
+    không theo ký tự: so mờ ký tự trên cả đoạn đầu ăn luôn lời người gọi ("TÔI TÊN LÀ" mất).
+
+    Chỉ so chữ thì không phân biệt được người gọi nhắc lại lời bot: chỉ gọi khi mic thật sự có
+    tiếng bot vọng lại, với phần bot phát trong lúc ASR nghe (`InterruptionController.echo_text`)."""
     import difflib
 
     tokens = text.split()
@@ -84,6 +87,10 @@ def strip_echo_prefix(text: str, bot_text: str) -> str:
     blocks = difflib.SequenceMatcher(None, words, bot, autojunk=False).get_matching_blocks()
     for block in blocks:
         if block.size == 0 or block.a - end > _ECHO_PREFIX_MAX_GAP:
+            break
+        if matched >= _ECHO_PREFIX_MIN_WORDS and block.a > end and block.size == 1:
+            # An isolated shared word after a gap is weak evidence. Extending the echo
+            # prefix over it can consume the caller's opening words ("TÔI LÀ ...").
             break
         end = block.a + block.size
         matched += block.size
@@ -134,6 +141,8 @@ class _Candidate:
     guard_extra_s: float = 0.0
     # Câu bot có thể vọng lại ở đầu chữ của lượt này (expect_echo).
     echo_text: str = ""
+    # Lời người gọi nói chen lúc bot nói trước lượt này, chưa được xác nhận (on_held_barge_in).
+    held_text: str = ""
     # Đã đủ điều kiện chốt, đang chờ hết cửa sổ gộp (merge_window_ms).
     merge_pending: bool = False
     # Bằng chứng mới nhất cho TurnValidator (on_evidence_updated).
@@ -207,6 +216,8 @@ class TurnController:
         self._timeout_task: Optional[asyncio.Task] = None
         # Câu bot vọng lại ở đầu final kế tiếp, kể cả khi lượt dở đã bị bỏ (expect_echo).
         self._echo_hint = ""
+        self._barge_in_recoveries = 0
+        self._recovered_turns: list[UserTurnCompleted] = []
 
     def on_bot_speaking_changed(self, speaking: bool, *, preserve_candidate: bool = False) -> None:
         """CallBridge gọi khi bot bắt đầu/dừng phát TTS.
@@ -272,11 +283,76 @@ class TurnController:
         self._candidate.segment_for(segment_id)
 
     def expect_echo(self, bot_text: str) -> None:
-        """ASR đã nghe audio lúc bot đọc `bot_text` (ứng viên ngắt lời): chữ của lượt đang dở và
+        """ASR đã nghe audio lúc bot phát `bot_text` (ứng viên ngắt lời): chữ của lượt đang dở và
         của final kế tiếp — tới sau cả khi bot dứt lời đã bỏ lượt dở — có thể bắt đầu bằng câu
-        bot vọng lại. Lúc chốt, bỏ phần đó (`strip_echo_prefix`)."""
+        bot vọng lại. Lúc chốt, bỏ phần đó (`strip_echo_prefix`). `bot_text` chỉ gồm chữ bot
+        phát trong lúc ASR nghe (`InterruptionController.echo_text`), không phải cả câu."""
         self._candidate.echo_text = bot_text
         self._echo_hint = bot_text
+
+    def begin_barge_in_recovery(self) -> None:
+        self._barge_in_recoveries += 1
+
+    def end_barge_in_recovery(self) -> None:
+        self._barge_in_recoveries = max(0, self._barge_in_recoveries - 1)
+        if self._barge_in_recoveries:
+            return
+        recovered, self._recovered_turns = self._recovered_turns, []
+        if recovered:
+            durations = [turn.audio_duration_ms for turn in recovered]
+            confidences = [turn.confidence for turn in recovered if turn.confidence is not None]
+            self._place_held_barge_in(
+                UserTurnCompleted(
+                    text=" ".join(turn.text for turn in recovered),
+                    confidence=min(confidences) if confidences else None,
+                    audio_duration_ms=sum(durations)
+                    if all(d is not None for d in durations)
+                    else None,
+                    vad_end_reason="held_barge_in",
+                )
+            )
+        # Do not flush a partial early just because an older candidate finished decoding.
+        self._try_emit(allow_partial=False, is_last_chance=True)
+
+    def on_held_barge_in(
+        self,
+        text: str,
+        *,
+        confidence: Optional[float] = None,
+        speech_ms: Optional[float] = None,
+        noise_evidence: Optional[NoiseEvidence] = None,
+    ) -> None:
+        """Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời — STTPipeline giữ
+        riêng, decode và bỏ tiếng vọng sau khi bot dứt lời. Có lượt đang hình thành (người gọi
+        nói tiếp) thì đứng trước chữ của lượt đó; không thì thành một lượt."""
+        if not is_meaningful_text(text):
+            return
+        if speech_ms is not None and speech_ms < self._min_speech_s * 1000:
+            return
+        # Batch decoding is a final result, but it must still pass the same DROP gates.
+        if (
+            self._validator is not None
+            and self._validator.evaluate(text, noise_evidence=noise_evidence)
+            == ValidationDecision.DROP
+        ):
+            return
+        turn = UserTurnCompleted(
+            text=text,
+            confidence=confidence,
+            audio_duration_ms=speech_ms,
+            vad_end_reason="held_barge_in",
+        )
+        if self._barge_in_recoveries:
+            self._recovered_turns.append(turn)
+        else:
+            self._place_held_barge_in(turn)
+
+    def _place_held_barge_in(self, turn: UserTurnCompleted) -> None:
+        candidate = self._candidate
+        if not candidate.finalized and (candidate.started_at is not None or candidate.segments):
+            candidate.held_text = f"{candidate.held_text} {turn.text}".strip()
+        else:
+            self._queue.put_nowait(turn)
 
     async def on_vad_event(self, event: VadEvent) -> None:
         self._last_vad_activity_at = self._clock()
@@ -358,7 +434,7 @@ class TurnController:
         candidate = self._candidate
         if self._asr_final_required and not candidate.has_final_transcript:
             return False
-        if candidate.finalized or self._bot_speaking:
+        if candidate.finalized or self._bot_speaking or self._barge_in_recoveries:
             return False
         if candidate.continued and candidate.vad_speaking:
             return False  # đoạn sau của lượt còn đang nói
@@ -368,7 +444,14 @@ class TurnController:
         text = candidate.text.strip()
         if candidate.echo_text:
             text = strip_echo_prefix(text, candidate.echo_text)
+        if candidate.held_text:
+            text = f"{candidate.held_text} {text}".strip()
         if not text:
+            if candidate.has_final_transcript and not candidate.vad_speaking:
+                # Final rỗng (hoặc chỉ có câu bot vọng lại) và người gọi đã ngừng: không còn gì
+                # để chờ. Giữ lại thì lượt treo mãi — ASR remote chốt bằng final, timeout không
+                # bỏ được lượt đã có partial — và không bao giờ có lượt im lặng.
+                self._reset_candidate()
             return False
         # Từ đệm nghe lúc bot đang nói (echo_text) là tiếng đệm "tôi đang nghe", không phải trả lời.
         keep_filler = not self._drop_filler_words and not candidate.echo_text
@@ -509,6 +592,8 @@ class TurnController:
         if task is not None:
             await asyncio.gather(task, return_exceptions=True)
         self._candidate = _Candidate()
+        self._barge_in_recoveries = 0
+        self._recovered_turns.clear()
 
     def _reset_candidate(self) -> None:
         self._cancel_timeout()

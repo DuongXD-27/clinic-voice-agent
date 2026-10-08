@@ -9,7 +9,7 @@ từ chối thì gỡ code, chỉ để lại số đo và script đo.
 | # | Việc | Kết quả |
 |---|---|---|
 | 1 | Kênh điện thoại + giọng người thứ hai + bot nói có echo trong `eval/noise-bench` | **Giữ** — công cụ đo; kênh web cho kết quả trùng từng byte với mốc cũ |
-| 2 | Tiếng bot vọng lại thành lượt của người gọi | **Sửa** — lượt giả 11–12/12 → 0/12; lượt người gọi chen vào hết lẫn câu bot |
+| 2 | Tiếng bot vọng lại thành lượt của người gọi | **Sửa** — lượt giả 11–12/12 → 0/12; lượt người gọi chen vào hết lẫn câu bot. **Sửa lại 08/10:** bản 07/10 xoá cả lời người gọi nhắc lại câu bot — chỉ bỏ chữ khi mic có tiếng vọng (§Review 08/10) |
 | 3 | Pre-roll 1000 ms cho cuộc gọi SIP (`phone_overrides`) | **Giữ** — WER golden sạch 0,147 → 0,087; web giữ 300 ms |
 | 4 | Cổng giọng người gọi (speaker embedding) | **Thêm, THỬ NGHIỆM, mặc định tắt** (`speaker_gate_mode`) — giọng mẫu cùng cuộc gọi, chỉ xét lượt ≥ 2 s; giọng mẫu khác cuộc gọi thì không đạt |
 | 5 | Xác nhận ngắt lời bằng phần còn lại sau khi bỏ echo | **Từ chối, đã gỡ** — không tăng số lần xác nhận, có biến thể làm bot tự ngắt lời |
@@ -63,6 +63,10 @@ ngắn, phần lớn "Ừ" vốn bị lọc — và 20 lần người khác chen
 
 "Giữ đủ": mọi trial mà ở mốc lượt có lời người gọi thì sau khi sửa vẫn có lượt đó (đã sạch câu
 bot); các trial "mất lượt" so với mốc là trial mà lượt ở mốc chỉ toàn câu bot.
+
+**Sai (review 08/10):** bộ đo không có trial người gọi nói lại chữ của câu bot, nên "giữ đủ" chưa
+từng được kiểm với trường hợp đó. Cuộc gọi LiveKit 08/10: "Ờ anh cần em hỗ trợ về phần đặt lịch
+khám bệnh em ạ" (bot vừa hỏi "…cần em hỗ trợ gì ạ") thành lượt "VỀ PHẦN ĐẶT LỊCH KHÁM BỆNH EM Ạ".
 
 **Các biến thể đã thử và loại:**
 
@@ -175,6 +179,62 @@ không đổi.
 Cần trước khi đo lại: tập "ừ/à/ờ/dạ/vâng/có/không" ghi thật, có nhãn người nghe, nhiều người gọi,
 qua điện thoại. Tập nghe kiểm tra bộ cũ: `temp/noise-bench/listen_check/` (`nhan.csv`).
 
+## Review 08/10
+
+Năm lỗi reviewer nêu đều tái hiện được (test mới thất bại trên commit f82fe4a, qua sau khi sửa):
+
+| Lỗi | Sửa | Test |
+|---|---|---|
+| `strip_echo_prefix` xoá lời người gọi nhắc lại câu bot | Chỉ bỏ chữ khi mic thật sự có tiếng bot vọng lại, và chỉ chữ bot phát trong lúc ASR nghe (dưới) | `test_caller_repeating_bot_words_without_echo_in_the_mic_is_not_echo`, `test_call_without_echo_never_strips_caller_words`, `test_caller_repeating_bot_words_is_not_stripped_when_the_mic_has_no_echo` |
+| Speaker gate lấy audio lượt bị bỏ và tiếng bot vọng lại làm giọng mẫu | Audio lượt mở lại ở mỗi `speech_start` của lượt mới; không giữ audio lúc bot nói | `test_speaker_gate_never_gets_audio_from_while_the_bot_was_speaking`, `test_speaker_gate_gets_only_the_accepted_turn_not_dropped_ones_before_it` |
+| Final rỗng (hoặc chỉ có câu bot vọng) làm lượt treo, không bao giờ có lượt im lặng | Đã có final và VAD đã ngừng mà không còn chữ: bỏ lượt | `test_empty_final_after_partial_does_not_leave_the_turn_hanging`, `test_final_that_is_only_bot_echo_does_not_leave_the_turn_hanging` |
+| Gemini: câu tách ở `max_turn_speech_ms` mất phần đầu (cùng segment_id, final sau ghi đè) | Phần chưa phải cuối phát final thành partial; phần sau mở ngay, mang chữ các phần trước | `test_sentence_split_at_max_length_keeps_the_first_part`, `test_caller_stopping_right_at_the_split_still_gets_a_final` |
+| Gemini: một đoạn ra hai final (Gemini tới muộn + fallback) | Dừng luồng nhận trước khi decode fallback; Gemini đã kịp trả thì không fallback | `test_gemini_final_arriving_during_fallback_is_not_a_second_final` |
+
+**Tiếng vọng — vì sao không sửa được chỉ bằng chữ/thời gian.** Giới hạn theo thời điểm bot phát
+từng chữ (`InterruptionController.echo_text`) không đủ: khoảng ASR nghe gồm pre-roll 0,5 s trước
+lúc VAD báo, mà người gọi thường nhắc lại ngay câu bot vừa hỏi. Đo không vọng (−60 dB) chỉ với
+giới hạn thời gian: y hệt mốc.
+
+**Cách sửa:** `InterruptionController` giữ đường bao năng lượng (30 ms) của audio bot đã phát
+(`on_bot_audio`, từ `CallBridge`) và của mic (`on_caller_audio`, từ `STTPipeline`). Có tiếng vọng
+khi trên cả phần câu bot đã phát: tương quan lớn nhất qua độ trễ 0–1 s ≥ 0,6, mic có tiếng ở
+≥ 70% lúc bot có tiếng, và tiếng vọng ≥ 24 dB (nhỏ hơn thì ASR không chép ra chữ). Câu bot không
+bị ngắt lời mà đã thấy vọng thì cả cuộc gọi coi là có vọng. Không có vọng thì không bỏ chữ nào.
+
+Phân bố trên bench (`temp/noise-bench/echo_score_probe.py`, không commit), tỉ lệ bị coi là có vọng:
+
+| Trial | echo −30/−20/−10 dB | không vọng |
+|---|---|---|
+| chỉ tiếng vọng | 83–100% | — |
+| người gọi nói chồng lên tiếng vọng | 8–55% | 0% |
+| người gọi nhắc lại câu bot (`repeat`) | 0–44% | 0% |
+
+`barge_in_eval` (`--set speaker_gate_mode=off --set turn_merge_window_ms=0`), mốc f82fe4a → sửa;
+"đã biết vọng" = câu trước của cuộc gọi đã cho thấy vọng (`temp/noise-bench/barge_known_echo.py`):
+
+| Kênh / echo | Lượt người gọi lẫn câu bot: mốc / sửa / đã biết vọng | Tỉ lệ chữ người gọi còn (caller): mốc / sửa |
+|---|---|---|
+| phone −30/−20/−10 dB | 0 / 16–26 / 0 (trên 39) | như nhau |
+| web −30/−20/−10 dB | 0 / 21–26 / 0 | như nhau |
+| phone không vọng | 0 / 0 | 0,579 / 0,604 |
+| web không vọng | 0 / 0 | 0,564 / 0,564 |
+
+"Đã biết vọng" khớp mốc ở mọi chỉ số. Cái giá còn lại: đường truyền có vọng mà người gọi chen
+vào ngay câu bot đầu tiên (chưa biết vọng) thì lượt có thể lẫn câu bot. Đường truyền có vọng thì
+người gọi nhắc lại câu bot vẫn có thể bị bỏ như trước (chỉ chữ thì không phân biệt được). Bench
+hiếm khi tái hiện lỗi xoá chữ người gọi (không vọng: mốc xoá sạch 1/9 câu nhắc lại mỗi kênh, bản
+sửa như nhau); bằng chứng là cuộc gọi thật ở trên và test.
+
+**Chưa đo được:** ngưỡng 0,6 / 70% / 24 dB chỉ chỉnh trên bench (echo là bản sao trễ cố định
+80 ms). Cuộc gọi LiveKit có log `interruption: echo_score=… coverage=… call_has_echo=…` để kiểm
+tra trên đường truyền thật, nhất là SIP.
+
+**Phát hiện thêm (chưa sửa):** người gọi nói chen lúc bot nói mà không được xác nhận ngắt lời thì
+cả câu bị bỏ khi bot dứt lời (`turn_controller: discard candidate on bot_speaking->False`). Không
+vọng, kênh điện thoại: phần lớn lượt mất trong trial `caller` là vậy ("TÔI LÀ NGUYỄN VĂN A",
+"KHÔNG ĐƯỢC"); cuộc gọi 08/10 mất "năm một chín bảy tám" cùng cách.
+
 ## Không đo được / chưa làm
 
 - **Thời gian chờ hết lượt tự học (LiveKit DynamicEndpointing):** câu bị tách trong bench chỉ xuất hiện khi có giọng người khác (`split_turns` clean = 0). Bench không đo được lợi ích, chỉ đo được rủi ro (giữ lượt 300 ms ngày 06/10 hỏng với babble). Hoãn tới khi có ghi âm thật người gọi ngập ngừng.
@@ -206,3 +266,13 @@ bộ), `temp/models/speaker/*.onnx` (sherpa-onnx speaker-recongition-models), k�
 | `scripts/export_openapi.py --check` | Pass |
 | `noise-bench` kênh web, `turn_drop_filler_words=true`, `speaker_gate_mode=off`, code cuối vs mốc 06/10 | Giống hệt mọi chỉ số và mọi câu (bộ short) |
 | `barge_in_eval` code cuối vs biến thể echo đã chọn | Giống hệt (echo thành lượt 0/12, bot tự ngắt lời 0/12 ở mọi mức) |
+
+## Kết quả xác minh cục bộ (2026-10-08, review)
+
+| Command | Kết quả |
+| --- | --- |
+| `ruff check` / `ruff format --check` (file đã đổi) | Pass |
+| `STT_EVAL_ENABLED=false python -m pytest -q` | Pass (4982 passed, 9 skipped) |
+| `scripts/export_openapi.py --check` | Pass |
+| Test mới chạy trên `src` của f82fe4a | 7 thất bại (tái hiện đúng lỗi); test "dừng đúng lúc tách" qua cả hai (canh hành vi mới) |
+| `barge_in_eval` echo −30/−20/−10/−200 dB, mốc / sửa / đã biết vọng | Như bảng §Review 08/10 |
