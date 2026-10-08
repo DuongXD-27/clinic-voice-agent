@@ -17,6 +17,7 @@ from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
 from callbot.transports.livekit.call_bridge import CallBridge
+from callbot.transports.livekit.participant import hangup_sip_caller, participant_call
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
@@ -41,14 +42,10 @@ def prewarm(proc: "JobProcess") -> None:
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
-    # Chờ browser join trước khi đọc direction/caller_number/appointment_id giả lập
-    # (gắn qua token attribute, xem transports/http/livekit_token.py) — participant
-    # chưa chắc đã có mặt ngay sau connect() vì đây là job của Agent, không phải browser.
+    # Participant có thể là browser hoặc SIP caller; không đọc called DID làm caller ID.
     participant = await ctx.wait_for_participant()
-    attrs = participant.attributes
-    direction = attrs.get("direction") or "inbound"
-    caller_number = attrs.get("caller_number") or None
-    appointment_id = attrs.get("appointment_id") or None
+    call = participant_call(participant)
+    logger.info("call participant kind=%s is_sip=%s", participant.kind, call.is_sip)
 
     livekit_settings = LiveKitSettings()
     speech_settings = SpeechSettings()
@@ -73,9 +70,9 @@ async def entrypoint(ctx: JobContext) -> None:
         orchestrator,
         bundle.stt_pipeline,
         bundle.tts,
-        direction=direction,
-        caller_number=caller_number,
-        appointment_id=appointment_id,
+        direction=call.direction,
+        caller_number=call.caller_number,
+        appointment_id=call.appointment_id,
         turn_controller=bundle.turn_controller,
         interruption_validator=bundle.validator,
         interruption_min_snr_db=speech_settings.interruption_min_snr_db,
@@ -86,18 +83,23 @@ async def entrypoint(ctx: JobContext) -> None:
         caller_identity=participant.identity,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
+        on_close=(lambda: hangup_sip_caller(ctx, participant.identity)) if call.is_sip else None,
     )
     try:
         await bridge.run()
     finally:
-        await asyncio.to_thread(tracer.close, 2.0)
         try:
-            # Mỗi cuộc gọi một bundle: đóng kết nối TTS giữ sẵn (cả client stream), không để rò theo job
-            await bundle.tts.aclose()
+            await asyncio.to_thread(tracer.close, 2.0)
+            try:
+                # Mỗi cuộc gọi một bundle: đóng kết nối TTS giữ sẵn (cả client stream).
+                await bundle.tts.aclose()
+            finally:
+                close = getattr(clinic, "close", None)
+                if close is not None:
+                    close()
         finally:
-            close = getattr(clinic, "close", None)
-            if close is not None:
-                close()
+            # Returning from a raw entrypoint does not finish a connected SDK job.
+            ctx.shutdown(reason="call finished")
 
 
 def main() -> None:
@@ -114,7 +116,7 @@ def main() -> None:
             api_key=livekit_settings.livekit_api_key,
             api_secret=livekit_settings.livekit_api_secret,
             num_idle_processes=livekit_settings.worker_num_idle_processes,
-            # Rỗng giữ automatic dispatch; có tên thì chỉ nhận job token browser gọi đúng tên.
+            # Có tên thì browser/SIP dispatch phải chỉ định đúng agent này.
             agent_name=livekit_settings.agent_name,
         )
     )

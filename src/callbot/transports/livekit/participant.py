@@ -1,0 +1,48 @@
+"""Call context at the WebRTC/SIP boundary; SIP caller ID comes from LiveKit."""
+
+import logging
+from dataclasses import dataclass
+from typing import Literal
+
+from livekit import api, rtc
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ParticipantCall:
+    direction: Literal["inbound", "outbound"]
+    caller_number: str | None
+    appointment_id: str | None
+    is_sip: bool
+
+
+def participant_call(participant: rtc.RemoteParticipant) -> ParticipantCall:
+    attrs = participant.attributes
+    is_sip = participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+    if is_sip:
+        # Do not fall back to web attributes or the called DID. Missing/hidden caller
+        # ID must reach the core's NO_PHONE policy, rather than identify someone else.
+        return ParticipantCall("inbound", attrs.get("sip.phoneNumber") or None, None, True)
+    direction = attrs.get("direction") or "inbound"
+    if direction not in ("inbound", "outbound"):
+        raise ValueError("Invalid call direction")
+    return ParticipantCall(
+        direction, attrs.get("caller_number") or None, attrs.get("appointment_id") or None, False
+    )
+
+
+async def hangup_sip_caller(ctx, identity: str) -> None:
+    """Remove only this caller, after the bridge has drained its final TTS audio.
+
+    Leaving the agent room alone does not send BYE to the SIP caller. A caller
+    that already hung up needs no second removal. API errors propagate to the job.
+    """
+    if identity in ctx.room.remote_participants:
+        logger.info("SIP hangup: removing caller")
+        await ctx.api.room.remove_participant(
+            api.RoomParticipantIdentity(room=ctx.room.name, identity=identity)
+        )
+        logger.info("SIP hangup: caller removed")
+    else:
+        logger.info("SIP hangup: caller already absent")

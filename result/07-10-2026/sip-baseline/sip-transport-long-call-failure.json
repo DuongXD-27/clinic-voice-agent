@@ -1,0 +1,30 @@
+{
+  "test": "SIP transport-only diagnostic, normal MicroSIP account, TCP",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "client": "MicroSIP Lite 3.22.18",
+  "registration": false,
+  "duration_before_ended_seconds": 75,
+  "job_id": "AJ_Zu9xBrHvoG8x",
+  "room": "sip-booking-_+84912345600_HuaxLcE8wsSb",
+  "worker_id": "AW_am935gLYbTZU",
+  "participant_kind": 3,
+  "synthetic_input_core_tts": true,
+  "silence_timeout_ms": 0,
+  "speech_api_requests": 0,
+  "booking_writes": 0,
+  "events_local_time": {
+    "invite_200_ok": "11:33:03.445",
+    "ack": "11:33:03.450",
+    "tcp_idle_timer_destroyed": "11:33:36.451",
+    "bridge_ended": "11:34:18.165",
+    "remove_participant_started": "11:34:18.270",
+    "remove_participant_succeeded": "11:34:19.237"
+  },
+  "server_remove_participant": "PASS",
+  "client_received_bye": false,
+  "automatic_client_hangup": "FAIL",
+  "inference": "TCP signaling transport expires before hangup. This strongly implicates the client transport path; network/NAT effects have not been fully excluded.",
+  "acceptance_scope": "Transport diagnosis only; does not count as real speech, booking or PSTN acceptance.",
+  "raw_logs": "Local temp files excluded from Git; SIP authorization headers are not copied into evidence."
+}

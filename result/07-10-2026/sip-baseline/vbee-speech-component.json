@@ -1,0 +1,7 @@
+{
+  "scope": "synthetic Vietnamese Vbee TTS -> 8 kHz PCM -> local ASR; no SIP/RTP",
+  "tts_bytes": 20932,
+  "phone_sample_rate": 8000,
+  "asr_text": "TÔI MUỐN ĐẶT LỊCH KHÁM",
+  "not_silence": true
+}

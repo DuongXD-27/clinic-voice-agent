@@ -14,7 +14,7 @@ import traceback
 from contextlib import aclosing
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
 from callbot.engine.errors import OutboundStartFailed
@@ -124,6 +124,7 @@ class CallBridge:
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
         caller_identity: Optional[str] = None,
+        on_close: Optional[Callable[[], Awaitable[None]]] = None,
     ) -> None:
         """Mọi tham số cấu hình (StreamingSpeechBundle, config/livekit.yaml, config/speech.yaml)
         đều bắt buộc — worker.py truyền đủ. Chỉ thông tin của cuộc gọi là tuỳ chọn."""
@@ -136,6 +137,7 @@ class CallBridge:
         self._sample_rate = sample_rate
         self._direction = direction
         self._caller_number = caller_number
+        self._on_close = on_close
         self._appointment_id = appointment_id
         self._turn_number = 0
         self._frame_ms = frame_ms
@@ -183,6 +185,7 @@ class CallBridge:
         try:
             self._room.on("track_subscribed", self._on_track_subscribed)
             self._room.on("disconnected", self._on_disconnected)
+            self._room.on("participant_disconnected", self._on_participant_disconnected)
             for participant in self._room.remote_participants.values():
                 for publication in participant.track_publications.values():
                     if publication.track is not None:
@@ -323,7 +326,17 @@ class CallBridge:
                     return
                 self._start_silence_timer()
         finally:
-            await self.aclose()
+            logger.info(
+                "call_bridge: closing dialogue, SIP callback=%s", self._on_close is not None
+            )
+            # SIP BYE must follow final playout, before closing the incoming media.
+            # Waiting for the caller's media to close before sending BYE can leave
+            # the handset connected after the dialogue has already ended.
+            try:
+                if self._on_close is not None:
+                    await self._on_close()
+            finally:
+                await self.aclose()
 
     def _start_silence_timer(self) -> None:
         self._stop_silence_timer()
@@ -439,6 +452,11 @@ class CallBridge:
         task = self._active_speak_task
         if task is not None and not task.done():
             task.cancel()
+
+    def _on_participant_disconnected(self, participant: object) -> None:
+        if getattr(participant, "identity", None) == self._caller_identity:
+            self._stop_silence_timer()
+            self._on_disconnected()
 
     def _krisp_processor(self) -> object | None:
         """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo

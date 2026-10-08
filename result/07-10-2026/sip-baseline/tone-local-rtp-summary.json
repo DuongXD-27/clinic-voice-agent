@@ -1,0 +1,75 @@
+{
+  "scope": "Existing full RTP capture at the softphone, no new call/API",
+  "job_id": "AJ_S8JKgUqxcFqb",
+  "room": "sip-booking-_+84912345600_wiVAneVEKPQv",
+  "worker_id": "AW_xn5nUfTWGD9p",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "file_sha256": "0a1f6fadf2c3b2d57432d315be669911a8e4881a6bbcf808ec843c30f98c38e4",
+  "speech_api_requests": 0,
+  "booking_writes": 0,
+  "streams": [
+    {
+      "direction": "softphone_to_server",
+      "ssrc": "0x01e90c63",
+      "payload_types": [
+        0
+      ],
+      "codec": "PCMU/8000 (RTP payload type 0)",
+      "received_packets": 1287,
+      "unique_packets": 1287,
+      "expected_packets": 1287,
+      "missing_packets": 0,
+      "missing_percent": 0.0,
+      "observed_duration_s": 25.717114,
+      "max_interarrival_ms": 23.595,
+      "tshark_mean_jitter_ms": 3.283,
+      "tshark_max_jitter_ms": 3.479,
+      "missing_by_5s_rtp_time": {
+        "0": 0,
+        "5": 0,
+        "10": 0,
+        "15": 0,
+        "20": 0,
+        "25": 0
+      }
+    },
+    {
+      "direction": "bot_to_softphone",
+      "ssrc": "0x03875fda",
+      "payload_types": [
+        0
+      ],
+      "codec": "PCMU/8000 (RTP payload type 0)",
+      "received_packets": 1192,
+      "unique_packets": 1192,
+      "expected_packets": 1288,
+      "missing_packets": 96,
+      "missing_percent": 7.453,
+      "observed_duration_s": 25.713849,
+      "max_interarrival_ms": 165.533,
+      "tshark_mean_jitter_ms": 10.314,
+      "tshark_max_jitter_ms": 35.074,
+      "missing_by_5s_rtp_time": {
+        "0": 25,
+        "5": 23,
+        "10": 28,
+        "15": 13,
+        "20": 3,
+        "25": 4
+      },
+      "decoded_peak_pcm16": 5372,
+      "decoded_clipped_samples": 0,
+      "dominant_received_tone_hz": 439.78,
+      "missing_audio_equivalent_ms": 1920
+    }
+  ],
+  "client_rtcp_receiver_report": {
+    "incoming_ssrc": "0x03875fda",
+    "last_report_cumulative_lost": 92,
+    "last_report_extended_highest_sequence": 1283,
+    "last_report_jitter_timestamp_units": 86,
+    "meaning": "The client independently reports missing incoming RTP; loss is not inferred solely from missing packets in the capture. Last RTCP report does not cover all final RTP packets."
+  },
+  "interpretation": "Incoming RTP sequence gaps and client RTCP loss reports are observed at the computer. They confirm loss at the receiver but do not distinguish server emission, Internet path or Wi-Fi. Codec matches PCMU. Not a booking/PSTN acceptance test."
+}

@@ -186,6 +186,22 @@ class _FakeRoom:
         self._handlers[event] = callback
 
 
+def test_caller_disconnect_stops_input_but_observer_disconnect_does_not():
+    from types import SimpleNamespace
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-room"),
+        _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), []),
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+    )
+    bridge._on_participant_disconnected(SimpleNamespace(identity="observer"))
+    assert not bridge._input_done
+    bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+    assert bridge._input_done
+
+
 async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkeypatch) -> None:
     """Kịch bản tối giản: opening không ended, 1 turn khiến orchestrator báo ended=True
     -> CallBridge phải dừng vòng lặp và cleanup, không cần LiveKit thật để test wiring."""
@@ -217,6 +233,43 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     assert len(fake_source.captured_frames) == 2
     assert fake_source.closed is True
     assert fake_source.wait_for_playout_calls == 2
+
+
+async def test_sip_hangup_follows_final_playout_before_media_cleanup(monkeypatch):
+    """Caller must receive BYE even when media cleanup needs the remote to hang up."""
+    source = _FakeAudioSource()
+    hangup = asyncio.Event()
+    bridge = None
+
+    async def close_caller():
+        assert source.wait_for_playout_calls == 2
+        assert not source.closed
+        hangup.set()
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-booking"),
+        _FakeOrchestrator(
+            BotAction("Xin chào", "AWAITING_INTENT"),
+            [BotAction("Đã đặt lịch", "ENDED", ended=True, outcome="BOOKED")],
+        ),
+        _FakeSTTPipeline([UserTurnCompleted(text="đồng ý")]),
+        _FakeTTS(),
+        on_close=close_caller,
+    )
+
+    async def publish():
+        bridge._audio_source = source
+
+    original_close = bridge.aclose
+
+    async def media_close():
+        await hangup.wait()
+        await original_close()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish)
+    monkeypatch.setattr(bridge, "aclose", media_close)
+    await asyncio.wait_for(bridge.run(), timeout=2)
+    assert source.closed
 
 
 async def test_outbound_start_failure_notifies_browser_without_crashing_job() -> None:
