@@ -199,6 +199,122 @@ def test_a_usable_rule_intent_at_the_open_questions_is_not_routed() -> None:
     )
 
 
+@pytest.mark.parametrize("question_id", [QuestionId.ASK_INTENT, QuestionId.CONFIRM_READBACK])
+def test_a_time_proposal_is_left_to_the_dialogue(question_id) -> None:
+    """QC qc-rs-04: Dialogue đối chiếu giờ khách xin với lịch đang đọc; model không thấy giờ lịch hẹn nên
+    không được gọi để đè đường luật đó (đọc thành ngoài phạm vi -> chuyển máy)."""
+    transcript = "cho tôi ba giờ kém mười lăm chiều ngày 14"
+    assert _route(transcript, question_id=question_id, exact_time_proposal=True) is None
+    assert _route(transcript, question_id=question_id) is RouteReason.INTENT_UNCLEAR
+
+
+def test_a_time_proposal_with_clinical_content_still_calls_the_model() -> None:
+    assert (
+        _route(
+            "cho tôi 3 giờ chiều, trước khi khám có cần nhịn ăn không",
+            question_id=QuestionId.CONFIRM_READBACK,
+            exact_time_proposal=True,
+        )
+        is RouteReason.CLINICAL_UNRESOLVED
+    )
+
+
+class _Recording:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
+        self.calls += 1
+        return SemanticOutcome(
+            ReplyKind.CHANGE_INTENT,
+            intent=Intent.OUT_OF_SCOPE,
+            intent_span=context.transcript,
+        )
+
+
+@pytest.mark.parametrize("question_id", [QuestionId.ASK_INTENT, QuestionId.CONFIRM_READBACK])
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Cho tôi ba giờ kém mười lăm chiều ngày 14",
+        "Sáng mai khoảng 9 giờ có được không?",
+        "Lấy cho tôi 3 giờ chiều ngày 14 nhé",
+        "cho toi 9 gio sang mai duoc khong",
+    ],
+)
+def test_the_extractor_does_not_ask_the_model_about_a_time_proposal(
+    transcript: str, question_id: QuestionId
+) -> None:
+    model = _Recording()
+    turn = _turn_context(question_id=question_id, pending_action=None)
+    result = InformationExtractor(semantic=model).extract(turn, transcript)
+    assert model.calls == 0 and result.intent.value is Intent.NONE
+
+
+@pytest.mark.parametrize(
+    ("transcript", "changes"),
+    [
+        # hỏi lại giờ, không phải xin giờ
+        ("3 giờ chiều ngày 14 hả em", {}),
+        # báo bận: Dialogue không coi là xin giờ
+        ("3 giờ chiều ngày 14 tôi bận", {}),
+        # nói thêm việc khác ngoài giờ
+        ("cho tôi hỏi 3 giờ chiều ngày 14 có cần mang gì không", {}),
+        # ngày đã qua: Dialogue không tự quyết, model vẫn đọc
+        ("cho tôi ngày 20 tháng 9", {}),
+        # inbound không có lịch để đối chiếu
+        ("cho tôi 3 giờ chiều ngày 14", {"direction": "inbound"}),
+    ],
+)
+def test_other_sentences_with_a_time_still_ask_the_model(transcript: str, changes: dict) -> None:
+    model = _Recording()
+    turn = _turn_context(question_id=QuestionId.CONFIRM_READBACK, pending_action=None, **changes)
+    InformationExtractor(semantic=model).extract(turn, transcript)
+    assert model.calls == 1
+
+
+class _Reading:
+    def __init__(self, outcome: SemanticOutcome) -> None:
+        self._outcome = outcome
+
+    def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
+        return self._outcome
+
+
+RANGE_PROPOSAL = "tuần sau cho tôi khám được không em"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        SemanticOutcome(
+            ReplyKind.CHANGE_INTENT, intent=Intent.OUT_OF_SCOPE, intent_span=RANGE_PROPOSAL
+        ),
+        SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CONFIRM, intent_span="khám"),
+        SemanticOutcome(ReplyKind.DECLINE_ACTION, reply_span=RANGE_PROPOSAL),
+        SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="được"),
+    ],
+)
+def test_the_model_cannot_relabel_a_time_range_proposal(outcome: SemanticOutcome) -> None:
+    """Khoảng thời gian ("tuần sau") có thể chứa lịch đang đọc nên vẫn hỏi model, nhưng model chỉ được
+    thêm nhu cầu đổi lịch; nhãn khác không đè đường luật của Dialogue (QC qc-rs-04)."""
+    turn = _turn_context(question_id=QuestionId.CONFIRM_READBACK, pending_action=None)
+    rules = InformationExtractor().extract(turn, RANGE_PROPOSAL)
+    result = InformationExtractor(semantic=_Reading(outcome)).extract(turn, RANGE_PROPOSAL)
+    assert result.model_status == "OK"
+    assert (result.intent, result.agreement) == (rules.intent, rules.agreement)
+
+
+def test_the_model_can_read_a_time_range_as_a_reschedule() -> None:
+    turn = _turn_context(question_id=QuestionId.CONFIRM_READBACK, pending_action=None)
+    outcome = SemanticOutcome(
+        ReplyKind.CHANGE_INTENT, intent=Intent.RESCHEDULE, intent_span=RANGE_PROPOSAL
+    )
+    result = InformationExtractor(semantic=_Reading(outcome)).extract(turn, RANGE_PROPOSAL)
+    assert result.intent.value is Intent.RESCHEDULE
+    assert result.intent.provenance is Provenance.FALLBACK
+
+
 # --- Context: đúng những gì được phép vào prompt ------------------------------------------
 
 
@@ -938,7 +1054,7 @@ def test_no_merge_branch_can_promote_the_cancel_answer(monkeypatch) -> None:
     """Chốt ở extractor giữ ngưỡng luật kể cả khi bảng quyền hợp nhất bị đổi sai sau này."""
     import callbot.engine.extraction.extractor as extractor_module
 
-    def promoting(result, outcome, route_reason, allowed):
+    def promoting(result, outcome, route_reason, allowed, **_kwargs):
         return extractor_module.replace(result, agreement=_field(Agreement.AGREE, span="hủy"))
 
     monkeypatch.setattr(extractor_module, "merge_semantic", promoting)
