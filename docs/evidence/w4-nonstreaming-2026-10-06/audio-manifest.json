@@ -1,0 +1,692 @@
+[
+  {
+    "flow": "identity",
+    "turn": 0,
+    "path": "outputs/identity/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_identity_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 1110.16,
+      "ttfa_ms": 879.8996999976225,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "identity",
+    "turn": 1,
+    "path": "outputs/identity/1.wav",
+    "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+    "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_identity_audio/1.wav",
+      "pcm_bytes": 43292,
+      "sample_rate": 8000,
+      "duration_seconds": 2.70575,
+      "peak": 20200
+    },
+    "tts": {
+      "chars": 45,
+      "elapsed_ms": 347.58,
+      "ttfa_ms": 283.3587999921292,
+      "pcm_bytes": 43292,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "identity",
+    "turn": 2,
+    "path": "outputs/identity/2.wav",
+    "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+    "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_identity_audio/2.wav",
+      "pcm_bytes": 142452,
+      "sample_rate": 8000,
+      "duration_seconds": 8.90325,
+      "peak": 21293
+    },
+    "tts": {
+      "chars": 162,
+      "elapsed_ms": 952.06,
+      "ttfa_ms": 300.58560002362356,
+      "pcm_bytes": 142452,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "confirm",
+    "turn": 0,
+    "path": "outputs/confirm/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_confirm_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 971.98,
+      "ttfa_ms": 719.5131000189576,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "confirm",
+    "turn": 1,
+    "path": "outputs/confirm/1.wav",
+    "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+    "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_confirm_audio/1.wav",
+      "pcm_bytes": 43292,
+      "sample_rate": 8000,
+      "duration_seconds": 2.70575,
+      "peak": 20200
+    },
+    "tts": {
+      "chars": 45,
+      "elapsed_ms": 326.27,
+      "ttfa_ms": 263.86059998185374,
+      "pcm_bytes": 43292,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "confirm",
+    "turn": 2,
+    "path": "outputs/confirm/2.wav",
+    "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+    "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_confirm_audio/2.wav",
+      "pcm_bytes": 142452,
+      "sample_rate": 8000,
+      "duration_seconds": 8.90325,
+      "peak": 21293
+    },
+    "tts": {
+      "chars": 162,
+      "elapsed_ms": 902.4,
+      "ttfa_ms": 293.1508000183385,
+      "pcm_bytes": 142452,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "confirm",
+    "turn": 3,
+    "path": "outputs/confirm/3.wav",
+    "sha256": "cfb4c523e77afe33c57c92e62a5ede879bbd91d6e6bf6c3a24505757dbd02bf7",
+    "utterance": "Dạ, em đã xác nhận lịch khám 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City cho anh chị. Hẹn gặp anh chị ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_confirm_audio/3.wav",
+      "pcm_bytes": 114872,
+      "sample_rate": 8000,
+      "duration_seconds": 7.1795,
+      "peak": 18885
+    },
+    "tts": {
+      "chars": 117,
+      "elapsed_ms": 896.09,
+      "ttfa_ms": 500.50829999963753,
+      "pcm_bytes": 114872,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "cancel",
+    "turn": 0,
+    "path": "outputs/cancel/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_cancel_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 975.15,
+      "ttfa_ms": 699.87250000122,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "cancel",
+    "turn": 1,
+    "path": "outputs/cancel/1.wav",
+    "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+    "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_cancel_audio/1.wav",
+      "pcm_bytes": 43292,
+      "sample_rate": 8000,
+      "duration_seconds": 2.70575,
+      "peak": 20200
+    },
+    "tts": {
+      "chars": 45,
+      "elapsed_ms": 299.39,
+      "ttfa_ms": 242.16269998578355,
+      "pcm_bytes": 43292,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "cancel",
+    "turn": 2,
+    "path": "outputs/cancel/2.wav",
+    "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+    "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_cancel_audio/2.wav",
+      "pcm_bytes": 142452,
+      "sample_rate": 8000,
+      "duration_seconds": 8.90325,
+      "peak": 21293
+    },
+    "tts": {
+      "chars": 162,
+      "elapsed_ms": 901.41,
+      "ttfa_ms": 234.8049999854993,
+      "pcm_bytes": 142452,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "cancel",
+    "turn": 3,
+    "path": "outputs/cancel/3.wav",
+    "sha256": "75a92a09f96e92d86aad13db50bfbd8accf0e27d10c38a0ecf7d234786502b5e",
+    "utterance": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_cancel_audio/3.wav",
+      "pcm_bytes": 43558,
+      "sample_rate": 8000,
+      "duration_seconds": 2.722375,
+      "peak": 18356
+    },
+    "tts": {
+      "chars": 54,
+      "elapsed_ms": 289.27,
+      "ttfa_ms": 231.01420002058148,
+      "pcm_bytes": 43558,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "cancel",
+    "turn": 4,
+    "path": "outputs/cancel/4.wav",
+    "sha256": "314c39bfa920570f7cbe139cf73c24f3b0182616d681ce44e8daa72eee4b254d",
+    "utterance": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_cancel_audio/4.wav",
+      "pcm_bytes": 41416,
+      "sample_rate": 8000,
+      "duration_seconds": 2.5885,
+      "peak": 17229
+    },
+    "tts": {
+      "chars": 38,
+      "elapsed_ms": 490.37,
+      "ttfa_ms": 416.0310000006575,
+      "pcm_bytes": 41416,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "transfer",
+    "turn": 0,
+    "path": "outputs/transfer/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_transfer_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 1072.18,
+      "ttfa_ms": 777.322500012815,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "transfer",
+    "turn": 1,
+    "path": "outputs/transfer/1.wav",
+    "sha256": "452bc50d8778a641be4536bff6919e6f9af55c796cbe57acb86e7ab97b23dfdf",
+    "utterance": "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ anh chị thêm ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_transfer_audio/1.wav",
+      "pcm_bytes": 60228,
+      "sample_rate": 8000,
+      "duration_seconds": 3.76425,
+      "peak": 18958
+    },
+    "tts": {
+      "chars": 66,
+      "elapsed_ms": 330.94,
+      "ttfa_ms": 273.4653000079561,
+      "pcm_bytes": 60228,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 0,
+    "path": "outputs/reschedule/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 923.45,
+      "ttfa_ms": 662.2367999807466,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 1,
+    "path": "outputs/reschedule/1.wav",
+    "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+    "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/1.wav",
+      "pcm_bytes": 43292,
+      "sample_rate": 8000,
+      "duration_seconds": 2.70575,
+      "peak": 20200
+    },
+    "tts": {
+      "chars": 45,
+      "elapsed_ms": 234.92,
+      "ttfa_ms": 233.17359999055043,
+      "pcm_bytes": 43292,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 2,
+    "path": "outputs/reschedule/2.wav",
+    "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+    "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/2.wav",
+      "pcm_bytes": 142452,
+      "sample_rate": 8000,
+      "duration_seconds": 8.90325,
+      "peak": 21293
+    },
+    "tts": {
+      "chars": 162,
+      "elapsed_ms": 893.1,
+      "ttfa_ms": 326.58619998255745,
+      "pcm_bytes": 142452,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 3,
+    "path": "outputs/reschedule/3.wav",
+    "sha256": "5d67867d44f23411b457717265f7bda34efc9fcd4aeca15173feb6c68fc14532",
+    "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đổi sang ngày khác ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/3.wav",
+      "pcm_bytes": 170546,
+      "sample_rate": 8000,
+      "duration_seconds": 10.659125,
+      "peak": 23254
+    },
+    "tts": {
+      "chars": 181,
+      "elapsed_ms": 914.69,
+      "ttfa_ms": 585.715799999889,
+      "pcm_bytes": 170546,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 4,
+    "path": "outputs/reschedule/4.wav",
+    "sha256": "0a7cc6c97469b04fde495f3cc0235ac25e837b857f775fc6b272fb0885283b8e",
+    "utterance": "Dạ, em xác nhận đổi lịch sang 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/4.wav",
+      "pcm_bytes": 106998,
+      "sample_rate": 8000,
+      "duration_seconds": 6.687375,
+      "peak": 19730
+    },
+    "tts": {
+      "chars": 110,
+      "elapsed_ms": 1046.74,
+      "ttfa_ms": 443.4060000057798,
+      "pcm_bytes": 106998,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "reschedule",
+    "turn": 5,
+    "path": "outputs/reschedule/5.wav",
+    "sha256": "981b98aa8e51b643b5f71d8e1b573ea4bd2c74fd8350c154f378d19273d8c55a",
+    "utterance": "Dạ, em đã đổi lịch khám sang 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_reschedule_audio/5.wav",
+      "pcm_bytes": 73854,
+      "sample_rate": 8000,
+      "duration_seconds": 4.615875,
+      "peak": 18665
+    },
+    "tts": {
+      "chars": 79,
+      "elapsed_ms": 829.51,
+      "ttfa_ms": 569.7213999810629,
+      "pcm_bytes": 73854,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "no_answer",
+    "turn": 0,
+    "path": "outputs/no_answer/0.wav",
+    "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+    "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_no_answer_audio/0.wav",
+      "pcm_bytes": 110882,
+      "sample_rate": 8000,
+      "duration_seconds": 6.930125,
+      "peak": 21262
+    },
+    "tts": {
+      "chars": 112,
+      "elapsed_ms": 826.05,
+      "ttfa_ms": 651.8851000000723,
+      "pcm_bytes": 110882,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "no_answer",
+    "turn": 1,
+    "path": "outputs/no_answer/1.wav",
+    "sha256": "d0e0271559e30263d569ec4e8f678b1358808b49db16c9911c12631b7875db08",
+    "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_no_answer_audio/1.wav",
+      "pcm_bytes": 150978,
+      "sample_rate": 8000,
+      "duration_seconds": 9.436125,
+      "peak": 23124
+    },
+    "tts": {
+      "chars": 147,
+      "elapsed_ms": 929.12,
+      "ttfa_ms": 498.15629998920485,
+      "pcm_bytes": 150978,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "no_answer",
+    "turn": 2,
+    "path": "outputs/no_answer/2.wav",
+    "sha256": "d0e0271559e30263d569ec4e8f678b1358808b49db16c9911c12631b7875db08",
+    "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_no_answer_audio/2.wav",
+      "pcm_bytes": 150978,
+      "sample_rate": 8000,
+      "duration_seconds": 9.436125,
+      "peak": 23124
+    },
+    "tts": {
+      "chars": 147,
+      "elapsed_ms": 925.04,
+      "ttfa_ms": 479.04859998379834,
+      "pcm_bytes": 150978,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "no_answer",
+    "turn": 3,
+    "path": "outputs/no_answer/3.wav",
+    "sha256": "15f3e716864a8fcd640bd2d383576db4851c457ca8f48f2c9f47a1ff9ba4229d",
+    "utterance": "Dạ, em xin phép gọi lại sau ạ. Chào anh chị.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_no_answer_audio/3.wav",
+      "pcm_bytes": 52096,
+      "sample_rate": 8000,
+      "duration_seconds": 3.256,
+      "peak": 27224
+    },
+    "tts": {
+      "chars": 44,
+      "elapsed_ms": 316.97,
+      "ttfa_ms": 239.095199998701,
+      "pcm_bytes": 52096,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 0,
+    "path": "outputs/booking/0.wav",
+    "sha256": "f005e90dee4750f26d280d15dd1b6c44c18ffc87153166467e71c6a2b75113a0",
+    "utterance": "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài. Anh chị vui lòng cho em biết họ tên đầy đủ ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/0.wav",
+      "pcm_bytes": 101638,
+      "sample_rate": 8000,
+      "duration_seconds": 6.352375,
+      "peak": 21017
+    },
+    "tts": {
+      "chars": 98,
+      "elapsed_ms": 914.94,
+      "ttfa_ms": 643.9073999936227,
+      "pcm_bytes": 101638,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 1,
+    "path": "outputs/booking/1.wav",
+    "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+    "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/1.wav",
+      "pcm_bytes": 43292,
+      "sample_rate": 8000,
+      "duration_seconds": 2.70575,
+      "peak": 20200
+    },
+    "tts": {
+      "chars": 45,
+      "elapsed_ms": 295.41,
+      "ttfa_ms": 242.47050000121817,
+      "pcm_bytes": 43292,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 2,
+    "path": "outputs/booking/2.wav",
+    "sha256": "da2fcebda00ce5a41ff5d365a174e8b85b6fa8cbc889671cd89e1d00eebb2b4e",
+    "utterance": "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/2.wav",
+      "pcm_bytes": 45252,
+      "sample_rate": 8000,
+      "duration_seconds": 2.82825,
+      "peak": 25968
+    },
+    "tts": {
+      "chars": 43,
+      "elapsed_ms": 286.53,
+      "ttfa_ms": 227.7409000089392,
+      "pcm_bytes": 45252,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 3,
+    "path": "outputs/booking/3.wav",
+    "sha256": "56b8e7fd85c4cf4107a7422093c358f5637a94772d49f825b5d28764534f8a35",
+    "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/3.wav",
+      "pcm_bytes": 170150,
+      "sample_rate": 8000,
+      "duration_seconds": 10.634375,
+      "peak": 25813
+    },
+    "tts": {
+      "chars": 180,
+      "elapsed_ms": 725.15,
+      "ttfa_ms": 540.0268999801483,
+      "pcm_bytes": 170150,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 4,
+    "path": "outputs/booking/4.wav",
+    "sha256": "f96afa24bd04989ed1e0e4d4f06d025eb1447c20dea5faf814d11d2520a69593",
+    "utterance": "Dạ, em xác nhận đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/4.wav",
+      "pcm_bytes": 104816,
+      "sample_rate": 8000,
+      "duration_seconds": 6.551,
+      "peak": 20138
+    },
+    "tts": {
+      "chars": 105,
+      "elapsed_ms": 873.06,
+      "ttfa_ms": 492.2030000016093,
+      "pcm_bytes": 104816,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  },
+  {
+    "flow": "booking",
+    "turn": 5,
+    "path": "outputs/booking/5.wav",
+    "sha256": "f92f32939267b0dafce5a44f488a0c1fdbc3fbade9c60eae8a3e60dcc3d5684c",
+    "utterance": "Dạ, em đã đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+    "audio_check": {
+      "url": "http://testserver/audio/w4_booking_audio/5.wav",
+      "pcm_bytes": 65848,
+      "sample_rate": 8000,
+      "duration_seconds": 4.1155,
+      "peak": 18715
+    },
+    "tts": {
+      "chars": 69,
+      "elapsed_ms": 324.88,
+      "ttfa_ms": 267.2486000228673,
+      "pcm_bytes": 65848,
+      "provider_actual": "vbee",
+      "fallback_used": false,
+      "voice": "hn_female_ngochuyen_full_48k-fhg"
+    }
+  }
+]
