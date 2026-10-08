@@ -2,7 +2,17 @@
 
 **Ngày tổng hợp:** 08/10/2026
 
-**Phạm vi bằng chứng:** Các lần chạy và kiểm tra được ghi nhận đến cuối phiên làm việc ngày 07/10/2026. Báo cáo này tổng hợp kết quả đã có, không ghi nhận thêm cuộc gọi kiểm thử ngày 08/10.
+**Cập nhật live ngày 08/10:** Đã xác nhận ba cuộc booking softphone SIP TLS liên tiếp
+từ 14:01 đến 14:05 trên cùng worker, runtime `a797b27` đã merge main `4dec75d`.
+Mỗi cuộc đúng một POST 201, kết quả BOOKED và tự RemoveParticipant sau grace 2000 ms.
+Mock có đúng ba BOOKED mới, record cũ không đổi. Hai attempt chuyển máy trước đó
+được giữ riêng trong lịch sử. Không sửa logic nghiệp vụ hoặc reset mock trong đợt thử.
+Chi tiết từng cuộc và giới hạn bằng chứng: [báo cáo repeat](../evidence/inbound-sip-repeat-2026-10-08.md).
+Softphone baseline đã có chuỗi ba booking thành công; Vietnam DID/PSTN/real phone line
+và các lệch PRD ở nhánh lỗi vẫn chưa nghiệm thu.
+
+**Phạm vi phần báo cáo gốc bên dưới:** Các lần chạy và kiểm tra đến cuối ngày 07/10;
+các kết luận chưa có ba booking liên tiếp trong phần gốc là trạng thái tại thời điểm đó.
 **Mục tiêu:** Chuẩn bị tích hợp cho demo inbound booking tuần 6.
 
 ## 1. Tình hình chung

@@ -1,5 +1,10 @@
 # Đối chiếu baseline inbound với PRD 2.3
 
+> Cập nhật kết quả live: sau review, ba cuộc cuối 14:01–14:05 đã BOOKED liên tiếp,
+> mỗi cuộc một POST 201 và tự ngắt, giữ nguyên logic nghiệp vụ. Xem
+> [bằng chứng ba cuộc](inbound-sip-repeat-2026-10-08.md). Các lệch PRD bên dưới
+> vẫn là findings của code hiện tại; thành công happy path không xóa các findings đó.
+
 Nguồn: CALL-BOT VINMEC Product Requirements Document, phiên bản 2.3 ngày
 07/10/2026, do người dùng cung cấp ngày 08/10. Đối chiếu source tại `fe4176e` và
 hai cuộc TLS thực trên runtime `18fc43e`. Phạm vi là định danh và baseline inbound,

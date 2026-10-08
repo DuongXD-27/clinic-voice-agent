@@ -6,10 +6,43 @@
 
 ## Trạng thái
 
-**Chưa đạt ba BOOKED liên tiếp. Phiên UDP đầu thiếu downlink; sau khi TLS khôi phục
-âm thanh, cuộc booking đầu phiên TLS chuyển nhân viên ở bước tên.** Hai cuộc tiếp theo
-chưa chạy. Không tính các cuộc
-âm báo chẩn đoán là booking hoặc thay thế kiểm tra giọng nói live.
+**Đã xác nhận ba BOOKED liên tiếp qua softphone SIP TLS, 14:01–14:05 ngày 08/10.**
+Người dùng xác nhận ba cuộc thành công. Trace ghi mỗi cuộc đúng một POST 201;
+snapshot cuối có đúng ba BOOKED mới, record ban đầu không đổi; mỗi cuộc đều tự
+RemoveParticipant sau grace 2000 ms. Không sửa logic nghiệp vụ hoặc reset mock
+trong đợt này. Đây là proof softphone, chưa phải gate real phone line/PSTN.
+
+## Chuỗi booking thành công trên main đã cập nhật
+
+Runtime commit `a797b27`, đã merge main `4dec75d`; worker `AW_fuzPqPvnDUvA`, cùng
+Linphone 5.3.4, SIP TLS 5061 và NAT baseline. Toàn phiên có năm cuộc theo thứ tự:
+TRANSFERRED, TRANSFERRED, BOOKED, BOOKED, BOOKED. Hai cuộc đầu thất bại vẫn được
+giữ trong lịch sử; ba cuộc cuối là chuỗi liên tiếp đạt checklist booking.
+
+| Cuộc trong chuỗi thành công | Giờ Việt Nam | Room | Clinic | Hangup |
+| --- | --- | --- | --- | --- |
+| 1 (attempt 3) | 14:01:40–14:02:56 | `RM_9BXYVEh5yk4A` | Một POST `/appointments`, 201, một attempt, có idempotency | BOOKED → grace 2000 ms → caller removed |
+| 2 (attempt 4) | 14:03:07–14:04:15 | `RM_q4ZrDMhrB2jk` | Một POST `/appointments`, 201, một attempt, có idempotency | BOOKED → grace 2000 ms → caller removed |
+| 3 (attempt 5) | 14:04:31–14:05:50 | `RM_nSsPbd82KgvY` | Một POST `/appointments`, 201, một attempt, có idempotency | BOOKED → grace 2000 ms → caller removed |
+
+Mỗi cuộc được dispatch tự động, có SIP participant, đi qua xác minh, GET `/slots`,
+xác nhận và BOOKED. Capture local có PCMU cả hai chiều trong cửa sổ mỗi job:
+caller/server lần lượt 3526/3556, 3116/3140, 3709/3734 packet. Đây là số packet
+trong filter và cửa sổ job, không phải phép đo mất gói hoặc codec negotiation đầy đủ.
+TLS signaling chưa giải mã; BYE/200 của chính chuỗi này chưa đối chiếu PCAP Cloud.
+
+Collector ban đầu dừng sau ba attempt (hai TRANSFERRED và một BOOKED). Không sửa
+snapshot cũ hoặc dựng snapshot giữa cuộc 4 và 5: dùng log worker/trace theo cửa sổ
+từng job để chứng minh mỗi cuộc thêm đúng một POST 201, rồi một GET snapshot cuối
+để xác nhận đúng ba BOOKED mới, không có record dư và record cũ không đổi. Người
+dùng báo ba cuộc thành công; không có điểm chất lượng giọng theo từng cuộc.
+
+Bằng chứng:
+[three-consecutive-bookings-tls.json](../../result/08-10-2026/sip-baseline/three-consecutive-bookings-tls.json).
+Lỗi ASR/name extraction và lệch R-40/GC-ID-04 đã nêu trong review PRD vẫn còn;
+ba cuộc thành công không chứng minh toàn bộ PRD, mọi mạng hoặc real phone line đã đạt.
+
+## Lịch sử các đợt trước khi đạt chuỗi ba cuộc
 
 Phiên này chạy code PR #103, commit `69688a9`, đã rebase main. Bằng chứng live ngày 07/10
 thuộc base cũ và vẫn có giá trị trong phạm vi đã ghi; chưa suy ra độ ổn định giữa các mạng.
