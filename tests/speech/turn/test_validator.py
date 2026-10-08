@@ -69,3 +69,15 @@ def test_extra_kwargs_for_future_state_are_accepted_but_unused():
         expected_input="CONFIRMATION",
     )
     assert decision == ValidationDecision.ACCEPT
+
+
+def test_low_confidence_single_word_noise_is_dropped_but_short_answers_are_kept() -> None:
+    """Đập bàn -> "ÔNG" 0,28; nhiễu -> "ĐÂY" 0,31. Câu trả lời thật kém chắc vẫn giữ."""
+    validator = TurnValidator()
+    assert validator.evaluate("ÔNG", confidence=0.28) == ValidationDecision.DROP
+    assert validator.evaluate("ĐÂY", confidence=0.31) == ValidationDecision.DROP
+    for answer in ("KHÔNG", "VÂNG", "Ừ", "ĐÚNG RỒI", "CÓ Ạ", "Ô KÊ", "KHÔNG ĐƯỢC"):
+        assert validator.evaluate(answer, confidence=0.3) != ValidationDecision.DROP, answer
+    # Đủ chắc chắn hoặc câu dài: luật này không áp dụng.
+    assert validator.evaluate("ÔNG", confidence=0.8) != ValidationDecision.DROP
+    assert validator.evaluate("TÔI MUỐN ĐỔI LỊCH", confidence=0.3) != ValidationDecision.DROP

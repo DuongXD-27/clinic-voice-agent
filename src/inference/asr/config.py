@@ -104,3 +104,15 @@ class ZipFormerConfig(ASRConfig):
     # được độ trễ nhận ra đầu câu của Silero (min_speech_duration mặc định 0,25 s), nếu không
     # mất âm tiết đầu ("Vâng," của golden STT_CF_02 bị Silero bật cờ trễ ~700 ms).
     pre_speech_ms: int = Field(ge=0, validation_alias="ZIPFORMER_PRE_SPEECH_MS")
+    # Final chỉ decode tới frame cuối được báo là tiếng nói + chừng này (Silero đã giữ cờ thêm
+    # ~0,5 s sau khi hết tiếng). None = decode cả ~1,1 s im lặng đuôi như trước — đuôi im lặng
+    # làm câu ngắn đổi chữ: partial "BÂY GIỜ" 0,94 -> final "ĐƯỢC" 0,28; "OK" -> "Ừ/ĐÂY".
+    final_tail_ms: Optional[int] = Field(
+        default=None, ge=0, validation_alias="ZIPFORMER_FINAL_TAIL_MS"
+    )
+    # Đầu câu: ngoài `pre_speech_ms` cố định, lần ngược tối đa chừng này ms tới chỗ năng lượng
+    # thật sự bắt đầu (Silero báo trễ: trên 870 câu thật, trễ so với điểm năng lượng p50 360 ms,
+    # p90 720 ms; 85% câu > 300 ms). None = tắt (chỉ `pre_speech_ms`).
+    onset_lookback_ms: Optional[int] = Field(
+        default=None, ge=0, validation_alias="ZIPFORMER_ONSET_LOOKBACK_MS"
+    )

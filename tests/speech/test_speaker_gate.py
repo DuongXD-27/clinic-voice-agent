@@ -5,65 +5,68 @@ from speech.audio.speaker_gate import SpeakerGate
 RATE = 16_000
 
 
-def _voice(direction: list[float]):
-    vector = np.array(direction, dtype=np.float32)
-    return vector / np.linalg.norm(vector)
+CALLER, OTHER = 3000, -3000  # độ lệch DC đánh dấu giọng trong audio giả
 
 
-class _Voices:
-    """Embedding giả: mỗi lượt trả về vector cho sẵn theo thứ tự."""
-
-    def __init__(self, *vectors) -> None:
-        self._vectors = list(vectors)
-        self.calls = 0
-
-    def __call__(self, samples, sample_rate):
-        self.calls += 1
-        return self._vectors.pop(0)
+def _embed(samples, sample_rate):
+    """Embedding giả: giọng đoán theo dấu của trung bình đoạn (người gọi > 0, giọng khác < 0)."""
+    vector = np.array([1.0, 0.0] if samples.mean() > 0 else [0.0, 1.0], dtype=np.float32)
+    return vector
 
 
-def _pcm(seconds: float = 2.5) -> bytes:
+def _speech(*parts: tuple[int, float]) -> bytes:
+    """Ghép các đoạn (giọng, giây): nhiễu + độ lệch DC của giọng đó."""
     rng = np.random.default_rng(0)
-    return (rng.normal(0, 3000, int(seconds * RATE))).astype(np.int16).tobytes()
+    chunks = [rng.normal(offset, 800, int(seconds * RATE)) for offset, seconds in parts]
+    return np.concatenate(chunks).astype(np.int16).tobytes()
 
 
-def test_first_long_turn_enrolls_then_other_voice_is_blocked() -> None:
-    caller, other = _voice([1, 0]), _voice([0, 1])
-    gate = SpeakerGate(_Voices(caller, other), enforce=True, threshold=0.2, min_speech_ms=2000)
-
-    assert gate.allows(_pcm(), RATE, speech_ms=2500) is True  # giọng mẫu
-    assert gate.allows(_pcm(), RATE, speech_ms=2500) is False
+def _gate(enforce: bool = True) -> SpeakerGate:
+    return SpeakerGate(_embed, enforce=enforce, threshold=0.2, min_speech_ms=2000)
 
 
-def test_same_voice_passes() -> None:
-    caller = _voice([1, 0])
-    gate = SpeakerGate(
-        _Voices(caller, _voice([0.9, 0.1])), enforce=True, threshold=0.2, min_speech_ms=2000
-    )
+def test_single_voice_turn_enrolls_then_other_voice_is_blocked() -> None:
+    gate = _gate()
 
-    gate.allows(_pcm(), RATE, speech_ms=2500)
+    assert gate.assess(_speech((CALLER, 3.0)), RATE, 3000).decision == "enroll"
+    assert gate.assess(_speech((OTHER, 3.0)), RATE, 3000).decision == "block"
+    assert gate.assess(_speech((CALLER, 3.0)), RATE, 3000).decision == "pass"
 
-    assert gate.allows(_pcm(), RATE, speech_ms=2500) is True
+
+def test_mixed_voices_turn_is_not_used_as_the_caller_voice() -> None:
+    """Điện thoại phát tin tức rồi người gọi nói trong cùng lượt: chưa lấy giọng mẫu."""
+    gate = _gate()
+
+    assert gate.assess(_speech((OTHER, 3.0), (CALLER, 3.0)), RATE, 6000).decision == "defer"
+    assert not gate.enrolled
+    assert gate.assess(_speech((CALLER, 3.0)), RATE, 3000).decision == "enroll"
+
+
+def test_other_voice_before_the_caller_is_trimmed() -> None:
+    gate = _gate()
+    gate.assess(_speech((CALLER, 3.0)), RATE, 3000)
+
+    verdict = gate.assess(_speech((OTHER, 3.0), (CALLER, 3.0)), RATE, 6000)
+
+    assert verdict.decision == "trim"
+    start, end = verdict.keep
+    assert start >= 3 * RATE - RATE // 2 and end == 6 * RATE
 
 
 def test_short_turns_are_never_judged() -> None:
     """Embedding của đoạn ngắn không tin cậy: "ừ", "có" luôn qua và không làm giọng mẫu."""
-    voices = _Voices()
-    gate = SpeakerGate(voices, enforce=True, threshold=0.2, min_speech_ms=2000)
+    gate = _gate()
 
-    assert gate.allows(_pcm(0.5), RATE, speech_ms=600) is True
-    assert gate.allows(_pcm(0.5), RATE, speech_ms=None) is True
-    assert voices.calls == 0
+    assert gate.assess(_speech((OTHER, 0.5)), RATE, 600).decision == "skip"
+    assert gate.assess(_speech((OTHER, 3.0)), RATE, None).decision == "skip"
+    assert not gate.enrolled
 
 
 def test_log_mode_never_blocks() -> None:
-    gate = SpeakerGate(
-        _Voices(_voice([1, 0]), _voice([0, 1])), enforce=False, threshold=0.2, min_speech_ms=2000
-    )
+    gate = _gate(enforce=False)
+    gate.assess(_speech((CALLER, 3.0)), RATE, 3000)
 
-    gate.allows(_pcm(), RATE, speech_ms=2500)
-
-    assert gate.allows(_pcm(), RATE, speech_ms=2500) is True
+    assert gate.allows(_speech((OTHER, 3.0)), RATE, 3000) is True
 
 
 def test_missing_model_runs_without_gate(tmp_path, caplog) -> None:
@@ -79,3 +82,15 @@ def test_missing_model_runs_without_gate(tmp_path, caplog) -> None:
 
     assert _build_speaker_gate(settings) is None
     assert "missing.onnx" in caplog.text
+
+
+def test_short_other_voice_turn_is_blocked_once_the_caller_voice_is_known() -> None:
+    """ "BẰNG QUY NHÁ" 1,6 s từ điện thoại cạnh mic: sau khi có giọng mẫu, lượt ngắn cũng được chấm."""
+    gate = _gate()
+
+    assert gate.assess(_speech((OTHER, 1.6)), RATE, 1600).decision == "skip"  # chưa có giọng mẫu
+    gate.assess(_speech((CALLER, 3.0)), RATE, 3000)
+
+    assert gate.assess(_speech((OTHER, 1.6)), RATE, 1600).decision == "block"
+    assert gate.assess(_speech((CALLER, 1.6)), RATE, 1600).decision == "pass"
+    assert gate.assess(_speech((CALLER, 0.6)), RATE, 600).decision == "skip"

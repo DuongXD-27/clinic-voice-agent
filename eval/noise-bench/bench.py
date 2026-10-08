@@ -328,6 +328,7 @@ class _CapturingRecognizer:
         self.name = inner.name
         self.input_sample_rate = inner.input_sample_rate
         self.supports_preroll_frames = getattr(inner, "supports_preroll_frames", False)
+        self.supports_segment_finalize = getattr(inner, "supports_segment_finalize", False)
         self.supports_stream_context = getattr(inner, "supports_stream_context", False)
         self.finals: list[str] = []
         self.final_confidences: list[float | None] = []

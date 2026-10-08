@@ -16,7 +16,10 @@ lịch" → "THÙY LINH" vẫn 0,79/0,98/0,57); hiện chỉ ghi log để đo.
 import asyncio
 import logging
 import math
+from collections import deque
 from typing import Any, AsyncIterator, NamedTuple, Optional
+
+import numpy as np
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
@@ -38,6 +41,7 @@ class _Decoded(NamedTuple):
 class ZipFormerASR:
     input_sample_rate = 16_000
     supports_preroll_frames = True
+    supports_segment_finalize = True
 
     def __init__(self, config: ZipFormerConfig, *, recognizer: Any = None) -> None:
         self._config = config
@@ -102,16 +106,32 @@ class ZipFormerASR:
         if audio_sample_rate not in (8_000, 16_000):
             raise ValueError(f"ZipFormer stream không hỗ trợ sample rate {audio_sample_rate}")
 
-        utterance = _Utterance(audio_sample_rate, pre_speech_ms)
+        tail_ms = self._config.final_tail_ms
+        utterance = _Utterance(
+            audio_sample_rate,
+            pre_speech_ms,
+            onset_lookback_ms=self._config.onset_lookback_ms,
+            track_voice_end=tail_ms is not None,
+        )
 
-        async def decode() -> _Decoded:
+        async def decode(*, final: bool = False) -> _Decoded:
+            pcm = utterance.final_pcm(tail_ms) if final else bytes(utterance.pcm)
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
-            return await asyncio.to_thread(
-                self._decode_stream_scored, bytes(utterance.pcm), audio_sample_rate
-            )
+            return await asyncio.to_thread(self._decode_stream_scored, pcm, audio_sample_rate)
+
+        def final_event(decoded: _Decoded) -> TranscriptEvent:
+            return _final_event(_prefer_confident_partial(decoded, utterance))
 
         async for frame in frames:
             if isinstance(frame, AsrSegmentEnd):
+                if (
+                    frame is AsrSegmentEnd.FINALIZE
+                    and utterance.in_speech
+                    and utterance.speech_ms >= min_decode_ms
+                ):
+                    decoded = await decode(final=True)
+                    if decoded.text:
+                        yield final_event(decoded)
                 utterance.discard()
                 continue
             is_preroll = isinstance(frame, StreamingFrame) and frame.is_preroll
@@ -132,6 +152,7 @@ class ZipFormerASR:
                 utterance.since_partial_ms = 0.0
                 if decoded.text and decoded.text != utterance.last_partial:
                     utterance.last_partial = decoded.text
+                    utterance.last_partial_confidence = decoded.confidence
                     yield TranscriptEvent(
                         text=decoded.text, is_final=False, confidence=decoded.confidence
                     )
@@ -139,15 +160,16 @@ class ZipFormerASR:
             still_speaking = utterance.speech_ms >= max_turn_speech_ms
             if utterance.silent_ms >= end_silence_ms or still_speaking:
                 if has_min_speech:
-                    decoded = await decode()
+                    # Tách cưỡng bức giữa lúc đang nói: không có đuôi im lặng để cắt.
+                    decoded = await decode(final=not still_speaking)
                     if decoded.text:
-                        yield _final_event(decoded)
+                        yield final_event(decoded) if not still_speaking else _final_event(decoded)
                 utterance.close(still_speaking=still_speaking)
 
         if utterance.in_speech and utterance.pcm and utterance.speech_ms >= min_decode_ms:
-            decoded = await decode()
+            decoded = await decode(final=True)
             if decoded.text:
-                yield _final_event(decoded)
+                yield final_event(decoded)
 
     def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
@@ -181,11 +203,26 @@ class ZipFormerASR:
 class _Utterance:
     """Câu đang nghe trong `stream()`: audio (kèm pre-roll) và các bộ đếm thời gian."""
 
-    def __init__(self, sample_rate: int, pre_speech_ms: int) -> None:
+    def __init__(
+        self,
+        sample_rate: int,
+        pre_speech_ms: int,
+        *,
+        onset_lookback_ms: Optional[int] = None,
+        track_voice_end: bool = False,
+    ) -> None:
         self._rate = sample_rate
         self._pre_speech = bytearray()
         self._pre_speech_max = sample_rate * pre_speech_ms // 1000 * 2
         self._pre_speech_limit = self._pre_speech_max
+        # Lần ngược tới điểm năng lượng bắt đầu (`_onset_bytes`): giữ thêm audio và mức (dB) của
+        # từng frame trước tiếng nói, cùng nền nhiễu của các frame không phải tiếng nói gần đây.
+        self._lookback = sample_rate * (onset_lookback_ms or 0) // 1000 * 2
+        self._pre_levels: deque[tuple[int, float]] = deque()
+        self._quiet_levels: deque[float] = deque(maxlen=_ONSET_FLOOR_FRAMES)
+        self._track_levels = bool(self._lookback) or track_voice_end
+        # Mức to nhất của các frame tiếng nói trong câu (ngưỡng "còn là giọng" ở đuôi câu).
+        self._peak = -96.0
         self.pcm = bytearray()
         self.in_speech = False
         # Chỉ đếm frame có tiếng nói: đuôi im lặng không được giúp câu "à" vượt min_decode_ms.
@@ -193,6 +230,10 @@ class _Utterance:
         self.silent_ms = 0.0
         self.since_partial_ms = 0.0
         self.last_partial = ""
+        self.last_partial_confidence: Optional[float] = None
+        # Độ dài `pcm` ngay sau frame cuối còn là giọng nói: được báo là tiếng nói, hoặc đủ to so
+        # với câu (âm cuối nhỏ Silero không gắn cờ, vd. "KHÔNG" của "ĐÚNG KHÔNG"). Cắt đuôi final.
+        self.speech_end = 0
 
     @property
     def duration_ms(self) -> float:
@@ -200,20 +241,36 @@ class _Utterance:
 
     def add(self, frame: bytes, is_speech: bool, *, is_preroll: bool = False) -> bool:
         """False khi frame chỉ vào pre-roll (chưa có câu nào đang mở)."""
+        level = _level_dbfs(frame) if self._track_levels else -96.0
+        if self._track_levels and not is_speech:
+            self._quiet_levels.append(level)
         if not self.in_speech and not is_speech:
             self._pre_speech.extend(frame)
+            if self._lookback:
+                self._pre_levels.append((len(frame), level))
             if is_preroll:
                 # Replay is bounded upstream. Keep it plus the usual onset allowance;
                 # later silence still ages it out instead of retaining it indefinitely.
                 self._pre_speech_limit = max(
                     self._pre_speech_limit, len(self._pre_speech) + self._pre_speech_max
                 )
-            del self._pre_speech[: max(0, len(self._pre_speech) - self._pre_speech_limit)]
+            keep = max(self._pre_speech_limit, self._lookback)
+            del self._pre_speech[: max(0, len(self._pre_speech) - keep)]
+            kept = 0
+            for index in range(len(self._pre_levels) - 1, -1, -1):
+                kept += self._pre_levels[index][0]
+                if kept > len(self._pre_speech):
+                    for _ in range(index + 1):
+                        self._pre_levels.popleft()
+                    break
             return False
         if not self.in_speech:
-            self.pcm.extend(self._pre_speech)
+            lead = min(len(self._pre_speech), max(self._pre_speech_limit, self._onset_bytes(level)))
+            self.pcm.extend(self._pre_speech[len(self._pre_speech) - lead :])
             self._pre_speech.clear()
+            self._pre_levels.clear()
             self._pre_speech_limit = self._pre_speech_max
+            self._peak = -96.0
             self.in_speech = True
         self.pcm.extend(frame)
         frame_ms = len(frame) / 2 / self._rate * 1000
@@ -221,9 +278,46 @@ class _Utterance:
         if is_speech:
             self.speech_ms += frame_ms
             self.silent_ms = 0.0
+            self.speech_end = len(self.pcm)
+            self._peak = max(self._peak, level)
         else:
             self.silent_ms += frame_ms
+            if self._track_levels and level >= self._voice_threshold(
+                self._peak, below_db=_VOICE_END_BELOW_PEAK_DB
+            ):
+                self.speech_end = len(self.pcm)
         return True
+
+    def _voice_threshold(self, reference: float, *, below_db: Optional[float] = None) -> float:
+        """Frame "còn là giọng": hơn nền >= `_ONSET_ABOVE_FLOOR_DB` và không nhỏ hơn mức giọng
+        `reference` quá `below_db` (mặc định `_ONSET_BELOW_SPEECH_DB`; không tính tiếng thở)."""
+        if below_db is None:
+            below_db = _ONSET_BELOW_SPEECH_DB
+        floor = float(np.percentile(self._quiet_levels, 20)) if self._quiet_levels else -96.0
+        return max(floor + _ONSET_ABOVE_FLOOR_DB, reference - below_db)
+
+    def _onset_bytes(self, detected_level: float) -> int:
+        """Số byte trước frame được báo là tiếng nói cần giữ để không mất phần đầu câu: lần
+        ngược từ frame gần nhất qua các frame đủ to (hơn nền >= `_ONSET_ABOVE_FLOOR_DB` và không
+        nhỏ hơn đoạn vừa nhận ra quá `_ONSET_BELOW_SPEECH_DB` — không kéo theo tiếng thở, tiếng
+        động nhỏ), cho phép ngắt <= `_ONSET_MAX_GAP_FRAMES` frame, rồi thêm một khoảng đệm."""
+        if not self._lookback or not self._pre_levels:
+            return 0
+        recent = [level for _, level in list(self._pre_levels)[-_ONSET_REF_FRAMES:]]
+        threshold = self._voice_threshold(max([detected_level, *recent]))
+        levels = list(self._pre_levels)
+        onset, gap = len(levels), 0
+        for index in range(len(levels) - 1, -1, -1):
+            if levels[index][1] >= threshold:
+                onset, gap = index, 0
+            else:
+                gap += 1
+                if gap > _ONSET_MAX_GAP_FRAMES:
+                    break
+        if onset == len(levels):
+            return 0
+        start = max(0, onset - _ONSET_MARGIN_FRAMES)
+        return sum(size for size, _ in levels[start:])
 
     def close(self, *, still_speaking: bool) -> None:
         """Đã chốt câu. `still_speaking`: chốt cưỡng bức giữa lúc đang nói — mở ngay câu mới."""
@@ -231,12 +325,74 @@ class _Utterance:
         self.in_speech = still_speaking
         self.speech_ms = self.silent_ms = self.since_partial_ms = 0.0
         self.last_partial = ""
+        self.last_partial_confidence = None
+        self.speech_end = 0
         self._pre_speech_limit = self._pre_speech_max
+
+    def final_pcm(self, tail_ms: Optional[int]) -> bytes:
+        """Audio cho final: tới frame cuối còn là giọng nói + `tail_ms` (None = cả buffer)."""
+        if tail_ms is None or not self.speech_end:
+            return bytes(self.pcm)
+        end = self.speech_end + self._rate * tail_ms // 1000 * 2
+        return bytes(self.pcm[:end])
 
     def discard(self) -> None:
         """Pipeline ngừng đưa audio: audio trước và sau chỗ ngắt không liền nhau."""
         self.close(still_speaking=False)
         self._pre_speech.clear()
+        self._pre_levels.clear()
+
+
+# `_Utterance._onset_bytes` (frame 30 ms): nền = phân vị 20 của ~3 s frame không phải tiếng nói.
+_ONSET_FLOOR_FRAMES = 100
+_ONSET_ABOVE_FLOOR_DB = 12.0
+# Đầu câu chỉ lần ngược qua frame gần bằng giọng vừa nhận ra ("HỌ" -17..-22 dB khi giọng -10..-12):
+# 25 dB kéo theo tiếng thở/tiếng động, noise-bench 08/10 mất lượt "ĐÚNG RỒI", thêm "ẤY".
+_ONSET_BELOW_SPEECH_DB = 15.0
+# Đuôi câu: âm cuối nhỏ vẫn là giọng ("KHÔNG" của "ĐÚNG KHÔNG" ~17 dB dưới đỉnh câu).
+_VOICE_END_BELOW_PEAK_DB = 25.0
+_ONSET_REF_FRAMES = 5
+_ONSET_MAX_GAP_FRAMES = 2
+_ONSET_MARGIN_FRAMES = 3
+
+
+def _level_dbfs(frame: bytes) -> float:
+    samples = np.frombuffer(frame, dtype=np.int16).astype(np.float64)
+    if not samples.size:
+        return -96.0
+    return 10 * math.log10(float(np.mean(samples * samples)) / 32768.0**2 + 1e-10)
+
+
+# `_prefer_confident_partial`: final ngắn đổi hẳn chữ so với partial cuối, tin cậy thấp hơn nhiều.
+_FLIP_MAX_WORDS = 2
+_FLIP_MAX_FINAL_CONFIDENCE = 0.5
+_FLIP_MIN_CONFIDENCE_GAP = 0.3
+
+
+def _prefer_confident_partial(decoded: _Decoded, utterance: "_Utterance") -> _Decoded:
+    """Final <= 2 từ, tin cậy thấp, không nối tiếp partial cuối (tin cậy cao hơn hẳn): giữ partial.
+
+    Câu trả lời ngắn hay bị lật ở final ("BÂY GIỜ" 0,94 -> "ĐƯỢC" 0,28 — đồng ý giả). Final là
+    phần mở rộng của partial ("KHÔNG" -> "KHÔNG ĐƯỢC") thì luôn giữ final."""
+    partial, partial_confidence = utterance.last_partial, utterance.last_partial_confidence
+    final_words, partial_words = decoded.text.split(), partial.split()
+    if (
+        not partial_words
+        or partial_confidence is None
+        or decoded.confidence is None
+        or len(final_words) > _FLIP_MAX_WORDS
+        or len(partial_words) > _FLIP_MAX_WORDS + 1
+        or final_words[: len(partial_words)] == partial_words
+        or decoded.confidence >= _FLIP_MAX_FINAL_CONFIDENCE
+        or partial_confidence - decoded.confidence < _FLIP_MIN_CONFIDENCE_GAP
+    ):
+        return decoded
+    logger.debug(
+        "zipformer: final confidence=%.3f lật khỏi partial confidence=%.3f — giữ partial",
+        decoded.confidence,
+        partial_confidence,
+    )
+    return _Decoded(partial, partial_confidence)
 
 
 def _final_event(decoded: _Decoded) -> TranscriptEvent:

@@ -623,3 +623,45 @@ async def test_bot_sentence_echoed_with_misheard_words_does_not_confirm_barge_in
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_long_echo_delay_is_recognised_when_the_bot_stops() -> None:
+    """Echo trễ 0,6 s (SIP): lúc bot vừa dứt lời, 0,6 s cuối câu chưa vọng về mic. Độ phủ tính cả
+    phần đó thì tiếng vọng thuần (tương quan 1,0) chỉ phủ 0,67 < 0,7 — không bao giờ nhận ra."""
+    rate, hop = 16000, 480
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), clock=clock)
+    rng = np.random.default_rng(1)
+    envelope = np.repeat(rng.uniform(0.05, 1.0, 30), int(0.06 * rate))
+    bot = rng.normal(0, 3000, envelope.size) * envelope
+    controller.on_bot_started_speaking("Alo, anh chị còn nghe máy không ạ?")
+    controller.on_bot_audio(bot.astype(np.int16).tobytes(), rate, complete=True)
+    delay = 0.6
+    mic = np.concatenate([np.zeros(int(delay * rate)), 0.1 * bot, np.zeros(rate)])
+    for k in range(len(bot) // hop):
+        clock.advance(hop / rate)
+        controller.on_caller_audio(mic[k * hop : (k + 1) * hop].astype(np.int16).tobytes())
+    controller.on_bot_stopped_speaking()
+
+    assert controller.echo_path == "echo"
+
+
+def test_correlated_echo_residue_that_the_vad_never_hears_is_not_echo() -> None:
+    """AEC của trình duyệt để lại phần vọng rất nhỏ, vẫn tương quan với tiếng bot nhưng VAD không
+    bắt: không được coi là có vọng (cắt nhầm "HỌ VÀ TÊN" khi người gọi nhắc lại câu bot)."""
+    rate, hop = 16000, 480
+    clock = _FakeClock()
+    controller = InterruptionController(_FakeTTS(), clock=clock)
+    rng = np.random.default_rng(1)
+    envelope = np.repeat(rng.uniform(0.05, 1.0, 50), int(0.06 * rate))
+    bot = rng.normal(0, 3000, envelope.size) * envelope
+    controller.on_bot_started_speaking("Dạ, anh chị vui lòng cho em xin họ và tên đầy đủ ạ.")
+    controller.on_bot_audio(bot.astype(np.int16).tobytes(), rate, complete=True)
+    mic = np.concatenate([np.zeros(int(0.2 * rate)), 0.1 * bot, np.zeros(rate)])
+    for k in range(len(bot) // hop):
+        clock.advance(hop / rate)
+        frame = mic[k * hop : (k + 1) * hop].astype(np.int16).tobytes()
+        controller.on_caller_audio(frame, is_speech=False)
+    controller.on_bot_stopped_speaking()
+
+    assert controller.echo_path != "echo"

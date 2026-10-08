@@ -39,6 +39,10 @@ class SpeechRecognizer:
     def supports_preroll_frames(self) -> bool:
         return getattr(self._gateway.provider, "supports_preroll_frames", False)
 
+    @property
+    def supports_segment_finalize(self) -> bool:
+        return getattr(self._gateway.provider, "supports_segment_finalize", False)
+
     def transcribe(self, segment: AudioSegment) -> Transcript:
         segment = to_sample_rate(segment, self.input_sample_rate)
         result = self._gateway.transcribe(segment.pcm, segment.sample_rate)

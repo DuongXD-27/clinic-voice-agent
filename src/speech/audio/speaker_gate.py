@@ -1,28 +1,61 @@
-"""THỬ NGHIỆM: cổng giọng người gọi — bỏ lượt dài không phải giọng người gọi (người bên cạnh, TV).
+"""THỬ NGHIỆM: cổng giọng người gọi — bỏ giọng người khác (người bên cạnh, TV, điện thoại phát gần
+mic) khỏi lượt của người gọi.
 
-Giọng mẫu lấy ngay trong cuộc gọi: lượt dài đầu tiên (>= `min_speech_ms` tiếng nói) là người gọi,
-các lượt dài sau đó so độ giống (cosine của speaker embedding, sherpa-onnx) với giọng mẫu.
-Lượt ngắn không bao giờ bị chặn: embedding của đoạn < 1 s không tin cậy (đo 07/10, EER 16–25%).
+Chấm theo ĐOẠN CON `window_ms` của lượt, không theo cả lượt (cosine của speaker embedding,
+sherpa-onnx, với giọng mẫu):
+- Giọng mẫu lấy trong cuộc gọi, từ lượt dài (>= `min_speech_ms` tiếng nói) đầu tiên mà mọi đoạn
+  con là CÙNG một giọng. Lượt lẫn giọng khác thì chưa lấy (cuộc gọi 08/10: lượt dài đầu tiên là
+  tin tức từ điện thoại phát gần mic lẫn câu "Alo tôi tên là…" — lấy cả lượt làm giọng mẫu rồi chặn
+  đúng giọng người gọi, similarity 0,12).
+- Lượt có đầu/cuối là giọng khác: giữ phần của người gọi (`trim`, pipeline decode lại phần đó).
+  Toàn giọng khác: bỏ lượt (`block`). Đoạn chưa chắc (giữa hai ngưỡng) tính là người gọi.
+- Lượt ngắn không bao giờ bị chặn: embedding đoạn ngắn không tin cậy (07/10: đoạn 1 s EER 16%,
+  2 s 7% điện thoại / 0,9% web, giọng mẫu cùng cuộc gọi). Giọng nói chồng lên nhau thì không tách
+  được ở đây.
 
-Đo 07/10 (giọng mẫu và câu thử cùng một cuộc gọi, TitaNet-small): đoạn 2 s có EER 7% (kênh
-điện thoại) / 0,9% (web); ngưỡng 0,2 giữ khoảng 98% câu thật, chặn 97–98% câu người khác.
-docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+docs/evidence/stt-phone-echo-speaker-2026-10-07.md, stt-livekit-overlap-onset-filler-2026-10-08.md
 """
 
 import logging
-from typing import Callable, Optional
+from dataclasses import dataclass
+from typing import Callable, Literal, Optional
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 Embed = Callable[[np.ndarray, int], np.ndarray]
-# Giọng mẫu cập nhật dần bằng lượt dài được chấp nhận: giữ chừng này của giọng mẫu cũ.
+Decision = Literal["skip", "enroll", "defer", "pass", "trim", "block"]
+# Giọng mẫu cập nhật dần bằng lượt được chấp nhận mà mọi đoạn đều rõ là người gọi.
 _KEEP = 0.8
+_WINDOW_MS = 1500
+# Lượt ngắn hơn một đoạn nhưng chừng này trở lên vẫn chấm như một đoạn.
+_MIN_WINDOW_MS = 1000
+# Giọng mẫu: mọi CẶP đoạn phải giống nhau ít nhất chừng này (cùng một người nói). So với trung
+# bình của lượt thì không đủ: lượt nửa này nửa kia vẫn giống trung bình ~0,7. Hai giọng khác nhau
+# thường < 0,3 (07/10, TitaNet).
+_ENROLL_CONSISTENCY = 0.3
+# Lượt là giọng khác khi trung bình các đoạn dưới mức này (và không đoạn nào tới `threshold`); cắt
+# đoạn đầu/cuối dưới `_TRIM_THRESHOLD` khi phần còn lại trung bình >= `threshold`. Cuộc gọi thật
+# 08/10 (giọng mẫu cùng cuộc gọi, CAM++): đoạn người gọi 0,54-0,74, điện thoại phát cạnh mic
+# 0,12-0,16. Khác cuộc gọi (bộ web, xấu nhất): người gọi p5 0,26, người khác (VIVOS) p95 0,21.
+_OTHER_THRESHOLD = 0.25
+_TRIM_THRESHOLD = 0.25
+# Đã có giọng mẫu: lượt ngắn (>= `_MIN_WINDOW_MS`, một đoạn) cũng được chấm, chỉ chặn khi dưới mức
+# này ("BẰNG QUY NHÁ" 1,6 s từ điện thoại lọt qua vì lượt < 2 s không được chấm).
+_SHORT_BLOCK_THRESHOLD = 0.2
 
 
-def _trim(samples: np.ndarray, sample_rate: int) -> np.ndarray:
-    """Bỏ khoảng lặng hai đầu (khung 30 ms nhỏ hơn khung to nhất quá 30 dB)."""
+@dataclass(frozen=True)
+class SpeakerVerdict:
+    decision: Decision
+    similarities: tuple[float, ...] = ()
+    # `trim`: khoảng mẫu (start, end) của `pcm` đầu vào cần giữ.
+    keep: Optional[tuple[int, int]] = None
+
+
+def _active_span(samples: np.ndarray, sample_rate: int) -> tuple[int, int]:
+    """Khoảng có tiếng (khung 30 ms không nhỏ hơn khung to nhất quá 30 dB)."""
     frame = sample_rate * 30 // 1000
     levels = np.array(
         [
@@ -31,22 +64,45 @@ def _trim(samples: np.ndarray, sample_rate: int) -> np.ndarray:
         ]
     )
     if not levels.size or levels.max() == 0:
-        return samples
+        return 0, len(samples)
     active = np.flatnonzero(levels >= levels.max() * 10 ** (-30 / 20))
-    return samples[active[0] * frame : (active[-1] + 1) * frame]
+    return int(active[0] * frame), int((active[-1] + 1) * frame)
+
+
+def _windows(start: int, end: int, size: int, minimum: int) -> list[tuple[int, int]]:
+    """Các đoạn liền nhau dài `size`, đoạn cuối căn theo cuối khoảng (có thể chồng đoạn trước)."""
+    length = end - start
+    if length < minimum:
+        return []
+    if length <= size:
+        return [(start, end)]
+    spans = [(begin, begin + size) for begin in range(start, end - size + 1, size)]
+    if spans[-1][1] < end:
+        spans.append((end - size, end))
+    return spans
 
 
 class SpeakerGate:
     """Một instance cho một cuộc gọi (giữ giọng mẫu)."""
 
     def __init__(
-        self, embed: Embed, *, enforce: bool, threshold: float, min_speech_ms: int
+        self,
+        embed: Embed,
+        *,
+        enforce: bool,
+        threshold: float,
+        min_speech_ms: int,
+        other_threshold: float = _OTHER_THRESHOLD,
+        window_ms: int = _WINDOW_MS,
     ) -> None:
-        """`enforce=False`: chỉ ghi log, không chặn."""
+        """`enforce=False`: chỉ ghi log, không chặn. Đoạn có similarity >= `threshold` rõ là người
+        gọi; lượt có trung bình < `other_threshold` là giọng khác."""
         self._embed = embed
-        self._enforce = enforce
+        self.enforce = enforce
         self._threshold = threshold
+        self._other_threshold = other_threshold
         self._min_speech_ms = min_speech_ms
+        self._window_ms = window_ms
         self._voice: Optional[np.ndarray] = None
 
     @classmethod
@@ -67,25 +123,91 @@ class SpeakerGate:
 
         return cls(embed, **kwargs)
 
+    @property
+    def enrolled(self) -> bool:
+        return self._voice is not None
+
     def allows(self, pcm: bytes, sample_rate: int, speech_ms: Optional[float]) -> bool:
-        """False = bỏ lượt (chỉ khi `enforce`). Chặn CPU — gọi trong thread."""
-        if speech_ms is None or speech_ms < self._min_speech_ms or not pcm:
-            return True
-        samples = _trim(np.frombuffer(pcm, dtype=np.int16).astype(np.float32), sample_rate)
-        vector = self._embed(samples, sample_rate)
-        if self._voice is None:
-            self._voice = vector
-            logger.info("speaker_gate: enroll speech_ms=%.0f", speech_ms)
-            return True
-        similarity = float(vector @ self._voice)
-        caller = similarity >= self._threshold
-        logger.info(
-            "speaker_gate: similarity=%.2f speech_ms=%.0f decision=%s",
-            similarity,
-            speech_ms,
-            "pass" if caller else ("block" if self._enforce else "would_block"),
+        """False = bỏ cả lượt (chỉ khi `enforce`). Chặn CPU — gọi trong thread."""
+        return self.assess(pcm, sample_rate, speech_ms).decision != "block" or not self.enforce
+
+    def assess(self, pcm: bytes, sample_rate: int, speech_ms: Optional[float]) -> SpeakerVerdict:
+        """Chấm một lượt. Không tự chặn: pipeline làm theo `decision` khi `enforce`. Chặn CPU —
+        gọi trong thread."""
+        min_speech_ms = self._min_speech_ms if self._voice is None else _MIN_WINDOW_MS
+        if speech_ms is None or speech_ms < min_speech_ms or not pcm:
+            logger.info(
+                "speaker_gate: skip short turn speech_ms=%s audio_ms=%.0f",
+                None if speech_ms is None else round(speech_ms),
+                len(pcm) / 2 / sample_rate * 1000,
+            )
+            return SpeakerVerdict("skip")
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+        start, end = _active_span(samples, sample_rate)
+        spans = _windows(
+            start,
+            end,
+            sample_rate * self._window_ms // 1000,
+            sample_rate * _MIN_WINDOW_MS // 1000,
         )
-        if caller:
-            mean = _KEEP * self._voice + (1 - _KEEP) * vector
-            self._voice = mean / max(float(np.linalg.norm(mean)), 1e-9)
-        return caller or not self._enforce
+        if not spans:
+            logger.info("speaker_gate: skip, active audio < %d ms", _MIN_WINDOW_MS)
+            return SpeakerVerdict("skip")
+        vectors = [self._embed(samples[a:b], sample_rate) for a, b in spans]
+        if self._voice is None:
+            return self._enroll(vectors, speech_ms)
+        similarities = tuple(round(float(vector @ self._voice), 3) for vector in vectors)
+        others = [similarity < _TRIM_THRESHOLD for similarity in similarities]
+        kept = [s for s, other in zip(similarities, others, strict=False) if not other]
+        if len(similarities) == 1:
+            single = similarities[0] < _SHORT_BLOCK_THRESHOLD
+            verdict = SpeakerVerdict("block" if single else "pass", similarities)
+        elif (
+            float(np.mean(similarities)) < self._other_threshold
+            and max(similarities) < self._threshold
+        ):
+            verdict = SpeakerVerdict("block", similarities)
+        elif (others[0] or others[-1]) and kept and float(np.mean(kept)) >= self._threshold:
+            first = others.index(False)
+            last = len(others) - 1 - others[::-1].index(False)
+            verdict = SpeakerVerdict("trim", similarities, (spans[first][0], spans[last][1]))
+        else:
+            verdict = SpeakerVerdict("pass", similarities)
+            if all(similarity >= self._threshold for similarity in similarities):
+                mean = _KEEP * self._voice + (1 - _KEEP) * _unit(np.mean(vectors, axis=0))
+                self._voice = _unit(mean)
+        logger.info(
+            "speaker_gate: decision=%s%s similarities=%s speech_ms=%.0f",
+            verdict.decision,
+            "" if self.enforce else " (log only)",
+            ",".join(f"{similarity:.2f}" for similarity in similarities),
+            speech_ms,
+        )
+        return verdict
+
+    def _enroll(self, vectors: list[np.ndarray], speech_ms: float) -> SpeakerVerdict:
+        consistency = tuple(
+            round(float(vectors[i] @ vectors[j]), 3)
+            for i in range(len(vectors))
+            for j in range(i + 1, len(vectors))
+        )
+        if len(vectors) == 1 or min(consistency) < _ENROLL_CONSISTENCY:
+            # Một đoạn không đủ biết lượt chỉ có một giọng; lẫn giọng khác thì chờ lượt sau.
+            logger.info(
+                "speaker_gate: defer enroll consistency=%s speech_ms=%.0f",
+                ",".join(f"{value:.2f}" for value in consistency),
+                speech_ms,
+            )
+            return SpeakerVerdict("defer", consistency)
+        self._voice = _unit(np.mean(vectors, axis=0))
+        logger.info(
+            "speaker_gate: enroll windows=%d consistency=%.2f speech_ms=%.0f",
+            len(vectors),
+            min(consistency),
+            speech_ms,
+        )
+        return SpeakerVerdict("enroll", consistency)
+
+
+def _unit(vector: np.ndarray) -> np.ndarray:
+    return vector / max(float(np.linalg.norm(vector)), 1e-9)

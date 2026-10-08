@@ -286,12 +286,16 @@ class _ScriptedFinalsASR(_RecordingASR):
 
 
 class _RecordingGate:
+    enforce = True
+
     def __init__(self) -> None:
         self.pcm: list[bytes] = []
 
-    def allows(self, pcm: bytes, sample_rate: int, speech_ms) -> bool:
+    def assess(self, pcm: bytes, sample_rate: int, speech_ms):
+        from speech.audio.speaker_gate import SpeakerVerdict
+
         self.pcm.append(pcm)
-        return True
+        return SpeakerVerdict("pass")
 
 
 async def test_speaker_gate_never_gets_audio_from_while_the_bot_was_speaking() -> None:
@@ -584,3 +588,44 @@ async def test_held_decoder_error_is_reported_while_audio_is_still_open() -> Non
 
     with pytest.raises(RuntimeError, match="held decoder failed"):
         await asyncio.wait_for(_collect(pipeline.stream(still_open(), controller, interruption)), 2)
+
+
+class _FinalizingASR(_RecordingASR):
+    supports_segment_finalize = True
+
+
+async def test_caller_mid_sentence_when_bot_starts_keeps_asr_segment_and_finalizes_it() -> None:
+    """Người gọi đang nói dở (VAD đã "đang nói") thì bot bắt đầu nói: không có cạnh
+    speech_start nào nữa. Trước đây cả câu bot không có ứng viên và đoạn ASR bị bỏ mỗi frame —
+    mất lời người gọi. Giờ ứng viên mở lại ngay, đoạn ASR giữ nguyên và được chốt thành final
+    khi người gọi ngừng mà chưa xác nhận ngắt lời."""
+    frames = [_make_frame(i) for i in range(1, 10)]
+    controller = TurnController(min_speech_ms=0)
+    tts = _FakeCancellableTTS()
+    interruption = InterruptionController(tts, min_speech_ms=0)
+    vad = _FakeAsyncVAD(
+        [VadEvent("speech_start")] + [VadEvent("speech", b"x")] * 4 + [VadEvent("speech_end")]
+    )
+    asr = _FinalizingASR()
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
+
+    def _bot_starts_at_frame_3(index: int) -> None:
+        if index == 3:
+            controller.on_bot_speaking_changed(True)
+            interruption.on_bot_started_speaking("Dạ em xin nghe")
+
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames, _bot_starts_at_frame_3),
+                turn_controller=controller,
+                interruption=interruption,
+            )
+        ),
+        timeout=2.0,
+    )
+
+    assert asr.items[:5] == frames[:5]
+    assert AsrSegmentEnd.DISCARD not in asr.items
+    assert asr.items.count(AsrSegmentEnd.FINALIZE) == 1
+    assert tts.cancel_calls == 0

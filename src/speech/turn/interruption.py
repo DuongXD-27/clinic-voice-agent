@@ -27,8 +27,12 @@ import numpy as np
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
 from speech.audio.noise_tracker import NoiseEvidence
-from speech.turn.controller import is_meaningful_text, spoken_words
-from speech.turn.validator import TurnValidator, ValidationDecision
+from speech.turn.controller import (
+    is_confident_answer_filler,
+    is_meaningful_text,
+    spoken_words,
+)
+from speech.turn.validator import TurnValidator, ValidationDecision, is_short_answer
 from speech.types import TranscriptEvent
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,18 @@ _ECHO_SIMILARITY_THRESHOLD = 70.0
 # `echo_text` ước lượng lúc phát từng chữ của câu bot theo vị trí ký tự trên độ dài audio TTS.
 # TTS chưa trả hết câu (stream) thì lấy tốc độ đọc câu trước trong cuộc gọi; câu đầu dùng mức này.
 _DEFAULT_MS_PER_CHAR = 70.0
+# Câu trả lời/lệnh ngắn rõ ràng ("OK EM", "KHÔNG", "DỪNG LẠI") không bao giờ có hai partial hội tụ
+# (validator WAIT) trước khi VAD hết câu — cuộc gọi 08/10: "OK" -> "OK EM" SNR 36 dB không ngắt
+# được bot. Cho xác nhận khi đã nói đủ lâu, đủ to và ASR đủ chắc.
+# Partial đầu tới ở ~0,4 s (min_decode_ms) và không có partial mới nếu chữ không đổi: đòi >= 0,5 s thì
+# "OK EM" (partial duy nhất ở 0,41 s) không bao giờ ngắt được (08/10).
+_SHORT_REPLY_MIN_S = 0.3
+_SHORT_REPLY_MIN_SNR_DB = 10.0
+# "Ừ/ờ/dạ" rõ ràng ngắt được bot khi bot đang đọc câu hỏi cuối ("…Anh chị đồng ý chứ ạ?") — đó là
+# câu trả lời; giữa phần bot giải thích thì vẫn là tiếng đệm "tôi đang nghe". Câu hỏi cuối bắt
+# đầu ước lượng theo vị trí ký tự trên độ dài audio TTS, sớm hơn chừng này (sai số + phản xạ).
+_QUESTION_LEAD_S = 0.8
+_SHORT_REPLY_MIN_CONFIDENCE = 0.7
 # Sai số ước lượng + trễ vọng (mạng, loa): chữ phát sát mép khoảng ASR nghe vẫn tính.
 _ON_AIR_MARGIN_S = 0.6
 # Có tiếng vọng hay không (`_echo_score`): tương quan đường bao năng lượng (dB, mỗi `_LEVEL_HOP_S`)
@@ -68,6 +84,14 @@ _ECHO_MIN_FRAMES = 8
 _ECHO_PROBE_MIN_SPAN_S = 0.6
 _ECHO_PROBE_INTERVAL_S = 0.3
 _CALLER_LEVELS_KEPT = 1000  # ~30 s frame 30 ms
+# Độ phủ chỉ có nghĩa khi đã có chừng này frame bot (~0,6 s) đến hạn vọng về: mẫu số vài frame ở
+# đầu câu cho độ phủ 1,0 ngẫu nhiên (08/10: cuộc gọi web bị coi là có vọng từ câu bot đầu).
+_ECHO_MIN_DUE_FRAMES = 20
+# Tiếng vọng có thể thành chữ phải đủ giống tiếng nói để VAD (Silero) bắt được: ít nhất chừng
+# này phần frame mic trong lúc vọng được báo là tiếng nói. Phần vọng còn sót sau AEC của trình
+# duyệt (~-55 dBFS) vẫn tương quan với tiếng bot nhưng VAD không bắt — coi là vọng thì cắt nhầm
+# chữ người gọi nhắc lại câu bot ("HỌ VÀ TÊN CỦA ANH LÀ…" -> "CỦA ANH LÀ…", cuộc gọi 08/10).
+_ECHO_MIN_SPEECH_FRACTION = 0.3
 # `three_state`: "không vọng" chỉ khi đủ chừng này câu bot đọc trọn, không ai chen, mỗi câu
 # >= `_QUIET_MIN_BOT_MS`, mà mic có tiếng (>= `_ECHO_MIN_DB`) ở dưới `_QUIET_MAX_ACTIVE` thời gian.
 _QUIET_SENTENCES = 2
@@ -130,19 +154,49 @@ class InterruptionController:
         # Đường bao năng lượng (dB) của audio bot đã phát và của mic người gọi (`_echo_score`).
         self._bot_levels: list[float] = []
         self._bot_pcm_tail = b""
-        self._caller_levels: deque[tuple[float, float]] = deque(maxlen=_CALLER_LEVELS_KEPT)
+        # (lúc, mức dB, VAD báo tiếng nói — None = không biết).
+        self._caller_levels: deque[tuple[float, float, Optional[bool]]] = deque(
+            maxlen=_CALLER_LEVELS_KEPT
+        )
         # Đường truyền của cuộc gọi đã cho thấy tiếng vọng (một instance cho một cuộc gọi).
         self._call_has_echo = False
         # `three_state`: số câu bot đọc trọn mà mic im (bằng chứng không vọng).
         self._quiet_sentences = 0
         self._next_echo_probe_at = 0.0
+        # VAD chính đang trong một đoạn nói (theo cạnh speech_start/speech_end, mọi trạng thái).
+        self._vad_in_speech = False
+        # Ứng viên hiện tại mở lúc bot BẮT ĐẦU nói vì VAD đã đang có tiếng (không có cạnh
+        # speech_start nào nữa). So echo với cả câu bot trước: đuôi vọng của câu trước có thể
+        # là thứ giữ VAD "đang nói".
+        self._rearmed = False
+        self._prev_bot_text = ""
 
     @property
     def state(self) -> InterruptionState:
         return self._state
 
+    @property
+    def call_has_echo(self) -> bool:
+        """Đường truyền của cuộc gọi đã cho thấy tiếng bot vọng lại (đủ để VAD nghe thấy)."""
+        return self._call_has_echo
+
+    @property
+    def bot_asked_question(self) -> bool:
+        """Câu bot đang/vừa đọc kết thúc bằng câu hỏi."""
+        return self._bot_text.rstrip().endswith("?")
+
+    @property
+    def rearmed(self) -> bool:
+        """Ứng viên ngắt lời hiện tại mở lúc bot bắt đầu nói, khi người gọi đang nói dở."""
+        return self._rearmed and self._state == InterruptionState.INTERRUPTION_CANDIDATE
+
     def on_bot_started_speaking(self, bot_text: str = "") -> None:
-        """`bot_text`: câu đầy đủ bot sắp đọc; "" tắt kiểm tra tiếng vọng."""
+        """`bot_text`: câu đầy đủ bot sắp đọc; "" tắt kiểm tra tiếng vọng.
+
+        VAD đang có tiếng lúc bot bắt đầu nói (người gọi nói tiếp trong lúc core trả lời, hoặc
+        đuôi tiếng vọng câu trước): không có cạnh speech_start nào tới nữa, nên mở ứng viên ngay.
+        Trước đây cả câu bot không có ứng viên — lời người gọi bị bỏ, không ngắt lời được."""
+        self._prev_bot_text = self._bot_text
         self._state = InterruptionState.BOT_SPEAKING
         self._candidate_started_at = None
         self._stability = StabilityVerdict.UNKNOWN
@@ -157,6 +211,11 @@ class InterruptionController:
         self._bot_levels = []
         self._bot_pcm_tail = b""
         self._next_echo_probe_at = self._bot_started_at + _ECHO_PROBE_MIN_SPAN_S
+        self._rearmed = self._vad_in_speech
+        if self._rearmed:
+            self._state = InterruptionState.INTERRUPTION_CANDIDATE
+            self._candidate_started_at = self._bot_started_at
+            self._heard_from = self._bot_started_at
 
     def on_bot_audio(self, pcm: bytes, sample_rate: int, *, complete: bool = False) -> None:
         """CallBridge nhận thêm audio TTS (PCM16) của câu đang đọc và phát liền mạch từ chunk
@@ -171,10 +230,11 @@ class InterruptionController:
         self._bot_levels.extend(_level_db(data[i : i + hop]) for i in range(0, whole, hop))
         self._bot_pcm_tail = data[whole:]
 
-    def on_caller_audio(self, pcm: bytes) -> None:
-        """STTPipeline đưa mọi frame mic (PCM16) theo thời gian thực, cho `_echo_score`."""
+    def on_caller_audio(self, pcm: bytes, *, is_speech: Optional[bool] = None) -> None:
+        """STTPipeline đưa mọi frame mic (PCM16) theo thời gian thực, cho `_echo_score`.
+        `is_speech`: quyết định của bộ phân loại dùng chung cho frame này (None = không biết)."""
         now = self._clock()
-        self._caller_levels.append((now, _level_db(pcm)))
+        self._caller_levels.append((now, _level_db(pcm), is_speech))
         if (
             self._echo_policy != "text"
             and self._bot_audio_at is not None
@@ -276,7 +336,9 @@ class InterruptionController:
         if self._bot_audio_at is None or self._bot_stopped_at is None:
             return 1.0
         mic = [
-            db for t, db in self._caller_levels if self._bot_audio_at <= t <= self._bot_stopped_at
+            db
+            for t, db, _ in self._caller_levels
+            if self._bot_audio_at <= t <= self._bot_stopped_at
         ]
         if not mic:
             return 1.0
@@ -294,11 +356,12 @@ class InterruptionController:
             return 0.0, 0.0
         stopped = self._bot_stopped_at if self._bot_stopped_at is not None else self._clock()
         start, end = self._bot_audio_at, stopped + _ECHO_MAX_LAG_S
-        caller = [(t, db) for t, db in self._caller_levels if start <= t <= end]
+        caller = [(t, db, sp) for t, db, sp in self._caller_levels if start <= t <= end]
         if not caller:
             return 0.0, 0.0
-        times = np.array([t for t, _ in caller])
-        mic = np.array([db for _, db in caller])
+        last_mic_at = caller[-1][0]
+        times = np.array([t for t, _, _ in caller])
+        mic = np.array([db for _, db, _ in caller])
         active = mic >= mic.min() + _ECHO_ACTIVE_DB
         times, mic = times[active], mic[active]
         if len(mic) < _ECHO_MIN_FRAMES or mic.std() < _ECHO_MIN_SPREAD_DB:
@@ -308,7 +371,7 @@ class InterruptionController:
         played = int((stopped - self._bot_audio_at) / _LEVEL_HOP_S)
         bot = np.array(self._bot_levels[: max(played, 1)])
         bot_active = set(np.flatnonzero(bot >= bot.max() - _BOT_ACTIVE_RANGE_DB).tolist())
-        best, best_index = 0.0, None
+        best, best_index, best_lag = 0.0, None, 0.0
         for lag in np.arange(0.0, _ECHO_MAX_LAG_S + 1e-9, _LEVEL_HOP_S):
             index = np.floor((times - lag - self._bot_audio_at) / _LEVEL_HOP_S).astype(int)
             inside = (index >= 0) & (index < len(bot))
@@ -317,13 +380,25 @@ class InterruptionController:
                 continue
             score = float(np.corrcoef(mic, reference)[0, 1])
             if score > best:
-                best, best_index = score, index[inside]
+                best, best_index, best_lag = score, index[inside], float(lag)
         if best_index is None or not bot_active:
             return best, 0.0
-        return best, len(bot_active.intersection(best_index.tolist())) / len(bot_active)
+        # Chỉ tính frame bot mà tiếng vọng (trễ `best_lag`) đã kịp tới mic: lúc bot vừa dứt lời,
+        # phần cuối câu chưa vọng về, tính cả vào mẫu số thì echo trễ >= 0,6 s không bao giờ đạt
+        # ngưỡng độ phủ (đo 08/10: chỉ 4-6/12 câu chỉ có tiếng vọng được nhận ra).
+        due_until = int(np.floor((last_mic_at - best_lag - self._bot_audio_at) / _LEVEL_HOP_S))
+        due = {i for i in bot_active if i <= due_until}
+        if len(due) < _ECHO_MIN_DUE_FRAMES:
+            return best, 0.0
+        flags = [sp for t, _, sp in caller if sp is not None and t >= start + best_lag]
+        if flags and sum(flags) / len(flags) < _ECHO_MIN_SPEECH_FRACTION:
+            return best, 0.0  # tương quan với tiếng bot nhưng VAD không nghe thấy: không thành chữ
+        return best, len(due.intersection(best_index.tolist())) / len(due)
 
     async def on_speech_started(self, event: VadEvent) -> None:
+        self._vad_in_speech = True
         if self._state == InterruptionState.BOT_SPEAKING:
+            self._rearmed = False
             self._state = InterruptionState.INTERRUPTION_CANDIDATE
             self._candidate_started_at = self._clock()
             self._heard_from = self._candidate_started_at
@@ -362,8 +437,10 @@ class InterruptionController:
 
     async def on_speech_ended_without_confirmation(self) -> None:
         """VAD speech_end khi chưa xác nhận: coi là tiếng động/backchannel, không cancel TTS."""
+        self._vad_in_speech = False
         if self._state != InterruptionState.INTERRUPTION_CANDIDATE:
             return
+        self._rearmed = False
         logger.debug(
             "interruption: candidate reverted without confirmation duration_s=%s",
             self._candidate_duration_s(),
@@ -381,7 +458,10 @@ class InterruptionController:
         duration_s = self._candidate_duration_s()
         if duration_s is None or duration_s < self._min_speech_s:
             return False
-        if not is_meaningful_text(event.text):
+        if not is_meaningful_text(event.text) and not (
+            self._heard_during_final_question()
+            and is_confident_answer_filler(event.text, event.confidence, self._noise_evidence)
+        ):
             return False
         if self._is_echo_of_bot(event.text):
             logger.debug("interruption: REJECTED echo of bot text=%r", event.text)
@@ -392,7 +472,10 @@ class InterruptionController:
             return False
         if self._validator is not None:
             decision = self._validator.evaluate(
-                event.text, noise_evidence=self._noise_evidence, stability=self._stability
+                event.text,
+                noise_evidence=self._noise_evidence,
+                stability=self._stability,
+                confidence=event.confidence,
             )
             logger.debug(
                 "interruption: validator decision=%s text=%r snr_db=%s stability=%s",
@@ -401,11 +484,45 @@ class InterruptionController:
                 snr_db,
                 self._stability,
             )
-            if decision == ValidationDecision.DROP or (
-                decision == ValidationDecision.WAIT and not event.is_final
+            if decision == ValidationDecision.DROP:
+                return False
+            if (
+                decision == ValidationDecision.WAIT
+                and not event.is_final
+                and not self._is_clear_short_reply(event, snr_db, duration_s)
             ):
                 return False
         return True
+
+    def _heard_during_final_question(self) -> bool:
+        """Ứng viên bắt đầu khi bot đang đọc câu hỏi cuối của câu (câu bot kết thúc bằng "?")."""
+        text = self._bot_text.rstrip()
+        if (
+            not text.endswith("?")
+            or self._bot_audio_at is None
+            or self._candidate_started_at is None
+        ):
+            return False
+        cut = max(text.rfind(mark, 0, len(text) - 1) for mark in (". ", "! ", "; ", ": "))
+        first_char = cut + 2 if cut >= 0 else 0
+        if self._bot_audio_complete:
+            total_ms = self._bot_audio_ms
+        else:
+            total_ms = max(self._bot_audio_ms, len(text) * self._ms_per_char)
+        question_at = self._bot_audio_at + total_ms * first_char / len(text) / 1000
+        return self._candidate_started_at >= question_at - _QUESTION_LEAD_S
+
+    @staticmethod
+    def _is_clear_short_reply(
+        event: TranscriptEvent, snr_db: Optional[float], duration_s: float
+    ) -> bool:
+        return (
+            is_short_answer(event.text)
+            and duration_s >= _SHORT_REPLY_MIN_S
+            and snr_db is not None
+            and snr_db >= _SHORT_REPLY_MIN_SNR_DB
+            and (event.confidence is None or event.confidence >= _SHORT_REPLY_MIN_CONFIDENCE)
+        )
 
     def _is_echo_of_bot(self, candidate_text: str) -> bool:
         """ASR thường chỉ nghe được một đoạn của câu bot đang đọc dở, nên so với từng cửa sổ
@@ -418,8 +535,12 @@ class InterruptionController:
         # TTS templates spell "Alo" as one word; ASR can spell the same greeting "A LÔ".
         # Without normalization a complete echoed sentence is longer than the template
         # and bypasses the echo check before the fuzzy comparison even runs.
+        reference = self._bot_text
+        if self._rearmed and self._prev_bot_text:
+            # Ứng viên mở lúc bot bắt đầu nói có thể là đuôi vọng của câu bot trước.
+            reference = f"{self._prev_bot_text} {self._bot_text}"
         candidate = re.sub(r"\ba lô\b", "alo", spoken_words(candidate_text)).split()
-        bot = re.sub(r"\ba lô\b", "alo", spoken_words(self._bot_text)).split()
+        bot = re.sub(r"\ba lô\b", "alo", spoken_words(reference)).split()
         if not candidate or len(candidate) > len(bot):
             return False
         windows = [

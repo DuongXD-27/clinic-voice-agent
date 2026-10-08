@@ -63,3 +63,12 @@ zipformer:
   # đường production hiện tại) trái chiều — sửa 5 câu, hỏng 5 câu ("ĐÚNG KHÔNG" -> "ĐÚNG"),
   # 600 ms cũng vậy. Giữ 300 cho web; ứng viên cho profile điện thoại khi có SIP.
   pre_speech_ms: 300 # ZIPFORMER_PRE_SPEECH_MS
+  # Final chỉ decode tới frame cuối còn là giọng (Silero gắn cờ, hoặc to trong vòng 25 dB đỉnh câu)
+  # + chừng này ms; null = cả ~1,1 s im lặng đuôi như trước 08/10. Đuôi im lặng dài làm câu ngắn
+  # đổi chữ ("BÂY GIỜ" -> "ĐƯỢC", "OK" -> "Ừ/ĐÂY"). 150 ms làm thêm chữ thừa sau tiếng động cuối.
+  final_tail_ms: 300 # ZIPFORMER_FINAL_TAIL_MS
+  # Ngoài pre_speech_ms, lần ngược tối đa chừng này ms tới chỗ năng lượng thật sự bắt đầu
+  # (Silero báo trễ p50 360 ms, p90 720 ms so với điểm năng lượng trên 870 câu thật). null = tắt.
+  # TẮT 08/10: noise-bench bộ web mất lượt (sạch 0 -> 2, office@3 7 -> 10) dù golden-web tốt hơn
+  # (WER 0,120 -> 0,107). Lỗi "mất HỌ VÀ TÊN" ở cuộc gọi thật là do lọc echo, không phải pre-roll.
+  onset_lookback_ms: null # ZIPFORMER_ONSET_LOOKBACK_MS

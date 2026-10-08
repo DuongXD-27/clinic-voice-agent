@@ -237,12 +237,16 @@ async def _collect(agen):
 
 
 class _RejectingGate:
+    enforce = True
+
     def __init__(self) -> None:
         self.seen: list[tuple[int, object]] = []
 
-    def allows(self, pcm: bytes, sample_rate: int, speech_ms) -> bool:
+    def assess(self, pcm: bytes, sample_rate: int, speech_ms):
+        from speech.audio.speaker_gate import SpeakerVerdict
+
         self.seen.append((len(pcm), speech_ms))
-        return False
+        return SpeakerVerdict("block")
 
 
 async def test_turn_rejected_by_speaker_gate_is_not_yielded() -> None:
