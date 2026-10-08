@@ -1,0 +1,217 @@
+{
+  "budget_chars": 5000,
+  "submitted_chars": 3023,
+  "attempts": [
+    {
+      "request": 1,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 875.79
+    },
+    {
+      "request": 2,
+      "chars": 45,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 279.91
+    },
+    {
+      "request": 3,
+      "chars": 162,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 296.88
+    },
+    {
+      "request": 4,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 715.06
+    },
+    {
+      "request": 5,
+      "chars": 45,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 259.95
+    },
+    {
+      "request": 6,
+      "chars": 162,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 288.84
+    },
+    {
+      "request": 7,
+      "chars": 117,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 496.13
+    },
+    {
+      "request": 8,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 695.16
+    },
+    {
+      "request": 9,
+      "chars": 45,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 237.71
+    },
+    {
+      "request": 10,
+      "chars": 162,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 231.08
+    },
+    {
+      "request": 11,
+      "chars": 54,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 227.13
+    },
+    {
+      "request": 12,
+      "chars": 38,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 411.71
+    },
+    {
+      "request": 13,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 773.41
+    },
+    {
+      "request": 14,
+      "chars": 66,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 269.8
+    },
+    {
+      "request": 15,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 658.88
+    },
+    {
+      "request": 16,
+      "chars": 45,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 230.69
+    },
+    {
+      "request": 17,
+      "chars": 162,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 322.32
+    },
+    {
+      "request": 18,
+      "chars": 181,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 582.52
+    },
+    {
+      "request": 19,
+      "chars": 110,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 439.19
+    },
+    {
+      "request": 20,
+      "chars": 79,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 564.78
+    },
+    {
+      "request": 21,
+      "chars": 112,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 647.86
+    },
+    {
+      "request": 22,
+      "chars": 147,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 493.36
+    },
+    {
+      "request": 23,
+      "chars": 147,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 475.33
+    },
+    {
+      "request": 24,
+      "chars": 44,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 236.0
+    },
+    {
+      "request": 25,
+      "chars": 98,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 639.57
+    },
+    {
+      "request": 26,
+      "chars": 45,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 238.4
+    },
+    {
+      "request": 27,
+      "chars": 43,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 223.9
+    },
+    {
+      "request": 28,
+      "chars": 180,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 535.84
+    },
+    {
+      "request": 29,
+      "chars": 105,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 488.25
+    },
+    {
+      "request": 30,
+      "chars": 69,
+      "status": "audio_received",
+      "http_status": 200,
+      "headers_elapsed_ms": 263.25
+    }
+  ],
+  "blocked_requests": 0
+}

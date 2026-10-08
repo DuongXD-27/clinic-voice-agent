@@ -1,0 +1,272 @@
+{
+  "archive": "artifacts/voice-audio.zip",
+  "archive_sha256": "915b90e7ec2bc0be3e6af32436910e87dfc76fa03f4328c43c86c76bdfd3e054",
+  "archive_bytes": 2839729,
+  "code_revision": "e0c2d47c78faa9e2a60f7208e84c568c63500b45",
+  "files": [
+    {
+      "path": "inputs/QA_BOOKING_REQUEST.wav",
+      "bytes": 69710,
+      "sha256": "527621805cacb81370236d62f796ddaba94525f5d9720eb065964aa03659c256",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_BOOKING_REQUEST_clean.wav",
+      "bytes": 41196,
+      "sha256": "f129ff8ed5b74b54c3ec92fee2c1451fbd436233b476bcf6a56e6035d7bf214d",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_CANCEL_EXPLICIT.wav",
+      "bytes": 62884,
+      "sha256": "78e944460ecfc09e312bf17e00f1f7f9ad9c96626238f4b2ca49c431d6acc630",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_RESCHEDULE_REQUEST.wav",
+      "bytes": 60154,
+      "sha256": "964f7b7626034b29e06764eefb9e315cbdfc5d350a60fd4cfb650aaf5585006d",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_SLOT_CONFIRM_EXPLICIT.wav",
+      "bytes": 51962,
+      "sha256": "8c27e15300e4e0de1ca4c6413661d97edf7bbf751b1ed621732445d054ff75f1",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_SLOT_FIRST.wav",
+      "bytes": 58788,
+      "sha256": "fa95ae0f1327554be7d1200b2c5a7eb369dcf28a18fc55240f28f012191ed0f8",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/QA_TRANSFER_HUMAN.wav",
+      "bytes": 58788,
+      "sha256": "67b17b914e9e63d279ca851e59eba738b0b9c03eee8e792e6a5442a960486125",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/STT_CF_01.wav",
+      "bytes": 65614,
+      "sha256": "f8a5c3d99a02e176b4e44fc2ac4fe53af9dcd7e63a5fec33da5f1cd312d338a6",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/STT_DOB_01.wav",
+      "bytes": 106574,
+      "sha256": "75ed5acccc134a5660bbbcbec1a61b32ed6d7701cda12cbe655d9043fa2d4eda",
+      "role": "inputs"
+    },
+    {
+      "path": "inputs/STT_ID_02.wav",
+      "bytes": 49230,
+      "sha256": "468db948d3cb97dc36a2fe6d7fd489023216354e7868c2e372435b14e426de49",
+      "role": "inputs"
+    },
+    {
+      "path": "outputs/booking/0.wav",
+      "bytes": 101682,
+      "sha256": "f005e90dee4750f26d280d15dd1b6c44c18ffc87153166467e71c6a2b75113a0",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/booking/1.wav",
+      "bytes": 43336,
+      "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/booking/2.wav",
+      "bytes": 45296,
+      "sha256": "da2fcebda00ce5a41ff5d365a174e8b85b6fa8cbc889671cd89e1d00eebb2b4e",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/booking/3.wav",
+      "bytes": 170194,
+      "sha256": "56b8e7fd85c4cf4107a7422093c358f5637a94772d49f825b5d28764534f8a35",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/booking/4.wav",
+      "bytes": 104860,
+      "sha256": "f96afa24bd04989ed1e0e4d4f06d025eb1447c20dea5faf814d11d2520a69593",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/booking/5.wav",
+      "bytes": 65892,
+      "sha256": "f92f32939267b0dafce5a44f488a0c1fdbc3fbade9c60eae8a3e60dcc3d5684c",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/cancel/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/cancel/1.wav",
+      "bytes": 43336,
+      "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/cancel/2.wav",
+      "bytes": 142496,
+      "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/cancel/3.wav",
+      "bytes": 43602,
+      "sha256": "75a92a09f96e92d86aad13db50bfbd8accf0e27d10c38a0ecf7d234786502b5e",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/cancel/4.wav",
+      "bytes": 41460,
+      "sha256": "314c39bfa920570f7cbe139cf73c24f3b0182616d681ce44e8daa72eee4b254d",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/confirm/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/confirm/1.wav",
+      "bytes": 43336,
+      "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/confirm/2.wav",
+      "bytes": 142496,
+      "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/confirm/3.wav",
+      "bytes": 114916,
+      "sha256": "cfb4c523e77afe33c57c92e62a5ede879bbd91d6e6bf6c3a24505757dbd02bf7",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/identity/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/identity/1.wav",
+      "bytes": 43336,
+      "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/identity/2.wav",
+      "bytes": 142496,
+      "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/no_answer/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/no_answer/1.wav",
+      "bytes": 151022,
+      "sha256": "d0e0271559e30263d569ec4e8f678b1358808b49db16c9911c12631b7875db08",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/no_answer/2.wav",
+      "bytes": 151022,
+      "sha256": "d0e0271559e30263d569ec4e8f678b1358808b49db16c9911c12631b7875db08",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/no_answer/3.wav",
+      "bytes": 52140,
+      "sha256": "15f3e716864a8fcd640bd2d383576db4851c457ca8f48f2c9f47a1ff9ba4229d",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/1.wav",
+      "bytes": 43336,
+      "sha256": "d1e35a40fbefa00be659163b12480c0307c5039fe6e7d29c0ac61933108765b9",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/2.wav",
+      "bytes": 142496,
+      "sha256": "7a2da634d7588f387592c8acae0799ad6ac29fc3b35871aad1495ad8219d4fa1",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/3.wav",
+      "bytes": 170590,
+      "sha256": "5d67867d44f23411b457717265f7bda34efc9fcd4aeca15173feb6c68fc14532",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/4.wav",
+      "bytes": 107042,
+      "sha256": "0a7cc6c97469b04fde495f3cc0235ac25e837b857f775fc6b272fb0885283b8e",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/reschedule/5.wav",
+      "bytes": 73898,
+      "sha256": "981b98aa8e51b643b5f71d8e1b573ea4bd2c74fd8350c154f378d19273d8c55a",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/transfer/0.wav",
+      "bytes": 110926,
+      "sha256": "221dd655906a31971312b942294d6ff0945889085b1a3ca1769ab0473effe9cb",
+      "role": "outputs"
+    },
+    {
+      "path": "outputs/transfer/1.wav",
+      "bytes": 60272,
+      "sha256": "452bc50d8778a641be4536bff6919e6f9af55c796cbe57acb86e7ab97b23dfdf",
+      "role": "outputs"
+    },
+    {
+      "path": "provenance/audio-manifest.original.json",
+      "bytes": 26701,
+      "sha256": "8c30d95f937a8a7392fe492da679b6dcf5424367e30ee87f21b496f46ab9c13a",
+      "role": "provenance"
+    },
+    {
+      "path": "provenance/replay_real_audio.py",
+      "bytes": 10924,
+      "sha256": "9e2e5d1347e007233976d3e687a1aa6ff660b4a3c27bb59a966513f43c64e7ce",
+      "role": "provenance"
+    },
+    {
+      "path": "provenance/replay_vbee_real.py",
+      "bytes": 15449,
+      "sha256": "5f9b6a55f5e4ed1dae0b42186f61dbe845c2c44201acb7b878d8d483d005aeb9",
+      "role": "provenance"
+    },
+    {
+      "path": "provenance/results.original.json",
+      "bytes": 88814,
+      "sha256": "296b2633e7872e8cd569ea0f52e2d4436cdfd05a1d5dd3f188f3e12b534d4a43",
+      "role": "provenance"
+    }
+  ]
+}

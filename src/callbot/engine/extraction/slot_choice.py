@@ -31,6 +31,7 @@ from callbot.engine.extraction.schema import (
     DayPeriod,
     Field,
     Provenance,
+    QuestionId,
     Relative,
     SlotChoice,
     SlotCriteria,
@@ -347,6 +348,25 @@ def requests_time(transcript: str) -> bool:
     if unaccented:
         rest = [strip_diacritics(w) for w in rest]
     return asked and all(w in _TIME_REQUEST_ALLOWED for w in rest)
+
+
+# Câu hỏi gọi ra mà câu chỉ xin một thời điểm khác lịch là xin đổi lịch: đọc lại lịch, "đổi hay hủy"
+TIME_PROPOSAL_QUESTIONS = frozenset({QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT})
+
+
+def proposed_time(transcript: str, now: datetime) -> Optional[SlotCriteria]:
+    """Câu chỉ xin một thời điểm đọc được: `requests_time`, có tiêu chí, ngày hợp lệ. `None` nếu không phải.
+
+    Tiêu chí CHƯA quy thứ trần về tuần này, để Dialogue đối chiếu với lịch đang đọc ("8 giờ sáng thứ Năm"
+    là nhắc lại lịch thứ Năm, không phải thứ Năm tuần này). IE dùng cùng hàm để biết lượt nào Dialogue tự
+    quyết bằng luật, không cần model.
+    """
+    if not requests_time(transcript):
+        return None
+    criteria = replace(parse_slot_criteria(transcript, now), ordinal=None)
+    if criteria.empty or criteria.date_issue is not None:
+        return None
+    return criteria
 
 
 # Cụm thời gian / thứ tự khung trong câu chọn khung (PRD R-23 v2.1): nhắc lại giờ, ngày hay thứ tự khung là

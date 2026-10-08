@@ -32,6 +32,7 @@ from callbot.engine.extraction.agreement import (
     corrected_tail,
     extract_agreement,
     has_question_cue,
+    mentions_busy,
     slot_answer,
     undecided_request,
 )
@@ -76,6 +77,7 @@ from callbot.engine.extraction.schema import (
     LineSignal,
     Provenance,
     QuestionId,
+    SlotCriteria,
     TurnContext,
 )
 from callbot.engine.extraction.semantic import ReplyKind, SemanticExtractor, SemanticOutcome
@@ -85,7 +87,12 @@ from callbot.engine.extraction.semantic_router import (
     merge_semantic,
     route_semantic,
 )
-from callbot.engine.extraction.slot_choice import extract_slot_choice, without_corrected_part
+from callbot.engine.extraction.slot_choice import (
+    TIME_PROPOSAL_QUESTIONS,
+    extract_slot_choice,
+    proposed_time,
+    without_corrected_part,
+)
 from callbot.engine.extraction.text import (
     clean,
     is_unaccented,
@@ -418,6 +425,7 @@ class InformationExtractor:
 
         # Rule của mọi trường liên quan đã chạy xong: giờ mới thấy được xung đột giữa chúng.
         agreement = _resolve_refusal_inside_reason(question, agreement, cancel_reason)
+        proposal = _time_proposal(ctx, transcript)
         route_reason = route_semantic(
             question_id=question,
             transcript=transcript,
@@ -427,6 +435,7 @@ class InformationExtractor:
             cancel_reason=cancel_reason,
             direction=ctx.direction,
             cancel_promotion=self._cancel_semantic_confirm and self._semantic is not None,
+            exact_time_proposal=proposal is not None and bool(proposal.hours),
         )
         if route_reason is None and _identity_turn_to_read(
             question, transcript, intent, full_name, dob_reading
@@ -466,13 +475,20 @@ class InformationExtractor:
                 # Không có model: vẫn hạ trường đang nghi ngờ như khi model lỗi
                 return merge_semantic(result, None, route_reason, ())
             return result
-        merged, outcome = self._apply_semantic(ctx, result, route_reason)
+        merged, outcome = self._apply_semantic(
+            ctx, result, route_reason, time_proposal=proposal is not None
+        )
         return _keep_cancel_threshold(
             agreement, merged, ctx, outcome, promotion_enabled=self._cancel_semantic_confirm
         )
 
     def _apply_semantic(
-        self, ctx: TurnContext, result: ExtractionResult, route_reason: RouteReason
+        self,
+        ctx: TurnContext,
+        result: ExtractionResult,
+        route_reason: RouteReason,
+        *,
+        time_proposal: bool = False,
     ) -> tuple[ExtractionResult, Optional[SemanticOutcome]]:
         """Một lần gọi model cho cả lượt; kết quả hợp nhất theo bảng quyền ở `semantic.merge`.
 
@@ -484,7 +500,10 @@ class InformationExtractor:
         except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
             logger.warning("Tầng ngữ nghĩa lỗi, dùng kết quả thận trọng", exc_info=False)
             outcome = None
-        return merge_semantic(result, outcome, route_reason, context.allowed_intents), outcome
+        merged = merge_semantic(
+            result, outcome, route_reason, context.allowed_intents, time_proposal=time_proposal
+        )
+        return merged, outcome
 
     # --- Từng trường có tuyến sau ------------------------------------------------
 
@@ -640,6 +659,20 @@ _CLEAR_CANCEL_AFTER = frozenset(
 )
 _CLEAR_CANCEL_BEFORE_UNACCENTED = frozenset(strip_diacritics(w) for w in _CLEAR_CANCEL_BEFORE)
 _CLEAR_CANCEL_AFTER_UNACCENTED = frozenset(strip_diacritics(w) for w in _CLEAR_CANCEL_AFTER)
+
+
+def _time_proposal(ctx: TurnContext, transcript: str) -> Optional[SlotCriteria]:
+    """Câu đọc lịch / "đổi hay hủy" gọi ra chỉ xin một thời điểm: tiêu chí đó, như Dialogue đọc
+    (`_proposes_other_time`). Câu có báo bận thì không tính, như Dialogue."""
+    if (
+        ctx.direction != "outbound"
+        or ctx.question_id not in TIME_PROPOSAL_QUESTIONS
+        or mentions_busy(transcript)
+    ):
+        return None
+    return proposed_time(transcript, ctx.now)
+
+
 # Từ đi kèm lời khai tên / ngày sinh. Lượt định danh còn từ nào ngoài các từ này (sau khi bỏ tên và
 # vùng ngày sinh) mà không phải yêu cầu hủy rõ ràng là người gọi nói thêm điều khác: bỏ yêu cầu hủy
 # đã giữ, thay vì cố liệt kê mọi cách đổi ý ("tôi đổi ý rồi", "thôi vẫn đi khám", "để tôi nghĩ lại").
