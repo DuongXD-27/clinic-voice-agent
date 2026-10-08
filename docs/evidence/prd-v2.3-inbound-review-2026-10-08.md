@@ -37,3 +37,20 @@ tuyến chuyển người thật trước PSTN. Sửa ASR riêng: sửa thời �
 Review này không đổi source/runtime, không gọi API speech hoặc chạy thêm cuộc gọi.
 Bằng chứng:
 [booking-tls-repeat-two-transferred.json](../../result/08-10-2026/sip-baseline/booking-tls-repeat-two-transferred.json).
+
+## Kiểm tra lại sau khi cập nhật main
+
+Theo yêu cầu người dùng, đã fetch `origin/main` tại `4dec75d` (PR #100: sửa đổi lịch)
+và merge không xung đột vào nhánh baseline tại `9004b0c`. Không có commit mới sửa
+nhánh định danh. Replay Core thật với FakeClinicAPI và Redis cô lập trong bộ nhớ:
+caller nói “Tôi tên là Nguyễn Văn An”, hồ sơ “Nguyễn Văn A”, chưa khai DOB; ngay
+lượt 1 trả `ENDED/TRANSFERRED/PATIENT_NOT_FOUND`, không ghi Clinic. Ca này vẫn
+**không đạt R-40/GC-ID-04 của PRD 2.3**.
+
+956 kiểm thử định danh, slot filling, reschedule, semantic extraction và LiveKit/token
+pass; hai cảnh báo deprecation. Ruff trên source liên quan và diff whitespace pass.
+Các kiểm thử cũ pass không phủ định kết quả ca đối chiếu PRD. Không gọi API speech
+hoặc chạy cuộc gọi mới trong việc kiểm tra lại.
+
+Bằng chứng:
+[latest-main-identity-recheck.json](../../result/08-10-2026/sip-baseline/latest-main-identity-recheck.json).
