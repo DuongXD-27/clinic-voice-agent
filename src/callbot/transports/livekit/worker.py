@@ -81,6 +81,7 @@ async def entrypoint(ctx: JobContext) -> None:
         input_queue_ms=livekit_settings.input_queue_ms,
         output_queue_ms=livekit_settings.output_queue_ms,
         caller_identity=participant.identity,
+        is_sip=call.is_sip,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
         on_close=(

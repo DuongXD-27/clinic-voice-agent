@@ -70,7 +70,15 @@ def main():
                 for appointment in db.appointments.values()
                 if appointment.status in {"SCHEDULED", "BOOKED", "CONFIRMED"}
             }
-            tomorrow = (datetime.now(timezone(timedelta(hours=7))) + timedelta(days=1)).replace(
+            now = datetime.now(timezone(timedelta(hours=7)))
+            # Snapshots may have been made days earlier. Expired, unreserved slots
+            # must not remain available or prevent regeneration of baseline IDs.
+            db.slots = {
+                slot_id: slot
+                for slot_id, slot in db.slots.items()
+                if slot_id in reserved or datetime.fromisoformat(slot.start_time) > now
+            }
+            tomorrow = (now + timedelta(days=1)).replace(
                 hour=10, minute=0, second=0, microsecond=0
             )
             added = 0

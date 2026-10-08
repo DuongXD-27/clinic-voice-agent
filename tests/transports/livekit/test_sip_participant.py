@@ -70,15 +70,32 @@ async def test_hangup_removes_only_caller_and_skips_already_disconnected():
     assert remove.await_count == 1
 
 
-async def test_hangup_api_failure_is_visible():
+async def test_hangup_api_failure_deletes_dedicated_room():
+    delete_room = AsyncMock()
     ctx = SimpleNamespace(
         room=SimpleNamespace(name="sip-booking", remote_participants={"sip-caller": object()}),
         api=SimpleNamespace(
             room=SimpleNamespace(remove_participant=AsyncMock(side_effect=ConnectionError))
         ),
+        delete_room=delete_room,
     )
-    with pytest.raises(ConnectionError):
-        await hangup_sip_caller(ctx, "sip-caller")
+    await hangup_sip_caller(ctx, "sip-caller")
+    delete_room.assert_awaited_once()
+
+
+async def test_hangup_ignores_not_found_race(monkeypatch):
+    class TwirpError(Exception):
+        code = participant_module.api.TwirpErrorCode.NOT_FOUND
+
+    monkeypatch.setattr(participant_module.api, "TwirpError", TwirpError)
+    delete_room = AsyncMock()
+    ctx = SimpleNamespace(
+        room=SimpleNamespace(name="sip-booking", remote_participants={"sip-caller": object()}),
+        api=SimpleNamespace(room=SimpleNamespace(remove_participant=AsyncMock(side_effect=TwirpError()))),
+        delete_room=delete_room,
+    )
+    await hangup_sip_caller(ctx, "sip-caller")
+    delete_room.assert_not_awaited()
 
 
 @pytest.mark.parametrize("caller_disconnects", [False, True])
@@ -166,6 +183,7 @@ async def test_worker_maps_caller_and_hangs_up_after_bridge_playout(monkeypatch,
 
     class Bridge:
         def __init__(self, *args, **kwargs):
+            assert kwargs["is_sip"] == (kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP)
             assert kwargs["caller_number"] == ("+84912345600" if kind == 3 else "0912345600")
             assert kwargs["direction"] == "inbound"
             self.on_close = kwargs["on_close"]
