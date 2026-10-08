@@ -171,5 +171,11 @@
     ],
     "worker_received_jobs": 0,
     "recovery": "Closed installed Linphone and brought configured Linphone 5 baseline to foreground; live retry pending."
+  },
+  "superseding_prd_review": {
+    "version": "2.3",
+    "date": "2026-10-07",
+    "finding": "Both calls violate R-40/GC-ID-04: name mismatch must ask missing DOB before transfer. Previous contract_rule field describes outdated implementation, not current PRD.",
+    "reference": "docs/evidence/prd-v2.3-inbound-review-2026-10-08.md"
   }
 }

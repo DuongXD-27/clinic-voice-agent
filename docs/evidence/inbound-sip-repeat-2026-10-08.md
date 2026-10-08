@@ -1,5 +1,9 @@
 # Kiểm tra ba booking live liên tiếp, 08/10/2026
 
+> Cập nhật sau khi đọc PRD 2.3: kết luận dựa vào R-40 của stage1 dưới đây đã cũ.
+> PRD yêu cầu tên không khớp vẫn hỏi DOB trước khi chuyển, nên hai cuộc 12:05–12:07
+> **không đạt R-40/GC-ID-04**. Xem [review PRD](prd-v2.3-inbound-review-2026-10-08.md).
+
 ## Trạng thái
 
 **Chưa đạt ba BOOKED liên tiếp. Phiên UDP đầu thiếu downlink; sau khi TLS khôi phục
