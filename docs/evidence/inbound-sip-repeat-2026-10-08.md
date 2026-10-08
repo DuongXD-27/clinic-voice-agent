@@ -109,13 +109,53 @@ acknowledgement đã nghe hết ở softphone.
 drain trước BYE của caller SIP, rồi kiểm tra lại caller còn trong room. Browser không có
 callback SIP nên không thêm thời gian này. Kiểm thử đảm bảo chưa gửi removal khi đang
 đợi, caller tự ngắt trong khoảng đệm không bị remove lại, lỗi removal vẫn được báo rõ.
-75 kiểm thử LiveKit/transport/token và Ruff lint/format pass; chưa nghe lại lời cuối live
-trên bản sửa này. Một khoảng đệm hữu hạn không chứng minh playback acknowledgement.
+75 kiểm thử LiveKit/transport/token và Ruff lint/format pass. Hai cuộc thực tiếp theo
+đã đi qua khoảng đệm và RemoveParticipant thành công, nhưng người gọi chưa xác nhận
+đã nghe trọn câu cuối. Một khoảng đệm hữu hạn không chứng minh playback acknowledgement.
 
 Worker booking thật mới `AW_t8Hk6FwNbxwV` (PID 17332) đã đăng ký với bản sửa và log
 ASR riêng cho chẩn đoán local. Không bật transcript logging ở worker production trong
-source. Fixture vẫn “Nguyễn Văn A”; đang chờ chọn hướng debug ASR hay dùng tên mock
-đầy đủ “Nguyễn Văn An” trước khi chạy lại chuỗi booking.
+source. Fixture vẫn “Nguyễn Văn A”, không đổi thành “Nguyễn Văn An” để vượt gate.
+
+## Hai cuộc TLS thực trên bản sửa grace
+
+Đợt thử mới bắt đầu lúc 11:55:52, commit `18fc43e`. Hai lần gọi 11:59 và 12:00
+từ bản Linphone cài ở Program Files có caller `vinmec-callbot`, bị SIP 407: Cloud ghi
+`auth challenge issued, no authenticated retry received`. Chưa có room hoặc job agent.
+Máy mở song song Linphone cài sẵn và Linphone 5 portable; đã đóng bản cài sẵn, đưa
+Linphone 5 với identity synthetic `+84912345600` ra trước. Hai lần này là lỗi setup,
+không tính thành booking. Không yêu cầu đổi mạng để xử lý lỗi xác thực này.
+
+Hai cuộc sau qua đúng profile TLS, cùng worker và không reset mock:
+
+| Cuộc | Bằng chứng live | Kết quả |
+| --- | --- | --- |
+| 1, 12:05:54–12:06:27, `RM_D2hHHCKHUkFh` | Lượt 1 ASR “TÊN LÀ NGUYỄN VĂN AN”, confidence 0,9995; luật trả `NO_SIGNAL/ABSENT`, hỏi lại tên. Lượt 2 “TÔI TÊN LÀ NGUYỄN VĂN AN”, confidence 0,8329; tên `PRESENT`, đối chiếu `MISMATCH`. | `TRANSFERRED`, không tạo record; caller báo sai tên cả hai lượt. |
+| 2, 12:06:42–12:07:04, `RM_iEzxJSvuvDUt` | Lượt 1 ASR “TÔI TÊN LÀ NGUYỄN VĂN AN”, confidence 0,9598; tên `PRESENT`, đối chiếu `MISMATCH`. | `TRANSFERRED` ngay, không hỏi lại, không tạo record; caller cho rằng thiếu hỏi lại là sai contract. |
+
+Đây là transcript live từ worker chẩn đoán, không phải suy luận từ decode offline.
+Replay thuần luật trên transcript và confidence cho đúng các trạng thái trên.
+Sự khác nhau nằm ở trạng thái tên `ABSENT` và `PRESENT + MISMATCH`; chưa có bằng
+chứng bộ đếm hỏi lại bị mang từ cuộc trước sang cuộc sau. Tài liệu yêu cầu hiện tại
+[R-40](../reference/stage1-requirements-2026-10-02.md) ghi chuyển ngay khi không khớp,
+chỉ hỏi mở lại tên thiếu/nhiều giá trị/chưa chắc hoặc nghi ngờ. Cần đối chiếu điều khoản
+contract người gọi đang sử dụng trước khi thay chính sách này. Không coi tài liệu nội
+bộ là bản contract gốc đã được xác minh độc lập.
+
+Hai cuộc đều log đợi 2000 ms rồi RemoveParticipant thành công. Không có record mới;
+record SCHEDULED ban đầu giữ nguyên. Đã dừng collector và capture sau hai cuộc lỗi,
+không chạy cuộc thứ ba. Gate vẫn **0/3 BOOKED**, chưa xác nhận playback lời cuối trên
+handset hoặc BYE/200 của hai cuộc này từ PCAP Cloud.
+
+Đã chạy thêm 140 kiểm thử identity dialogue/name slot status: pass, hai cảnh báo
+deprecation. Thử offline trên ba cửa sổ audio caller RTP bằng `greedy_search` và
+`modified_beam_search` (4 paths), cùng model, không cung cấp tên hồ sơ/hotwords:
+cả hai decoder đều ra “Nguyễn Văn An”. Cửa sổ RTP không đồng nhất input VAD live;
+kết quả này chỉ chứng minh đổi decoder đó chưa sửa được lỗi trên mẫu đã thu.
+Không đổi decoder production, không nới xác thực, không gọi API speech cho phép thử này.
+
+Bằng chứng:
+[booking-tls-repeat-two-transferred.json](../../result/08-10-2026/sip-baseline/booking-tls-repeat-two-transferred.json).
 
 ## Phần cần xác minh
 
