@@ -438,7 +438,7 @@ def test_a_merge_that_always_promotes_still_cannot_cancel_sf05(
     """Bảng quyền bị đổi sai sau này (luôn nâng) thì chốt vẫn tự kiểm chứng và hạ UNCLEAR."""
     import callbot.engine.extraction.extractor as extractor_module
 
-    def promoting(result, outcome, route_reason, allowed):
+    def promoting(result, outcome, route_reason, allowed, **_kwargs):
         return extractor_module.replace(
             result, agreement=Field(Agreement.AGREE, Provenance.FALLBACK, span=outcome.reply_span)
         )
