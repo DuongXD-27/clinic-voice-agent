@@ -91,7 +91,9 @@ async def test_hangup_ignores_not_found_race(monkeypatch):
     delete_room = AsyncMock()
     ctx = SimpleNamespace(
         room=SimpleNamespace(name="sip-booking", remote_participants={"sip-caller": object()}),
-        api=SimpleNamespace(room=SimpleNamespace(remove_participant=AsyncMock(side_effect=TwirpError()))),
+        api=SimpleNamespace(
+            room=SimpleNamespace(remove_participant=AsyncMock(side_effect=TwirpError()))
+        ),
         delete_room=delete_room,
     )
     await hangup_sip_caller(ctx, "sip-caller")

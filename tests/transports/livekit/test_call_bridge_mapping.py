@@ -208,8 +208,12 @@ async def test_sip_call_id_does_not_contain_phone_from_room_name(monkeypatch, ca
     room = _FakeRoom("sip-booking-_+84912345600_random")
     orchestrator = _FakeOrchestrator(BotAction("Chào", "ENDED", ended=True), [])
     bridge = make_call_bridge(
-        room, orchestrator, _FakeSTTPipeline([]), _FakeTTS(),
-        caller_identity="sip-caller", is_sip=True,
+        room,
+        orchestrator,
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+        is_sip=True,
     )
 
     async def publish_track():
