@@ -1,6 +1,9 @@
 """Static hits must avoid paid TTS; invalid/unapproved inputs must never hit."""
 
 import json
+import logging
+from fnmatch import fnmatch
+from pathlib import PurePosixPath
 
 import pytest
 from scripts import tts_build_static as build
@@ -102,7 +105,7 @@ def test_configuration_change_misses_entire_previous_release(field, value):
 @pytest.mark.parametrize(
     "defect", ["missing", "checksum", "rate", "truncated", "path", "unapproved", "text"]
 )
-def test_invalid_asset_falls_back_to_exact_requested_text(small_release, defect):
+def test_invalid_asset_falls_back_to_exact_requested_text(small_release, defect, caplog):
     folder, manifest, *_ = small_release
     entry = manifest["assets"][0]
     text = entry["utterance"]
@@ -126,7 +129,9 @@ def test_invalid_asset_falls_back_to_exact_requested_text(small_release, defect)
     elif defect == "text":
         entry["utterance"] += " sửa"
     (folder / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    store = StaticAudioCache(folder, manifest["audio_config"])
+    with caplog.at_level(logging.ERROR, logger="speech.tts.static_cache"):
+        store = StaticAudioCache(folder, manifest["audio_config"])
+    assert "TTS_STATIC_ASSETS_SKIPPED: 1/2" in caplog.text
     assert store.lookup(text) is None
     assert store.lookup(manifest["assets"][1]["utterance"]) is not None
     provider = CountingProvider(manifest["audio_config"])
@@ -175,6 +180,44 @@ async def test_cache_cancel_stops_chunks_and_old_cleanup_does_not_cancel_new_str
     assert [c async for c in new] == []
     assert not provider.calls and not fallback.calls
     assert provider.cancel_calls == fallback.cancel_calls == 0
+
+
+@pytest.mark.parametrize("problem", ["missing", "mismatch"])
+def test_unusable_release_is_reported_as_an_error(tmp_path, caplog, problem):
+    identity = release_manifest()["audio_config"]
+    if problem == "mismatch":
+        (tmp_path / "manifest.json").write_bytes((RELEASE / "manifest.json").read_bytes())
+        identity = {**identity, "voice": "other-voice"}
+    with caplog.at_level(logging.ERROR, logger="speech.tts.static_cache"):
+        assert not len(StaticAudioCache(tmp_path, identity))
+    expected = "UNAVAILABLE" if problem == "missing" else "MISMATCH"
+    assert f"TTS_STATIC_MANIFEST_{expected}" in caplog.text
+
+
+def test_docker_image_ships_the_configured_release():
+    """Thiếu audio trong image không lỗi ở request nào, chỉ âm thầm gọi Vbee: chặn ngay ở CI."""
+    root = RELEASE.parents[3]
+    directory = PurePosixPath(StaticCacheSettings(_env_file=None).directory)
+    assert not directory.is_absolute() and (root / directory / "manifest.json").is_file()
+    copies = [
+        line.split()[1:]
+        for line in (root / "Dockerfile").read_text(encoding="utf-8").splitlines()
+        if line.startswith("COPY ") and "--from" not in line
+    ]
+    # WORKDIR /app và CALLBOT_CONFIG_DIR=/app/config: thư mục tương đối tính từ /app
+    assert any(
+        len(args) == 2
+        and directory.is_relative_to(args[0])
+        and PurePosixPath(args[1]) == PurePosixPath(args[0])
+        for args in copies
+    ), "Dockerfile phải COPY thư mục release TTS tĩnh vào /app"
+    ignored = [
+        line.strip().rstrip("/")
+        for line in (root / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith(("#", "!"))
+    ]
+    parents = [str(directory), *(str(p) for p in directory.parents if str(p) != ".")]
+    assert not [p for p in ignored for path in parents if fnmatch(path, p)]
 
 
 def test_disabled_and_other_provider_keep_original_gateway_path():

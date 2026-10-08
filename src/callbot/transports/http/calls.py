@@ -466,6 +466,18 @@ def _extraction_fields(extraction: Optional[dict[str, Any]]) -> Optional[str]:
     return quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), safe="")
 
 
+def _static_audio_url(speech: SpeechBundle, segment: Any) -> Optional[str]:
+    """Câu tĩnh trúng cache: trỏ thẳng audio đã duyệt trong RAM, không chép WAV mỗi lượt.
+
+    Cùng câu và cấu hình luôn cùng URL, nên retry cùng lượt vẫn nhận đúng audio của utterance.
+    """
+    key = getattr(segment, "cache_key", None)
+    cache = getattr(speech.tts, "static_cache", None)
+    if not getattr(segment, "cache_hit", False) or key is None or cache is None:
+        return None
+    return speech.audio_store.static_url(key) if cache.wav(key) is not None else None
+
+
 def _synthesize(
     tracer: Tracer, speech: SpeechBundle, call_id: str, turn: int, text: str
 ) -> Optional[str]:
@@ -520,6 +532,9 @@ def _synthesize(
         )
         if cost is not None:
             span.enrich(cost_usd=cost)
+        static_url = _static_audio_url(speech, segment)
+        if static_url is not None:
+            return static_url
         try:
             url = speech.audio_store.save(call_id, turn, segment)
             speech.audio_store.remember_utterance(call_id, turn, text)

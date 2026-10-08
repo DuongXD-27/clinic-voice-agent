@@ -163,7 +163,7 @@ Build chỉ ghi thành công khi WAV có frames > 0, PCM16 mono 8 kHz, checksum 
 
 **Đã thực hiện 08/10 trên nhánh đang làm:** `src/speech/tts/static_cache.py` đọc manifest release và kiểm text/hash/cấu hình/PASS/WAV/checksum khi khởi tạo. Store giữ PCM bất biến trong RAM, dùng chung giữa các bundle trong một process. `SpeechSynthesizer` dùng store cho cả sync HTTP và stream LiveKit; miss tiếp tục gateway/fallback hiện có. File thiếu/hỏng lúc nạp không được phát. Thay release cần restart để nạp lại PCM đã kiểm.
 
-HTTP vẫn lưu WAV theo call/turn để URL tải được ngay và giữ retry artifact. LiveKit phát chunk PCM 20 ms, có cơ hội huỷ trước mỗi chunk; state huỷ riêng từng lượt và CallBridge vẫn xả queue khi nói chen. Span ở cả hai transport ghi `cache_hit`, khóa/cache version và `billed_characters=0`, `cost_usd=0` trên hit; không suy số điểm billed cho câu động.
+HTTP: câu trúng cache trả `audio_url` dạng `/audio-static/<cache_key>.wav`, phục vụ thẳng WAV đã kiểm checksum từ RAM, không ghi file theo lượt; cùng câu luôn cùng URL nên retry vẫn đúng. Câu miss vẫn lưu WAV theo call/turn như cũ. LiveKit phát chunk PCM 20 ms, có cơ hội huỷ trước mỗi chunk; state huỷ riêng từng lượt và CallBridge vẫn xả queue khi nói chen. Span ở cả hai transport ghi `cache_hit`, khóa/cache version và `billed_characters=0`, `cost_usd=0` trên hit; không suy số điểm billed cho câu động.
 
 `TTS_STATIC_ENABLED=false` tắt cache; `TTS_STATIC_DIRECTORY` chọn phiên bản khác. Thay nguyên văn hoặc voice/speed/rate/bitrate/encoding/schema sẽ miss. `Dockerfile` đóng cùng kho audio vào image của hai service; không tải file audio qua mạng trong request. Chưa thực hiện deploy hoặc restart service đang chạy.
 
@@ -181,7 +181,7 @@ flowchart LR
 ```
 
 1. Store `src/speech/tts/static_cache.py` được truyền vào `SpeechSynthesizer` trong `src/speech/bundle.py`; không đưa logic câu thoại vào transport.
-2. Sync: exact match + cấu hình + asset valid → `AudioSegment` từ PCM có metadata cache; miss/lỗi đọc/hash sai → gateway synthesize đúng text. Giữ `AudioArtifactStore.save()` để HTTP có URL theo call/turn sẵn sàng ngay, giữ cache retry đang có.
+2. Sync: exact match + cấu hình + asset valid → `AudioSegment` từ PCM có metadata cache; miss/lỗi đọc/hash sai → gateway synthesize đúng text. Hit trả URL tĩnh `/audio-static/<cache_key>.wav` (sửa theo review 08/10); miss giữ `AudioArtifactStore.save()` và cache retry theo call/turn.
 3. Stream: cùng lookup; hit → decode WAV header trước, yield PCM theo chunk phù hợp (ví dụ 20 ms = 320 byte ở 8 kHz PCM16), chừa cơ hội scheduler/cancel giữa chunk; không bơm toàn bộ câu một lượt vào queue. AudioSource vẫn lo nhịp phát và backpressure.
 4. Mỗi lượt có handle/cờ huỷ riêng; cancel cache không ảnh hưởng lượt mới. Tiếp tục `clear_queue()` tại CallBridge khi nói chen. Cache không đổi logic partial turn/receipt.
 5. Cache hit không gọi provider hay fallback; miss theo luồng hiện có. Tắt tính năng bằng cờ cấu hình phải trở về đường đang chạy. Không tự ghi mọi câu động vào cache dùng chung trong giai đoạn đầu.
@@ -283,3 +283,12 @@ Bảng dưới giữ nguyên mẫu trước sửa để đối chiếu; không d
 - Tập ba câu hữu hạn không tự chứng minh GC-NAT-03 cho mọi cuộc gọi: khi cả ba đã dùng, selector quay vòng và tránh câu bot gần nhất. Cần audit các đường đạt được và nghe cuộc gọi mẫu; không đánh dấu R-42/task 05/10 Done ở giai đoạn này.
 - R-29: câu báo đổi xong đã đọc cơ sở từ slot nguồn; bổ sung khoa từ dữ liệu ghi tin cậy vẫn là thay đổi nguồn/guard riêng ở Bước B.4. Không suy đoán khoa từ ID slot. Phần này cần hoàn tất trước khi nghiệm thu đầy đủ R-29.
 - Tiếp theo: hoàn thiện audit đủ 7 kịch bản và liệt kê câu ghép im lặng; nghe renderer/các câu ghép cần bổ sung. Kho 73 câu cố định đã được Hưng xác nhận nghe đạt và có `listening_status=PASS` trong manifest release.
+
+## 10. Xử lý review 08/10
+
+Review đọc commit `3f3f4a4` (plan 07/10). Các ý về số liệu cũ, `*_VERIFY_FIRST`, biến thể câu chào và `GOODBYE_UNREACHABLE` hứa gọi lại đã được xử lý trong `77be770`.
+
+- **Độ dài < 300 trên toàn registry:** `tests/engine/test_utterance_length.py` quét 76 câu tĩnh và cả 15 renderer trên toàn bộ lịch/slot seed của Clinic Mock x 3 cơ sở, thêm ngày giờ dài nhất ("12 giờ 45 chiều, Chủ nhật ngày 27 tháng 12"), và ghép nhắc im lặng với mọi câu. Renderer mới chưa khai báo miền dữ liệu làm test fail. Dài nhất hiện tại: SILENCE_REPROMPT 276, OFFER_SLOTS 241 ký tự. Các test cũ thống nhất ngưỡng `< 300`.
+- **Audio thiếu trong image:** test kiểm `Dockerfile` COPY đúng thư mục release đang cấu hình và `.dockerignore` không loại nó. Không nạp được manifest, cấu hình lệch, hoặc nạp thiếu asset giờ ghi `logger.error` (`TTS_STATIC_MANIFEST_UNAVAILABLE`, `TTS_STATIC_MANIFEST_MISMATCH`, `TTS_STATIC_ASSETS_SKIPPED`) thay vì warning.
+- **HTTP chép WAV mỗi lượt khi trúng cache:** trước đây mỗi hit vẫn mã hoá và ghi WAV + file hash theo call/turn (đo ~3,5 ms, 59 KB/lượt). Giờ hit trả `/audio-static/<cache_key>.wav`: route công khai như `/audio/*`, trả bytes WAV đã kiểm checksum từ RAM, `Cache-Control: immutable`; cache key lạ, sai định dạng hoặc `manifest.json` trả 404. Câu động không đổi.
+- **Còn mở:** `_rounds_exhausted()` dùng chung cho đặt lịch mới nên nói "Lịch cũ của anh chị vẫn giữ nguyên" với người chưa có lịch (đã tái hiện: inbound đặt lịch, hết 2 vòng). Sửa cùng đợt sửa logic BOOK; cần 2 câu tĩnh mới và release audio mới.

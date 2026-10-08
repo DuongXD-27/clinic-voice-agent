@@ -54,6 +54,10 @@ class SpeechSynthesizer:
         self._stream: _SynthesizerStream | None = None
 
     @property
+    def static_cache(self) -> StaticAudioCache | None:
+        return self._static_cache
+
+    @property
     def last_stream_result(self):
         return self._stream.info if self._stream is not None else None
 

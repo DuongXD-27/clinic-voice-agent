@@ -31,6 +31,8 @@ class StaticCacheSettings(YamlSettings):
 class StaticAudioCache:
     def __init__(self, directory: Path, identity: dict):
         self._audio: dict[str, AudioSegment] = {}
+        # Checksum-verified release WAV by cache key: HTTP serves it as is, no per-turn copy.
+        self._wav: dict[str, bytes] = {}
         self.catalog_version: str | None = None
         try:
             manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
@@ -40,7 +42,8 @@ class StaticAudioCache:
                 or manifest["status"] != "RELEASED"
                 or manifest["audio_config"] != identity
             ):
-                logger.warning("TTS_STATIC_MANIFEST_MISMATCH")
+                # Whole release unusable: every fixed utterance falls back to the paid provider.
+                logger.error("TTS_STATIC_MANIFEST_MISMATCH: release not used for this TTS config")
                 return
             version = manifest["catalog_version"]
             if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", version):
@@ -55,9 +58,17 @@ class StaticAudioCache:
                     self._load_entry(directory, identity, entry)
                 except (OSError, ValueError, KeyError, TypeError, wave.Error, EOFError):
                     logger.warning("TTS_STATIC_ASSET_INVALID")
+            if len(self._audio) < len(entries):
+                logger.error(
+                    "TTS_STATIC_ASSETS_SKIPPED: %d/%d assets unusable in %s",
+                    len(entries) - len(self._audio),
+                    len(entries),
+                    version,
+                )
             logger.info("TTS static catalog %s: %d verified assets", version, len(self._audio))
-        except (OSError, ValueError, KeyError, TypeError):
-            logger.warning("TTS_STATIC_MANIFEST_UNAVAILABLE")
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            # Missing in the image/deploy: no error surfaces per request, only provider cost.
+            logger.error("TTS_STATIC_MANIFEST_UNAVAILABLE: %s", type(exc).__name__)
 
     def _load_entry(self, directory: Path, identity: dict, entry: dict) -> None:
         text = entry["utterance"]
@@ -103,9 +114,13 @@ class StaticAudioCache:
             catalog_version=self.catalog_version,
             billed_characters=0,
         )
+        self._wav[entry["cache_key"]] = raw
 
     def lookup(self, text: str) -> AudioSegment | None:
         return self._audio.get(text)
+
+    def wav(self, cache_key: str) -> bytes | None:
+        return self._wav.get(cache_key)
 
     def __len__(self) -> int:
         return len(self._audio)

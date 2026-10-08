@@ -34,6 +34,7 @@ def test_static_audio_is_ready_across_calls_and_turns_with_zero_provider_cost(
         call_mode_factory=_call_mode_factory(redis_server),
         tracer_factory=lambda: _tracer(sink),
     )
+    static_urls = []
     with TestClient(app) as client:
         for completed_calls, call_id in enumerate(("static-cache-call-a", "static-cache-call-b")):
             opening = _start(client, call_id, mode="audio")
@@ -43,10 +44,16 @@ def test_static_audio_is_ready_across_calls_and_turns_with_zero_provider_cost(
             assert turn.status_code == 200
             for response in (opening, turn):
                 body = response.json()
-                audio = client.get(urlsplit(body["audio_url"]).path)
-                assert audio.status_code == 200
                 expected = tts._static_cache.lookup(body["utterance"])
                 assert expected is not None
+                path = urlsplit(body["audio_url"]).path
+                # Trúng cache: trỏ audio đã duyệt, không chép WAV theo call/turn
+                assert path == f"/audio-static/{expected.cache_key}.wav"
+                static_urls.append(body["audio_url"])
+                audio = client.get(path)
+                assert audio.status_code == 200
+                assert audio.headers["content-type"] == "audio/wav"
+                assert "immutable" in audio.headers["cache-control"]
                 with wave.open(io.BytesIO(audio.content), "rb") as clip:
                     assert (clip.getframerate(), clip.getnchannels(), clip.getsampwidth()) == (
                         8000,
@@ -60,13 +67,31 @@ def test_static_audio_is_ready_across_calls_and_turns_with_zero_provider_cost(
             assert dynamic.status_code == 200
             assert tts._static_cache.lookup(dynamic.json()["utterance"]) is None
             assert provider.calls[-1] == dynamic.json()["utterance"]
+            # Câu động vẫn ghi WAV theo lượt; lượt tĩnh không để lại file nào
+            assert urlsplit(dynamic.json()["audio_url"]).path == f"/audio/{call_id}/2.wav"
+            assert client.get(f"/audio/{call_id}/2.wav").status_code == 200
+            saved = sorted(p.name for p in (tmp_path / "audio" / call_id).iterdir())
+            assert saved == ["2.sha256", "2.wav"]
         assert len(provider.calls) == 2 and not fallback.calls
         text = _start(client, "static-cache-text-only", mode="text")
         assert text.status_code == 200 and text.json()["audio_url"] is None
         assert len(provider.calls) == 2
+        # Cùng câu chào ở hai cuộc gọi: cùng một URL, retry cùng lượt cũng nhận đúng URL đó
+        assert static_urls[0] == static_urls[2] and static_urls[1] == static_urls[3]
+        assert (
+            _start(client, "static-cache-call-a", mode="audio").json()["audio_url"]
+            == (static_urls[0])
+        )
+        for path in (
+            f"/audio-static/{'0' * 64}.wav",
+            "/audio-static/manifest.json",
+            "/audio-static/ABC.wav",
+            f"/audio-static/{RELEASE.name}/manifest.json",
+        ):
+            assert client.get(path).status_code == 404
     spans = [s for s in sink.spans if s.component == "TTS"]
     hits = [s for s in spans if s.attributes.get("cache_hit") is True]
-    assert len(hits) == 4
+    assert len(hits) == 5  # 2 cuộc x (chào + lượt 1) + retry lời chào: tra lại RAM, cost 0
     for span in hits:
         assert span.attributes["cost_usd"] == 0
         assert span.attributes["billed_characters"] == 0

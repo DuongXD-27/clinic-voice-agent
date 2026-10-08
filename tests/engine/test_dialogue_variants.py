@@ -172,7 +172,7 @@ def test_fixed_attendance_readbacks_are_guarded_and_have_the_same_facts(render, 
         text = render(ctx, APPOINTMENT)
     assert "Nội tổng quát" in text
     assert t.attendance_facts(APPOINTMENT) in text
-    assert text.endswith(ending) and len(text) <= 300
+    assert text.endswith(ending) and len(text) < 300
     action = _ask(ctx, QuestionId.CONFIRM_READBACK, text, action="CONFIRM")
     assert _check(action, ctx, ledger=ledger).ok
 
@@ -198,7 +198,7 @@ def test_fixed_slot_readback_keeps_selected_slot_and_consent(action_name, render
         if render is t.slot_readback
         else f"Anh chị {'đặt' if action_name == 'BOOK' else 'đổi sang'} giờ đó nhé ạ?"
     )
-    assert text.endswith(ending) and len(text) <= 300
+    assert text.endswith(ending) and len(text) < 300
     action = _ask(
         ctx, QuestionId.SLOT_READBACK, text, action=action_name, slot_id=ctx.selected_slot_id
     )
@@ -225,7 +225,7 @@ def test_all_offers_keep_prefix_page_count_and_invitation(variant):
     assert invited.endswith("Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?")
     for text in (normal, full, invited):
         assert "khung 1: 10 giờ sáng" in text and "khung 2: 2 giờ 30 chiều" in text
-        assert len(text) <= 300
+        assert len(text) < 300
 
 
 def test_confirm_after_repeat_silence_and_worker_restart_writes_once(variant):
