@@ -455,9 +455,7 @@ class DialogueManager:
             ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
-                t.appointment_summary(
-                    ctx, appointment, variant=t.choose_variant(ctx, "APPOINTMENT_SUMMARY")
-                ),
+                t.appointment_summary(ctx, appointment),
                 "AWAITING_INTENT",
                 action="CONFIRM",
             )
@@ -516,9 +514,7 @@ class DialogueManager:
                 ask(
                     ctx,
                     QuestionId.CONFIRM_READBACK,
-                    t.attendance_reread(
-                        ctx, appointment, variant=t.choose_variant(ctx, "ATTENDANCE_REREAD")
-                    ),
+                    t.attendance_reread(ctx, appointment),
                     ctx.state,
                     action="CONFIRM",
                 ),
@@ -570,9 +566,7 @@ class DialogueManager:
                     ask(
                         ctx,
                         QuestionId.CONFIRM_READBACK,
-                        t.attendance_readback(
-                            ctx, appointment, variant=t.choose_variant(ctx, "ATTENDANCE_READBACK")
-                        ),
+                        t.attendance_readback(ctx, appointment),
                         "AWAITING_CONFIRMATION",
                         action="CONFIRM",
                     )
@@ -625,7 +619,7 @@ class DialogueManager:
         return ask(
             ctx,
             QuestionId.CANCEL_RECONFIRM,
-            t.cancel_readback(ctx, appointment, variant=t.choose_variant(ctx, "CANCEL_READBACK")),
+            t.cancel_readback(ctx, appointment),
             "AWAITING_CONFIRMATION",
             action="CANCEL",
         )
@@ -987,9 +981,7 @@ class DialogueManager:
             ask(
                 ctx,
                 QuestionId.CONFIRM_READBACK,
-                t.keep_appointment(
-                    ctx, appointment, variant=t.choose_variant(ctx, "KEEP_APPOINTMENT")
-                ),
+                t.keep_appointment(ctx, appointment),
                 "AWAITING_INTENT",
                 action="CONFIRM",
             )
@@ -1155,7 +1147,6 @@ class DialogueManager:
                 action,
                 prefix,
                 full_date,
-                variant=t.choose_variant(ctx, "SLOT_OFFER_READBACK"),
             ),
             "AWAITING_CONFIRMATION",
             action=action,
@@ -1171,7 +1162,7 @@ class DialogueManager:
         return ask(
             ctx,
             QuestionId.SLOT_READBACK,
-            t.slot_readback(ctx, slot, action, variant=t.choose_variant(ctx, "SLOT_READBACK")),
+            t.slot_readback(ctx, slot, action),
             "AWAITING_CONFIRMATION",
             action=action,
             slot_id=slot["slot_id"],

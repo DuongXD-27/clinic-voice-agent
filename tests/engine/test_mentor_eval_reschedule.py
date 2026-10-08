@@ -140,8 +140,8 @@ def test_earlier_never_offers_a_slot_after_the_current_appointment(case: str) ->
 @pytest.mark.parametrize(
     ("line", "expected"),
     [
-        ("Đổi sớm hơn được không em", "ngày 14 tháng 10 còn khung 3 giờ chiều"),
-        ("Muộn hơn chút được không", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
+        ("Đổi sớm hơn được không em", "3 giờ chiều, thứ Tư ngày 14 tháng 10"),
+        ("Muộn hơn chút được không", "10 giờ 30 sáng, thứ Năm ngày 15 tháng 10"),
     ],
 )
 def test_earlier_or_later_at_the_readback_is_a_reschedule_request(line: str, expected: str) -> None:
@@ -157,7 +157,7 @@ def test_request_in_the_identity_turn_is_offered_right_after_verification() -> N
     clinic, bot = _outbound_call("r43-offer")
     action = _run(bot, "r43-offer", CASES["qc-rs-07"].lines[:1])
     assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
-    assert "ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance
+    assert "3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
 
 
 def test_request_with_a_wrong_identity_discloses_nothing() -> None:
@@ -188,7 +188,7 @@ def test_a_request_without_the_identity_is_kept_until_verification() -> None:
     action = _run(bot, "r43-held", ["Nguyễn Văn A", "tôi muốn đổi lịch sang chiều ngày 14"])
     assert action.state == "AWAITING_IDENTITY" and clinic.slot_reads == 0
     action = _run(bot, "r43-held", ["14/03/1978"], start=3)
-    assert "chiều thứ Tư ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance
+    assert "Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
     assert clinic.writes == []
 
 

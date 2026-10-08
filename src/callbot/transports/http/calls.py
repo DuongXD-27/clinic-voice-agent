@@ -502,11 +502,21 @@ def _synthesize(
             voice=getattr(segment, "voice", None),
             ttfa_ms=getattr(segment, "ttfa_ms", None),
             fallback_used=getattr(segment, "fallback_used", False),
+            cache_hit=getattr(segment, "cache_hit", False),
+            cache_key=getattr(segment, "cache_key", None),
+            catalog_version=getattr(segment, "catalog_version", None),
+            billed_characters=getattr(segment, "billed_characters", None),
             audio_format="pcm16",
             result="OK",
         )
-        cost = tts_cost(
-            getattr(segment, "provider_actual", None), getattr(segment, "voice", None), len(text)
+        cost = (
+            0.0
+            if getattr(segment, "cache_hit", False)
+            else tts_cost(
+                getattr(segment, "provider_actual", None),
+                getattr(segment, "voice", None),
+                len(text),
+            )
         )
         if cost is not None:
             span.enrich(cost_usd=cost)
