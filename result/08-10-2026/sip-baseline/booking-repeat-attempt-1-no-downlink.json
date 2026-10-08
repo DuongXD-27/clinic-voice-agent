@@ -1,0 +1,111 @@
+{
+  "date": "2026-10-08",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "commit": "69688a9d03b10ea27ef31e39306b025c1c3ef61e",
+  "test": "Three live consecutive bookings: attempt 1 stopped on missing downlink audio",
+  "worker_id": "AW_kagA5jNWAVsY",
+  "worker_pid": 26284,
+  "softphone": "Linphone 5.3.4",
+  "transport": "UDP",
+  "network": "Current router Wi-Fi; different local subnet from the previous successful iPhone hotspot test",
+  "call_1": {
+    "job_id": "AJ_pJLuEjYbJ8gg",
+    "dispatch_id": "AD_5PnmQmV5W7ZZ",
+    "room_id": "RM_zgThewQgZ4XE",
+    "received_at_utc": "2026-10-08T03:55:13.733111+00:00",
+    "closed_at_utc": "2026-10-08T03:55:42.558125+00:00",
+    "sip_participant": true,
+    "outcome": "INCOMPLETE_CALLER_HANGUP",
+    "booking_delta_pass": false,
+    "new_records": [],
+    "existing_records_unchanged": true,
+    "sip_call_id": "SCL_h8qaPetNt3Mt"
+  },
+  "tts": [
+    {
+      "turn": 0,
+      "status": "OK",
+      "bytes": 88522,
+      "audio_duration_ms": 5532.625,
+      "ttfa_ms": 855.6672000004255,
+      "sample_rate_hz": 8000,
+      "interrupted": false,
+      "truncated": false
+    },
+    {
+      "turn": 1,
+      "status": "OK",
+      "bytes": 128704,
+      "audio_duration_ms": 8044.000000000001,
+      "ttfa_ms": 345.5402999998114,
+      "sample_rate_hz": 8000,
+      "interrupted": false,
+      "truncated": false
+    }
+  ],
+  "post_requests": 0,
+  "appointments_before": 1,
+  "appointments_after": 1,
+  "local_media": {
+    "outgoing_rtp_packets": 1093,
+    "incoming_udp_packets_from_negotiated_media_server": 0,
+    "codec": "PCMU/8000",
+    "outgoing_sequence_gaps": 0,
+    "scope": "Local Wi-Fi capture; server PCAP independently contains 1182 transmitted RTP packets."
+  },
+  "sip_end": {
+    "initiator": "caller",
+    "client_bye_relative_s": 32.10034,
+    "server_200_relative_s": 32.231737,
+    "bot_automatic_hangup_proven": false
+  },
+  "nat_trial": {
+    "stun_ice_enabled_temporarily": true,
+    "public_media_address_advertised": true,
+    "improved_downlink": false,
+    "valid_diagnostic_outgoing_rtp_packets": 505,
+    "valid_diagnostic_incoming_udp_packets_from_media_server": 0,
+    "capture_dropped_packets": 0,
+    "server_bye_relative_s": 16.715423,
+    "client_200_relative_s": 17.031684,
+    "speech_api_calls": 0,
+    "booking_writes": 0,
+    "first_diagnostic_capture": "Wrong adapter after interface order changed; excluded from RTP conclusions.",
+    "server_media": {
+      "sip_call_id": "SCL_pgWe5NxjuRM3",
+      "captured_outgoing_rtp_packets": 536,
+      "matching_provider_call_id": true,
+      "local_invite_media_port": 28536,
+      "server_invite_media_port": 9674,
+      "server_rtp_destination_port": 9674,
+      "sdp_media_port_rewritten_between_observation_points": true
+    }
+  },
+  "capture_sha256": {
+    "attempt-01-no-downlink.pcapng": "478b954441333710268932c359d988b7832de6e75d7836e3c68eacc64b5de106",
+    "nat-tone-wifi.pcapng": "252bdfcc53ef92ae9d02b1dfb652ab4d21ac92e74f49d9d03cf0d1777036e665",
+    "server-attempt-01.pcap": "54381ab914dc0c2ee247f4abf8819191f39c80f9c4d94532e0870f244b325abf",
+    "server-nat-tone.pcap": "63391a928656c793f41a8e7d3891714b68f7b3e95037e8a7a78387aed4a7d9be",
+    "server-success-20261007.pcap": "dc1e4e21c3a2fe6fd70d5f22c71d94250c5f342cd773f47f36073af64039163f",
+    "server-tls-stun-tone.pcap": "26d781d18e199148e5340415d2ae5e62e2d2b79627cd628977d6b899c1148367"
+  },
+  "root_cause": "UDP SDP media-port rewrite confirmed between client and server. ALG or intermediary suspected; exact device unconfirmed. TLS plus original baseline NAT restored downlink in separate tone trial, with real voice and repeated bookings pending.",
+  "restored_state": "Real booking worker AW_B4VkyYsyr3n3 (PID 7524); Linphone TLS 5061 with certificate and hostname verification enabled, original baseline NAT without STUN/ICE; same router Wi-Fi and mock preserved.",
+  "acceptance": {
+    "three_consecutive_booked": false,
+    "calls_2_and_3": "NOT_RUN; waiting for audio diagnosis",
+    "pstn_real_phone_line": false
+  },
+  "server_media": {
+    "sip_call_id": "SCL_h8qaPetNt3Mt",
+    "captured_outgoing_rtp_packets": 1182,
+    "destination_is_public": true,
+    "destination_port": 29524,
+    "scope": "Observed RTP emission; PCAP is not assumed complete or proof of arrival at the client."
+  },
+  "server_capture_limitation": {
+    "successful_control_call": "SCL_UNeEZthNwyHD",
+    "captured_rtp_packets": 19,
+    "scope": "Only initial RTP to private destination in successful 90-second conversational call; do not infer missing inbound media or end-to-end loss from absent packets in Cloud PCAP."
+  }
+}
