@@ -3,8 +3,9 @@
 from typing import AsyncIterator, Protocol
 
 from inference.asr import ASRGateway
+from speech.asr.stream_context import StreamingFrame
 from speech.audio.codec import to_sample_rate
-from speech.types import AudioSegment, Transcript, TranscriptEvent
+from speech.types import AsrSegmentEnd, AudioSegment, Transcript, TranscriptEvent
 
 
 class Recognizer(Protocol):
@@ -30,15 +31,36 @@ class SpeechRecognizer:
     def input_sample_rate(self) -> int:
         return self._gateway.input_sample_rate
 
+    @property
+    def supports_stream_context(self) -> bool:
+        return getattr(self._gateway.provider, "supports_stream_context", False)
+
+    @property
+    def supports_preroll_frames(self) -> bool:
+        return getattr(self._gateway.provider, "supports_preroll_frames", False)
+
+    @property
+    def supports_segment_finalize(self) -> bool:
+        return getattr(self._gateway.provider, "supports_segment_finalize", False)
+
     def transcribe(self, segment: AudioSegment) -> Transcript:
         segment = to_sample_rate(segment, self.input_sample_rate)
         result = self._gateway.transcribe(segment.pcm, segment.sample_rate)
         text = result.text.strip()
         return Transcript(text=text, confidence=result.confidence, is_silence=not text)
 
-    def stream(self, frames: AsyncIterator[bytes], **kwargs) -> AsyncIterator[TranscriptEvent]:
+    def warm_up_streaming(self) -> None:
+        """Provider chỉ có `stream()` (không warm-up được bằng `transcribe()`): nạp sẵn phần
+        cục bộ của nó, vd. model fallback của Gemini Live."""
+        warm_up = getattr(self._gateway.provider, "warm_up", None)
+        if warm_up is not None:
+            warm_up()
+
+    def stream(
+        self, frames: AsyncIterator[bytes | StreamingFrame | AsrSegmentEnd], **kwargs
+    ) -> AsyncIterator[TranscriptEvent]:
         """Ủy quyền xuống `stream()` của provider gốc — method mở rộng ngoài Protocol
-        `ASRProvider`/`Recognizer`, chỉ ZipFormer (chunked-offline) hỗ trợ hiện tại.
+        `ASRProvider`/`Recognizer` (ZipFormer, Gemini Live, ElevenLabs Realtime).
         Raise rõ ràng nếu provider đang cấu hình không có `stream()`, thay vì lỗi
         `AttributeError` mơ hồ ở nơi gọi."""
         provider = self._gateway.provider

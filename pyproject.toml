@@ -47,6 +47,9 @@ vad-silero = [
     # Cùng package sherpa-onnx đã có trong speech-zipformer (sherpa_onnx.VoiceActivityDetector
     # + SileroVadModelConfig) — asset .onnx tải riêng, xem SILERO_VAD_MODEL_PATH trong .env.example.
     "sherpa-onnx>=1.13",
+    # Xác suất Silero thô cho chẩn đoán (speech/asr/vad/silero_probe.py): sherpa-onnx chỉ trả
+    # nhị phân và không lộ onnxruntime của nó cho Python.
+    "onnxruntime>=1.17",
 ]
 llm = [
     "google-genai>=1.0",

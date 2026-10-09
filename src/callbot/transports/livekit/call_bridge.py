@@ -30,7 +30,7 @@ from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
-from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.turn.interruption import EchoPolicy, InterruptionController, InterruptionState
 from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
 
@@ -123,6 +123,7 @@ class CallBridge:
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
+        interruption_echo_policy: EchoPolicy = "acoustic",
         caller_identity: Optional[str] = None,
     ) -> None:
         """Mọi tham số cấu hình (StreamingSpeechBundle, config/livekit.yaml, config/speech.yaml)
@@ -170,7 +171,10 @@ class CallBridge:
         # Ngắt lời huỷ cả request TTS lẫn hàng đợi phát qua CallBridge.cancel(). Dùng chung
         # TurnValidator với turn_controller để lọc barge-in giả do nhiễu.
         self._interruption = InterruptionController(
-            self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
+            self,
+            validator=interruption_validator,
+            min_snr_db=interruption_min_snr_db,
+            echo_policy=interruption_echo_policy,
         )
 
     async def run(self) -> None:
@@ -567,12 +571,15 @@ class CallBridge:
                     total_bytes += len(chunk)
                     if self._is_interrupted():
                         break
+                    self._interruption.on_bot_audio(chunk, sample_rate)
                     pending.extend(chunk)
                     while len(pending) >= frame_bytes and not self._is_interrupted():
                         await self._capture(bytes(pending[:frame_bytes]), sample_rate)
                         del pending[:frame_bytes]
                     if self._is_interrupted():
                         break
+            if not self._is_interrupted():
+                self._interruption.on_bot_audio(b"", sample_rate, complete=True)
             # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
             tail = len(pending) - len(pending) % 2
             if tail and not self._is_interrupted():

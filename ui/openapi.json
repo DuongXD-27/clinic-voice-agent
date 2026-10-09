@@ -609,6 +609,21 @@
             ],
             "title": "Appointment Id"
           },
+          "asr_provider": {
+            "anyOf": [
+              {
+                "enum": [
+                  "zipformer",
+                  "gemini_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asr Provider"
+          },
           "caller_number": {
             "anyOf": [
               {

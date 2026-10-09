@@ -10,6 +10,7 @@
  * khi bắt đầu cuộc gọi mới.
  */
 
+import { ASR_LABELS } from "./config";
 import type { TranscriptLine } from "./transcript";
 
 export type Phase = "idle" | "connecting" | "connected" | "reconnecting";
@@ -49,6 +50,7 @@ export type LiveKitAction =
   | { type: "failed"; message: string; at: number }
   | { type: "micChanged"; enabled: boolean; at: number }
   | { type: "botPresence"; present: boolean; at: number }
+  | { type: "botAsr"; provider: string; at: number }
   | { type: "speakers"; bot: boolean; caller: boolean }
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
@@ -167,6 +169,15 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
         action.at,
         action.present ? "Bot đã vào phòng." : "Bot đã rời phòng.",
         action.present ? "success" : "warning",
+      );
+
+    case "botAsr":
+      if (state.phase === "idle") return state;
+      return log(
+        state,
+        action.at,
+        `Bot dùng ASR: ${ASR_LABELS[action.provider] ?? action.provider}.`,
+        "info",
       );
 
     case "speakers":

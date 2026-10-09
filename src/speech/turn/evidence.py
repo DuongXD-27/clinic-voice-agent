@@ -1,8 +1,8 @@
 """Bằng chứng cho TurnValidator và InterruptionController, gom một chỗ.
 
-- SNR theo frame (NoiseTracker): cho InterruptionController, xét ngay lúc bot đang nói.
-- SNR của cả câu vừa nói (UtteranceEvidenceTracker): cho TurnValidator — lúc ASR final tới,
-  frame mới nhất luôn là im lặng nên SNR theo frame không dùng được.
+- SNR theo frame (NoiseTracker): theo dõi nền nhiễu.
+- SNR của cả câu vừa nói (UtteranceEvidenceTracker): cho TurnValidator và ngắt lời. ASR
+  trả kết quả bất đồng bộ; frame mới nhất khi ấy có thể đã là im lặng.
 - Độ ổn định transcript (TranscriptEvidenceTracker): hội tụ hay dao động (dấu hiệu ảo giác).
 
 `noise_classifier` phải là Silero: WebRTC/energy báo speech gần như liên tục trên nhiễu phòng,

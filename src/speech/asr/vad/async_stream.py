@@ -12,9 +12,12 @@ from speech.asr.vad.streaming import FRAME_MS
 class AsyncStreamingVAD:
     """Gom frame thành đoạn nói; phát speech_end sau `end_silence_ms` im lặng."""
 
-    def __init__(self, classifier: FrameClassifier, end_silence_ms: int = 600) -> None:
+    def __init__(
+        self, classifier: FrameClassifier, end_silence_ms: int = 600, *, frame_ms: int = FRAME_MS
+    ) -> None:
+        """`frame_ms`: độ dài mỗi frame nhận được — đếm khoảng lặng theo số frame."""
         self._classifier = classifier
-        self._end_silence_frames = max(1, end_silence_ms // FRAME_MS)
+        self._end_silence_frames = max(1, end_silence_ms // frame_ms)
 
     async def process(self, frames: AsyncIterator[bytes]) -> AsyncIterator[VadEvent]:
         in_speech = False

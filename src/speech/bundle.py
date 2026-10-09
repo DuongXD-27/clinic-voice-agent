@@ -11,6 +11,7 @@ import logging
 import time
 from contextlib import aclosing
 from dataclasses import dataclass
+from pathlib import Path
 from typing import AsyncIterator, Optional, Protocol
 
 from inference.asr import create_asr_gateway
@@ -22,6 +23,7 @@ from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
+from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
 from speech.tts.static_cache import StaticAudioCache, create_static_cache
@@ -195,6 +197,37 @@ class StreamingSpeechBundle:
     validator: Optional[TurnValidator] = None
 
 
+def turn_controller_options(settings: SpeechSettings) -> dict[str, object]:
+    """Tham số TurnController theo cấu hình — dùng chung với bộ đo (eval/noise-bench)."""
+    return {
+        "min_speech_ms": settings.turn_min_speech_ms,
+        "max_wait_after_vad_end_ms": settings.turn_max_wait_after_vad_end_ms,
+        "max_wait_for_asr_ms": settings.turn_max_wait_for_asr_ms,
+        "post_bot_guard_ms": settings.turn_post_bot_guard_ms,
+        "merge_window_ms": settings.turn_merge_window_ms,
+        "drop_filler_words": settings.turn_drop_filler_words,
+    }
+
+
+def _build_speaker_gate(settings: SpeechSettings) -> Optional[SpeakerGate]:
+    """Thiếu file model (không có trong image Docker) hoặc sherpa-onnx: cảnh báo và chạy không
+    có cổng, như Krisp — tính năng thử nghiệm không được làm hỏng cả cuộc gọi."""
+    model_path = settings.speaker_gate_model_path
+    if not Path(model_path).is_file():
+        logger.warning("speaker_gate: không thấy model %s — chạy không có cổng", model_path)
+        return None
+    try:
+        return SpeakerGate.from_model(
+            model_path,
+            enforce=settings.speaker_gate_mode == "enforce",
+            threshold=settings.speaker_gate_threshold,
+            min_speech_ms=settings.speaker_gate_min_speech_ms,
+        )
+    except ImportError:
+        logger.warning("speaker_gate: chưa cài sherpa-onnx — chạy không có cổng")
+        return None
+
+
 def build_streaming_bundle(
     settings: SpeechSettings,
     *,
@@ -211,6 +244,7 @@ def build_streaming_bundle(
     (config/livekit.yaml), không có mặc định ở đây. Một bộ phân loại theo `vad_provider`, phân
     loại mỗi frame đúng một lần, dùng chung cho VAD chính và bộ chốt câu của ASR.
     """
+    asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     queue_max_frames = max(1, input_queue_ms // frame_ms)
     asr_queue_max_frames = max(1, asr_queue_ms // frame_ms)
     preroll_frames = max(1, barge_in_preroll_ms // frame_ms)
@@ -219,7 +253,6 @@ def build_streaming_bundle(
         _build_classifier(settings, sample_rate),
         capacity=queue_max_frames + asr_queue_max_frames + preroll_frames,
     )
-    asr = asr or SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     validator = None
     evidence = None
     if settings.turn_validator_enabled:
@@ -231,9 +264,13 @@ def build_streaming_bundle(
             else _build_silero(settings, sample_rate),
             frame_ms=frame_ms,
         )
+    speaker_gate = _build_speaker_gate(settings) if settings.speaker_gate_mode != "off" else None
     stt_pipeline = STTPipeline(
         asr,
-        AsyncStreamingVAD(detector.view(), end_silence_ms=settings.vad_end_silence_ms),
+        keep_unconfirmed_barge_in=settings.turn_keep_unconfirmed_barge_in,
+        vad=AsyncStreamingVAD(
+            detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
+        ),
         sample_rate=sample_rate,
         detector=detector,
         evidence=evidence,
@@ -241,18 +278,14 @@ def build_streaming_bundle(
             "audio_sample_rate": sample_rate,
             "silence_classifier": detector.view(),
             "end_silence_ms": settings.vad_end_silence_ms,
+            "pre_speech_ms": settings.asr_pre_speech_ms,
         },
         queue_max_frames=queue_max_frames,
         asr_queue_max_frames=asr_queue_max_frames,
         barge_in_preroll_frames=preroll_frames,
+        speaker_gate=speaker_gate,
     )
-    turn_controller = TurnController(
-        min_speech_ms=settings.turn_min_speech_ms,
-        max_wait_after_vad_end_ms=settings.turn_max_wait_after_vad_end_ms,
-        max_wait_for_asr_ms=settings.turn_max_wait_for_asr_ms,
-        post_bot_guard_ms=settings.turn_post_bot_guard_ms,
-        validator=validator,
-    )
+    turn_controller = TurnController(validator=validator, **turn_controller_options(settings))
     tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
     tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     return StreamingSpeechBundle(
@@ -293,4 +326,6 @@ def warm_up(asr: Recognizer) -> None:
     try:
         asr.transcribe(AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=asr.input_sample_rate))
     except NotImplementedError:
-        pass
+        warm_up_streaming = getattr(asr, "warm_up_streaming", None)
+        if warm_up_streaming is not None:
+            warm_up_streaming()

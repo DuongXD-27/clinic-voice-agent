@@ -2,6 +2,7 @@ import { Room, RoomEvent, Track } from "livekit-client";
 import { useCallback, useEffect, useReducer, useRef, type Dispatch, type RefObject } from "react";
 
 import { requestToken } from "./api";
+import { AUDIO_SETTINGS_ATTRIBUTE, audioSettingsAttribute } from "./model/audioSettings";
 import { toTokenRequest, validateConfig, type LiveKitConfig } from "./model/config";
 import {
   initialSession,
@@ -10,6 +11,9 @@ import {
   type LiveKitSession,
 } from "./model/session";
 import { parseStatus, parseTranscript, STATUS_TOPIC, TRANSCRIPT_TOPIC } from "./model/transcript";
+
+/** Attribute worker gắn cho bot (callbot.transports.livekit.worker.ASR_ATTRIBUTE). */
+const BOT_ASR_ATTRIBUTE = "asr_provider";
 
 /**
  * Một cuộc gọi LiveKit từ trình duyệt: lấy token, vào room, bật mic, phát audio của bot vào
@@ -56,6 +60,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
         dispatch({ type: "connecting", step: "Đang bật microphone…" });
         await room.localParticipant.setMicrophoneEnabled(true);
         if (cancelled()) return;
+        reportAudioSettings(room);
         dispatch({
           type: "connected",
           roomName,
@@ -86,6 +91,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
     const enabled = !room.localParticipant.isMicrophoneEnabled;
     try {
       await room.localParticipant.setMicrophoneEnabled(enabled);
+      if (enabled) reportAudioSettings(room);
       dispatch({ type: "micChanged", enabled, at: Date.now() });
     } catch (error) {
       dispatch({ type: "notice", notice: { tone: "error", text: describe(error) } });
@@ -135,6 +141,13 @@ function subscribe(
     .on(RoomEvent.ParticipantConnected, () => {
       dispatch({ type: "botPresence", present: true, at: Date.now() });
     })
+    .on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
+      // Worker báo ASR thực sự dùng cho cuộc gọi (có thể khác lựa chọn nếu server thiếu key).
+      const provider = changed[BOT_ASR_ATTRIBUTE];
+      if (provider && participant.identity !== room.localParticipant.identity) {
+        dispatch({ type: "botAsr", provider, at: Date.now() });
+      }
+    })
     .on(RoomEvent.ParticipantDisconnected, () => {
       dispatch({ type: "botPresence", present: room.remoteParticipants.size > 0, at: Date.now() });
     })
@@ -174,6 +187,23 @@ function subscribe(
         notice: { tone: "error", text: `Không truy cập được microphone: ${error.message}` },
       });
     });
+}
+
+/**
+ * Gửi worker thiết lập mic trình duyệt thật sự áp dụng (AEC/NS/AGC/voiceIsolation) để log đo
+ * đầu vào. Chỉ phục vụ đo: lỗi ở đây không được làm hỏng cuộc gọi.
+ */
+function reportAudioSettings(room: Room) {
+  try {
+    const track = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
+    const settings = track?.mediaStreamTrack.getSettings();
+    if (!settings) return;
+    void room.localParticipant
+      .setAttributes({ [AUDIO_SETTINGS_ATTRIBUTE]: audioSettingsAttribute(settings) })
+      .catch(() => undefined);
+  } catch {
+    // Không có track hoặc trình duyệt không hỗ trợ getSettings: bỏ qua.
+  }
 }
 
 function describe(error: unknown): string {

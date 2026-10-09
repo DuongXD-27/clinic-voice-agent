@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from callbot.engine import EngineSettings, create_orchestrator
 from callbot.tracing import create_tracer
@@ -29,14 +29,41 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _PREWARMED_ASR = "zipformer_asr"
+# ASR người gọi thử chọn trên trang gọi (participant attribute `asr_provider`, gắn lúc xin token).
+_SELECTABLE_ASR = ("zipformer", "gemini_live")
+# Worker báo lại ASR thực sự dùng cho cuộc gọi (attribute của bot) để trang gọi hiển thị.
+ASR_ATTRIBUTE = "asr_provider"
 
 
 def prewarm(proc: "JobProcess") -> None:
     """Load model ASR local (vd. ZipFormer) một lần mỗi LiveKit job process, trước khi
     process đó nhận call."""
-    asr = SpeechRecognizer(create_asr_gateway(SpeechSettings().asr_provider))
-    warm_up(asr)
+    provider = LiveKitSettings().asr_provider or SpeechSettings().asr_provider
+    asr = SpeechRecognizer(create_asr_gateway(provider))
+    try:
+        warm_up(asr)
+    except NotImplementedError:
+        logger.info("ASR %s uses streaming only; skipping batch warm-up", asr.name)
     proc.userdata[_PREWARMED_ASR] = asr
+
+
+def speech_settings_for(
+    participant_kind: int,
+    livekit_settings: LiveKitSettings,
+    requested_asr: Optional[str] = None,
+) -> SpeechSettings:
+    """Cấu hình speech cho một cuộc gọi: ASR riêng của LiveKit, và `phone_overrides` khi người
+    gọi vào qua SIP (âm thanh điện thoại 8 kHz G.711). `requested_asr`: ASR chọn trên trang gọi
+    thử (thắng cấu hình worker); giá trị lạ bị bỏ qua."""
+    from livekit import rtc
+
+    settings = SpeechSettings()
+    provider = requested_asr if requested_asr in _SELECTABLE_ASR else livekit_settings.asr_provider
+    if provider:
+        settings = settings.model_copy(update={"asr_provider": provider})
+    if participant_kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+        settings = settings.for_phone()
+    return settings
 
 
 async def entrypoint(ctx: JobContext) -> None:
@@ -49,10 +76,25 @@ async def entrypoint(ctx: JobContext) -> None:
     direction = attrs.get("direction") or "inbound"
     caller_number = attrs.get("caller_number") or None
     appointment_id = attrs.get("appointment_id") or None
+    requested_asr = attrs.get(ASR_ATTRIBUTE) or None
 
     livekit_settings = LiveKitSettings()
-    speech_settings = SpeechSettings()
+    speech_settings = speech_settings_for(participant.kind, livekit_settings, requested_asr)
     prewarmed_asr: Any = ctx.proc.userdata.get(_PREWARMED_ASR)
+    asr = await _recognizer_for(speech_settings.asr_provider, prewarmed_asr)
+    if asr is None:
+        # Không tạo được ASR đã chọn (vd. thiếu GEMINI_API_KEY): dùng ASR nạp sẵn của worker.
+        asr = prewarmed_asr
+        fallback = getattr(prewarmed_asr, "name", None)
+        if fallback:
+            speech_settings = speech_settings.model_copy(update={"asr_provider": fallback})
+    logger.info(
+        "worker: participant kind=%s asr_provider=%s (requested=%s) asr_pre_speech_ms=%s",
+        participant.kind,
+        speech_settings.asr_provider,
+        requested_asr,
+        speech_settings.asr_pre_speech_ms,
+    )
     bundle = build_streaming_bundle(
         speech_settings,
         sample_rate=livekit_settings.input_sample_rate,
@@ -60,8 +102,14 @@ async def entrypoint(ctx: JobContext) -> None:
         input_queue_ms=livekit_settings.input_queue_ms,
         asr_queue_ms=livekit_settings.asr_queue_ms,
         barge_in_preroll_ms=livekit_settings.barge_in_preroll_ms,
-        asr=prewarmed_asr,
+        asr=asr,
     )
+    try:
+        await ctx.room.local_participant.set_attributes(
+            {ASR_ATTRIBUTE: str(speech_settings.asr_provider)}
+        )
+    except Exception as exc:  # chỉ để hiển thị trên trang gọi thử, không được làm hỏng cuộc gọi
+        logger.warning("worker: không gắn được attribute ASR: %s", type(exc).__name__)
     # Cùng CLINIC_BACKEND với bot HTTP. sim: mỗi job (mỗi cuộc gọi) một clinic mới seed lại, nên
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
@@ -79,6 +127,7 @@ async def entrypoint(ctx: JobContext) -> None:
         turn_controller=bundle.turn_controller,
         interruption_validator=bundle.validator,
         interruption_min_snr_db=speech_settings.interruption_min_snr_db,
+        interruption_echo_policy=speech_settings.turn_echo_policy,
         sample_rate=livekit_settings.input_sample_rate,
         frame_ms=livekit_settings.frame_ms,
         input_queue_ms=livekit_settings.input_queue_ms,
@@ -98,6 +147,23 @@ async def entrypoint(ctx: JobContext) -> None:
             close = getattr(clinic, "close", None)
             if close is not None:
                 close()
+
+
+async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
+    """ASR cho cuộc gọi: dùng lại bản nạp sẵn khi cùng provider; khác thì tạo mới (ZipFormer nạp
+    model trong thread). None khi không tạo được (thiếu key, provider lỗi)."""
+    if prewarmed is not None and getattr(prewarmed, "name", None) == provider:
+        return prewarmed
+    try:
+        asr = SpeechRecognizer(create_asr_gateway(provider))
+        if provider == "zipformer":
+            await asyncio.to_thread(warm_up, asr)
+    except Exception as exc:
+        logger.warning(
+            "worker: không tạo được ASR %s (%s) — dùng ASR nạp sẵn", provider, type(exc).__name__
+        )
+        return None
+    return asr
 
 
 def main() -> None:

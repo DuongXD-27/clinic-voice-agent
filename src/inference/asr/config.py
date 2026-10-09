@@ -3,6 +3,8 @@
 Giá trị mặc định ở config/asr.yaml (mỗi provider một section); API key chỉ đặt qua env.
 """
 
+from typing import Literal, Optional
+
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import SettingsConfigDict
 
@@ -30,6 +32,30 @@ class PhoWhisperConfig(ASRConfig):
     model_config = yaml_config("asr.yaml", "phowhisper")
 
     model: str = Field(validation_alias="PHOWHISPER_MODEL")
+
+
+class GeminiLiveASRConfig(ASRConfig):
+    model_config = yaml_config("asr.yaml", "gemini_live")
+
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="GEMINI_API_KEY")
+    model: str = Field(validation_alias="GEMINI_LIVE_ASR_MODEL")
+    language_code: str = Field(validation_alias="GEMINI_LIVE_LANGUAGE_CODE")
+    connect_timeout_s: float = Field(gt=0, validation_alias="GEMINI_LIVE_CONNECT_TIMEOUT_S")
+    final_timeout_s: float = Field(gt=0, validation_alias="GEMINI_LIVE_FINAL_TIMEOUT_S")
+    chunk_ms: int = Field(ge=20, le=200, validation_alias="GEMINI_LIVE_CHUNK_MS")
+    max_turn_speech_ms: int = Field(gt=0, validation_alias="GEMINI_LIVE_MAX_TURN_SPEECH_MS")
+    # Audio giữ lại trước frame đầu tiên bộ phân loại báo tiếng nói, gửi kèm khi mở đoạn.
+    pre_speech_ms: int = Field(ge=0, validation_alias="GEMINI_LIVE_PRE_SPEECH_MS")
+    # Đoạn lỗi (timeout final, mất kết nối, hết credit) được decode lại bằng model cục bộ này.
+    # None = không fallback, lỗi làm hỏng luồng STT như trước.
+    fallback_provider: Optional[Literal["zipformer"]] = Field(
+        validation_alias="GEMINI_LIVE_FALLBACK_PROVIDER"
+    )
+
+    @field_validator("fallback_provider", mode="before")
+    @classmethod
+    def _blank_fallback_is_none(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
 
 class ElevenLabsRealtimeConfig(ASRConfig):
@@ -74,3 +100,19 @@ class ZipFormerConfig(ASRConfig):
     # max(300 ms, tỉ lệ này x độ dài buffer). 0 = tắt (luôn 300 ms). Câu 10 s decode lại ~33 lần
     # (~2,5 s CPU); 0,1 giữ nguyên câu < 3 s, còn ~1/2 số lần decode cho câu dài. Final không đổi.
     partial_interval_ratio: float = Field(ge=0, validation_alias="ZIPFORMER_PARTIAL_INTERVAL_RATIO")
+    # Audio giữ lại trước frame đầu tiên bộ phân loại báo tiếng nói, decode cùng câu. Phải phủ
+    # được độ trễ nhận ra đầu câu của Silero (min_speech_duration mặc định 0,25 s), nếu không
+    # mất âm tiết đầu ("Vâng," của golden STT_CF_02 bị Silero bật cờ trễ ~700 ms).
+    pre_speech_ms: int = Field(ge=0, validation_alias="ZIPFORMER_PRE_SPEECH_MS")
+    # Final chỉ decode tới frame cuối được báo là tiếng nói + chừng này (Silero đã giữ cờ thêm
+    # ~0,5 s sau khi hết tiếng). None = decode cả ~1,1 s im lặng đuôi như trước — đuôi im lặng
+    # làm câu ngắn đổi chữ: partial "BÂY GIỜ" 0,94 -> final "ĐƯỢC" 0,28; "OK" -> "Ừ/ĐÂY".
+    final_tail_ms: Optional[int] = Field(
+        default=None, ge=0, validation_alias="ZIPFORMER_FINAL_TAIL_MS"
+    )
+    # Đầu câu: ngoài `pre_speech_ms` cố định, lần ngược tối đa chừng này ms tới chỗ năng lượng
+    # thật sự bắt đầu (Silero báo trễ: trên 870 câu thật, trễ so với điểm năng lượng p50 360 ms,
+    # p90 720 ms; 85% câu > 300 ms). None = tắt (chỉ `pre_speech_ms`).
+    onset_lookback_ms: Optional[int] = Field(
+        default=None, ge=0, validation_alias="ZIPFORMER_ONSET_LOOKBACK_MS"
+    )

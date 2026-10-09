@@ -50,6 +50,8 @@ services:
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
+      # /v1/stt (STT_EVAL_ENABLED) cắt đoạn bằng Silero; model chỉ có ở đường dẫn tải lúc build.
+      SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
@@ -67,6 +69,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Cần REDIS_PASSWORD trong .env}@redis:6379/0
       CLINIC_BACKEND: mock
       ASR_PROVIDER: zipformer
+      # Bật Gemini Live cho cuộc gọi LiveKit: GitHub variable LIVEKIT_ASR_PROVIDER=gemini_live (CD ghi
+      # vào image.env mỗi lần deploy). Rỗng/không đặt = ASR_PROVIDER ở trên (zipformer). Cần
+      # GEMINI_API_KEY trong .env.
+      LIVEKIT_ASR_PROVIDER: ${LIVEKIT_ASR_PROVIDER:-}
       # Cố ý không đặt VAD_PROVIDER: env ghi đè config/speech.yaml. Muốn đổi thì đặt trong .env.
       SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx

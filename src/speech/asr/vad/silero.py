@@ -62,4 +62,8 @@ class SileroVadClassifier:
             window = self._pending[: self._window_size]
             self._pending = self._pending[self._window_size :]
             self._vad.accept_waveform(window)
+        # Chỉ đọc cờ is_speech_detected(); đoạn nói mà sherpa-onnx tự cắt và xếp hàng không
+        # dùng đến — bỏ đi, nếu không mọi đoạn nói của cả cuộc gọi nằm lại trong bộ nhớ.
+        while not self._vad.empty():
+            self._vad.pop()
         return self._vad.is_speech_detected()

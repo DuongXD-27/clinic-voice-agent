@@ -108,6 +108,12 @@ describe("liveKitReducer", () => {
     ]);
   });
 
+  it("ghi ASR bot thực sự dùng cho cuộc gọi", () => {
+    const reported = liveKitReducer(connected, { type: "botAsr", provider: "gemini_live", at: 2 });
+
+    expect(reported.log.at(-1)?.text).toBe("Bot dùng ASR: Gemini Live.");
+  });
+
   it.each<[string, LiveKitSession, LiveKitAction]>([
     [
       "connected khi chưa connecting",
