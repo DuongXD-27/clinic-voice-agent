@@ -12,6 +12,9 @@ import {
 } from "./model/session";
 import { parseStatus, parseTranscript, STATUS_TOPIC, TRANSCRIPT_TOPIC } from "./model/transcript";
 
+/** Attribute worker gắn cho bot (callbot.transports.livekit.worker.ASR_ATTRIBUTE). */
+const BOT_ASR_ATTRIBUTE = "asr_provider";
+
 /**
  * Một cuộc gọi LiveKit từ trình duyệt: lấy token, vào room, bật mic, phát audio của bot vào
  * `audio`. Mọi sự kiện Room đi qua reducer; rời trang thì tự ngắt kết nối.
@@ -137,6 +140,13 @@ function subscribe(
     })
     .on(RoomEvent.ParticipantConnected, () => {
       dispatch({ type: "botPresence", present: true, at: Date.now() });
+    })
+    .on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
+      // Worker báo ASR thực sự dùng cho cuộc gọi (có thể khác lựa chọn nếu server thiếu key).
+      const provider = changed[BOT_ASR_ATTRIBUTE];
+      if (provider && participant.identity !== room.localParticipant.identity) {
+        dispatch({ type: "botAsr", provider, at: Date.now() });
+      }
     })
     .on(RoomEvent.ParticipantDisconnected, () => {
       dispatch({ type: "botPresence", present: room.remoteParticipants.size > 0, at: Date.now() });

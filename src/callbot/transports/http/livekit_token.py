@@ -29,6 +29,9 @@ class LiveKitTokenRequest(BaseModel):
     direction: Literal["inbound", "outbound"] = "inbound"
     caller_number: Optional[str] = None
     appointment_id: Optional[str] = None
+    # ASR của riêng cuộc gọi này (nút chọn trên trang gọi thử). None = theo cấu hình worker
+    # (LIVEKIT_ASR_PROVIDER / ASR_PROVIDER).
+    asr_provider: Optional[Literal["zipformer", "gemini_live"]] = None
 
     @field_validator("caller_number")
     @classmethod
@@ -128,6 +131,8 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
         attributes["caller_number"] = payload.caller_number
     if payload.appointment_id:
         attributes["appointment_id"] = payload.appointment_id
+    if payload.asr_provider:
+        attributes["asr_provider"] = payload.asr_provider
     builder = builder.with_attributes(attributes)
     if settings.agent_name:
         # Room tạo khi browser join bằng token này sẽ gọi đúng worker mang tên đó, thay cho
