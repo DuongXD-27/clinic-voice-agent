@@ -66,6 +66,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
           roomName,
           botPresent: room.remoteParticipants.size > 0,
           at: Date.now(),
+          asr: config.asrProvider === "server" ? null : config.asrProvider,
         });
       } catch (error) {
         if (cancelled()) return;

@@ -90,6 +90,9 @@ jobs:
       NAME_FALLBACK_TIMEOUT_S: ${{ vars.NAME_FALLBACK_TIMEOUT_S || '3.0' }}
       # ASR của cuộc gọi LiveKit: gemini_live = Gemini Live; rỗng/không đặt = zipformer (mặc định).
       LIVEKIT_ASR_PROVIDER: ${{ vars.LIVEKIT_ASR_PROVIDER }}
+      # Bot staging dispatch đích danh worker staging: không để worker không tên (prod, máy dev)
+      # cùng project LiveKit nhận phòng staging và chạy ASR khác lựa chọn trên trang gọi thử.
+      LIVEKIT_AGENT_NAME: ${{ vars.LIVEKIT_AGENT_NAME || 'callbot-staging' }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout tested commit
@@ -180,6 +183,7 @@ jobs:
           # IMAGE và ASR LiveKit đổi theo mỗi lần deploy nên nằm ở file riêng, để không phải đụng tới
           # .env. Bản đang chạy được giữ ở image.env.prev để rollback (xem docker-compose.prod.yml).
           printf '%s\n' "IMAGE=$IMAGE:$DEPLOY_SHA" "LIVEKIT_ASR_PROVIDER=${LIVEKIT_ASR_PROVIDER:-}" \
+            "LIVEKIT_AGENT_NAME=$LIVEKIT_AGENT_NAME" \
             | ssh -o BatchMode=yes "$SSH_TARGET" "cat > '$REMOTE_DIR/image.env.next'"
           ssh -o BatchMode=yes "$SSH_TARGET" \
             "set -eu; cd '$REMOTE_DIR'; \

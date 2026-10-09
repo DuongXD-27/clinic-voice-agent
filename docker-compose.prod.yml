@@ -49,6 +49,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # Token LiveKit dispatch đích danh worker này (xem livekit-worker). Rỗng = automatic dispatch.
+      LIVEKIT_AGENT_NAME: ${LIVEKIT_AGENT_NAME:-}
       AUDIO_DIR: ${AUDIO_DIR:-/app/audio_cache}
       # /v1/stt (STT_EVAL_ENABLED) cắt đoạn bằng Silero; model chỉ có ở đường dẫn tải lúc build.
       SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
@@ -73,6 +75,9 @@ services:
       # vào image.env mỗi lần deploy). Rỗng/không đặt = ASR_PROVIDER ở trên (zipformer). Cần
       # GEMINI_API_KEY trong .env.
       LIVEKIT_ASR_PROVIDER: ${LIVEKIT_ASR_PROVIDER:-}
+      # Tên riêng (CD ghi vào image.env): chỉ nhận cuộc gọi của bot cùng tên. Rỗng thì worker không
+      # tên nào trong project LiveKit (môi trường khác, máy dev) cũng có thể nhận phòng của bot này.
+      LIVEKIT_AGENT_NAME: ${LIVEKIT_AGENT_NAME:-}
       # Cố ý không đặt VAD_PROVIDER: env ghi đè config/speech.yaml. Muốn đổi thì đặt trong .env.
       SILERO_VAD_MODEL_PATH: /app/models/silero/silero_vad.onnx
       ZIPFORMER_ENCODER_PATH: /app/models/zipformer/encoder.int8.onnx
