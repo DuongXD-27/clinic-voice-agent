@@ -74,13 +74,13 @@ def test_one_matching_slot_is_read_back_as_a_yes_no_question(answer: str) -> Non
 
     assert action.state == "AWAITING_CONFIRMATION"
     assert action.utterance == (
-        "Dạ, chiều thứ Tư ngày 14 tháng 10 còn khung 3 giờ chiều. Anh chị đổi sang giờ đó nhé ạ?"
+        "Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10. Anh chị đổi sang giờ đó nhé ạ?"
     )
     assert _context(bot, "c_fig0").selected_slot_id == "slot_91d2" and clinic.writes == []
 
     action = _say(bot, "c_fig0", answer)
     assert action.outcome == "RESCHEDULED"
-    assert action.utterance.startswith("Dạ, em đã đổi lịch khám sang 3 giờ chiều thứ Tư")
+    assert action.utterance.startswith("Em đã đổi lịch khám sang 3 giờ chiều, thứ Tư")
     assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
 
 
@@ -91,7 +91,7 @@ def test_offers_two_slots_and_says_how_many_remain() -> None:
     _, bot, action = _call("c_two", "Tôi đổi sang buổi chiều được không?")
 
     assert action.state == "OFFERING_SLOTS"
-    assert "Ngoài ra còn 4 khung khác" in action.utterance
+    assert "Còn 4 khung khác" in action.utterance
     assert _context(bot, "c_two").presented_slot_ids == AFTERNOON[:2]
 
 
@@ -115,8 +115,7 @@ def test_asking_for_other_slots_reads_the_next_page_then_asks_for_another_day() 
     assert action.state == "AWAITING_CONFIRMATION"
     assert _context(bot, "c_more").selected_slot_id == "slot_b504"
     assert action.utterance == (
-        "Dạ, em xác nhận đổi lịch sang 2 giờ chiều thứ Sáu ngày 16 tháng 10 tại Vinmec Times City. "
-        "Anh chị đồng ý chứ ạ?"
+        "Em xác nhận đổi lịch sang 2 giờ chiều, thứ Sáu ngày 16 tháng 10, tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
     )
 
 
@@ -126,19 +125,19 @@ def test_asking_for_four_slots_reads_two_and_says_why_then_the_rest() -> None:
 
     action = _say(bot, "c_count", "cho tôi xem 4 khung khác")
     assert action.utterance.startswith(
-        t.SLOT_TWO_AT_A_TIME + "Hiện còn khung 1 là 2 giờ chiều thứ Sáu"
+        t.SLOT_TWO_AT_A_TIME + "Hiện còn khung 1: 2 giờ chiều, thứ Sáu"
     )
     assert _context(bot, "c_count").presented_slot_ids == AFTERNOON[2:4]
 
     action = _say(bot, "c_count", "xem nốt 2 khung cuối")
-    assert action.state == "OFFERING_SLOTS" and action.utterance.startswith("Dạ, hiện còn")
+    assert action.state == "OFFERING_SLOTS" and action.utterance.startswith("Hiện còn")
     assert _context(bot, "c_count").presented_slot_ids == AFTERNOON[4:6]
 
 
 def test_prefix_does_not_repeat_da() -> None:
     _, _, action = _call("c_nomatch", "đổi sang 7 giờ tối ngày 15 tháng 10")
-    assert action.utterance.startswith(t.SLOT_NO_MATCH + "Hiện còn khung 1 là ")
-    assert action.utterance.count("Dạ") == 1
+    assert action.utterance.startswith(t.SLOT_NO_MATCH + "Hiện còn khung 1: ")
+    assert action.utterance.count("Dạ") == 0
 
 
 def test_ordinal_on_the_next_page_picks_from_that_page() -> None:
@@ -206,8 +205,8 @@ def test_no_slot_for_the_request_is_said_and_not_counted_as_a_misunderstanding()
     _, bot, action = _call("c_nohour", "đổi sang 7 giờ tối ngày 15 tháng 10")
 
     assert action.utterance.startswith(
-        t.SLOT_NO_MATCH + "Hiện còn khung 1 là 10 giờ 30 sáng thứ Năm ngày 15 tháng 10; "
-        "khung 2 là 3 giờ 30 chiều thứ Năm ngày 15 tháng 10."
+        t.SLOT_NO_MATCH
+        + "Hiện còn khung 1: 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10; khung 2: 3 giờ 30 chiều cùng ngày."
     )
     assert _context(bot, "c_nohour").failed_understandings == 0
 
@@ -233,9 +232,7 @@ def test_full_day_is_said_then_the_nearest_slots_after_it() -> None:
     _, bot, action = _call("c_kin", "Tôi muốn đổi sang ngày 17 tháng 10")
 
     assert action.utterance == (
-        "Dạ, thứ Bảy ngày 17 tháng 10 đã kín lịch. Gần nhất em còn khung 1 là 10 giờ sáng thứ Hai "
-        "ngày 19 tháng 10; khung 2 là 3 giờ 30 chiều thứ Hai ngày 19 tháng 10. Ngoài ra còn 4 khung "
-        "khác. Anh chị chọn khung nào ạ?"
+        "Thứ Bảy ngày 17 tháng 10 đã kín lịch. Gần nhất có khung 1: 10 giờ sáng, thứ Hai ngày 19 tháng 10; khung 2: 3 giờ 30 chiều cùng ngày. Còn 4 khung khác. Anh chị chọn khung nào ạ?"
     )
     ctx = _context(bot, "c_kin")
     assert ctx.failed_understandings == 0 and ctx.slot_round == 1
@@ -246,8 +243,7 @@ def test_seven_empty_days_search_further_for_the_earliest_after_the_request() ->
     clinic, bot, action = _call("c_d3", "Tôi muốn đổi sang ngày 1 tháng 10")
 
     assert action.utterance.startswith(
-        "Dạ, thứ Năm ngày 1 tháng 10 đã kín lịch. Gần nhất em còn khung 1 là 3 giờ chiều thứ Tư "
-        "ngày 14 tháng 10; khung 2 là 10 giờ 30 sáng thứ Năm ngày 15 tháng 10."
+        "Thứ Năm ngày 1 tháng 10 đã kín lịch. Gần nhất có khung 1: 3 giờ chiều, thứ Tư ngày 14 tháng 10; khung 2: 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10."
     )
     assert _context(bot, "c_d3").slot_round == 1 and clinic.slot_reads == 2
 
@@ -352,8 +348,7 @@ def test_read_back_has_weekday_date_time_and_clinic_but_no_department() -> None:
     _, bot = _at_read_back("c_rb")
     text = _context(bot, "c_rb").question.text
     assert text == (
-        "Dạ, em xác nhận đổi lịch sang 3 giờ 30 chiều thứ Năm ngày 15 tháng 10 "
-        "tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
+        "Em xác nhận đổi lịch sang 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10, tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
     )
 
 
@@ -415,8 +410,8 @@ def test_keeping_after_the_refuse_choice_keeps_the_old_appointment() -> None:
 # --- Bước 5: D-1 chưa nêu thời gian, "nào cũng được" -----------------------------------
 
 D1_OFFER = (
-    "Dạ, lịch trống gần nhất có khung 1 là 3 giờ chiều thứ Tư ngày 14 tháng 10; khung 2 là "
-    "10 giờ 30 sáng thứ Năm ngày 15 tháng 10. Anh chị chọn khung nào, hoặc muốn đổi sang ngày khác ạ?"
+    "Gần nhất có khung 1: 3 giờ chiều, thứ Tư ngày 14 tháng 10; khung 2: "
+    "10 giờ 30 sáng, thứ Năm ngày 15 tháng 10. Anh chị chọn khung nào, hoặc muốn đổi sang ngày khác ạ?"
 )
 
 
@@ -426,7 +421,7 @@ def test_no_time_reads_the_two_earliest_and_invites_another_day() -> None:
     assert _context(bot, "c_d1_offer").presented_slot_ids == ["slot_91d2", "slot_b501"]
 
     action = _say(bot, "c_d1_offer", "khung khác")
-    assert action.utterance.startswith("Dạ, hiện còn khung 1 là 3 giờ 30 chiều thứ Năm")
+    assert action.utterance.startswith("Hiện còn khung 1: 3 giờ 30 chiều, thứ Năm")
 
 
 def test_any_slot_on_the_page_reads_back_the_earliest_and_still_needs_agreement() -> None:
@@ -435,7 +430,7 @@ def test_any_slot_on_the_page_reads_back_the_earliest_and_still_needs_agreement(
 
     assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
     assert _context(bot, "c_any_page").selected_slot_id == "slot_91d2"
-    assert action.utterance.startswith("Dạ, em xác nhận đổi lịch sang 3 giờ chiều thứ Tư")
+    assert action.utterance.startswith("Em xác nhận đổi lịch sang 3 giờ chiều, thứ Tư")
 
 
 def test_any_day_after_exhaustion_is_a_round_and_skips_refused_slots() -> None:
@@ -456,7 +451,7 @@ def test_inbound_booking_without_a_time_invites_another_day_to_book() -> None:
     action = _run(bot, "c_book_d1", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đặt lịch"])
 
     assert action.state == "OFFERING_SLOTS"
-    assert action.utterance.startswith("Dạ, lịch trống gần nhất có khung 1 là ")
+    assert action.utterance.startswith("Gần nhất có khung 1: ")
     assert action.utterance.endswith("Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?")
 
 
@@ -467,7 +462,7 @@ def test_past_weekday_is_said_and_asked_again_without_a_round() -> None:
     _, bot, action = _call("c_past", "Tôi muốn đổi sang thứ Hai")
 
     assert action.utterance == (
-        "Dạ, thứ Hai ngày 28 tháng 9 đã qua rồi ạ. Anh chị muốn đổi sang ngày nào ạ?"
+        "Thứ Hai ngày 28 tháng 9 đã qua rồi ạ. Anh chị muốn đổi sang ngày nào ạ?"
     )
     ctx = _context(bot, "c_past")
     assert (
@@ -489,7 +484,7 @@ def test_second_unusable_date_in_a_row_counts_as_not_understood() -> None:
     """D-6: lần đầu không tính §1.1.5, lần thứ hai liên tiếp mới tính."""
     _, bot, _ = _call("c_d6", "Tôi muốn đổi sang thứ Hai")
     action = _say(bot, "c_d6", "hôm qua")
-    assert action.utterance.startswith("Dạ, thứ Hai ngày 28 tháng 9 đã qua rồi ạ.")
+    assert action.utterance.startswith("Thứ Hai ngày 28 tháng 9 đã qua rồi ạ.")
     assert _context(bot, "c_d6").failed_understandings == 1
 
 
@@ -498,15 +493,15 @@ def test_second_unusable_date_in_a_row_counts_as_not_understood() -> None:
     [
         (
             "Tôi muốn đổi sang tháng sau",
-            "Dạ, anh chị cho em xin ngày cụ thể ạ. Anh chị muốn đổi sang ngày nào ạ?",
+            "Anh chị muốn đổi sang ngày nào cụ thể ạ?",
         ),
         (
             "đổi sang ngày 31 tháng 9",
-            "Dạ, ngày đó không có trong lịch ạ. Anh chị muốn đổi sang ngày nào ạ?",
+            "Ngày đó không có trong lịch ạ. Anh chị muốn đổi sang ngày nào ạ?",
         ),
         (
             "đổi sang thứ Ba",
-            "Dạ, hôm nay là thứ Ba ngày 29 tháng 9. Anh chị muốn đổi sang hôm nay hay thứ Ba tuần sau ạ?",
+            "Hôm nay là thứ Ba ngày 29 tháng 9. Anh chị muốn đổi sang hôm nay hay thứ Ba tuần sau ạ?",
         ),
     ],
 )
@@ -520,7 +515,7 @@ def test_bare_weekday_is_this_week_and_full_days_suggest_the_nearest() -> None:
     """R-30: "thứ Sáu" = thứ Sáu 2/10; không có khung -> báo kín, gợi ý gần nhất (không đoán 16/10)."""
     _, bot, action = _call("c_fri", "đổi sang chiều thứ Sáu")
     assert action.utterance.startswith(
-        "Dạ, thứ Sáu ngày 2 tháng 10 đã kín lịch. Gần nhất em còn khung 1 là 3 giờ chiều thứ Tư"
+        "Thứ Sáu ngày 2 tháng 10 đã kín lịch. Gần nhất có khung 1: 3 giờ chiều, thứ Tư"
     )
 
 
@@ -567,7 +562,7 @@ def test_asking_back_at_the_read_back_does_not_switch_slot() -> None:
 
     assert action.state == "AWAITING_CONFIRMATION" and clinic.writes == []
     assert _context(bot, "c_askback").selected_slot_id == "slot_91d2"
-    assert action.utterance.startswith("Dạ, em xác nhận đổi lịch sang 3 giờ chiều thứ Tư")
+    assert action.utterance.startswith("Em xác nhận đổi lịch sang 3 giờ chiều, thứ Tư")
 
 
 # --- Sửa theo eval reschedule 29-09 (eval/reschedule/cases.csv) -----------------------------------
@@ -627,7 +622,7 @@ def test_bare_weekday_not_on_the_page_follows_r30() -> None:
     """R142: "thứ ba" (hôm nay) không khớp khung vừa đọc -> hỏi hôm nay hay tuần sau (GC-DATE-03)."""
     _, bot, _ = _call("c_eval_tue", "Tôi muốn đổi lịch")
     action = _say(bot, "c_eval_tue", "thứ ba")
-    assert action.utterance.startswith("Dạ, hôm nay là thứ Ba ngày 29 tháng 9.")
+    assert action.utterance.startswith("Hôm nay là thứ Ba ngày 29 tháng 9.")
 
 
 def test_eval_ordinals_pick_the_second_slot() -> None:
@@ -682,7 +677,7 @@ def test_busy_with_another_slot_at_the_read_back_keeps_the_read_back(line: str) 
 
     ctx = _context(bot, "c_busy_other")
     assert ctx.selected_slot_id == "slot_b502" and ctx.refused_slot_ids == ["slot_b501"]
-    assert action.utterance.startswith("Dạ, em xác nhận đổi lịch sang 3 giờ 30 chiều thứ Năm")
+    assert action.utterance.startswith("Em xác nhận đổi lịch sang 3 giờ 30 chiều, thứ Năm")
     assert clinic.writes == []
 
 
@@ -735,7 +730,7 @@ def test_bare_weekday_at_the_preference_follows_r30() -> None:
     """ "9 giờ thứ Sáu" là thứ Sáu tuần này (02/10, kín), không phải thứ Sáu 16/10 có khung 9 giờ."""
     _, bot = _at_preference("c_pref_fri")
     action = _say(bot, "c_pref_fri", "9 giờ thứ Sáu")
-    assert action.utterance.startswith("Dạ, thứ Sáu ngày 2 tháng 10 đã kín lịch.")
+    assert action.utterance.startswith("Thứ Sáu ngày 2 tháng 10 đã kín lịch.")
     assert _context(bot, "c_pref_fri").selected_slot_id is None
 
 

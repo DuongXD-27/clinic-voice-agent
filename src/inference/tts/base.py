@@ -33,6 +33,10 @@ class TTSStreamInfo:
     fallback_used: bool = False
     ttfa_ms: float | None = None
     error_code: str | None = None
+    cache_hit: bool = False
+    cache_key: str | None = None
+    catalog_version: str | None = None
+    billed_characters: int | None = None
 
 
 @dataclass

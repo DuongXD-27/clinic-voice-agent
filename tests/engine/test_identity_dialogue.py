@@ -302,7 +302,7 @@ def test_worst_case_identity_turns_before_transfer(direction) -> None:
     # Chào lại + hai câu hỏi được trả lời + một lượt hỏi lại: lượt không định danh thứ năm chuyển máy
     start = _outbound("c_worst") if direction == "outbound" else _inbound("c_worst")
     actions, _ = _call(start, ["alo", "Ai đấy?", "Ai đấy?", "tôi không rõ", "tôi không rõ"])
-    assert [a.utterance for a in actions[1:4]] == [t.greeting_back(direction)] * 3
+    assert {a.utterance for a in actions[1:4]} == set(t.static_choices(t.greeting_back(direction)))
     assert actions[4].utterance == t.ASK_NAME_AGAIN
     _ended(actions[5], "TRANSFERRED", "NOT_UNDERSTOOD")
     _assert_no_disclosure(actions)
@@ -352,7 +352,9 @@ def test_greetings_exhaust_one_identity_retry() -> None:
 
 def test_repeated_identity_question_is_answered_twice_then_counts() -> None:
     actions, _ = _call(_outbound("c_who_many"), ["Ai đấy?"] * 4)
-    assert actions[1].utterance == actions[2].utterance == t.GREETING_BACK_OUTBOUND
+    assert actions[1].utterance in t.static_choices(t.GREETING_BACK_OUTBOUND)
+    assert actions[2].utterance in t.static_choices(t.GREETING_BACK_OUTBOUND)
+    assert actions[1].utterance != actions[2].utterance
     assert actions[3].utterance == t.ASK_NAME_AGAIN
     _ended(actions[4], "TRANSFERRED", "NOT_UNDERSTOOD")
 
@@ -362,7 +364,9 @@ def test_identity_question_free_pass_is_per_call_not_per_field() -> None:
         _outbound("c_who_both"),
         ["Ai đấy?", "Ai đấy?", NAME, "Ai gọi vậy?", "tôi không rõ"],
     )
-    assert actions[1].utterance == actions[2].utterance == t.GREETING_BACK_OUTBOUND
+    assert actions[1].utterance in t.static_choices(t.GREETING_BACK_OUTBOUND)
+    assert actions[2].utterance in t.static_choices(t.GREETING_BACK_OUTBOUND)
+    assert actions[1].utterance != actions[2].utterance
     assert actions[4].utterance == t.ASK_DOB_AGAIN
     _ended(actions[5], "TRANSFERRED", "NOT_UNDERSTOOD")
 

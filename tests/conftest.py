@@ -21,11 +21,11 @@ pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
 
 @pytest.fixture(autouse=True)
 def fixed_dialogue_variant(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Business tests giữ cách nói v0; test_dialogue_variants chạy cả bốn và selector thật.
+    """Business tests ưu tiên v0; test_dialogue_variants kiểm tập ba/bốn và selector thật.
 
     Cố định selector, không bỏ qua render/guard hay thay đổi phản hồi sau khi engine tạo ra.
     """
-    monkeypatch.setattr(templates, "choose_variant", lambda ctx, group: "v0")
+    monkeypatch.setattr(templates, "choose_variant", lambda ctx, group, **kwargs: "v0")
 
 
 @pytest.fixture(autouse=True)

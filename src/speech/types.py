@@ -20,6 +20,10 @@ class AudioSegment:
     voice: Optional[str] = field(default=None, compare=False)
     ttfa_ms: Optional[float] = field(default=None, compare=False)
     fallback_used: bool = field(default=False, compare=False)
+    cache_hit: bool = field(default=False, compare=False)
+    cache_key: Optional[str] = field(default=None, compare=False)
+    catalog_version: Optional[str] = field(default=None, compare=False)
+    billed_characters: Optional[int] = field(default=None, compare=False)
 
     @property
     def duration_ms(self) -> int:

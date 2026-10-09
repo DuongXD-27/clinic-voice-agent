@@ -23,7 +23,7 @@ from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
-FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
+FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City"
 CONFIRMED_WRITE = ("apt_00417", "CONFIRMED", {})
 
 
@@ -182,7 +182,7 @@ def test_unclear_three_times_transfers_not_understood() -> None:
 def test_refusal_drops_pending_and_changed_mind_needs_new_readback() -> None:
     bot, clinic, _ = _at_readback("c_t04_refuse")
     action = _run(bot, "c_t04_refuse", ["không"], start=3)
-    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
+    assert action.utterance in t.static_choices(t.ASK_CHANGE_OR_CANCEL) and clinic.writes == []
     ctx = _context(bot, "c_t04_refuse")
     assert ctx.pending_action is None and ctx.evidence == []
 
@@ -563,7 +563,7 @@ def test_a_reason_at_change_or_cancel_asks_that_question_again_without_counting(
     bot, clinic, _ = _at_readback("c_t04_trip_intent")
     bot._extractor._semantic = _FakeSemantic({TRIP: TRIP_REASON})
     action = _run(bot, "c_t04_trip_intent", ["không", TRIP], start=3)
-    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []
+    assert action.utterance in t.static_choices(t.ASK_CHANGE_OR_CANCEL) and clinic.writes == []
     ctx = _context(bot, "c_t04_trip_intent")
     assert ctx.question.question_id is QuestionId.ASK_INTENT and ctx.question.turn == 4
     assert (ctx.unclear_streak, ctx.failed_understandings) == (1, 0)

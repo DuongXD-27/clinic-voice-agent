@@ -1,0 +1,3318 @@
+{
+  "schema_version": 1,
+  "export_date": "2026-10-08",
+  "owner": "Hưng",
+  "source_revision": "3f3f4a4",
+  "template_sha256": "ea0859f0a8a4f058f4714b5994feb072e641995bf57dab6ed99c06bfaabd34db",
+  "counts": {
+    "static_unique_texts": 76,
+    "static_prebuild_texts": 73,
+    "static_deferred_texts": 3,
+    "static_alias_ids": 76,
+    "static_variant_groups": 16,
+    "renderer_count": 15,
+    "component_count": 7,
+    "static_characters": 4923,
+    "static_da_openings": 8
+  },
+  "delta_from_previous_review": {
+    "previous_review": "docs/evidence/tts-static-cache/tts-utterance-review-2026-10-07.csv",
+    "added_ids": [
+      "ASK_DOB_VERIFY_SHARED",
+      "ASK_DOB_VERIFY_SHARED_v1",
+      "ASK_DOB_VERIFY_SHARED_v2",
+      "ASK_NAME_VERIFY_SHARED",
+      "ASK_NAME_VERIFY_SHARED_v1",
+      "ASK_NAME_VERIFY_SHARED_v2",
+      "GREETING_BACK_SHARED",
+      "GREETING_BACK_SHARED_v1",
+      "GREETING_BACK_SHARED_v2"
+    ],
+    "removed_ids": [
+      "ASK_CHANGE_OR_CANCEL_v3",
+      "ASK_DOB_AGAIN_v3",
+      "ASK_DOB_DECLINED_v1",
+      "ASK_DOB_DECLINED_v2",
+      "ASK_DOB_DECLINED_v3",
+      "ASK_DOB_FOR_REQUEST",
+      "ASK_DOB_FOR_REQUEST_v1",
+      "ASK_DOB_FOR_REQUEST_v2",
+      "ASK_DOB_FOR_REQUEST_v3",
+      "ASK_DOB_INVALID_v1",
+      "ASK_DOB_INVALID_v2",
+      "ASK_DOB_INVALID_v3",
+      "ASK_DOB_v3",
+      "ASK_INTENT_INBOUND_v3",
+      "ASK_NAME_AFTER_DOB_v3",
+      "ASK_NAME_AGAIN_v3",
+      "ASK_NAME_DECLINED_v1",
+      "ASK_NAME_DECLINED_v2",
+      "ASK_NAME_DECLINED_v3",
+      "ASK_NAME_FOR_REQUEST",
+      "ASK_NAME_FOR_REQUEST_v1",
+      "ASK_NAME_FOR_REQUEST_v2",
+      "ASK_NAME_FOR_REQUEST_v3",
+      "ASK_SLOT_PREFERENCE_BOOK_v3",
+      "ASK_SLOT_PREFERENCE_RESCHEDULE_v3",
+      "BOOKING_ABANDONED_v3",
+      "GOODBYE_UNREACHABLE_v3",
+      "GREETING_BACK_INBOUND",
+      "GREETING_BACK_INBOUND_v1",
+      "GREETING_BACK_INBOUND_v2",
+      "GREETING_BACK_INBOUND_v3",
+      "GREETING_BACK_OUTBOUND",
+      "GREETING_BACK_OUTBOUND_v1",
+      "GREETING_BACK_OUTBOUND_v2",
+      "GREETING_BACK_OUTBOUND_v3",
+      "GREETING_HANDOFF_INBOUND_v1",
+      "GREETING_HANDOFF_INBOUND_v2",
+      "GREETING_HANDOFF_INBOUND_v3",
+      "GREETING_INBOUND_v2",
+      "GREETING_INBOUND_v3",
+      "GREETING_OUTBOUND_v1",
+      "GREETING_OUTBOUND_v2",
+      "GREETING_OUTBOUND_v3",
+      "HOLD_v3",
+      "INTRODUCE_AGAIN_ASK_DOB_v3",
+      "NOT_UNDERSTOOD_v3",
+      "TRANSFER_v1",
+      "TRANSFER_v2",
+      "TRANSFER_v3"
+    ],
+    "changed_ids": [
+      "ASK_CHANGE_OR_CANCEL",
+      "ASK_CHANGE_OR_CANCEL_v1",
+      "ASK_CHANGE_OR_CANCEL_v2",
+      "ASK_DOB",
+      "ASK_DOB_AGAIN",
+      "ASK_DOB_AGAIN_v1",
+      "ASK_DOB_AGAIN_v2",
+      "ASK_DOB_DECLINED",
+      "ASK_DOB_INVALID",
+      "ASK_DOB_v1",
+      "ASK_DOB_v2",
+      "ASK_INTENT_INBOUND_v1",
+      "ASK_INTENT_INBOUND_v2",
+      "ASK_NAME_AFTER_DOB",
+      "ASK_NAME_AFTER_DOB_v1",
+      "ASK_NAME_AFTER_DOB_v2",
+      "ASK_NAME_AGAIN",
+      "ASK_NAME_AGAIN_v1",
+      "ASK_NAME_AGAIN_v2",
+      "ASK_NAME_DECLINED",
+      "ASK_SLOT_PREFERENCE_BOOK",
+      "ASK_SLOT_PREFERENCE_BOOK_v2",
+      "ASK_SLOT_PREFERENCE_RESCHEDULE",
+      "ASK_SLOT_PREFERENCE_RESCHEDULE_v2",
+      "BOOKED_SAFE",
+      "BOOKING_ABANDONED",
+      "BOOKING_ABANDONED_v1",
+      "BOOKING_ABANDONED_v2",
+      "CANCELLED_SAFE",
+      "CANCEL_CHOICE",
+      "CANCEL_CONFLICT",
+      "CANCEL_REASON_NOTED",
+      "CONFIRMED_SAFE",
+      "CONFIRM_CONFLICT",
+      "GOODBYE_UNREACHABLE",
+      "GOODBYE_UNREACHABLE_v1",
+      "GOODBYE_UNREACHABLE_v2",
+      "GREETING_HANDOFF_INBOUND",
+      "GREETING_INBOUND",
+      "GREETING_OUTBOUND",
+      "HOLD_v1",
+      "HOLD_v2",
+      "INTRODUCE_AGAIN_ASK_DOB",
+      "INTRODUCE_AGAIN_ASK_DOB_v1",
+      "INTRODUCE_AGAIN_ASK_DOB_v2",
+      "NOT_UNDERSTOOD",
+      "NOT_UNDERSTOOD_v1",
+      "NOT_UNDERSTOOD_v2",
+      "NO_SLOTS_TRANSFER",
+      "RESCHEDULED_SAFE",
+      "ROUNDS_EXHAUSTED_TRANSFER",
+      "SLOT_CONFLICT",
+      "SLOT_EXHAUSTED_BOOK",
+      "SLOT_EXHAUSTED_RESCHEDULE",
+      "SLOT_REFUSE_CHOICE_BOOK",
+      "SLOT_REFUSE_CHOICE_RESCHEDULE",
+      "SLOT_TAKEN_EXHAUSTED_BOOK",
+      "SLOT_TAKEN_EXHAUSTED_RESCHEDULE",
+      "SLOT_TAKEN_NO_SLOTS_TRANSFER",
+      "SLOT_TAKEN_ROUNDS_TRANSFER",
+      "TRANSFER"
+    ]
+  },
+  "rows": [
+    {
+      "kind": "COMPONENT",
+      "template_id": "AI_DISCLOSURE",
+      "aliases": [
+        "AI_DISCLOSURE"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "trợ lý ảo AI",
+      "character_count": 12,
+      "text_sha256": "3d20da39d064e288d2340a3cf52c6d2f48453b9c890dc376b7bd65bb2f832a31",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "ASK_ATTENDANCE",
+      "aliases": [
+        "ASK_ATTENDANCE"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Anh chị có đến khám được theo lịch này không ạ?",
+      "character_count": 47,
+      "text_sha256": "93d156782c7833914bf2d4136c513063c8bd99fab894f8256d5f0202102ee9fd",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:458",
+        "src/callbot/engine/dialogue/manager.py:517",
+        "src/callbot/engine/dialogue/manager.py:984"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "SLOT_AMBIGUOUS",
+      "aliases": [
+        "SLOT_AMBIGUOUS"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Có nhiều khung giờ phù hợp. ",
+      "character_count": 28,
+      "text_sha256": "bb42c57223a7ec916e101b67d1d9f353b998ddc586462145372b5063ac2f3532",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:677"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "SLOT_NOT_IN_PAGE",
+      "aliases": [
+        "SLOT_NOT_IN_PAGE"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Em vừa đọc hai khung thôi ạ. ",
+      "character_count": 29,
+      "text_sha256": "d8b63a9d28ac222f15e0973a76c3bebe39ad2cf624771f50abe1c80ef513e001",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:685"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "SLOT_NO_MATCH",
+      "aliases": [
+        "SLOT_NO_MATCH"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Em chưa thấy khung giờ đó. ",
+      "character_count": 27,
+      "text_sha256": "ed32f952b59591293aae2876a4ff7e84dacab783c41d7dab2bf412b397206091",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1058"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "SLOT_TAKEN",
+      "aliases": [
+        "SLOT_TAKEN"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Khung giờ đó vừa có người đặt. ",
+      "character_count": 31,
+      "text_sha256": "27db73b0510e30ddb7ee73a173c5b0f05fe7cfa349c5f3e69db1d77c0478af70",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1031",
+        "src/callbot/engine/dialogue/manager.py:1073",
+        "src/callbot/engine/dialogue/manager.py:814"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "COMPONENT",
+      "template_id": "SLOT_TWO_AT_A_TIME",
+      "aliases": [
+        "SLOT_TWO_AT_A_TIME"
+      ],
+      "scenarios": "",
+      "groups": [],
+      "variants": [],
+      "current_text": "Em đọc hai khung để dễ nhớ ạ. ",
+      "character_count": 30,
+      "text_sha256": "9d085cb6e820bf05aa7df1e475e7f8165d693b3e0dc8319ff4016dea938ef1a9",
+      "prebuild_candidate": false,
+      "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
+      "selection": "RENDERER_COMPONENT",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1419"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Mảnh câu/hằng nội dung, chưa đăng ký là utterance trọn vẹn; không thu riêng rồi dùng thay cả câu.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "APPOINTMENT_SUMMARY",
+      "aliases": [
+        "APPOINTMENT_SUMMARY"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "APPOINTMENT_SUMMARY"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:458"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "appointment": "APPOINTMENT"
+      },
+      "string_domains": {
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "ASK_DATE_AGAIN",
+      "aliases": [
+        "ASK_DATE_AGAIN"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "ASK_DATE_AGAIN"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "FINITE_BRANCHES_DEFERRED",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1224"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {},
+      "string_domains": {
+        "issue": [
+          "INVALID",
+          "PAST",
+          "TODAY",
+          "TOO_BROAD"
+        ],
+        "action": [
+          "BOOK",
+          "RESCHEDULE"
+        ]
+      },
+      "review_flags": [],
+      "notes": "PAST/TODAY chứa ngày động; INVALID/TOO_BROAD có câu hữu hạn. Chưa tách chúng thành static ở bước này.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "ATTENDANCE_READBACK",
+      "aliases": [
+        "ATTENDANCE_READBACK"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "ATTENDANCE_READBACK"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:569"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "appointment": "APPOINTMENT"
+      },
+      "string_domains": {
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "ATTENDANCE_REREAD",
+      "aliases": [
+        "ATTENDANCE_REREAD"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "ATTENDANCE_REREAD"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:517"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "appointment": "APPOINTMENT"
+      },
+      "string_domains": {
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "BOOKED_DONE",
+      "aliases": [
+        "BOOKED_DONE"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "BOOKED_DONE"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:817"
+      ],
+      "success_outcome": "BOOKED",
+      "discloses": true,
+      "sources": {
+        "slot": "SLOT"
+      },
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "CANCELLED_DONE",
+      "aliases": [
+        "CANCELLED_DONE"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCELLED_DONE"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "Em đã hủy lịch khám cho anh chị ạ.",
+      "character_count": 34,
+      "text_sha256": "ed85251c77a2ac1b0e138baaaeca25a793ae06bbe44f71f6f2da588cf84f712c",
+      "prebuild_candidate": true,
+      "cache_policy": "REUSE_STATIC_ASSET",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:921"
+      ],
+      "success_outcome": "CANCELLED",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Trùng CANCELLED_SAFE; dùng chung audio sau duyệt, giữ guard/receipt thành công.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "CANCEL_READBACK",
+      "aliases": [
+        "CANCEL_READBACK"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCEL_READBACK"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:622"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "appointment": "APPOINTMENT"
+      },
+      "string_domains": {
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "CONFIRMED_DONE",
+      "aliases": [
+        "CONFIRMED_DONE"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "CONFIRMED_DONE"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:505"
+      ],
+      "success_outcome": "CONFIRMED",
+      "discloses": true,
+      "sources": {
+        "appointment": "WRITTEN"
+      },
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "KEEP_APPOINTMENT",
+      "aliases": [
+        "KEEP_APPOINTMENT"
+      ],
+      "scenarios": "Reschedule/Confirm",
+      "groups": [
+        "KEEP_APPOINTMENT"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:984"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "appointment": "APPOINTMENT"
+      },
+      "string_domains": {
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "OFFER_SLOTS",
+      "aliases": [
+        "OFFER_SLOTS"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "OFFER_SLOTS"
+      ],
+      "variants": [
+        "v0",
+        "v1",
+        "v2",
+        "v3"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1115"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "slots": "SLOTS"
+      },
+      "string_domains": {
+        "prefix": [
+          "",
+          "Có nhiều khung giờ phù hợp. ",
+          "Em chưa thấy khung giờ đó. ",
+          "Em vừa đọc hai khung thôi ạ. ",
+          "Em đọc hai khung để dễ nhớ ạ. ",
+          "Khung giờ đó vừa có người đặt. "
+        ],
+        "invite": [
+          "BOOK",
+          "RESCHEDULE",
+          null
+        ],
+        "variant": [
+          "v0",
+          "v1",
+          "v2",
+          "v3"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "RESCHEDULED_DONE",
+      "aliases": [
+        "RESCHEDULED_DONE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "RESCHEDULED_DONE"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:816"
+      ],
+      "success_outcome": "RESCHEDULED",
+      "discloses": true,
+      "sources": {
+        "slot": "SLOT"
+      },
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "SILENCE_REPROMPT",
+      "aliases": [
+        "SILENCE_REPROMPT"
+      ],
+      "scenarios": "No-answer",
+      "groups": [
+        "SILENCE_REPROMPT"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "COMPOSITE_REQUIRES_ENUMERATION",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:135"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Nếu câu đang chờ tĩnh, có thể dựng nguyên câu ghép sau khi liệt kê các nhánh thực tế. Câu đang chờ động vẫn TTS; không phát SILENCE thay cả utterance.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "SLOT_OFFER_READBACK",
+      "aliases": [
+        "SLOT_OFFER_READBACK"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_OFFER_READBACK"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1144"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "slot": "SLOT"
+      },
+      "string_domains": {
+        "prefix": [
+          "",
+          "Có nhiều khung giờ phù hợp. ",
+          "Em chưa thấy khung giờ đó. ",
+          "Em vừa đọc hai khung thôi ạ. ",
+          "Em đọc hai khung để dễ nhớ ạ. ",
+          "Khung giờ đó vừa có người đặt. "
+        ],
+        "action": [
+          "BOOK",
+          "RESCHEDULE"
+        ],
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "SLOT_READBACK",
+      "aliases": [
+        "SLOT_READBACK"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_READBACK"
+      ],
+      "variants": [
+        "v0"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1165",
+        "src/callbot/engine/dialogue/manager.py:824"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "slot": "SLOT"
+      },
+      "string_domains": {
+        "action": [
+          "BOOK",
+          "RESCHEDULE"
+        ],
+        "variant": [
+          "v0"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "RENDERER",
+      "template_id": "SLOT_READBACK_DA",
+      "aliases": [
+        "SLOT_READBACK_DA"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_READBACK_DA"
+      ],
+      "variants": [
+        "parameterized"
+      ],
+      "current_text": "",
+      "character_count": null,
+      "text_sha256": "",
+      "prebuild_candidate": false,
+      "cache_policy": "DYNAMIC_TTS_PHASE_1",
+      "selection": "PARAMETERIZED_RENDERER",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:824"
+      ],
+      "success_outcome": "",
+      "discloses": true,
+      "sources": {
+        "slot": "SLOT"
+      },
+      "string_domains": {
+        "action": [
+          "BOOK",
+          "RESCHEDULE"
+        ]
+      },
+      "review_flags": [],
+      "notes": "Câu phụ thuộc dữ liệu/đối số; chưa dựng sẵn nguyên câu trong giai đoạn 1.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_CHANGE_OR_CANCEL",
+      "aliases": [
+        "ASK_CHANGE_OR_CANCEL"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "ASK_CHANGE_OR_CANCEL"
+      ],
+      "variants": [
+        "ASK_CHANGE_OR_CANCEL:v0"
+      ],
+      "current_text": "Anh chị muốn đổi lịch hay hủy lịch khám ạ?",
+      "character_count": 42,
+      "text_sha256": "12252473db0130def9dba2358655498e52d7cc884cc8bef32a36fa4830891714",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:509",
+        "src/callbot/engine/dialogue/manager.py:582"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_CHANGE_OR_CANCEL_v1",
+      "aliases": [
+        "ASK_CHANGE_OR_CANCEL_v1"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "ASK_CHANGE_OR_CANCEL"
+      ],
+      "variants": [
+        "ASK_CHANGE_OR_CANCEL:v1"
+      ],
+      "current_text": "Dạ, anh chị cần em hỗ trợ đổi lịch hay hủy lịch khám ạ?",
+      "character_count": 55,
+      "text_sha256": "0102e5b4ca85d36a5e08150190c2026c5b32a8fc48a65a3a8bb91c3aa2df6b12",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:509",
+        "src/callbot/engine/dialogue/manager.py:582"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_CHANGE_OR_CANCEL_v2",
+      "aliases": [
+        "ASK_CHANGE_OR_CANCEL_v2"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "ASK_CHANGE_OR_CANCEL"
+      ],
+      "variants": [
+        "ASK_CHANGE_OR_CANCEL:v2"
+      ],
+      "current_text": "Anh chị muốn chuyển sang giờ khác hay hủy lịch khám này ạ?",
+      "character_count": 58,
+      "text_sha256": "f6b5e119c89307897bd07b29bc0e603f054a5e63a8a291b9fa713ea07c18c45a",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:509",
+        "src/callbot/engine/dialogue/manager.py:582"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB",
+      "aliases": [
+        "ASK_DOB"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB"
+      ],
+      "variants": [
+        "ASK_DOB:v0"
+      ],
+      "current_text": "Anh chị cho em xin ngày, tháng, năm sinh ạ.",
+      "character_count": 43,
+      "text_sha256": "74ec8e62e2add462a469d7dec60412328ae3d34c8611a064a038254f7fd79e5d",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_AGAIN",
+      "aliases": [
+        "ASK_DOB_AGAIN"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_AGAIN"
+      ],
+      "variants": [
+        "ASK_DOB_AGAIN:v0"
+      ],
+      "current_text": "Em chưa nghe rõ. Anh chị nhắc lại ngày, tháng, năm sinh giúp em ạ.",
+      "character_count": 66,
+      "text_sha256": "83e0bf79dd18a4f9cd33e86cab12eddaf8824cf86c56c57892c5a2b04c5d5122",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_AGAIN_v1",
+      "aliases": [
+        "ASK_DOB_AGAIN_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_AGAIN"
+      ],
+      "variants": [
+        "ASK_DOB_AGAIN:v1"
+      ],
+      "current_text": "Anh chị đọc lại đủ ngày, tháng, năm sinh giúp em ạ.",
+      "character_count": 51,
+      "text_sha256": "aa7e385bf5cd330f95ddeeb028c2785b7e548c25e2f9f16992ef77eb224a93ce",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_AGAIN_v2",
+      "aliases": [
+        "ASK_DOB_AGAIN_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_AGAIN"
+      ],
+      "variants": [
+        "ASK_DOB_AGAIN:v2"
+      ],
+      "current_text": "Em xin nghe lại ngày, tháng và năm sinh của anh chị ạ.",
+      "character_count": 54,
+      "text_sha256": "9b849a0d75cc0823396832868d8c527e8ffa98eaad77ff352373f154f6514bb0",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_DECLINED",
+      "aliases": [
+        "ASK_DOB_DECLINED"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_DECLINED"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em cần đối chiếu ngày sinh trước khi hỗ trợ. Anh chị cho em xin đủ ngày, tháng, năm sinh ạ.",
+      "character_count": 91,
+      "text_sha256": "704e8a2703378d1649cfc970b061569d52f2c80317629af7f5ddb58d65a569aa",
+      "prebuild_candidate": false,
+      "cache_policy": "DEFERRED_UNUSED_STATIC",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "NO_SOURCE_REFERENCE_REVIEW_USAGE"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_INVALID",
+      "aliases": [
+        "ASK_DOB_INVALID"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_INVALID"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị cho em xin đủ ngày, tháng, năm sinh theo dương lịch ạ.",
+      "character_count": 62,
+      "text_sha256": "67b4821a0974fc0b57042edc14ce5b4b55803ac703a8397b50aba7a75e929c49",
+      "prebuild_candidate": false,
+      "cache_policy": "DEFERRED_UNUSED_STATIC",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "NO_SOURCE_REFERENCE_REVIEW_USAGE"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_VERIFY_SHARED",
+      "aliases": [
+        "ASK_DOB_VERIFY_SHARED"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_DOB_VERIFY_SHARED:v0"
+      ],
+      "current_text": "Để bảo mật thông tin, em cần xác minh trước khi hỗ trợ. Anh chị cho em xin ngày, tháng, năm sinh ạ.",
+      "character_count": 99,
+      "text_sha256": "1cc969560234a69519171d3e54f37da1724c29004b28865c635f75d1bedd7cdf",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_VERIFY_SHARED_v1",
+      "aliases": [
+        "ASK_DOB_VERIFY_SHARED_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_DOB_VERIFY_SHARED:v1"
+      ],
+      "current_text": "Em cần đối chiếu ngày sinh trước khi trao đổi thông tin lịch khám. Anh chị đọc đủ ngày, tháng, năm sinh giúp em ạ.",
+      "character_count": 114,
+      "text_sha256": "c0578765ab772847eb7cb8d513522d2f634d164f1344694c72ed4066dfed27e0",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_VERIFY_SHARED_v2",
+      "aliases": [
+        "ASK_DOB_VERIFY_SHARED_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_DOB_VERIFY_SHARED:v2"
+      ],
+      "current_text": "Vì bảo mật, anh chị cho em biết ngày, tháng, năm sinh để em xác minh ạ.",
+      "character_count": 71,
+      "text_sha256": "8247ee3fb1a5e9d2001ef082db74717bbee89eafdc9b0dba0ea0becf17bf2d16",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_v1",
+      "aliases": [
+        "ASK_DOB_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB"
+      ],
+      "variants": [
+        "ASK_DOB:v1"
+      ],
+      "current_text": "Em xin thêm ngày, tháng, năm sinh để xác minh thông tin ạ.",
+      "character_count": 58,
+      "text_sha256": "745ecfa814d5807613cb4db8e946024e394a415ff739c8d0e7e5de99df70d1db",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_DOB_v2",
+      "aliases": [
+        "ASK_DOB_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_DOB"
+      ],
+      "variants": [
+        "ASK_DOB:v2"
+      ],
+      "current_text": "Dạ, anh chị cho em biết ngày, tháng, năm sinh ạ.",
+      "character_count": 48,
+      "text_sha256": "b621031664c3ff1542b43463b0432e0cda2207564b876f1c80c457ebc37cc11c",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_INTENT_INBOUND",
+      "aliases": [
+        "ASK_INTENT_INBOUND"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_INTENT_INBOUND"
+      ],
+      "variants": [
+        "ASK_INTENT_INBOUND:v0"
+      ],
+      "current_text": "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",
+      "character_count": 43,
+      "text_sha256": "7f1c605e84bc0dc866236666cf5a26f2af37f49e5bc6905d82b791eca9003431",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:441"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_INTENT_INBOUND_v1",
+      "aliases": [
+        "ASK_INTENT_INBOUND_v1"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_INTENT_INBOUND"
+      ],
+      "variants": [
+        "ASK_INTENT_INBOUND:v1"
+      ],
+      "current_text": "Em đã xác minh xong. Anh chị cần hỗ trợ gì ạ?",
+      "character_count": 45,
+      "text_sha256": "c8fa1a149efb420ef46b71e9756d1a5b01de98c572cb0c8168d09389f509991b",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:441"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_INTENT_INBOUND_v2",
+      "aliases": [
+        "ASK_INTENT_INBOUND_v2"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_INTENT_INBOUND"
+      ],
+      "variants": [
+        "ASK_INTENT_INBOUND:v2"
+      ],
+      "current_text": "Cảm ơn anh chị. Em có thể giúp gì tiếp theo ạ?",
+      "character_count": 46,
+      "text_sha256": "1b5b85df1832ce6d8d23a255cfc82135e576d2b12cca35312f2cc56731bd181b",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:441"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AFTER_DOB",
+      "aliases": [
+        "ASK_NAME_AFTER_DOB"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AFTER_DOB"
+      ],
+      "variants": [
+        "ASK_NAME_AFTER_DOB:v0"
+      ],
+      "current_text": "Anh chị cho em xin thêm họ và tên đầy đủ ạ.",
+      "character_count": 43,
+      "text_sha256": "e6e04484529f0d85340b8ea07d1ccdb6bc6ce1ab29036de44d598878128933c8",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AFTER_DOB_v1",
+      "aliases": [
+        "ASK_NAME_AFTER_DOB_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AFTER_DOB"
+      ],
+      "variants": [
+        "ASK_NAME_AFTER_DOB:v1"
+      ],
+      "current_text": "Em xin thêm họ và tên đầy đủ của anh chị để đối chiếu ạ.",
+      "character_count": 56,
+      "text_sha256": "e977eae65438b07263dcda763de24ad708db85c27e85fa9e06f7b54f0a3380e7",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AFTER_DOB_v2",
+      "aliases": [
+        "ASK_NAME_AFTER_DOB_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AFTER_DOB"
+      ],
+      "variants": [
+        "ASK_NAME_AFTER_DOB:v2"
+      ],
+      "current_text": "Anh chị cho em biết họ và tên đầy đủ để em hoàn tất xác minh ạ.",
+      "character_count": 63,
+      "text_sha256": "6f74fafe5f51ee0666bc50eba1f5da6362926fcaa0258d53f1ebd5b03cfd6bba",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:317"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AGAIN",
+      "aliases": [
+        "ASK_NAME_AGAIN"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AGAIN"
+      ],
+      "variants": [
+        "ASK_NAME_AGAIN:v0"
+      ],
+      "current_text": "Anh chị cho em xin lại họ và tên đầy đủ ạ.",
+      "character_count": 42,
+      "text_sha256": "80df7042b8f24d1b27bbe0d01cb39bea315e2e88760315c893a0efcb2cc84c4b",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AGAIN_v1",
+      "aliases": [
+        "ASK_NAME_AGAIN_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AGAIN"
+      ],
+      "variants": [
+        "ASK_NAME_AGAIN:v1"
+      ],
+      "current_text": "Em chưa nghe rõ họ tên. Anh chị đọc lại họ và tên đầy đủ giúp em ạ.",
+      "character_count": 67,
+      "text_sha256": "5c9e0ed032dd32dc40e15624ffb78a0a0b5faf35a8ab756809a151a35c59a314",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_AGAIN_v2",
+      "aliases": [
+        "ASK_NAME_AGAIN_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_AGAIN"
+      ],
+      "variants": [
+        "ASK_NAME_AGAIN:v2"
+      ],
+      "current_text": "Dạ, anh chị nhắc lại họ và tên đầy đủ để em đối chiếu ạ.",
+      "character_count": 56,
+      "text_sha256": "98278ab0461fe699c088e6d847bc52aa503a734d07d2a38bc8540dde0093a37a",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:426"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_DECLINED",
+      "aliases": [
+        "ASK_NAME_DECLINED"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_DECLINED"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em cần đối chiếu họ tên trước khi hỗ trợ. Anh chị cho em xin họ và tên đầy đủ ạ.",
+      "character_count": 80,
+      "text_sha256": "98d369dd1dc1d26e788ad38276702d81dce1bd75650b198d781485f193c7b5c9",
+      "prebuild_candidate": false,
+      "cache_policy": "DEFERRED_UNUSED_STATIC",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "NO_SOURCE_REFERENCE_REVIEW_USAGE"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_VERIFY_SHARED",
+      "aliases": [
+        "ASK_NAME_VERIFY_SHARED"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_NAME_VERIFY_SHARED:v0"
+      ],
+      "current_text": "Để bảo mật thông tin, em cần xác minh trước khi hỗ trợ. Anh chị cho em xin họ và tên đầy đủ ạ.",
+      "character_count": 94,
+      "text_sha256": "957b91974fdff3d78e0d20fd8b835c084e4031bad4bd9ec1b86d0ed0d88a3cb4",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_VERIFY_SHARED_v1",
+      "aliases": [
+        "ASK_NAME_VERIFY_SHARED_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_NAME_VERIFY_SHARED:v1"
+      ],
+      "current_text": "Em cần đối chiếu đúng người trước khi trao đổi thông tin lịch khám. Anh chị cho em biết họ và tên đầy đủ ạ.",
+      "character_count": 107,
+      "text_sha256": "70614bda9e15071bd78ed747ef925804dfecd00b1725a0f4b64250205545ae42",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_NAME_VERIFY_SHARED_v2",
+      "aliases": [
+        "ASK_NAME_VERIFY_SHARED_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "ASK_NAME_VERIFY_SHARED"
+      ],
+      "variants": [
+        "ASK_NAME_VERIFY_SHARED:v2"
+      ],
+      "current_text": "Vì bảo mật, em xin họ và tên đầy đủ để xác minh rồi hỗ trợ anh chị ạ.",
+      "character_count": 69,
+      "text_sha256": "7fde54ddd02bf4baa875d612f5b5b18515fa481276569fe9c9c250e3cbb40d62",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:342",
+        "src/callbot/engine/dialogue/manager.py:344",
+        "src/callbot/engine/dialogue/manager.py:423"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_BOOK",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_BOOK"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_BOOK"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_BOOK:v0"
+      ],
+      "current_text": "Anh chị muốn đặt vào ngày nào hoặc buổi nào ạ?",
+      "character_count": 46,
+      "text_sha256": "d9ee0ee7967ebbf83768a36c23f9f01c1ada2ed672d3fc897c668785200d7579",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_BOOK_v1",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_BOOK_v1"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_BOOK"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_BOOK:v1"
+      ],
+      "current_text": "Anh chị cho em biết ngày hoặc buổi muốn đặt lịch ạ.",
+      "character_count": 51,
+      "text_sha256": "b166b6c6ee4c320856699d5e3c4c255e178ee2e35be6b7a4ca4d00836a7905a7",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_BOOK_v2",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_BOOK_v2"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_BOOK"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_BOOK:v2"
+      ],
+      "current_text": "Dạ, anh chị muốn đặt lịch vào ngày nào hoặc buổi nào ạ?",
+      "character_count": 55,
+      "text_sha256": "71607eaab4187a5dd11367d014f97924d6e69c6dc6c49e6989cf10592043956a",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_RESCHEDULE",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE:v0"
+      ],
+      "current_text": "Anh chị muốn đổi sang ngày nào hoặc buổi nào ạ?",
+      "character_count": 47,
+      "text_sha256": "ccb9da84a719966174ab208e53462c83471b6c9dddd84bfdba41f174abb8a682",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_RESCHEDULE_v1",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE_v1"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE:v1"
+      ],
+      "current_text": "Anh chị cho em biết ngày hoặc buổi muốn đổi lịch sang ạ.",
+      "character_count": 56,
+      "text_sha256": "727eacadc97d3a3c1c534532b400ac219f5b316384c42346f71f6d1938e8bcc0",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ASK_SLOT_PREFERENCE_RESCHEDULE_v2",
+      "aliases": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE_v2"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE"
+      ],
+      "variants": [
+        "ASK_SLOT_PREFERENCE_RESCHEDULE:v2"
+      ],
+      "current_text": "Dạ, anh chị muốn chuyển lịch sang ngày nào hoặc buổi nào ạ?",
+      "character_count": 59,
+      "text_sha256": "1be235181302a8dbb437127232d3b2d20e121a8ca4cc5eccbf68bfb8df66e031",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:906"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "BOOKED_SAFE",
+      "aliases": [
+        "BOOKED_SAFE"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "BOOKED_SAFE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã đặt lịch khám cho anh chị ạ.",
+      "character_count": 34,
+      "text_sha256": "b33257401a21352b611058c6855ae4835d8d762d40781c425aabcdb856b20bd8",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "BOOKED",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt. Chỉ phát sau receipt thành công; audio sẵn không bỏ qua Output Guard.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "BOOKING_ABANDONED",
+      "aliases": [
+        "BOOKING_ABANDONED"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "BOOKING_ABANDONED"
+      ],
+      "variants": [
+        "BOOKING_ABANDONED:v0"
+      ],
+      "current_text": "Em chưa đặt lịch nào cho anh chị. Anh chị cần em hỗ trợ gì thêm ạ?",
+      "character_count": 66,
+      "text_sha256": "1e09b57c23006989933de34330cb2bfd3a1548340e1738cf65db655826a0fa73",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:978"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "BOOKING_ABANDONED_v1",
+      "aliases": [
+        "BOOKING_ABANDONED_v1"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "BOOKING_ABANDONED"
+      ],
+      "variants": [
+        "BOOKING_ABANDONED:v1"
+      ],
+      "current_text": "Dạ, chưa có lịch nào được đặt. Anh chị muốn em hỗ trợ việc gì khác ạ?",
+      "character_count": 69,
+      "text_sha256": "d23bffeab35bb3e03ddacdb2ef0de981163e7e9f12a0ff16bda6b57ec1f07ac0",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:978"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "BOOKING_ABANDONED_v2",
+      "aliases": [
+        "BOOKING_ABANDONED_v2"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "BOOKING_ABANDONED"
+      ],
+      "variants": [
+        "BOOKING_ABANDONED:v2"
+      ],
+      "current_text": "Em chưa tạo lịch hẹn. Anh chị có cần hỗ trợ thêm không ạ?",
+      "character_count": 57,
+      "text_sha256": "68af460a17a975f29d5836317a2909e3b16e20d83c5624af73b84b60582a1f85",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:978"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CANCELLED_SAFE",
+      "aliases": [
+        "CANCELLED_SAFE"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCELLED_SAFE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã hủy lịch khám cho anh chị ạ.",
+      "character_count": 34,
+      "text_sha256": "ed85251c77a2ac1b0e138baaaeca25a793ae06bbe44f71f6f2da588cf84f712c",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "CANCELLED",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt. Chỉ phát sau receipt thành công; audio sẵn không bỏ qua Output Guard.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CANCEL_CHOICE",
+      "aliases": [
+        "CANCEL_CHOICE"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCEL_CHOICE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị muốn hủy hay giữ lịch khám ạ? Nếu muốn hủy, anh chị nói “hủy lịch” giúp em ạ.",
+      "character_count": 85,
+      "text_sha256": "621bf8fa78b27f16ec21a1007d4f9e8c6fb259041bbfc6951b20946524a0ba57",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:939",
+        "src/callbot/engine/dialogue/manager.py:951"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CANCEL_CONFLICT",
+      "aliases": [
+        "CANCEL_CONFLICT"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCEL_CONFLICT"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị có chắc chắn muốn hủy lịch khám này không ạ? Nếu đồng ý, anh chị nói “hủy lịch” giúp em ạ.",
+      "character_count": 98,
+      "text_sha256": "76b1ae5c555e2313ffa0890645b27adf93909e3c3080331ff2bb983eb7e4c27f",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:262",
+        "src/callbot/engine/dialogue/manager.py:935"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CANCEL_REASON_NOTED",
+      "aliases": [
+        "CANCEL_REASON_NOTED"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCEL_REASON_NOTED"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã ghi nhận lý do. Anh chị muốn hủy lịch khám này đúng không ạ? Nếu muốn hủy, anh chị nói “hủy lịch” giúp em ạ.",
+      "character_count": 114,
+      "text_sha256": "170cf9d22c0e4a4111a26fad1307be0c45c60f0d43c1a6cab3929a100636ef09",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:945"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CANCEL_RECONFIRM",
+      "aliases": [
+        "CANCEL_RECONFIRM"
+      ],
+      "scenarios": "Cancel",
+      "groups": [
+        "CANCEL_RECONFIRM"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+      "character_count": 54,
+      "text_sha256": "e755d72555a4751b8ca03abc5a3a96eb26756fab6745ec7f4db4cea2d7e766d8",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:622"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CONFIRMED_SAFE",
+      "aliases": [
+        "CONFIRMED_SAFE"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "CONFIRMED_SAFE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã xác nhận lịch khám cho anh chị. Hẹn gặp anh chị ạ.",
+      "character_count": 56,
+      "text_sha256": "998361d4b39a29e83081879fb26678ec7cc61495223a1e9218e9b1474b6acf01",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "CONFIRMED",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt. Chỉ phát sau receipt thành công; audio sẵn không bỏ qua Output Guard.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "CONFIRM_CONFLICT",
+      "aliases": [
+        "CONFIRM_CONFLICT"
+      ],
+      "scenarios": "Confirm",
+      "groups": [
+        "CONFIRM_CONFLICT"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị có đồng ý xác nhận đến khám theo lịch vừa đọc không ạ?",
+      "character_count": 62,
+      "text_sha256": "4f05e895b5753428d1c08e5fbf30a76618634edef8c6836bc5c5b144b48deb8b",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:264"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GOODBYE_UNREACHABLE",
+      "aliases": [
+        "GOODBYE_UNREACHABLE"
+      ],
+      "scenarios": "No-answer",
+      "groups": [
+        "GOODBYE_UNREACHABLE"
+      ],
+      "variants": [
+        "GOODBYE_UNREACHABLE:v0"
+      ],
+      "current_text": "Em xin kết thúc cuộc gọi. Em chào anh chị ạ.",
+      "character_count": 44,
+      "text_sha256": "91aa565d2996afdcda8cfcda0b3f81957ac24f7819cecd020f1c206ed9d05f65",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:183",
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GOODBYE_UNREACHABLE_v1",
+      "aliases": [
+        "GOODBYE_UNREACHABLE_v1"
+      ],
+      "scenarios": "No-answer",
+      "groups": [
+        "GOODBYE_UNREACHABLE"
+      ],
+      "variants": [
+        "GOODBYE_UNREACHABLE:v1"
+      ],
+      "current_text": "Em xin dừng cuộc gọi tại đây. Chào anh chị ạ.",
+      "character_count": 45,
+      "text_sha256": "cadb6579226fc64ad82bfa7da7bbe0575b2d36313a82a52d45528ccd087baf01",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:183",
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GOODBYE_UNREACHABLE_v2",
+      "aliases": [
+        "GOODBYE_UNREACHABLE_v2"
+      ],
+      "scenarios": "No-answer",
+      "groups": [
+        "GOODBYE_UNREACHABLE"
+      ],
+      "variants": [
+        "GOODBYE_UNREACHABLE:v2"
+      ],
+      "current_text": "Cảm ơn anh chị. Em xin kết thúc cuộc gọi ạ.",
+      "character_count": 43,
+      "text_sha256": "150b99285bd2ee19ef353d0d49bfcb155032cc4c1ecc0e32ef24c4c35912305c",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:183",
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_BACK_SHARED",
+      "aliases": [
+        "GREETING_BACK_SHARED"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "GREETING_BACK_SHARED"
+      ],
+      "variants": [
+        "GREETING_BACK_SHARED:v0"
+      ],
+      "current_text": "Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin họ và tên đầy đủ ạ.",
+      "character_count": 78,
+      "text_sha256": "d6b5cf9138fc0966f803c3283307d015dbbd8a04da8a77e49fe1599440678d86",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:322",
+        "src/callbot/engine/dialogue/manager.py:332"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_BACK_SHARED_v1",
+      "aliases": [
+        "GREETING_BACK_SHARED_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "GREETING_BACK_SHARED"
+      ],
+      "variants": [
+        "GREETING_BACK_SHARED:v1"
+      ],
+      "current_text": "Anh chị đang nói chuyện với trợ lý ảo AI của tổng đài Vinmec. Em xin họ và tên đầy đủ để đối chiếu ạ.",
+      "character_count": 101,
+      "text_sha256": "7fa8806a9a6ab48d34ed9ddcdf48581f58eeb3bbbd36db89745fb349f8b3bb52",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:322",
+        "src/callbot/engine/dialogue/manager.py:332"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_BACK_SHARED_v2",
+      "aliases": [
+        "GREETING_BACK_SHARED_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "GREETING_BACK_SHARED"
+      ],
+      "variants": [
+        "GREETING_BACK_SHARED:v2"
+      ],
+      "current_text": "Tổng đài Vinmec đang hỗ trợ anh chị ạ. Em là trợ lý ảo AI. Anh chị cho em biết họ và tên đầy đủ ạ.",
+      "character_count": 98,
+      "text_sha256": "ae252175874984584400aae654c4eafb2c720039b57729c4c6c6b736276597b1",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:322",
+        "src/callbot/engine/dialogue/manager.py:332"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_HANDOFF_INBOUND",
+      "aliases": [
+        "GREETING_HANDOFF_INBOUND"
+      ],
+      "scenarios": "Identity/Transfer",
+      "groups": [
+        "GREETING_HANDOFF_INBOUND"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Tổng đài Vinmec xin nghe. Em là trợ lý ảo AI. Em xin chuyển máy tới nhân viên hỗ trợ anh chị ạ.",
+      "character_count": 95,
+      "text_sha256": "23bbe616fec8d948ce0fdb0f447944acd9ea85a59856027298ac9e88c5ee0315",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/inbound.py:17"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_INBOUND",
+      "aliases": [
+        "GREETING_INBOUND"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "GREETING_INBOUND"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Tổng đài Vinmec xin nghe. Em là trợ lý ảo AI. Anh chị cho em xin họ và tên đầy đủ ạ?",
+      "character_count": 84,
+      "text_sha256": "7394175b6332b94ae1c92f001ffe606006f2d40b816597955d27f1c503a639a3",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/inbound.py:18"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "GREETING_OUTBOUND",
+      "aliases": [
+        "GREETING_OUTBOUND"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "GREETING_OUTBOUND"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em chào anh chị. Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin họ và tên đầy đủ ạ?",
+      "character_count": 95,
+      "text_sha256": "bbfe08448c02fd19c022fc0a870dc4d397f8da92e282c6e12801a3314b3bce41",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/outbound.py:18"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "HOLD",
+      "aliases": [
+        "HOLD"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "HOLD"
+      ],
+      "variants": [
+        "HOLD:v0"
+      ],
+      "current_text": "Dạ, em chờ anh chị ạ.",
+      "character_count": 21,
+      "text_sha256": "77e7bc5d8faa15b63c0bbd8887d4f509b65abfc1cb46c99c4377126e5065dfb4",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:210"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "HOLD_v1",
+      "aliases": [
+        "HOLD_v1"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "HOLD"
+      ],
+      "variants": [
+        "HOLD:v1"
+      ],
+      "current_text": "Anh chị cứ từ từ, em đang nghe ạ.",
+      "character_count": 33,
+      "text_sha256": "aedcfff5f1241aa5b65a4f4dd8713f4b25141d3bec27f0271196a3ad5d3c1758",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:210"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "HOLD_v2",
+      "aliases": [
+        "HOLD_v2"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "HOLD"
+      ],
+      "variants": [
+        "HOLD:v2"
+      ],
+      "current_text": "Em giữ máy chờ anh chị ạ.",
+      "character_count": 25,
+      "text_sha256": "7bc83e4b26b977491a3c67b174dac9bc9990a6b23278107627c0846c6910e015",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:210"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "INTRODUCE_AGAIN_ASK_DOB",
+      "aliases": [
+        "INTRODUCE_AGAIN_ASK_DOB"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "INTRODUCE_AGAIN_ASK_DOB"
+      ],
+      "variants": [
+        "INTRODUCE_AGAIN_ASK_DOB:v0"
+      ],
+      "current_text": "Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin ngày, tháng, năm sinh ạ.",
+      "character_count": 83,
+      "text_sha256": "b6589260f58785507524e4a683b75b6a4d0ac983041a0876f1e3b78e4c041f73",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:324"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "INTRODUCE_AGAIN_ASK_DOB_v1",
+      "aliases": [
+        "INTRODUCE_AGAIN_ASK_DOB_v1"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "INTRODUCE_AGAIN_ASK_DOB"
+      ],
+      "variants": [
+        "INTRODUCE_AGAIN_ASK_DOB:v1"
+      ],
+      "current_text": "Dạ, em là trợ lý ảo AI của tổng đài Vinmec. Em xin ngày, tháng, năm sinh để đối chiếu ạ.",
+      "character_count": 88,
+      "text_sha256": "a6779f15c086cfac7f59b3b1b685fb2d5a3e0dbed5ea27498f8d5cb984062eee",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:324"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [
+        "DA_OPENING"
+      ],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "INTRODUCE_AGAIN_ASK_DOB_v2",
+      "aliases": [
+        "INTRODUCE_AGAIN_ASK_DOB_v2"
+      ],
+      "scenarios": "Identity",
+      "groups": [
+        "INTRODUCE_AGAIN_ASK_DOB"
+      ],
+      "variants": [
+        "INTRODUCE_AGAIN_ASK_DOB:v2"
+      ],
+      "current_text": "Anh chị đang nói chuyện với trợ lý ảo AI của Vinmec. Anh chị đọc ngày, tháng, năm sinh giúp em ạ.",
+      "character_count": 97,
+      "text_sha256": "8b0830264110a031d6a19e8bfd9f81ef5f277f8cc8c6f9d954d6c14e1584db5f",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:324"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "NOT_UNDERSTOOD",
+      "aliases": [
+        "NOT_UNDERSTOOD"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "NOT_UNDERSTOOD"
+      ],
+      "variants": [
+        "NOT_UNDERSTOOD:v0"
+      ],
+      "current_text": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ.",
+      "character_count": 53,
+      "text_sha256": "fb1e8c207867f644991831804984a1214cec49fd0a985209da84dd9698e701f7",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1277"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "NOT_UNDERSTOOD_v1",
+      "aliases": [
+        "NOT_UNDERSTOOD_v1"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "NOT_UNDERSTOOD"
+      ],
+      "variants": [
+        "NOT_UNDERSTOOD:v1"
+      ],
+      "current_text": "Anh chị nói rõ hơn một chút giúp em được không ạ?",
+      "character_count": 49,
+      "text_sha256": "20184af35cc7ca9832083301e25c0707706f7b20798a0f500dab4ef135475bdf",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1277"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "NOT_UNDERSTOOD_v2",
+      "aliases": [
+        "NOT_UNDERSTOOD_v2"
+      ],
+      "scenarios": "Identity/Confirm/Cancel/Transfer/Reschedule/No-answer/Booking",
+      "groups": [
+        "NOT_UNDERSTOOD"
+      ],
+      "variants": [
+        "NOT_UNDERSTOOD:v2"
+      ],
+      "current_text": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ.",
+      "character_count": 60,
+      "text_sha256": "dc51748af413cd66d7b83f4eed3db40ffd3de4af149055c07b8e7a56d43634be",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_3_VARIANTS",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1277"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "NO_SLOTS_TRANSFER",
+      "aliases": [
+        "NO_SLOTS_TRANSFER"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "NO_SLOTS_TRANSFER"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Hiện chưa có giờ trống. Em xin chuyển máy tới nhân viên hỗ trợ anh chị ạ.",
+      "character_count": 73,
+      "text_sha256": "06749b84f4d7a4f69b7bb9eb06004b8cf8459d7bee48bcb5702ad18c37f1dde9",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1035"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "RESCHEDULED_SAFE",
+      "aliases": [
+        "RESCHEDULED_SAFE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "RESCHEDULED_SAFE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã đổi lịch khám cho anh chị ạ.",
+      "character_count": 34,
+      "text_sha256": "a5c5b584de31fb2e45614866ccbb6bff39bc33aa0ef96dc8e0152288b491df99",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "RESCHEDULED",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt. Chỉ phát sau receipt thành công; audio sẵn không bỏ qua Output Guard.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "ROUNDS_EXHAUSTED_TRANSFER",
+      "aliases": [
+        "ROUNDS_EXHAUSTED_TRANSFER"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "ROUNDS_EXHAUSTED_TRANSFER"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Lịch cũ của anh chị vẫn giữ nguyên. Em xin chuyển máy tới nhân viên để tìm giờ phù hợp ạ.",
+      "character_count": 89,
+      "text_sha256": "a14f7d06d308fad5996025ea8d1f807e19808b580a5af3211e87263fd8b6e00b",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1270"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SILENCE",
+      "aliases": [
+        "SILENCE"
+      ],
+      "scenarios": "No-answer",
+      "groups": [
+        "SILENCE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Alo, anh chị còn nghe máy không ạ?",
+      "character_count": 34,
+      "text_sha256": "ca2a09872c52bb73a7123f21b6b2c00a32cf128b89896a85e9162a50127d1f8a",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:133",
+        "src/callbot/engine/dialogue/manager.py:135"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_CONFLICT",
+      "aliases": [
+        "SLOT_CONFLICT"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_CONFLICT"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị có đồng ý với khung giờ vừa đọc không ạ?",
+      "character_count": 48,
+      "text_sha256": "19d3ec178e7ef8b5f7351dc253b5a504b6df0c8965deebd7b4afe6a3b0a75b61",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:266"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_EXHAUSTED_BOOK",
+      "aliases": [
+        "SLOT_EXHAUSTED_BOOK"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "SLOT_EXHAUSTED_BOOK"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã đọc hết giờ trống phù hợp. Anh chị muốn tìm ngày khác không ạ?",
+      "character_count": 68,
+      "text_sha256": "1be473eb10f66c3f03451fcc11b0945625085fa079c9ec4884c6fe6de83dbd2f",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1209"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_EXHAUSTED_RESCHEDULE",
+      "aliases": [
+        "SLOT_EXHAUSTED_RESCHEDULE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "SLOT_EXHAUSTED_RESCHEDULE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em đã đọc hết giờ trống phù hợp. Anh chị muốn tìm ngày khác hay giữ lịch cũ ạ?",
+      "character_count": 78,
+      "text_sha256": "4c04184373567dcb4e4bc371bc5848299c40b513dc51ec7b6fe145c41a10ba98",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1209"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_REFUSE_CHOICE_BOOK",
+      "aliases": [
+        "SLOT_REFUSE_CHOICE_BOOK"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "SLOT_REFUSE_CHOICE_BOOK"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị muốn nghe giờ khác hay dừng đặt lịch ạ?",
+      "character_count": 47,
+      "text_sha256": "74e7bdf9622cac0d5a15d98568ea58fc484a0db0be46fac95faf05525d5e3a7c",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1186"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_REFUSE_CHOICE_RESCHEDULE",
+      "aliases": [
+        "SLOT_REFUSE_CHOICE_RESCHEDULE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "SLOT_REFUSE_CHOICE_RESCHEDULE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Anh chị muốn nghe giờ khác hay giữ lịch cũ ạ?",
+      "character_count": 45,
+      "text_sha256": "6beac21b0f3efc07a5e20c6f009a397c4480b3af48fe7864df74fe5501e7c7a6",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1186"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_TAKEN_EXHAUSTED_BOOK",
+      "aliases": [
+        "SLOT_TAKEN_EXHAUSTED_BOOK"
+      ],
+      "scenarios": "Booking",
+      "groups": [
+        "SLOT_TAKEN_EXHAUSTED_BOOK"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Giờ đó vừa có người đặt và không còn giờ phù hợp khác. Anh chị muốn tìm ngày khác không ạ?",
+      "character_count": 90,
+      "text_sha256": "6b88c49ac01aa58fdcbdba12b7ce271661c958dd1000abbaf63272a401b9a5fd",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1209"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_TAKEN_EXHAUSTED_RESCHEDULE",
+      "aliases": [
+        "SLOT_TAKEN_EXHAUSTED_RESCHEDULE"
+      ],
+      "scenarios": "Reschedule",
+      "groups": [
+        "SLOT_TAKEN_EXHAUSTED_RESCHEDULE"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Giờ đó vừa có người đặt và không còn giờ phù hợp khác. Anh chị muốn tìm ngày khác hay giữ lịch cũ ạ?",
+      "character_count": 100,
+      "text_sha256": "f0d1ae3801412314242c02364f03c071134523c0da554cdd75fe0e84afc79c0a",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1209"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_TAKEN_NO_SLOTS_TRANSFER",
+      "aliases": [
+        "SLOT_TAKEN_NO_SLOTS_TRANSFER"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_TAKEN_NO_SLOTS_TRANSFER"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Giờ đó vừa có người đặt và hiện chưa có giờ trống khác. Em xin chuyển máy tới nhân viên hỗ trợ anh chị ạ.",
+      "character_count": 105,
+      "text_sha256": "a0e0bc8811e45ade7427a6d27232c2492ed75db0bdf9a38affed2355c5007fbe",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1035"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "SLOT_TAKEN_ROUNDS_TRANSFER",
+      "aliases": [
+        "SLOT_TAKEN_ROUNDS_TRANSFER"
+      ],
+      "scenarios": "Reschedule/Booking",
+      "groups": [
+        "SLOT_TAKEN_ROUNDS_TRANSFER"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Giờ đó vừa có người đặt. Lịch cũ vẫn giữ nguyên. Em xin chuyển máy tới nhân viên để tìm giờ phù hợp ạ.",
+      "character_count": 102,
+      "text_sha256": "23c9aed4bfcac8ae3fbafc76c6e084ded7c3457ae79effa22ee0cbddaad66514",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:1270"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    },
+    {
+      "kind": "STATIC",
+      "template_id": "TRANSFER",
+      "aliases": [
+        "TRANSFER"
+      ],
+      "scenarios": "Transfer",
+      "groups": [
+        "TRANSFER"
+      ],
+      "variants": [
+        "fixed"
+      ],
+      "current_text": "Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.",
+      "character_count": 52,
+      "text_sha256": "b12debe4ce0811be4ea8f7e08ef18be0ce5aa473a5fa5727d3b01a1de190360f",
+      "prebuild_candidate": true,
+      "cache_policy": "STATIC_AFTER_REVIEW",
+      "selection": "REGISTERED_FIXED",
+      "source_references": [
+        "src/callbot/engine/dialogue/manager.py:138",
+        "src/callbot/engine/dialogue/manager.py:921",
+        "src/callbot/engine/orchestrator.py:60",
+        "src/callbot/engine/policy/output_guard.py:262"
+      ],
+      "success_outcome": "",
+      "discloses": false,
+      "sources": {},
+      "string_domains": {},
+      "review_flags": [],
+      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
+      "text_review_status": "PENDING",
+      "listening_status": "NOT_REVIEWED"
+    }
+  ]
+}

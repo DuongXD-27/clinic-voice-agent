@@ -247,6 +247,7 @@ def test_voice_turn_root_context_reuse_privacy_and_shutdown_order(
         "provider_requested": "fake",
         "character_count": len(turn.json()["utterance"]),
         "fallback_used": False,
+        "cache_hit": False,
         "audio_format": "pcm16",
         "result": "OK",
     }
