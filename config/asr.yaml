@@ -14,10 +14,8 @@ gemini_live: # GEMINI_API_KEY
   max_turn_speech_ms: 15000 # GEMINI_LIVE_MAX_TURN_SPEECH_MS
   # Audio trước frame đầu tiên được báo là tiếng nói, gửi kèm khi mở đoạn (xem zipformer).
   pre_speech_ms: 300 # GEMINI_LIVE_PRE_SPEECH_MS
-  # Đoạn lỗi (hết hạn chờ final, mất kết nối, hết credit) decode lại bằng model cục bộ thay vì
-  # làm hỏng cả luồng STT của cuộc gọi. Worker nạp thêm ZipFormer (section zipformer bên dưới).
-  # null hoặc rỗng = tắt.
-  fallback_provider: zipformer # GEMINI_LIVE_FALLBACK_PROVIDER
+  # Chọn Gemini thì chỉ dùng Gemini, không decode lại bằng model khác: đoạn lỗi (hết hạn chờ
+  # final, mất kết nối, hết credit) chỉ mất đoạn đó; nhiều đoạn lỗi liên tiếp thì dừng luồng STT.
 
 phowhisper:
   model: vinai/PhoWhisper-large # PHOWHISPER_MODEL

@@ -101,13 +101,10 @@ class _Connector:
         )
 
 
-def _provider(*sockets, fallback=None, **config):
+def _provider(*sockets, **config):
     connector = _Connector(*sockets)
-    config.setdefault("fallback_provider", None)
     provider = GeminiLiveASR(
-        GeminiLiveASRConfig(api_key="test-key", _env_file=None, **config),
-        connect=connector,
-        fallback=fallback,
+        GeminiLiveASRConfig(api_key="test-key", _env_file=None, **config), connect=connector
     )
     return provider, connector
 
@@ -222,15 +219,26 @@ async def test_noise_only_sends_no_audio_and_closes_prewarmed_socket():
     assert spare.closed
 
 
-async def test_segment_without_words_settles_on_activity_end_without_fallback():
+@pytest.fixture
+def zipformer_loads(monkeypatch):
+    """Mọi lần dựng ZipFormer: chọn Gemini thì không được nạp hay gọi model khác."""
+    created = []
+
+    class _RecordingZipFormer:
+        def __init__(self, *args, **kwargs) -> None:
+            created.append(args)
+
+    monkeypatch.setattr("inference.asr.providers.zipformer.ZipFormerASR", _RecordingZipFormer)
+    return created
+
+
+async def test_segment_without_words_settles_on_activity_end():
     socket = _Socket(text=None, activity_end=True)
-    fallback = _FakeFallback()
-    provider, _ = _provider(socket, fallback=fallback, final_timeout_s=30)
+    provider, _ = _provider(socket, final_timeout_s=30)
 
     events = await asyncio.wait_for(_collect(provider.stream(_frames([_VOICE] * 4))), 1)
 
     assert [(event.text, event.is_final) for event in events][-1] == ("", True)
-    assert fallback.calls == []
     assert socket.closed
 
 
@@ -282,76 +290,83 @@ async def test_idle_prewarmed_socket_is_replaced_before_server_drops_it(monkeypa
     assert [event.text for event in events if event.is_final] == ["đồng ý"]
 
 
-async def test_missing_final_raises_instead_of_committing_partial():
+async def test_missing_final_drops_only_that_segment_instead_of_committing_partial():
     socket = _Socket(final_gate=asyncio.Event())
     provider, _ = _provider(socket, final_timeout_s=0.01)
-    with pytest.raises(RuntimeError, match="timed out waiting for final"):
-        await _collect(provider.stream(_frames([_VOICE] * 4)))
-    assert socket.closed
-
-
-class _FakeFallback:
-    input_sample_rate = 16_000
-
-    def __init__(self, text="tôi muốn hủy lịch"):
-        self.text = text
-        self.calls = []
-
-    def transcribe(self, pcm):
-        from inference.asr.base import ASRResult
-
-        self.calls.append(pcm)
-        return ASRResult(text=self.text, confidence=0.9)
-
-
-async def test_missing_final_is_recovered_by_local_fallback_with_the_whole_segment():
-    socket = _Socket(final_gate=asyncio.Event())
-    fallback = _FakeFallback()
-    provider, _ = _provider(socket, fallback=fallback, final_timeout_s=0.01)
 
     events = await _collect(provider.stream(_frames([_VOICE] * 4)))
 
-    assert [(event.text, event.is_final) for event in events][-1] == ("tôi muốn hủy lịch", True)
-    assert fallback.calls == [_VOICE * 4]
+    assert [event.text for event in events if event.is_final] == [""]
     assert socket.closed
 
 
-async def test_setup_failure_is_recovered_by_local_fallback_and_next_segment_retries():
+async def test_gemini_final_landing_as_the_segment_times_out_is_the_only_final(monkeypatch):
+    """Final của Gemini tới đúng lúc đoạn hết hạn chờ: giữ final đó, không phát thêm final rỗng."""
+    from inference.asr.providers import gemini_live
+
+    gate = asyncio.Event()
+    stop_receiving = gemini_live._LiveTurn.stop_receiving
+
+    async def final_lands_first(self):
+        gate.set()
+        for _ in range(10):
+            await asyncio.sleep(0)  # luồng nhận kịp phát final trước khi bị dừng
+        await stop_receiving(self)
+
+    monkeypatch.setattr(gemini_live._LiveTurn, "stop_receiving", final_lands_first)
+    provider, _ = _provider(_Socket(text="bản gemini", final_gate=gate), final_timeout_s=0.01)
+
+    events = await _collect(provider.stream(_frames([_VOICE] * 4)))
+
+    assert [event.text for event in events if event.is_final] == ["bản gemini"]
+
+
+async def test_failed_segment_is_dropped_and_next_segment_uses_gemini_again(zipformer_loads):
     rejected = _Socket(setup_error={"error": {"code": 503}})
     healthy = _Socket(text="đồng ý")
-    fallback = _FakeFallback()
-    provider, connector = _provider(rejected, healthy, fallback=fallback)
+    provider, connector = _provider(rejected, healthy)
     frames = _frames([_VOICE] * 4 + [_SILENCE] * 3 + [_VOICE] * 4 + [_SILENCE] * 3)
 
     events = await _collect(provider.stream(frames, end_silence_ms=60))
 
-    finals = [event.text for event in events if event.is_final]
-    assert finals[0] == "tôi muốn hủy lịch"
-    assert finals[-1] == "đồng ý"
+    assert [event.text for event in events if event.is_final] == ["", "đồng ý"]
     assert len(connector.calls) == 3  # + socket mở sẵn cho đoạn sau
     assert rejected.closed and healthy.closed
+    assert zipformer_loads == []
 
 
-def test_prewarm_loads_the_local_fallback_without_calling_gemini():
+async def test_gemini_failing_segment_after_segment_stops_with_a_safe_error():
+    """Gemini không dùng được (sai key/model, hết credit): đủ `_MAX_FAILED_SEGMENTS` đoạn lỗi
+    liên tiếp thì dừng luồng STT, lỗi không lộ payload của server."""
+    from inference.asr.providers.gemini_live import _MAX_FAILED_SEGMENTS
+
+    rejected = [
+        _Socket(setup_error={"error": {"code": 404, "message": "secret caller text"}})
+        for _ in range(_MAX_FAILED_SEGMENTS)
+    ]
+    provider, _ = _provider(*rejected)
+    frames = _frames(([_VOICE] * 4 + [_SILENCE] * 3) * _MAX_FAILED_SEGMENTS)
+    finals = []
+
+    with pytest.raises(RuntimeError, match="code=404") as error:
+        async for event in provider.stream(frames, end_silence_ms=60):
+            if event.is_final:
+                finals.append(event.text)
+
+    assert finals == [""] * _MAX_FAILED_SEGMENTS  # mỗi đoạn lỗi vẫn được chốt, lượt không treo
+    assert "secret caller text" not in str(error.value)
+    assert all(socket.closed for socket in rejected)
+
+
+def test_warm_up_neither_calls_gemini_nor_loads_another_model(zipformer_loads):
     from speech.bundle import warm_up
 
-    fallback = _FakeFallback()
-    provider, connector = _provider(fallback=fallback)
-    gateway = ASRGateway(provider, provider_name="gemini_live")
+    provider, connector = _provider()
 
-    warm_up(SpeechRecognizer(gateway))
+    warm_up(SpeechRecognizer(ASRGateway(provider, provider_name="gemini_live")))
 
-    assert len(fallback.calls) == 1
     assert connector.calls == []
-
-
-async def test_setup_rejection_is_explicit_and_does_not_leak_payload():
-    socket = _Socket(setup_error={"error": {"code": 404, "message": "secret caller text"}})
-    provider, _ = _provider(socket)
-    with pytest.raises(RuntimeError, match="code=404") as error:
-        await _collect(provider.stream(_frames([_VOICE])))
-    assert "secret caller text" not in str(error.value)
-    assert socket.closed
+    assert zipformer_loads == []
 
 
 async def test_cancellation_while_waiting_final_closes_socket_and_pending_state():
@@ -526,34 +541,18 @@ async def test_bundle_uses_main_streaming_configuration(monkeypatch):
     assert [turn.text for turn in turns] == ["không"]
 
 
-def test_livekit_prewarm_uses_override_without_batch_call(monkeypatch):
-    from types import SimpleNamespace
-
+def test_livekit_prewarm_uses_override_without_batch_call(monkeypatch, zipformer_loads):
     from callbot.transports.livekit import worker
 
     monkeypatch.setenv("ASR_PROVIDER", "zipformer")
     monkeypatch.setenv("LIVEKIT_ASR_PROVIDER", "gemini_live")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
-    # CI không có model ZipFormer: fallback (config/asr.yaml) thay bằng bản giả. Env rỗng không
-    # tắt được fallback — env rỗng nghĩa là lấy giá trị YAML.
-    warmed: list[int] = []
-
-    class _FakeZipFormer:
-        input_sample_rate = 16_000
-
-        def __init__(self, config) -> None:
-            pass
-
-        def transcribe(self, pcm: bytes) -> None:
-            warmed.append(len(pcm))
-
-    monkeypatch.setattr("inference.asr.providers.zipformer.ZipFormerASR", _FakeZipFormer)
     proc = SimpleNamespace(userdata={})
     worker.prewarm(proc)
     recognizer = proc.userdata[worker._PREWARMED_ASR]
     assert recognizer.name == "gemini_live"
     assert recognizer.model == "gemini-3.5-transcribe-live"
-    assert warmed == [3_200]
+    assert zipformer_loads == []  # worker chạy Gemini thì không nạp ZipFormer
 
 
 async def test_prepaid_credit_error_is_actionable_without_leaking_upstream_reason():
@@ -599,25 +598,3 @@ async def test_caller_stopping_right_at_the_split_still_gets_a_final():
     events = await _collect(provider.stream(_frames([_VOICE] * 3)))
 
     assert [event.text for event in events if event.is_final] == ["phần một"]
-
-
-async def test_gemini_final_arriving_during_fallback_is_not_a_second_final():
-    """Hết final_timeout_s thì fallback decode lại; final Gemini tới muộn trong lúc đó từng
-    vẫn được phát, rồi final fallback ghi đè: một đoạn ra hai final."""
-    import time
-
-    gate = asyncio.Event()
-    loop = asyncio.get_running_loop()
-
-    class _SlowFallback(_FakeFallback):
-        def transcribe(self, pcm):
-            loop.call_soon_threadsafe(gate.set)  # Gemini trả final đúng lúc fallback decode
-            time.sleep(0.1)
-            return super().transcribe(pcm)
-
-    socket = _Socket(text="bản gemini", final_gate=gate)
-    provider, _ = _provider(socket, fallback=_SlowFallback("bản fallback"), final_timeout_s=0.01)
-
-    events = await _collect(provider.stream(_frames([_VOICE] * 4)))
-
-    assert [event.text for event in events if event.is_final] == ["bản fallback"]

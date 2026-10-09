@@ -142,7 +142,8 @@ function subscribe(
       dispatch({ type: "botPresence", present: true, at: Date.now() });
     })
     .on(RoomEvent.ParticipantAttributesChanged, (changed, participant) => {
-      // Worker báo ASR thực sự dùng cho cuộc gọi (có thể khác lựa chọn nếu server thiếu key).
+      // Worker báo ASR dùng cho cuộc gọi — luôn đúng ASR đã chọn; không tạo được thì worker báo
+      // lỗi qua STATUS_TOPIC và dừng, không đổi sang ASR khác.
       const provider = changed[BOT_ASR_ATTRIBUTE];
       if (provider && participant.identity !== room.localParticipant.identity) {
         dispatch({ type: "botAsr", provider, at: Date.now() });

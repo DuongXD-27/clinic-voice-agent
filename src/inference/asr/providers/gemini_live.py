@@ -6,10 +6,10 @@ cannot become the next caller's transcript. Audio is streamed while speaking;
 only the last small chunk is buffered. No SDK schema conversion. The next segment's
 socket is opened and set up in the background, so the handshake is off the speech path.
 
-Khi một đoạn lỗi (hết hạn chờ final, mất kết nối, server từ chối — kể cả hết credit) và có
-`fallback` (cấu hình `fallback_provider`), PCM của chính đoạn đó được decode bằng model cục bộ
-và phát final cho đúng đoạn; cuộc gọi tiếp tục với socket mới ở đoạn sau. Không có fallback thì
-lỗi nổi lên như trước.
+Chọn Gemini thì chỉ dùng Gemini: không decode lại bằng model khác. Một đoạn lỗi (hết hạn chờ
+final, mất kết nối, server từ chối — kể cả hết credit) chỉ mất đoạn đó: phát final rỗng cho đúng
+đoạn, ghi log, đoạn sau mở socket mới. Lỗi liên tiếp `_MAX_FAILED_SEGMENTS` đoạn (Gemini không
+dùng được) thì lỗi nổi lên, luồng STT dừng.
 """
 
 from __future__ import annotations
@@ -19,13 +19,12 @@ import base64
 import json
 import logging
 from collections.abc import AsyncIterator, Callable
-from typing import Any, Optional, Protocol
+from typing import Any, Optional
 
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import ConnectionClosed
 from websockets.protocol import State
 
-from inference.asr.base import ASRResult
 from inference.asr.config import GeminiLiveASRConfig
 from speech.asr.stream_context import ASRStreamContext, StreamingFrame
 from speech.asr.vad.base import FrameClassifier
@@ -41,12 +40,9 @@ _DONE = object()
 # Socket setup xong rồi để rảnh: 30 s vẫn dùng được, 60 s vẫn báo OPEN nhưng audio gửi vào bị
 # server cắt 1008 (đo 07/10). Quá tuổi này thì mở socket khác.
 _SPARE_MAX_AGE_S = 25.0
-
-
-class _FallbackASR(Protocol):
-    input_sample_rate: int
-
-    def transcribe(self, pcm: bytes) -> ASRResult: ...
+# Đoạn lỗi lẻ (một lần timeout, một socket rớt) chỉ mất đoạn đó. Chừng này đoạn lỗi liên tiếp
+# (hết credit, sai key/model, mất mạng) thì dừng luồng STT thay vì để bot điếc cả cuộc gọi.
+_MAX_FAILED_SEGMENTS = 3
 
 
 def _remote_error(message: dict) -> RuntimeError:
@@ -182,16 +178,13 @@ class _LiveTurn:
         # (`more_follows`) phát thành partial — TurnController giữ một đoạn, final mới ghi đè.
         self.prefix = ""
         self.more_follows = False
-        # Đoạn đã có kết quả (final của Gemini hoặc fallback) — chỉ một lần.
+        # Đoạn đã có kết quả (final của Gemini, hoặc final rỗng khi đoạn lỗi) — chỉ một lần.
         self.result_text: Optional[str] = None
         # Lỗi phát hiện ở luồng nhận; finalize() ném ra để pump xử lý theo đoạn.
         self.error: Optional[Exception] = None
-        # PCM của đoạn ở tần số nguồn — decode lại bằng fallback nếu đoạn lỗi.
-        self.pcm = bytearray()
         self._socket_context = None
         self._socket = None
         self._reader = None
-        self.source_rate = source_rate
         self._chunks = _PCMChunks(source_rate, config.chunk_ms)
         self._context.pending.add((generation, segment_id))
 
@@ -253,7 +246,7 @@ class _LiveTurn:
                     # transcribe-live không gửi turnComplete. Đoạn không có lời (tiếng ồn,
                     # tiếng vọng) chỉ nhận ACTIVITY_END; có lời thì final tới trước hoặc cùng
                     # message (đo 07/10: 43/43 đoạn). Không chốt ở đây thì đoạn rỗng nào cũng
-                    # chờ hết final_timeout_s rồi rơi xuống fallback.
+                    # chờ hết final_timeout_s rồi bị tính là đoạn lỗi.
                     await self._emit(self._last_text, final=True)
                     self.finished.set()
         except asyncio.CancelledError:
@@ -264,8 +257,7 @@ class _LiveTurn:
             self._fail(_transport_error(exc))
 
     def _fail(self, exc: Exception) -> None:
-        """Ghi lỗi của đoạn; pump xử lý ở `finalize()`. Không gửi tiếp nhưng vẫn giữ PCM tới
-        hết đoạn để fallback decode trọn đoạn, không phát hai final cho cùng một đoạn."""
+        """Ghi lỗi của đoạn; pump xử lý ở `finalize()`. Không gửi tiếp audio của đoạn này."""
         if self.error is None:
             self.error = exc if isinstance(exc, RuntimeError) else _transport_error(exc)
         self.finished.set()
@@ -280,7 +272,6 @@ class _LiveTurn:
             self._fail(exc)
 
     async def audio(self, pcm: bytes, *, last: bool = False) -> None:
-        self.pcm.extend(pcm)
         if self.error is not None:
             return
         try:
@@ -356,62 +347,30 @@ class GeminiLiveASR:
         config: GeminiLiveASRConfig,
         *,
         connect: Callable[..., Any] | None = None,
-        fallback: Optional[_FallbackASR] = None,
     ) -> None:
-        """`fallback`: ASR cục bộ decode lại đoạn lỗi; mặc định dựng theo
-        `config.fallback_provider` (None = không fallback)."""
         if not config.api_key.get_secret_value():
             raise ValueError("ASR_PROVIDER=gemini_live cần GEMINI_API_KEY")
         self._config = config
         self._connect = connect or ws_connect
-        if fallback is None and config.fallback_provider == "zipformer":
-            from inference.asr.config import ZipFormerConfig
-            from inference.asr.providers.zipformer import ZipFormerASR
 
-            fallback = ZipFormerASR(ZipFormerConfig())
-        self._fallback = fallback
+    async def _finish(self, turn: "_LiveTurn") -> Optional[RuntimeError]:
+        """Chốt đoạn bằng final của Gemini; None = Gemini đã trả kết quả.
 
-    def warm_up(self) -> None:
-        """Nạp sẵn model fallback (lần decode đầu của ZipFormer mất ~1,8 s) trước khi nhận
-        cuộc gọi, để đoạn lỗi đầu tiên không phải chờ thêm."""
-        if self._fallback is not None:
-            rate = self._fallback.input_sample_rate
-            self._fallback.transcribe(b"\x00\x00" * (rate // 10))
-
-    async def _recover(self, turn: "_LiveTurn", error: Exception) -> bool:
-        """Đoạn `turn` lỗi: decode lại bằng fallback và phát final cho đúng đoạn. False nếu
-        không có fallback hoặc đoạn đã bị bỏ (DISCARD/bot nói) — khi đó lỗi nổi lên như cũ."""
-        if self._fallback is None or turn.invalidated.is_set():
-            return False
-        # Luồng nhận còn chạy thì final Gemini tới muộn (trong lúc fallback decode) vẫn được
-        # phát rồi bị final fallback ghi đè: một đoạn ra hai final.
-        await turn.stop_receiving()
-        if turn.result_text is not None:
-            return True  # final của Gemini đã tới ngay trước khi dừng nhận
-        logger.warning(
-            "gemini_live: segment %d lỗi (%s), decode lại bằng fallback cục bộ",
-            turn.segment_id,
-            error,
-        )
-        pcm = bytes(turn.pcm)
-        if pcm and turn.source_rate != self._fallback.input_sample_rate:
-            from speech.audio.codec import resample
-
-            pcm = resample(pcm, turn.source_rate, self._fallback.input_sample_rate)
-        result = await asyncio.to_thread(self._fallback.transcribe, pcm) if pcm else None
-        await turn._emit(
-            result.text if result else "",
-            final=True,
-            confidence=result.confidence if result else None,
-        )
-        return True
-
-    async def _finish(self, turn: "_LiveTurn") -> None:
+        Đoạn lỗi chỉ mất đoạn đó: phát final rỗng cho đúng đoạn (TurnController không treo chờ
+        final) và trả lỗi để pump đếm đoạn lỗi liên tiếp. Không decode lại bằng model khác."""
         try:
             await turn.finalize()
+            return None
         except RuntimeError as exc:
-            if not await self._recover(turn, exc):
-                raise
+            # Luồng nhận còn chạy thì final Gemini tới muộn vẫn được phát sau final rỗng: một
+            # đoạn ra hai final.
+            await turn.stop_receiving()
+            if turn.result_text is not None:
+                return None  # final của Gemini đã tới ngay trước khi dừng nhận
+            logger.warning("gemini_live: segment %d lỗi (%s), bỏ đoạn này", turn.segment_id, exc)
+            if not turn.invalidated.is_set():  # đoạn đã bị bỏ (DISCARD/bot nói) thì không chốt
+                await turn._emit("", final=True)
+            return exc
 
     @property
     def model(self) -> str:
@@ -474,8 +433,8 @@ class GeminiLiveASR:
             return loop.time() - spare_born > _SPARE_MAX_AGE_S
 
         async def take_spare() -> _Session | Exception | None:
-            """Socket mở sẵn, hoặc lỗi lúc mở (đoạn đi thẳng xuống fallback, không mở lại để
-            khỏi chờ handshake hai lần khi Gemini đang lỗi), None = tự mở mới."""
+            """Socket mở sẵn, hoặc lỗi lúc mở (đoạn đó tính là đoạn lỗi, không mở lại để khỏi
+            chờ handshake hai lần khi Gemini đang lỗi), None = tự mở mới."""
             nonlocal spare
             task, spare, stale = spare, None, spare_stale()
             prewarm()
@@ -521,6 +480,16 @@ class GeminiLiveASR:
                 await opened.close()
                 return None
             return opened
+
+        failed_in_a_row = 0
+
+        async def settle(done: _LiveTurn) -> None:
+            """Chốt đoạn; `_MAX_FAILED_SEGMENTS` đoạn lỗi liên tiếp thì dừng luồng STT."""
+            nonlocal failed_in_a_row
+            error = await self._finish(done)
+            failed_in_a_row = 0 if error is None else failed_in_a_row + 1
+            if error is not None and failed_in_a_row >= _MAX_FAILED_SEGMENTS:
+                raise error
 
         async def pump() -> None:
             nonlocal turn
@@ -585,7 +554,7 @@ class GeminiLiveASR:
                     too_long = speech_ms >= self._config.max_turn_speech_ms
                     if silent_ms >= end_silence_ms or too_long:
                         turn.more_follows = too_long and silent_ms < end_silence_ms
-                        await self._finish(turn)
+                        await settle(turn)
                         await turn.close()
                         done, turn = turn, None
                         silent_ms = speech_ms = 0.0
@@ -594,7 +563,7 @@ class GeminiLiveASR:
                             # tách — phần sau phát final của cả câu.
                             turn = await open_turn(done.segment_id, prefix=done.result_text or "")
                 if turn is not None and turn.generation == context.generation:
-                    await self._finish(turn)
+                    await settle(turn)
             except asyncio.CancelledError:
                 raise
             except (RuntimeError, ValueError) as exc:

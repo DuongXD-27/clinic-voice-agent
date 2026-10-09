@@ -3,7 +3,7 @@
 Giá trị mặc định ở config/asr.yaml (mỗi provider một section); API key chỉ đặt qua env.
 """
 
-from typing import Literal, Optional
+from typing import Optional
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import SettingsConfigDict
@@ -46,16 +46,6 @@ class GeminiLiveASRConfig(ASRConfig):
     max_turn_speech_ms: int = Field(gt=0, validation_alias="GEMINI_LIVE_MAX_TURN_SPEECH_MS")
     # Audio giữ lại trước frame đầu tiên bộ phân loại báo tiếng nói, gửi kèm khi mở đoạn.
     pre_speech_ms: int = Field(ge=0, validation_alias="GEMINI_LIVE_PRE_SPEECH_MS")
-    # Đoạn lỗi (timeout final, mất kết nối, hết credit) được decode lại bằng model cục bộ này.
-    # None = không fallback, lỗi làm hỏng luồng STT như trước.
-    fallback_provider: Optional[Literal["zipformer"]] = Field(
-        validation_alias="GEMINI_LIVE_FALLBACK_PROVIDER"
-    )
-
-    @field_validator("fallback_provider", mode="before")
-    @classmethod
-    def _blank_fallback_is_none(cls, value: object) -> object:
-        return None if isinstance(value, str) and not value.strip() else value
 
 
 class ElevenLabsRealtimeConfig(ASRConfig):

@@ -9,6 +9,7 @@ riêng, nhiều job chạy chung 1 worker process không được share state).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -16,7 +17,7 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
-from callbot.transports.livekit.call_bridge import CallBridge
+from callbot.transports.livekit.call_bridge import STATUS_TOPIC, CallBridge
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
@@ -83,11 +84,16 @@ async def entrypoint(ctx: JobContext) -> None:
     prewarmed_asr: Any = ctx.proc.userdata.get(_PREWARMED_ASR)
     asr = await _recognizer_for(speech_settings.asr_provider, prewarmed_asr)
     if asr is None:
-        # Không tạo được ASR đã chọn (vd. thiếu GEMINI_API_KEY): dùng ASR nạp sẵn của worker.
-        asr = prewarmed_asr
-        fallback = getattr(prewarmed_asr, "name", None)
-        if fallback:
-            speech_settings = speech_settings.model_copy(update={"asr_provider": fallback})
+        # Chọn ASR nào thì chỉ dùng ASR đó: không tạo được (vd. thiếu GEMINI_API_KEY) thì báo lên
+        # trang gọi thử và dừng, không đổi sang ASR nạp sẵn của worker.
+        await _report_status(
+            ctx,
+            "ASR_UNAVAILABLE",
+            f"Worker không tạo được ASR {speech_settings.asr_provider} (thiếu key hoặc model). "
+            "Cuộc gọi dừng, không chuyển sang ASR khác.",
+        )
+        ctx.shutdown(reason="asr unavailable")
+        return
     logger.info(
         "worker: participant kind=%s asr_provider=%s (requested=%s) asr_pre_speech_ms=%s",
         participant.kind,
@@ -151,7 +157,8 @@ async def entrypoint(ctx: JobContext) -> None:
 
 async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
     """ASR cho cuộc gọi: dùng lại bản nạp sẵn khi cùng provider; khác thì tạo mới (ZipFormer nạp
-    model trong thread). None khi không tạo được (thiếu key, provider lỗi)."""
+    model trong thread). None khi không tạo được (thiếu key, provider lỗi) — không thay bằng
+    ASR khác."""
     if prewarmed is not None and getattr(prewarmed, "name", None) == provider:
         return prewarmed
     try:
@@ -159,11 +166,23 @@ async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
         if provider == "zipformer":
             await asyncio.to_thread(warm_up, asr)
     except Exception as exc:
-        logger.warning(
-            "worker: không tạo được ASR %s (%s) — dùng ASR nạp sẵn", provider, type(exc).__name__
+        logger.error(
+            "worker: không tạo được ASR %s (%s) — dừng cuộc gọi", provider, type(exc).__name__
         )
         return None
     return asr
+
+
+async def _report_status(ctx: JobContext, code: str, message: str) -> None:
+    """Báo lỗi lên trang gọi thử (`STATUS_TOPIC`); gửi không được thì chỉ ghi log."""
+    try:
+        await ctx.room.local_participant.publish_data(
+            json.dumps({"code": code, "message": message}, ensure_ascii=False),
+            reliable=True,
+            topic=STATUS_TOPIC,
+        )
+    except Exception as exc:
+        logger.warning("worker: không gửi được lỗi %s tới browser (%s)", code, type(exc).__name__)
 
 
 def main() -> None:
