@@ -326,6 +326,4 @@ def warm_up(asr: Recognizer) -> None:
     try:
         asr.transcribe(AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=asr.input_sample_rate))
     except NotImplementedError:
-        warm_up_streaming = getattr(asr, "warm_up_streaming", None)
-        if warm_up_streaming is not None:
-            warm_up_streaming()
+        pass

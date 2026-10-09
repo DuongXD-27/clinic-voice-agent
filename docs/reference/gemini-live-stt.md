@@ -44,11 +44,13 @@ docker compose up -d --build livekit-worker
   (TurnController nối đoạn khi người gọi nói tiếp lúc lượt còn dở), final của đoạn trước tới
   muộn vẫn được nhận và ghép đúng thứ tự đoạn; lượt chỉ chốt khi mọi đoạn đã có final.
 - Timeout setup/send 10 s, final 3 s; speech liên tục tối đa 15 s.
-- Đoạn lỗi (setup bị từ chối, mất kết nối, hết credit, thiếu final sau 3 s) được decode lại
-  bằng `fallback_provider` (mặc định `zipformer`) trên PCM của chính đoạn đó; log WARNING ghi
-  số segment và loại lỗi, đoạn sau mở socket mới. Worker nạp sẵn ZipFormer lúc prewarm, nên
-  cần asset `zipformer` như khi chạy `ASR_PROVIDER=zipformer`. Đặt
-  `GEMINI_LIVE_FALLBACK_PROVIDER=` (rỗng) để tắt: khi đó lỗi làm hỏng luồng STT như trước.
+- Chọn Gemini thì chỉ dùng Gemini, không decode lại bằng model khác. Đoạn lỗi (setup bị từ
+  chối, mất kết nối, hết credit, thiếu final sau 3 s) chỉ mất đoạn đó: chốt bằng final rỗng,
+  log WARNING ghi số segment và loại lỗi, đoạn sau mở socket mới. 3 đoạn lỗi liên tiếp
+  (`_MAX_FAILED_SEGMENTS`) thì lỗi nổi lên, luồng STT của cuộc gọi dừng.
+- Worker không đổi ASR thay người chọn: ASR chọn trên trang gọi thử (hoặc theo cấu hình worker)
+  mà không tạo được (vd. thiếu `GEMINI_API_KEY`) thì worker báo `ASR_UNAVAILABLE` lên trang
+  và dừng cuộc gọi.
 
 Dùng WebSocket trực tiếp vì SDK local `google-genai` 2.16.0 thiếu trường `mode`;
 không thêm dependency. Nguồn hợp đồng:

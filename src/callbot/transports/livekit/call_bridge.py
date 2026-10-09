@@ -49,6 +49,8 @@ _PLAYOUT_FRAME_MS = 20
 _SILENCE_POLL_S = 0.25
 # Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
 TRANSCRIPT_TOPIC = "callbot.transcript"
+# Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
+STATUS_TOPIC = "callbot.status"
 
 
 @dataclass(frozen=True)
@@ -240,7 +242,7 @@ class CallBridge:
                             ensure_ascii=False,
                         ),
                         reliable=True,
-                        topic="callbot.status",
+                        topic=STATUS_TOPIC,
                     )
                 except Exception as publish_error:
                     logger.warning(
