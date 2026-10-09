@@ -19,6 +19,7 @@ from inference.common.transport import HttpClientFactory, build_http_timeout
 from inference.tts.base import StreamHandle, TTSResult
 from inference.tts.config import VbeeTTSConfig
 from inference.tts.errors import TTSError, TTSRejected, TTSUnavailable
+from inference.tts.static_identity import vbee_audio_identity
 
 MAX_TEXT_CHARS = 300
 
@@ -91,6 +92,11 @@ class VbeeTTS:
     @property
     def voice(self) -> str:
         return self._config.voice_code
+
+    @property
+    def audio_identity(self) -> dict:
+        """Settings affecting audio only; never exposes API credentials."""
+        return vbee_audio_identity(self._config)
 
     @property
     def stream_sample_rate(self) -> int:

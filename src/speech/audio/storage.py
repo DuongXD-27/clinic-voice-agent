@@ -10,6 +10,9 @@ from speech.audio.codec import encode_wav, to_sample_rate
 from speech.types import NARROWBAND_RATE, AudioSegment
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_-]+$")
+# Audio tĩnh đã duyệt, phục vụ từ RAM theo cache key (transports/http/main.py). Không nằm dưới
+# /audio/ để không trùng thư mục audio theo cuộc gọi.
+STATIC_AUDIO_PATH = "/audio-static"
 
 
 class AudioArtifactStore:
@@ -59,6 +62,9 @@ class AudioArtifactStore:
         except FileNotFoundError:
             pass
         return None
+
+    def static_url(self, cache_key: str) -> str:
+        return f"{self._base_url}{STATIC_AUDIO_PATH}/{cache_key}.wav"
 
     def path_for(self, call_id: str, turn: int) -> Path:
         if not _SAFE_ID.match(call_id):

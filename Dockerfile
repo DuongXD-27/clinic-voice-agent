@@ -64,6 +64,9 @@ RUN pip install --no-cache-dir --no-deps --force-reinstall .
 COPY config ./config
 ENV CALLBOT_CONFIG_DIR=/app/config
 
+# Approved static TTS is immutable and shared by HTTP/LiveKit; outside per-call cleanup.
+COPY assets/tts/static ./assets/tts/static
+
 # UI tĩnh phục vụ tại /ui (transports/http/ui.py). Đặt sau các layer model/dependency để sửa UI
 # chỉ build lại layer vài trăm KB này.
 COPY --from=ui /ui/dist ./ui

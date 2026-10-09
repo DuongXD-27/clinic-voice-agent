@@ -6,7 +6,9 @@
 Sống ngoài `callbot/`: callbot chỉ lo text và nghiệp vụ, không biết khái niệm audio.
 """
 
+import asyncio
 import logging
+import time
 from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +16,7 @@ from typing import AsyncIterator, Optional, Protocol
 
 from inference.asr import create_asr_gateway
 from inference.tts import TTSGateway, create_tts_gateway
+from inference.tts.base import StreamHandle, TTSStreamInfo
 from speech.asr.pipeline import STTPipeline
 from speech.asr.recognizer import Recognizer, SpeechRecognizer
 from speech.asr.vad.async_stream import AsyncStreamingVAD
@@ -23,6 +26,7 @@ from speech.asr.vad.shared import SharedSpeechDetector
 from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
+from speech.tts.static_cache import StaticAudioCache, create_static_cache
 from speech.turn.controller import TurnController
 from speech.turn.evidence import TurnEvidence
 from speech.turn.validator import TurnValidator
@@ -37,17 +41,27 @@ class Synthesizer(Protocol):
     def synthesize(self, text: str) -> Optional[AudioSegment]: ...
 
 
+@dataclass
+class _SynthesizerStream(StreamHandle):
+    cached: bool = False
+    info: TTSStreamInfo | None = None
+
+
 class SpeechSynthesizer:
     """Bọc TTS gateway (PCM của provider) thành `AudioSegment` của miền speech."""
 
-    def __init__(self, gateway: TTSGateway) -> None:
+    def __init__(self, gateway: TTSGateway, static_cache: StaticAudioCache | None = None) -> None:
         self._gateway = gateway
-        self._last_stream_result = None
-        self._cancelled = False
+        self._static_cache = static_cache
+        self._stream: _SynthesizerStream | None = None
+
+    @property
+    def static_cache(self) -> StaticAudioCache | None:
+        return self._static_cache
 
     @property
     def last_stream_result(self):
-        return self._last_stream_result
+        return self._stream.info if self._stream is not None else None
 
     @property
     def name(self) -> str:
@@ -62,6 +76,10 @@ class SpeechSynthesizer:
         return getattr(self._gateway.provider, "stream_sample_rate", 24_000)
 
     def synthesize(self, text: str) -> Optional[AudioSegment]:
+        if self._static_cache is not None:
+            cached = self._static_cache.lookup(text)
+            if cached is not None:
+                return cached
         result = self._gateway.synthesize(text)
         if result is None:
             return None
@@ -76,9 +94,32 @@ class SpeechSynthesizer:
 
     async def synthesize_stream(self, text: str) -> AsyncIterator[bytes]:
         """Phát qua gateway (có dự phòng), ở tần số của track LiveKit (`stream_sample_rate`)."""
-        self._last_stream_result = None
-        self._cancelled = False
+        stream = _SynthesizerStream()
+        self._stream = stream
         track_rate = self.stream_sample_rate
+        started = time.perf_counter()
+        cached = self._static_cache.lookup(text) if self._static_cache is not None else None
+        if cached is not None and cached.sample_rate == track_rate:
+            stream.cached = True
+            stream.info = TTSStreamInfo(
+                provider_actual=cached.provider_actual,
+                voice=cached.voice,
+                sample_rate=cached.sample_rate,
+                cache_hit=True,
+                cache_key=cached.cache_key,
+                catalog_version=cached.catalog_version,
+                billed_characters=0,
+            )
+            chunk_bytes = track_rate * 20 // 1000 * 2
+            for offset in range(0, len(cached.pcm), chunk_bytes):
+                # Give cancellation/new-turn tasks a chance before emitting each PCM frame.
+                await asyncio.sleep(0)
+                if stream.cancelled:
+                    return
+                if stream.info.ttfa_ms is None:
+                    stream.info.ttfa_ms = (time.perf_counter() - started) * 1000
+                yield cached.pcm[offset : offset + chunk_bytes]
+            return
         # Chunk luôn là PCM16 (Vbee xin `pcm`, ElevenLabs từ chối mọi format không phải
         # `pcm_*` lúc khởi tạo), nên chỉ còn tần số có thể lệch.
         # Provider thực tế (vd. dự phòng) khác tần số track: gom rồi resample một lần ở cuối.
@@ -89,21 +130,27 @@ class SpeechSynthesizer:
         async with aclosing(self._gateway.synthesize_stream(text)) as chunks:
             async for chunk in chunks:
                 info = self._gateway.last_stream
-                self._last_stream_result = info
+                stream.info = info
+                if stream.cancelled:
+                    return
                 if info is not None and info.sample_rate != track_rate:
                     held.extend(chunk)
                     held_rate = info.sample_rate
                     continue
                 yield chunk
-        self._last_stream_result = self._gateway.last_stream
-        if held and not self._cancelled:
+        if self._stream is stream:
+            stream.info = self._gateway.last_stream
+        if held and not stream.cancelled:
             from speech.audio.codec import resample
 
             yield resample(bytes(held), held_rate, track_rate)
 
     async def cancel(self) -> None:
-        self._cancelled = True
-        await self._gateway.cancel()
+        stream = self._stream
+        if stream is not None:
+            stream.cancelled = True
+        if stream is None or not stream.cached:
+            await self._gateway.cancel()
 
     def close(self) -> None:
         self._gateway.close()
@@ -122,7 +169,7 @@ class SpeechBundle:
 def build_speech_bundle(settings: SpeechSettings) -> SpeechBundle:
     asr = SpeechRecognizer(create_asr_gateway(settings.asr_provider))
     tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
-    tts = SpeechSynthesizer(tts_gateway)
+    tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     backup = tts_gateway.fallback
     logger.info(
         "ASR %s (%s), TTS %s (%s), TTS fallback %s",
@@ -239,9 +286,8 @@ def build_streaming_bundle(
         speaker_gate=speaker_gate,
     )
     turn_controller = TurnController(validator=validator, **turn_controller_options(settings))
-    tts = SpeechSynthesizer(
-        create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
-    )
+    tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
+    tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     return StreamingSpeechBundle(
         stt_pipeline=stt_pipeline, turn_controller=turn_controller, tts=tts, validator=validator
     )

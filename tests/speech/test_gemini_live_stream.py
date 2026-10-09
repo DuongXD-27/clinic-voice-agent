@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -493,7 +494,9 @@ async def test_bundle_uses_main_streaming_configuration(monkeypatch):
     socket = _Socket(text="không")
     provider, _ = _provider(socket)
     recognizer = SpeechRecognizer(ASRGateway(provider, provider_name="gemini_live"))
-    monkeypatch.setattr(speech_bundle, "create_tts_gateway", lambda *args, **kwargs: object())
+    # TTS không dùng trong test này; bundle chỉ cần biết tên provider (cache TTS tĩnh của main).
+    fake_tts = SimpleNamespace(provider_name="fake")
+    monkeypatch.setattr(speech_bundle, "create_tts_gateway", lambda *args, **kwargs: fake_tts)
     settings = SpeechSettings(
         asr_provider="gemini_live",
         vad_provider="energy",

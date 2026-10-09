@@ -31,9 +31,9 @@ from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
 
 SILENCE = None
-FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
+FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City"
 # Câu xác nhận lần hai đọc lại đúng lịch sắp hủy (§1.1.4)
-CANCEL_READBACK = f"Dạ, lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
+CANCEL_READBACK = f"Lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
 
 
 def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
@@ -1690,7 +1690,8 @@ def test_insisting_twice_gets_the_privacy_reason_then_confirms() -> None:
         _run(bot, "c_id_insist", [line], start=i) for i, line in enumerate(["Alo", *lines], 1)
     ]
     assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
-    assert actions[2].utterance == t.ASK_NAME_VERIFY_FIRST
+    assert actions[2].utterance in t.static_choices(t.ASK_NAME_VERIFY_FIRST)
+    assert actions[2].utterance != actions[1].utterance
     assert all(a.state == "AWAITING_IDENTITY" and FACTS not in a.utterance for a in actions)
     assert clinic.writes == []
 

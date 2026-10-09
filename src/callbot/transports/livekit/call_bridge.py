@@ -627,6 +627,10 @@ class CallBridge:
                 provider_actual=actual_provider,
                 voice=voice,
                 fallback_used=getattr(actual, "fallback_used", False),
+                cache_hit=getattr(actual, "cache_hit", False),
+                cache_key=getattr(actual, "cache_key", None),
+                catalog_version=getattr(actual, "catalog_version", None),
+                billed_characters=getattr(actual, "billed_characters", None),
                 ttfa_ms=getattr(actual, "ttfa_ms", None) or first_audio_ms,
                 latency_ms=(perf_counter() - started) * 1000,
                 audio_duration_ms=total_bytes / (2 * sample_rate) * 1000,
@@ -642,7 +646,9 @@ class CallBridge:
                     tts_span.set_error_code("TIMEOUT", "TTS_TIMEOUT")
                 else:
                     tts_span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
-            if not interrupted and not failed:
+            if getattr(actual, "cache_hit", False):
+                tts_span.enrich(cost_usd=0.0)
+            elif not interrupted and not failed:
                 cost = tts_cost(actual_provider, voice, len(text))
                 if cost is not None:
                     tts_span.enrich(cost_usd=cost)
