@@ -137,6 +137,12 @@ _KEYWORDS: dict[Intent, list[str]] = {
     Intent.RESCHEDULE: [
         "đổi lịch",
         "đổi sang",
+        # "nếu đổi được thì tôi không hủy", "đổi được không em": xin đổi, kể cả dạng hỏi / điều kiện
+        # (contract Bảng 1 "asks for a different time"; Figure 0 đổi lịch là câu hỏi). Phủ định
+        # ("không đổi được") bị loại như mọi từ khóa hành động.
+        "đổi được",
+        "dời được",
+        "chuyển được",
         "đổi qua",
         "đổi giờ",
         "đổi ngày",
@@ -380,6 +386,13 @@ def extract_intent(
 
 def allowed_in_direction(intent: Intent, direction: Direction) -> bool:
     return _DIRECTION_ONLY.get(intent, direction) == direction
+
+
+def out_of_scope_request(transcript: str, *, business_step: bool = True) -> Optional[str]:
+    """Cụm YÊU CẦU ngoài kịch bản (người khác đi thay, đến muộn, xin gọi lại...) — không tính chủ đề
+    ngoài phạm vi (§1.2.3) chỉ được nhắc tới trong câu kể."""
+    text = clean(transcript)
+    return _match_out_of_scope_request(text, is_unaccented(text), business_step)
 
 
 # Động từ dời lịch + (giúp / cho / hộ) + xưng hô + "sang / qua": "đổi cho tôi sang thứ Sáu", "chuyển

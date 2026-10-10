@@ -314,6 +314,8 @@ def test_hedging_never_agrees(question: QuestionId, text: str) -> None:
         "giữ lịch nhé",
         "giữ nguyên lịch",
         "vâng, giữ lịch",
+        "em cứ để lịch vậy",
+        "để lịch như cũ nhé",
         "chắc chắn rồi",
     ],
 )

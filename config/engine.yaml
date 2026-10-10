@@ -7,6 +7,12 @@ name_fallback_provider: openai
 # Tầng ngữ nghĩa (T-05 §8), luôn OpenAI. Bật theo quyết định owner 22-09-2026; thiếu
 # OPENAI_API_KEY thì tự chạy chỉ-luật, không chặn khởi động.
 semantic_fallback_enabled: true
+# openai | jev (TypeSafe System One, cần TYPESAFE_API_KEY; cấu hình ở llm.yaml mục typesafe)
+semantic_fallback_provider: openai
+# Jev: nhãn confidence thấp hơn bị bỏ; đồng ý / từ chối thấp hơn -> AMBIGUOUS (hỏi lại)
+semantic_jev_min_confidence: 0.6
+# Jev: Noul (câu đọc lịch / "đổi hay hủy": không đến được, sẽ đến, xin giờ khác) tính là "có" từ mức này
+semantic_jev_min_noul: 0.5
 semantic_fallback_model: gpt-6-luna
 # Timeout httpx theo pha (không phải trần tổng); một request, không retry
 semantic_fallback_timeout_s: 3.0

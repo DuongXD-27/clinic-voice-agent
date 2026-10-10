@@ -19,6 +19,7 @@ from callbot.engine.errors import (
 from callbot.engine.extraction import InformationExtractor
 from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticExtractor
+from callbot.engine.extraction.semantic_jev import JevSemanticExtractor
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
 from callbot.engine.session import RedisSessionStore, SessionManager, SessionStore
@@ -30,13 +31,14 @@ from callbot.engine.types import BotAction, CallerInput, CallStart, PhoneStatus
 from callbot.engine.verification import IdentityVerifier
 from callbot.tracing import Tracer as SpanTracer
 from callbot.tracing import null_tracer
-from inference.llm.config import OpenAIConfig
+from inference.llm.config import OpenAIConfig, TypeSafeConfig
 from inference.llm.gateway import create_gateway
 from inference.llm.prompt.semantic import (
     PROMPT_VERSION,
     PROMPT_VERSION_CANCEL_CONFIRM,
     PROMPT_VERSION_LUNA,
 )
+from inference.llm.typesafe import TypeSafeClient
 
 
 def _default_session_store() -> SessionStore:
@@ -58,11 +60,25 @@ def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]
     """Tầng ngữ nghĩa dùng cấu hình RIÊNG, không đọc `NAME_FALLBACK_*`.
 
     Giá trị truyền tường minh nên thắng alias env của `ProviderConfig` (pydantic-settings ưu tiên
-    init kwargs); `tests/llm/test_semantic_config.py` khóa hành vi đó. Provider cố định OpenAI
-    trong đợt này — đổi provider là thay đổi phạm vi, không phải đổi biến môi trường.
+    init kwargs); `tests/llm/test_semantic_config.py` khóa hành vi đó. `semantic_fallback_provider:
+    jev` thay adapter bằng TypeSafe System One; mặc định vẫn OpenAI.
     """
     if not settings.semantic_fallback_enabled:
         return None
+    if settings.semantic_fallback_provider == "jev":
+        try:
+            typesafe = TypeSafeConfig(timeout_s=settings.semantic_fallback_timeout_s)
+        except ValidationError:
+            logger.warning(
+                "Tầng ngữ nghĩa chọn jev nhưng thiếu TYPESAFE_API_KEY; chạy chỉ bằng luật"
+            )
+            return None
+        return JevSemanticExtractor(
+            TypeSafeClient(typesafe),
+            max_input_chars=settings.semantic_fallback_max_input_chars,
+            min_confidence=settings.semantic_jev_min_confidence,
+            min_noul=settings.semantic_jev_min_noul,
+        )
     try:
         config = OpenAIConfig(
             model=settings.semantic_fallback_model,
