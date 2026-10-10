@@ -609,8 +609,12 @@ def test_client_reports_http_error(_key: None) -> None:
 
 
 def _settings(**changes: Any) -> EngineSettings:
+    # Đo riêng Jev: không dự phòng (bộ chuyển provider có test riêng ở test_semantic_failover.py)
     return EngineSettings(
-        semantic_fallback_enabled=True, semantic_fallback_provider="jev", **changes
+        semantic_fallback_enabled=True,
+        semantic_provider="jev",
+        semantic_backup_provider="none",
+        **changes,
     )
 
 

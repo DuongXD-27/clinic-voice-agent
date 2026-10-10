@@ -40,7 +40,7 @@ openrouter: # OPENROUTER_API_KEY
   connect_timeout_s: 1.0
   max_completion_tokens: 200
 
-# TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_FALLBACK_PROVIDER=jev (engine.yaml).
+# TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_PROVIDER=jev (engine.yaml).
 # Không phải chat provider: chỉ trả nhãn Choice/Noul có xác suất, không sinh text.
 typesafe: # TYPESAFE_API_KEY
   endpoint: https://api.typesafe.ai/v1/systemone # TYPESAFE_ENDPOINT

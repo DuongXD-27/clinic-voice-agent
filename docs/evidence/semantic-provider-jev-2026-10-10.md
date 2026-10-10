@@ -3,11 +3,11 @@
 **Bản v1** (2026-10-10, nhánh `feat/jev-semantic`): provider Jev, adapter `semantic_jev_v6`, kết quả
 `result/10-10-2026/*/jev-v1`.
 
-Jev 1.13 (`SEMANTIC_FALLBACK_PROVIDER=jev`, adapter `semantic_jev_v6`) nhanh hơn GPT-6 Luna (Fast
+Jev 1.13 (`SEMANTIC_PROVIDER=jev`, adapter `semantic_jev_v6`) nhanh hơn GPT-6 Luna (Fast
 mode, reasoning tắt) 2–3,8 lần ở p50 (355–680 ms tùy khung giờ, so với 1345–1392 ms), không có lần
 ghi sai nào, và sau vòng sửa adapter thứ hai hơn OpenAI trên các lượt thật sự gọi model ở cả cancel
-(99,5 % so với 91,7 %) lẫn confirm (88,3 % so với 82,0 %). Mặc định của repo **vẫn là OpenAI**; Jev
-là lựa chọn qua cấu hình. Review nhãn eval theo hợp đồng đổi 4 nhãn, vá một lỗi harness và sửa ba chỗ
+(99,5 % so với 91,7 %) lẫn confirm (88,3 % so với 82,0 %). Từ 10-10 tối (owner), mặc định là **Jev,
+OpenAI dự phòng** khi Jev lỗi dịch vụ; đổi bằng `semantic_provider` / `semantic_backup_provider`. Review nhãn eval theo hợp đồng đổi 4 nhãn, vá một lỗi harness và sửa ba chỗ
 ở luật / merge; vòng hai (owner duyệt từng ca) đổi thêm 4 nhãn cancel và bỏ 10 ca confirm.
 
 ## Nguồn
@@ -159,9 +159,23 @@ trống, Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (đúng 
 
 ## Jev: cách dùng
 
-- Cấu hình: `config/engine.yaml` `semantic_fallback_provider: openai | jev`, `semantic_jev_min_confidence`,
-  `semantic_jev_min_noul`; `config/llm.yaml` mục `typesafe` (endpoint, model pin `jev-1.13.0`, timeout);
-  `TYPESAFE_API_KEY` trong `.env`. Thiếu key → chạy chỉ-luật như với OpenAI.
+- Cấu hình `config/engine.yaml`:
+  - `semantic_provider: jev` — provider đọc câu, gọi trước (`jev | openai`).
+  - `semantic_backup_provider: openai` — chỉ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP,
+    trả lời hỏng); provider chính đã trả lời thì không gọi. `none` = không dự phòng (đặt `none` để đo
+    riêng Jev, như các lần chạy `jev-v1`).
+  - `semantic_backup_min_remaining_s: 1.5` — chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây
+    trong trần 3 s.
+  - `semantic_openai_model`, `semantic_openai_max_tokens` (trước là `semantic_fallback_model` /
+    `semantic_fallback_max_tokens`, đổi tên vì "fallback" dễ đọc thành "dự phòng").
+  - `semantic_jev_min_confidence`, `semantic_jev_min_noul`; `config/llm.yaml` mục `typesafe`
+    (endpoint, model pin `jev-1.13.0`, timeout); `TYPESAFE_API_KEY` trong `.env`.
+  - Thiếu khóa provider chính → chạy riêng dự phòng; thiếu cả hai → chạy chỉ-luật.
+- Dự phòng chạy trong CÙNG trần 3 s của lượt (`model_budget.hand_over_model`,
+  `semantic_failover.py`). Đo thật 10-10 (Jev cố tình lỗi bằng endpoint sai): Jev trả HTTP 404 sau
+  1,3–2,1 s, OpenAI cần 1,2–1,8 s, nên phần lớn lượt không còn đủ thời gian. Dự phòng thực sự cứu được
+  lượt khi Jev lỗi nhanh: thiếu / sai khóa, lỗi kết nối (~1,0 s), 4xx/5xx trả ngay. Jev timeout ở 3 s
+  thì không cứu được.
 - `src/inference/llm/typesafe.py`: HTTP thẳng `POST /v1/systemone`, một request, không retry, trần
   3 s (không dùng SDK vì SDK tự retry). `src/callbot/engine/extraction/semantic_jev.py`: một request
   gồm 4 câu Choice nhãn (+ 3 Noul ở câu đọc lịch / "đổi hay hủy") và 4 câu Choice chọn span trong

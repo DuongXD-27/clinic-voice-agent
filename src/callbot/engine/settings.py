@@ -14,18 +14,24 @@ class EngineSettings(YamlSettings):
     # model thật) chưa chạy. Thiếu OPENAI_API_KEY thì factory tự về chỉ-luật, không chặn khởi động.
     # Tắt: SEMANTIC_FALLBACK_ENABLED=false. Cấu hình riêng, không dùng chung `NAME_FALLBACK_*`.
     semantic_fallback_enabled: bool
-    # openai: Structured Outputs (semantic_fallback_model). jev: TypeSafe System One, cấu hình ở
-    # llm.yaml mục typesafe; semantic_fallback_model / max_tokens không áp dụng.
-    semantic_fallback_provider: Literal["openai", "jev"]
+    # Provider đọc câu, gọi trước. openai: Structured Outputs (semantic_openai_model). jev: TypeSafe
+    # System One, cấu hình ở llm.yaml mục typesafe; semantic_openai_* không áp dụng.
+    semantic_provider: Literal["openai", "jev"]
+    # Provider dự phòng, CHỈ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng),
+    # trong phần còn lại của trần lượt. none (hoặc trùng provider chính) = không dự phòng; đặt none để
+    # đo riêng một provider. Thiếu khóa provider chính thì chỉ chạy dự phòng.
+    semantic_backup_provider: Literal["none", "openai", "jev"]
+    # Chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây: ít hơn thì không kịp trần, chỉ tốn tiền.
+    semantic_backup_min_remaining_s: float
     # Jev: nhãn có confidence thấp hơn mức này bị bỏ (đồng ý / từ chối -> AMBIGUOUS). Lâm sàng không gate.
     semantic_jev_min_confidence: float
     # Jev: xác suất "có" tối thiểu của các Noul ở câu đọc lịch / "đổi hay hủy"
     semantic_jev_min_noul: float
-    semantic_fallback_model: str
+    semantic_openai_model: str
     # Deadline tổng từ lúc gửi model request tới khi nhận đủ response; httpx vẫn giới hạn từng pha,
     # connect riêng 1 giây. Một request, không retry model.
     semantic_fallback_timeout_s: float
-    semantic_fallback_max_tokens: int
+    semantic_openai_max_tokens: int
     # Câu dài hơn mức này thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định).
     semantic_fallback_max_input_chars: int
     # Cho model đề xuất xác nhận hủy, luật kiểm chứng (evidence T-05, đợt 3).

@@ -78,6 +78,16 @@ def model_used() -> bool:
     return budget is not None and budget.used
 
 
+def hand_over_model(model: str) -> None:
+    """Provider chính lỗi, provider dự phòng chạy tiếp trong CÙNG ngân sách lượt: bỏ trạng thái lỗi
+    đã báo (TIMEOUT / ERROR không bị ghi đè) để kết quả của provider dự phòng được dùng, và ghi đúng
+    tên model trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm."""
+    budget = _current.get()
+    if budget is not None:
+        budget.status = None
+        budget.model = model
+
+
 def report_model_status(status: str) -> None:
     budget = _current.get()
     if budget is None or budget.status in {"TIMEOUT", "ERROR"}:

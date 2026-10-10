@@ -1,5 +1,5 @@
 """Tầng ngữ nghĩa bằng TypeSafe System One (Jev) — thay `LLMSemanticExtractor` khi
-`semantic_fallback_provider: jev`.
+`semantic_provider: jev`.
 
 Jev không sinh text, chỉ chọn option có xác suất. Vì vậy:
 - Mỗi nhãn (`reply_kind`, `intent`, `cancel_reason`, `clinical`) là một câu Choice trên tập nhãn đóng.
@@ -427,6 +427,9 @@ class JevSemanticExtractor:
         self._min_noul = min_noul
         # Xác suất của lượt gần nhất, chỉ để script eval vẽ calibration; không log, không lưu phiên
         self.last_probabilities: Optional[dict[str, object]] = None
+        # Trạng thái lượt gần nhất (accepted / timeout / http_error...): bộ chuyển provider đọc để biết
+        # lỗi dịch vụ hay model đã trả lời
+        self.last_status: Optional[str] = None
 
     @property
     def prompt_version(self) -> str:
@@ -473,6 +476,7 @@ class JevSemanticExtractor:
                         normalized_result(status),
                     )
         finally:
+            self.last_status = status
             report_model_status(status)
             # Không log transcript, state, hay khóa API — chỉ số liệu kỹ thuật.
             logger.info(

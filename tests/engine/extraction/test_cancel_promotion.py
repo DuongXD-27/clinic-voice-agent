@@ -556,7 +556,7 @@ def test_the_factory_picks_the_prompt_and_the_gate_from_the_flag(
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     settings = EngineSettings(
         semantic_fallback_enabled=True,
-        semantic_fallback_model=model,
+        semantic_openai_model=model,
         cancel_semantic_confirm_enabled=enabled,
     )
     extractor = _semantic_extractor(settings)
