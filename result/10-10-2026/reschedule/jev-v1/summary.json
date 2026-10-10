@@ -1,24 +1,24 @@
 {
-  "label": "jev-final",
+  "label": "jev-v1",
   "mode": "semantic",
   "today": "2026-09-29T10:00:00+07:00",
   "model": "jev-1.13.0",
   "repeats": 3,
-  "ran_at": "2026-10-10T10:23:39+00:00",
+  "ran_at": "2026-10-10T12:35:00+00:00",
   "runs": [
     {
       "cases": 171,
-      "failed_cases": 13,
+      "failed_cases": 11,
       "holdout_cases": 121,
-      "holdout_passed": 108,
-      "holdout_accuracy": 0.8926,
+      "holdout_passed": 110,
+      "holdout_accuracy": 0.9091,
       "rule_cases": 100,
-      "rule_passed": 92,
+      "rule_passed": 94,
       "inference_cases": 21,
       "inference_passed": 16,
       "unsafe_writes": 0,
       "wrong_slot_writes": 0,
-      "not_understood": 6,
+      "not_understood": 5,
       "by_group": {
         "agreement": {
           "total": 9,
@@ -77,7 +77,7 @@
         },
         "safety_transfer": {
           "total": 10,
-          "ok": 6,
+          "ok": 7,
           "routed": 1
         },
         "today": {
@@ -87,7 +87,7 @@
         },
         "unaccented": {
           "total": 9,
-          "ok": 8,
+          "ok": 9,
           "routed": 1
         },
         "unclear": {
@@ -98,14 +98,13 @@
       },
       "model_calls": 2,
       "model_statuses": {
-        "accepted": 1,
-        "rejected": 1
+        "accepted": 2
       },
       "turn_latency_ms": {
         "n": 171,
         "p50": 2.8,
         "p95": 3.5,
-        "max": 434.7
+        "max": 1598.2
       },
       "failures": [
         {
@@ -193,18 +192,6 @@
           "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
         },
         {
-          "id": "R112",
-          "group": "safety_transfer",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "tôi có câu hỏi về bệnh",
-          "needs_inference": false,
-          "expect": "TRANSFER:CLINICAL_QUESTION",
-          "observed": "NOT_UNDERSTOOD",
-          "observed_dates": "",
-          "observed_full_day": "",
-          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
-        },
-        {
           "id": "R113",
           "group": "safety_transfer",
           "question_id": "SLOT_READBACK",
@@ -226,7 +213,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
+          "utterance": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ."
         },
         {
           "id": "R120",
@@ -238,19 +225,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
-        },
-        {
-          "id": "R122",
-          "group": "unaccented",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "lay cai dau",
-          "needs_inference": false,
-          "expect": "PICK:1",
-          "observed": "REREAD_PAGE",
-          "observed_dates": "14/10 15/10",
-          "observed_full_day": "",
-          "utterance": "Anh chị có đồng ý với khung giờ vừa đọc không ạ?"
+          "utterance": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ."
         },
         {
           "id": "R142",
@@ -268,17 +243,17 @@
     },
     {
       "cases": 171,
-      "failed_cases": 13,
+      "failed_cases": 11,
       "holdout_cases": 121,
-      "holdout_passed": 108,
-      "holdout_accuracy": 0.8926,
+      "holdout_passed": 110,
+      "holdout_accuracy": 0.9091,
       "rule_cases": 100,
-      "rule_passed": 92,
+      "rule_passed": 94,
       "inference_cases": 21,
       "inference_passed": 16,
       "unsafe_writes": 0,
       "wrong_slot_writes": 0,
-      "not_understood": 6,
+      "not_understood": 5,
       "by_group": {
         "agreement": {
           "total": 9,
@@ -337,7 +312,7 @@
         },
         "safety_transfer": {
           "total": 10,
-          "ok": 6,
+          "ok": 7,
           "routed": 1
         },
         "today": {
@@ -347,7 +322,7 @@
         },
         "unaccented": {
           "total": 9,
-          "ok": 8,
+          "ok": 9,
           "routed": 1
         },
         "unclear": {
@@ -358,14 +333,13 @@
       },
       "model_calls": 2,
       "model_statuses": {
-        "accepted": 1,
-        "rejected": 1
+        "accepted": 2
       },
       "turn_latency_ms": {
         "n": 171,
-        "p50": 2.8,
-        "p95": 3.5,
-        "max": 697.0
+        "p50": 2.7,
+        "p95": 3.4,
+        "max": 711.2
       },
       "failures": [
         {
@@ -378,7 +352,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
         },
         {
           "id": "R060",
@@ -402,7 +376,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
         },
         {
           "id": "R101",
@@ -453,18 +427,6 @@
           "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
         },
         {
-          "id": "R112",
-          "group": "safety_transfer",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "tôi có câu hỏi về bệnh",
-          "needs_inference": false,
-          "expect": "TRANSFER:CLINICAL_QUESTION",
-          "observed": "NOT_UNDERSTOOD",
-          "observed_dates": "",
-          "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
-        },
-        {
           "id": "R113",
           "group": "safety_transfer",
           "question_id": "SLOT_READBACK",
@@ -486,7 +448,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ."
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
         },
         {
           "id": "R120",
@@ -498,19 +460,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
-        },
-        {
-          "id": "R122",
-          "group": "unaccented",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "lay cai dau",
-          "needs_inference": false,
-          "expect": "PICK:1",
-          "observed": "REREAD_PAGE",
-          "observed_dates": "14/10 15/10",
-          "observed_full_day": "",
-          "utterance": "Anh chị có đồng ý với khung giờ vừa đọc không ạ?"
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
         },
         {
           "id": "R142",
@@ -528,17 +478,17 @@
     },
     {
       "cases": 171,
-      "failed_cases": 13,
+      "failed_cases": 11,
       "holdout_cases": 121,
-      "holdout_passed": 108,
-      "holdout_accuracy": 0.8926,
+      "holdout_passed": 110,
+      "holdout_accuracy": 0.9091,
       "rule_cases": 100,
-      "rule_passed": 92,
+      "rule_passed": 94,
       "inference_cases": 21,
       "inference_passed": 16,
       "unsafe_writes": 0,
       "wrong_slot_writes": 0,
-      "not_understood": 6,
+      "not_understood": 5,
       "by_group": {
         "agreement": {
           "total": 9,
@@ -597,7 +547,7 @@
         },
         "safety_transfer": {
           "total": 10,
-          "ok": 6,
+          "ok": 7,
           "routed": 1
         },
         "today": {
@@ -607,7 +557,7 @@
         },
         "unaccented": {
           "total": 9,
-          "ok": 8,
+          "ok": 9,
           "routed": 1
         },
         "unclear": {
@@ -618,14 +568,13 @@
       },
       "model_calls": 2,
       "model_statuses": {
-        "accepted": 1,
-        "rejected": 1
+        "accepted": 2
       },
       "turn_latency_ms": {
         "n": 171,
-        "p50": 2.8,
-        "p95": 3.5,
-        "max": 705.8
+        "p50": 2.9,
+        "p95": 4.0,
+        "max": 1604.2
       },
       "failures": [
         {
@@ -662,7 +611,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
+          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
         },
         {
           "id": "R101",
@@ -698,7 +647,7 @@
           "observed": "AMBIGUOUS",
           "observed_dates": "15/10 15/10",
           "observed_full_day": "",
-          "utterance": "Có nhiều khung giờ phù hợp. Em còn khung 1: 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10; khung 2: 3 giờ 30 chiều cùng ngày. Còn 9 khung khác. Anh chị chọn khung nào ạ?"
+          "utterance": "Có nhiều khung giờ phù hợp. Em tìm được khung 1: 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10; khung 2: 3 giờ 30 chiều cùng ngày. Còn 9 khung khác. Anh chị chọn khung nào ạ?"
         },
         {
           "id": "R109",
@@ -711,18 +660,6 @@
           "observed_dates": "",
           "observed_full_day": "",
           "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
-        },
-        {
-          "id": "R112",
-          "group": "safety_transfer",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "tôi có câu hỏi về bệnh",
-          "needs_inference": false,
-          "expect": "TRANSFER:CLINICAL_QUESTION",
-          "observed": "NOT_UNDERSTOOD",
-          "observed_dates": "",
-          "observed_full_day": "",
-          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
         },
         {
           "id": "R113",
@@ -758,19 +695,7 @@
           "observed": "NOT_UNDERSTOOD",
           "observed_dates": "",
           "observed_full_day": "",
-          "utterance": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ."
-        },
-        {
-          "id": "R122",
-          "group": "unaccented",
-          "question_id": "OFFER_SLOTS",
-          "transcript": "lay cai dau",
-          "needs_inference": false,
-          "expect": "PICK:1",
-          "observed": "REREAD_PAGE",
-          "observed_dates": "14/10 15/10",
-          "observed_full_day": "",
-          "utterance": "Anh chị có đồng ý với khung giờ vừa đọc không ạ?"
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
         },
         {
           "id": "R142",

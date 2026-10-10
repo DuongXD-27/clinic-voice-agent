@@ -90,11 +90,16 @@ def test_candidates_trim_leading_connectors_and_trailing_particles_but_keep_di()
     assert "hủy đi" in candidates and "hủy" not in candidates
 
 
-def test_rule_span_is_offered_so_cancel_promotion_can_match() -> None:
+def test_rule_spans_are_not_offered_as_candidates() -> None:
+    """Span một từ của luật ("hủy") làm Jev chọn quá ngắn; `promotion_rejection` khi đó coi phần
+    "giúp em nhé" còn lại là nội dung lạ và từ chối nâng ngưỡng (eval cancel 10-10)."""
     context = _context(
-        "ừ thì cứ hủy lịch giúp tôi", candidates=RuleCandidates(agreement_span="hủy lịch")
+        "Hủy giúp em nhé bởi vì dạo này tôi hết tiền",
+        candidates=RuleCandidates(agreement_span="hủy"),
     )
-    assert "hủy lịch" in span_candidates(context)
+    candidates = span_candidates(context)
+    assert "Hủy" not in candidates and "hủy" not in candidates
+    assert candidates[0] == "dạo này tôi hết tiền" and "Hủy giúp em nhé" in candidates
 
 
 def test_single_piece_transcript_asks_no_span_question() -> None:
@@ -244,6 +249,77 @@ def test_gate_uses_the_chosen_option_probability() -> None:
     assert outcome is not None and outcome.reply_kind is ReplyKind.CHANGE_INTENT
 
 
+def test_change_intent_without_a_need_becomes_ambiguous_instead_of_rejected() -> None:
+    """Câu không hỏi intent (OFFER_SLOTS): CHANGE_INTENT không có nhu cầu thì `ground_reading` bỏ cả
+    lượt; adapter hạ AMBIGUOUS để giữ lý do / lâm sàng đã đọc."""
+    context = _context("để tôi xem đã nhé", question_id=QuestionId.OFFER_SLOTS, allowed_intents=())
+    candidates = span_candidates(context)
+    extractor, client = _extractor(
+        {
+            "reply_kind": _answer("CHANGE_INTENT", confidence=0.9),
+            "cancel_reason": _answer(NONE),
+            "clinical": _answer("MENTION"),
+            **{
+                f"{n}_span": _answer(_span(candidates, "để tôi xem đã"))
+                for n in ("reply", "reason", "clinical")
+            },
+        }
+    )
+    assert "intent" not in build_questions(context, candidates)
+    outcome = extractor.analyze(context)
+    assert outcome is not None and outcome.reply_kind is ReplyKind.AMBIGUOUS
+    assert outcome.clinical is not None
+
+
+@pytest.mark.parametrize(
+    ("confidence", "agreement_span", "expected"),
+    [
+        # Model lưỡng lự lệnh / lý do ("tôi không cần khám nữa": 0.53 / 0.45), lý do rõ -> nêu lý do
+        (0.53, None, ReplyKind.INFORM_REASON),
+        # Model chắc là lệnh nhưng luật không thấy động từ hủy nào: không có gì để kiểm chứng -> lý do
+        (0.9, None, ReplyKind.INFORM_REASON),
+        # Luật đã thấy động từ hủy (route LEFTOVER): đề xuất CONFIRM_ACTION để `cancel_promotion` xét
+        (0.9, "hủy", ReplyKind.CONFIRM_ACTION),
+    ],
+)
+def test_reconfirm_confirm_with_a_clear_reason_degrades_to_inform_reason(
+    confidence: float, agreement_span: str | None, expected: ReplyKind
+) -> None:
+    transcript = "hủy đi, tôi không cần khám nữa"
+    context = _context(transcript, candidates=RuleCandidates(agreement_span=agreement_span))
+    candidates = span_candidates(context)
+    extractor, _ = _extractor(
+        {
+            "reply_kind": _answer("CONFIRM_ACTION", confidence=confidence),
+            "intent": _answer("CANCEL"),
+            "cancel_reason": _answer("NO_LONGER_NEEDED", confidence=0.9),
+            "clinical": _answer(NONE),
+            "reply_span": _answer(_span(candidates, "hủy đi")),
+            "intent_span": _answer(_span(candidates, "hủy đi")),
+            "reason_span": _answer(_span(candidates, "tôi không cần khám nữa")),
+            "clinical_span": _answer("c0"),
+        }
+    )
+    outcome = extractor.analyze(context)
+    assert outcome is not None
+    assert (outcome.reply_kind, str(outcome.cancel_reason)) == (expected, "NO_LONGER_NEEDED")
+
+
+def test_reconfirm_confirm_without_a_clear_reason_is_unchanged() -> None:
+    context = _context("ừ hủy", candidates=RuleCandidates(agreement_span=None))
+    extractor, _ = _extractor(
+        {
+            "reply_kind": _answer("CONFIRM_ACTION", confidence=0.5),
+            "intent": _answer("CANCEL"),
+            "cancel_reason": _answer("UNSPECIFIED", confidence=0.9),
+            "clinical": _answer(NONE),
+            **{f"{n}_span": _answer("c0") for n in ("reply", "intent", "reason", "clinical")},
+        }
+    )
+    outcome = extractor.analyze(context)
+    assert outcome is not None and outcome.reply_kind is ReplyKind.AMBIGUOUS
+
+
 def test_low_confidence_change_intent_becomes_ambiguous() -> None:
     context = _context("hủy xong đặt lại được chứ", allowed_intents=OUTBOUND)
     extractor, _ = _extractor(
@@ -333,6 +409,37 @@ def test_reason_without_cannot_attend_is_ambiguous() -> None:
     assert outcome.cancel_reason is None
 
 
+@pytest.mark.parametrize("reason", ["NO_LONGER_NEEDED", "WENT_ELSEWHERE", "COST"])
+def test_time_independent_reason_is_kept_without_the_cannot_attend_noul(reason: str) -> None:
+    """ "Tôi khỏi bệnh rồi": vẫn "đến được" nhưng không cần đến — Noul không đến được không áp dụng
+    (eval confirm 10-10: 4 câu lý do rõ bị bỏ thành đọc lại lịch)."""
+    outcome, _ = _readback(
+        "tôi khỏi hẳn rồi em", kind="INFORM_REASON", reason=reason, cannot_attend=0.1
+    )
+    assert outcome is not None
+    assert (outcome.reply_kind, str(outcome.cancel_reason)) == (ReplyKind.INFORM_REASON, reason)
+
+
+def test_time_independent_reason_below_threshold_still_needs_the_noul() -> None:
+    context = _context(
+        "tôi khỏi hẳn rồi em", question_id=QuestionId.CONFIRM_READBACK, pending_action=None
+    )
+    extractor, _ = _extractor(
+        {
+            "reply_kind": _answer("INFORM_REASON"),
+            "intent": _answer(NONE),
+            "cancel_reason": _answer("NO_LONGER_NEEDED", confidence=0.4),
+            "clinical": _answer(NONE),
+            "cannot_attend": _noul(0.1),
+            "will_attend": _noul(0.1),
+            "wants_other_time": _noul(0.1),
+            **{f"{n}_span": _answer("c0") for n in ("reply", "intent", "reason", "clinical")},
+        }
+    )
+    outcome = extractor.analyze(context)
+    assert outcome is not None and outcome.reply_kind is ReplyKind.AMBIGUOUS
+
+
 def test_other_time_request_is_reschedule_even_as_a_question() -> None:
     outcome, _ = _readback("dời sang thứ bảy được không em", kind="QUESTION", wants_other_time=0.8)
     assert outcome is not None
@@ -369,9 +476,16 @@ def test_probabilities_are_kept_for_eval_without_spans() -> None:
     }
 
 
-def test_unaccented_transcript_gets_a_note() -> None:
-    assert "transcript_note" in build_state(_context("giu lich giup toi"))
-    assert "transcript_note" not in build_state(_context("giữ lịch giúp tôi"))
+def test_unaccented_transcript_gets_a_note_and_a_glossary() -> None:
+    state = build_state(_context("toi se di cong tac"))
+    assert "transcript_note" in state
+    assert state["transcript_glossary"] == {
+        "cong tac": "công tác (business trip)",
+        "di": "đi (go)",
+        "se": "sẽ (will)",
+    }
+    accented = build_state(_context("giữ lịch giúp tôi"))
+    assert "transcript_note" not in accented and "transcript_glossary" not in accented
 
 
 def test_low_confidence_clinical_is_kept() -> None:

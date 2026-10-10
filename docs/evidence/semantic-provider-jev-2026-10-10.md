@@ -1,10 +1,14 @@
 # Tầng ngữ nghĩa bằng TypeSafe Jev so với GPT-6 Luna, và review nhãn eval theo hợp đồng Rev 1.1
 
-Jev 1.13 (`SEMANTIC_FALLBACK_PROVIDER=jev`) nhanh hơn GPT-6 Luna (Fast mode, reasoning tắt) khoảng
-3,8 lần ở p50 (355–370 ms so với 1345–1392 ms), không có lần ghi sai nào, nhỉnh hơn ở bộ cancel và
-kém 1,6–3,8 điểm ở bộ confirm trên các lượt thật sự gọi model. Mặc định của repo **vẫn là OpenAI**;
-Jev là lựa chọn qua cấu hình. Review nhãn eval theo hợp đồng đổi 4 nhãn, vá một lỗi harness và sửa
-ba chỗ ở luật / merge; tám đề xuất đổi nhãn khác bị rút lại vì đụng quyết định QC / AC đã có.
+**Bản v1** (2026-10-10, nhánh `feat/jev-semantic`): provider Jev, adapter `semantic_jev_v6`, kết quả
+`result/10-10-2026/*/jev-v1`.
+
+Jev 1.13 (`SEMANTIC_FALLBACK_PROVIDER=jev`, adapter `semantic_jev_v6`) nhanh hơn GPT-6 Luna (Fast
+mode, reasoning tắt) 2–3,8 lần ở p50 (355–680 ms tùy khung giờ, so với 1345–1392 ms), không có lần
+ghi sai nào, và sau vòng sửa adapter thứ hai hơn OpenAI trên các lượt thật sự gọi model ở cả cancel
+(99,5 % so với 91,7 %) lẫn confirm (88,3 % so với 82,0 %). Mặc định của repo **vẫn là OpenAI**; Jev
+là lựa chọn qua cấu hình. Review nhãn eval theo hợp đồng đổi 4 nhãn, vá một lỗi harness và sửa ba chỗ
+ở luật / merge; vòng hai (owner duyệt từng ca) đổi thêm 4 nhãn cancel và bỏ 10 ca confirm.
 
 ## Nguồn
 
@@ -13,10 +17,10 @@ ba chỗ ở luật / merge; tám đề xuất đổi nhãn khác bị rút lạ
   [reschedule](../../result/10-10-2026/reschedule/openai/), [no_answer](../../result/10-10-2026/no_answer/openai/).
   Chạy MỘT lần vào đầu ngày, trước khi đổi nhãn / vá luật; các bảng dưới chấm lại offline từ
   `results.csv` với nhãn mới (xem "Cách chấm lại").
-- Jev `jev-1.13.0` (`semantic_jev_v5`), `jev-final` chạy với code và nhãn cuối (các lần chạy trung gian
-  trong ngày không giữ lại): [cancel](../../result/10-10-2026/cancel/jev-final/),
-  [confirm](../../result/10-10-2026/confirm/jev-final/), [reschedule](../../result/10-10-2026/reschedule/jev-final/),
-  [no_answer](../../result/10-10-2026/no_answer/jev-final/).
+- Jev `jev-1.13.0` (`semantic_jev_v6`), `jev-v1` chạy với code và nhãn cuối (các lần chạy trung gian
+  trong ngày không giữ lại; bộ no_answer giữ lần chạy `semantic_jev_v5` vì không đổi đường đi nào của nó): [cancel](../../result/10-10-2026/cancel/jev-v1/),
+  [confirm](../../result/10-10-2026/confirm/jev-v1/), [reschedule](../../result/10-10-2026/reschedule/jev-v1/),
+  [no_answer](../../result/10-10-2026/no_answer/jev-v1/).
 - Mỗi bộ chạy 3 lần (`--repeats 3`). Jev gần như tất định; chênh lệch giữa các lần chủ yếu là lỗi mạng.
 
 ## Cách chấm lại
@@ -36,45 +40,52 @@ có thêm dòng chỉ tính lần 1–2 cho cả hai provider.
 
 ### Cancel (120 ca, 91 holdout, ~72 lượt gọi model mỗi lần chạy)
 
-| Chỉ số | OpenAI (offline) | Jev final |
+| Chỉ số | OpenAI (offline) | Jev v1 |
 | --- | ---: | ---: |
-| holdout behaviour | 93,4% (255/273) | **94,1%** (257/273) |
-| chỉ lượt gọi model, không lỗi mạng | 91,7% (198/216) | **94,0%** (203/216) |
-| reason accuracy | **90,8%** | 89,7% |
+| holdout behaviour | 93,4% (255/273) | **97,1%** (265/273) |
+| chỉ lượt gọi model, không lỗi mạng | 91,7% (198/216) | **99,5%** (206/207) |
+| reason accuracy | 89,7% | **91,2%** |
 | ghi hủy sai (SF-05) | 0 | 0 |
-| latency semantic p50 / p95 | 1345 / 1762 ms | **355 / 1321 ms** |
+| lỗi mạng / timeout (lượt holdout) | 0 | 12 |
+| latency semantic p50 / p95 | 1345 / 1762 ms | **651 / 1857 ms** |
 
-Jev tốt hơn 5 ca, kém hơn 5 ca. Kém: hai câu không dấu (`dao nay ket tien qua em a`,
-`toi khong can kham nua`), và câu hai lý do "Tôi khỏi rồi mà cũng khám chỗ khác rồi" (Jev chọn
-WENT_ELSEWHERE 0,43–0,51 thay vì UNSPECIFIED 0,31–0,37 → bot ghi nhận lý do thay vì hỏi lại; không
-ghi gì). Tốt hơn: ba câu hỏi "đặt lại thế nào / bao giờ đặt lại được" OpenAI chuyển máy, Jev hỏi lại.
+Jev tốt hơn 8 ca, kém hơn 5 ca; cả 5 ca kém đều là lượt lỗi mạng / timeout (bot hỏi lại, không ghi
+gì), không ca nào do model đọc sai. Lượt gọi model sạch lỗi chỉ còn sai 1/207: "Dạo này tôi bận hủy
+lịch" (nhãn owner: CANCEL) — Jev đọc CONFIRM_ACTION 0,42–0,43, và kể cả khi đọc là lệnh, cổng nâng
+ngưỡng SF-05 (`promotion_rejection`) từ chối vì lý do đứng trước động từ hủy mà không có dấu ngắt /
+từ nối ("Dạo này tôi bận, hủy lịch" thì qua). Ca này không đạt được bằng model theo thiết kế hiện tại.
 
-### Confirm (197 ca, 181 holdout, ~93–103 lượt gọi model mỗi lần chạy)
+### Confirm (187 ca, 171 holdout, ~80–90 lượt gọi model mỗi lần chạy; chấm trên nhãn cuối, lần chạy Jev còn 4 ca bỏ sau)
 
-| Chỉ số | OpenAI (offline) | OpenAI + credit | Jev final |
-| --- | ---: | ---: | ---: |
-| holdout behaviour, 3 lần | 83,6% (454/543) | — | **86,7%** (471/543) |
-| holdout behaviour, lần 1–2 | 87,8% (318/362) | 89,0% (322/362) | 87,0% (315/362) |
-| chỉ lượt gọi model, không lỗi mạng, 3 lần | **78,6%** (184/234) | — | 76,6% (213/278) |
-| chỉ lượt gọi model, lần 1–2 | 78,9% (146/185) | **81,1%** (150/185) | 77,3% (143/185) |
-| needs_inference | 64,8% | — | **72,6%** |
-| branch routing (CANCEL / RESCHEDULE) | 78,7% | — | **89,3%** |
-| ghi CONFIRMED sai | 0 | 0 | 0 |
-| latency semantic p50 / p95 | 1392 / 1729 ms | — | **370 / 1303 ms** |
+| Chỉ số | OpenAI (offline) | Jev v1 |
+| --- | ---: | ---: |
+| holdout behaviour, 3 lần | 87,3% (448/513) | **92,8%** (476/513) |
+| chỉ lượt gọi model, không lỗi mạng | 82,0% (178/217) | **88,3%** (211/239) |
+| needs_inference | 70,8% | **86,5%** |
+| branch routing (CANCEL / RESCHEDULE) | 85,5% | **92,8%** |
+| ghi CONFIRMED sai | 0 | 0 |
+| lỗi mạng / timeout (lượt holdout) | 8 | 15 |
+| latency semantic p50 / p95 | 1392 / 1696 ms | **680 / 2099 ms** |
 
-Trên cùng điều kiện (lần 1–2, lượt gọi model), Jev kém OpenAI 1,6 điểm; nếu tính cả hai ca
-implied-cancel cho OpenAI thì 3,8 điểm. Khoảng cách này tương đương 3–7 lượt trên 185, trong sai số
-của cỡ mẫu. Ca Jev kém đều là **câu không dấu** (`hom do toi co viec ban`, `hom do toi phai di lam`,
-`toi se di cong tac`) hoặc câu kể hoàn cảnh không trực tiếp (`tôi chuyển vào Sài Gòn sống rồi em`,
-`tôi hết đau rồi, chắc không cần nữa đâu`): Jev không thấy "không đến được" nên bot đọc lại lịch
-(an toàn, tốn một lượt).
+Jev tốt hơn 27 ca, kém hơn 5 ca. Trong 5 ca kém, 3 là lượt lỗi mạng / timeout; 2 ca thật là câu
+**không dấu** `toi se di cong tac` và `hom do toi co viec ban` (Noul "không đến được" chỉ 0,31–0,44
+dù Choice đã đọc INFORM_REASON / PATIENT_UNAVAILABLE; bot đọc lại lịch, an toàn, tốn một lượt).
+Các ca còn sai cho mọi provider là 9 câu nhãn CONFIRM ở câu đọc lịch (`lịch đó ổn em ạ`, `ừ thế
+cũng được`, `không hủy đâu, tôi vẫn đến`, `tôi sẽ đến đúng giờ, không trễ đâu`...): model đọc đúng là sẽ đến
+(CONFIRM 0,70–0,97) nhưng theo nguyên tắc thiết kế của repo — "model làm rõ, không mở khóa ghi"
+(bảng quyền hợp nhất, `docs/reference/information-extraction-design.md`; plan T-10 §"Model không mở
+khóa lệnh ghi") — bot đọc lại lịch để nhận xác nhận có / không ở lượt sau. Lưu ý đây là quyết định
+của repo, không phải của hợp đồng: SF-05 (§3.5) chỉ cấm ghi **hủy** không có xác nhận lần hai; với
+đến khám, §1.1.3 chỉ đòi "set CONFIRMED only after the patient agrees to that read-back" và §1.1.5
+cấm đoán. Muốn các câu này CONFIRM thì hoặc thêm từ điển luật, hoặc PO quyết cho model mở khóa ghi
+đến khám có kiểm chứng (như `cancel_promotion` đã làm cho hủy).
 
 ### Reschedule và No answer
 
-| Bộ | OpenAI | Jev final | Ghi chú |
+| Bộ | OpenAI | Jev v1 | Ghi chú |
 | --- | ---: | ---: | --- |
-| reschedule holdout | 90,1% (327/363) | 89,3% (324/363) | chỉ 2 lượt gọi model mỗi lần chạy; ca lệch duy nhất R122 `lay cai dau` (Jev từ chối span ở câu không dấu) |
-| no_answer passed / scored | 83/83 ×3 | 83/83 ×3 | 18–19 lượt gọi model, 3 ca REVIEW không chấm |
+| reschedule holdout | 90,1% (327/363) | **90,9%** (330/363) | chỉ 2 lượt gọi model mỗi lần chạy: R112 `tôi có câu hỏi về bệnh` (Jev ADVICE_REQUEST → chuyển máy, OpenAI không), R122 `lay cai dau` (cả hai PICK:1). 11 ca còn sai là luật / bộ đọc ngày, không qua model |
+| no_answer passed / scored | 83/83 ×3 | 83/83 ×3 | 18–19 lượt gọi model, 3 ca REVIEW không chấm (không chạy lại ở vòng hai) |
 
 Hai bộ này không đo được provider.
 
@@ -102,6 +113,17 @@ Reschedule = "asks for a different time"), §1.1.3 (`CONFIRMED` chỉ sau khi đ
 | cancel `Nếu đổi được thì tôi không hủy` | ASK_AGAIN → RESCHEDULE | Bảng 1 "asks for a different time"; Figure 0 coi câu hỏi đổi là yêu cầu đổi; cùng ý với "thay vì hủy thì cho tôi dời sang thứ sáu" |
 | confirm `vâng, tôi khỏi bệnh rồi` | ASK_CHANGE_OR_CANCEL → CANCEL | quy ước của chính bộ (header `confirm_eval.py`: "khỏi rồi" → CANCEL, `implied_cancel`) |
 | confirm `bác sĩ ở viện tỉnh khám cho tôi rồi` | ASK_CHANGE_OR_CANCEL → CANCEL | đã khám nơi khác (việc đã xảy ra), như `Tôi khám ở viện khác rồi` |
+
+**Vòng hai (owner duyệt từng ca sai của Jev, 10-10 chiều):**
+
+| Ca | Quyết định | Ghi chú |
+| --- | --- | --- |
+| cancel `Hủy xong có ảnh hưởng gì đến hồ sơ không` | ASK_AGAIN → TRANSFER | câu hỏi ngoài phạm vi; nhãn theo cách Jev đọc |
+| cancel `Bận mà cũng đắt quá` | UNSPECIFIED / ASK_AGAIN → COST / REASON_NOTED | nhãn theo cách Jev đọc |
+| cancel `Tôi khỏi rồi mà cũng khám chỗ khác rồi` | UNSPECIFIED / ASK_AGAIN → WENT_ELSEWHERE / REASON_NOTED | nhãn theo cách Jev đọc; Jev v6 còn dao động WENT_ELSEWHERE / UNSPECIFIED (behaviour vẫn REASON_NOTED) |
+| cancel `Dạo này tôi bận hủy lịch` | AMBIGUOUS / ASK_AGAIN → CONFIRM_ACTION / CANCEL | owner: "hủy lịch và lý do". Chưa đạt được: xem phần Cancel |
+| confirm `vâng, tôi khỏi bệnh rồi`, `bác sĩ ở viện tỉnh khám cho tôi rồi`, `tôi hết đau rồi, chắc không cần nữa đâu`, `tôi chuyển vào Sài Gòn sống rồi em`, `tôi đang nằm viện ở Huế`, `không cần nữa, tôi tự đến` | bỏ khỏi bộ | owner quyết; 4 ca đầu là nhóm adapter v5 bỏ lý do khi Noul "không đến được" không bật (đã sửa ở v6) |
+| confirm `dạ`, `để hôm đó con tôi chở tôi qua`, `hôm đó tôi xin nghỉ rồi, em cứ để lịch vậy`, `vợ tôi sẽ đưa tôi đi` | bỏ khỏi bộ | owner quyết sau khi đọc lại hợp đồng (nhãn CONFIRM không đạt được khi model không mở khóa ghi); `results.csv` của lần chạy vẫn còn 4 dòng này, bảng trên đã lọc theo nhãn cuối |
 
 **Đề xuất rồi rút lại (giữ nhãn cũ), vì đụng quyết định đã có:**
 
@@ -132,6 +154,7 @@ trống, Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (đúng 
 | Chủ đề ngoài phạm vi chỉ được nhắc trong câu kể lý do hủy (có mã Phụ lục A, không câu hỏi / yêu cầu) không phải OUT_OF_SCOPE ở câu xác nhận hủy | `extractor._intent`, `intent.out_of_scope_request` | `test_an_out_of_scope_topic_inside_a_cancel_reason_is_a_reason_not_a_transfer`, `test_asking_about_insurance_at_the_cancel_question_still_transfers` |
 | Phủ định trần ("không chi trả") trong câu kể lý do, không có động từ hủy / giữ lịch, không phải lời từ chối hủy | `extractor._resolve_refusal_inside_reason` | như trên |
 | "đổi được / dời được / chuyển được" là xin đổi lịch (kể cả dạng hỏi / điều kiện); phủ định vẫn loại | `intent._KEYWORDS[RESCHEDULE]` | `test_conditional_or_questioned_change_is_a_reschedule`, `test_a_conditional_change_request_at_the_cancel_question_starts_a_reschedule` |
+| "để lịch vậy / để lịch như vậy / để lịch như cũ / để nguyên lịch" là giữ lịch, như "giữ lịch" (câu đứng một mình → AGREE; kèm nội dung khác vẫn UNCLEAR cho model đọc) | `agreement._KEEP_WORDS` | `test_attendance_agrees_on_polite_words_and_keeping` |
 | Lý do model đọc ra (WENT_ELSEWHERE / NO_LONGER_NEEDED) có dấu hiệu đã xảy ra, không ngập ngừng / điều kiện / việc sắp tới, câu có dấu → intent CANCEL để Dialogue hỏi xác nhận hủy, như `implied_cancel` của luật; không mở khóa ghi | `implied_cancel.implied_cancel_from_model`, `semantic_router.merge_semantic` | `test_a_completed_visit_elsewhere_read_by_the_model_implies_cancel`, `test_planned_hedged_or_unaccented_reasons_do_not_imply_cancel`, `test_a_completed_visit_elsewhere_from_the_model_goes_to_the_cancel_question`, `test_a_planned_visit_elsewhere_from_the_model_still_asks_change_or_cancel` |
 
 ## Jev: cách dùng
@@ -147,6 +170,24 @@ trống, Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (đúng 
   là câu "giả sử" không có NONE (NONE hút xác suất, làm rơi DECLINE_ACTION đúng); gate theo xác suất
   của option được chọn, chỉ cho nhãn mở hành động; lý do lấy argmax; lâm sàng không gate (SF-04).
 - Ví dụ trong criteria đã kiểm tra không trùng câu nào trong `eval/*/cases*.csv` (kể cả không dấu).
+- `semantic_jev_v6` (vòng hai, từ các ca sai của v5):
+  - Câu đọc lịch: lý do **không phụ thuộc ngày giờ** (NO_LONGER_NEEDED / WENT_ELSEWHERE / COST) đủ
+    ngưỡng được giữ không cần Noul "không đến được" (v5 bỏ "vâng, tôi khỏi bệnh rồi" thành đọc lại).
+    PATIENT_UNAVAILABLE vẫn cần Noul ("tôi đang họp" chỉ là bận lúc này).
+  - Câu xác nhận hủy: CONFIRM_ACTION của model mà luật không thấy động từ hủy (không có
+    `agreement_span`) hoặc model dưới ngưỡng, kèm mã lý do rõ → INFORM_REASON (ghi nhận lý do, hỏi
+    lại) thay vì "em chưa hiểu" ("Tôi không cần khám nữa": CONFIRM 0,53 / INFORM 0,45).
+  - Không đưa span của luật vào ứng viên: `_promotion_rejection` so span model với span đã hợp nhất
+    (chính nó), còn `promotion_rejection` kiểm phần câu NGOÀI span — span một từ "hủy" làm Jev chọn
+    quá ngắn và "giúp em nhé" bị coi là nội dung lạ (nhóm leftover 0/3 → 3/3).
+  - CHANGE_INTENT không có intent (câu không hỏi intent) → AMBIGUOUS thay vì để `ground_reading` bỏ
+    cả lượt (R122 `lay cai dau` REREAD_PAGE → PICK:1).
+  - Transcript không dấu: thêm `transcript_glossary` (bảng từ vựng nghiệp vụ tĩnh, chỉ các từ có mặt,
+    từ nhiều nghĩa ghi cả hai) — `dao nay ket tien qua em a` 0/3 → 3/3, `hom do toi phai di lam`
+    0/3 → 3/3; hai câu không dấu khác vẫn chưa qua.
+  - Criteria: lệnh hủy kèm lý do vẫn là CONFIRM_ACTION; CANCEL intent không gồm "khỏi rồi / đi chỗ
+    khác" không có lệnh; ADVICE_REQUEST gồm "có câu hỏi về bệnh / muốn hỏi bác sĩ"; Noul "không đến
+    được" sai cho "xin nghỉ / nghỉ phép" (đã xin nghỉ để đi) và cho câu than xa / điều kiện.
 
 ## Kết quả xác minh cục bộ (2026-10-10)
 
@@ -154,7 +195,7 @@ trống, Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (đúng 
 | --- | --- |
 | `python -m ruff check src tests` | Pass |
 | `python -m ruff format --check src tests` | Pass |
-| `python -m pytest -q` | Pass (5027 passed, 24 skipped) |
+| `python -m pytest -q` | Pass (5036 passed, 24 skipped) |
 
 ## Ghi chú
 
@@ -165,4 +206,7 @@ trống, Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (đúng 
 - Cỡ mẫu: 72–103 lượt gọi model mỗi lần chạy; chênh 2–4 điểm ≈ 3–7 ca, trong sai số. Jev gần tất
   định nên 3 lần lặp không phải 3 mẫu độc lập.
 - Lỗi mạng xuất hiện cùng lúc ở cả hai provider trong một khung giờ; nhiều khả năng do mạng máy chạy.
+  Lần chạy `jev-v1` chiều 10-10 dính 14 (cancel) / 19 (confirm) lượt lỗi mạng / timeout và p50
+  651–680 ms, so với 355–370 ms của lần chạy sáng cùng request shape (p50 câu có dấu và không dấu
+  như nhau, nên không phải do glossary). Mọi ca Jev "kém OpenAI" ở bảng cancel đều là các lượt này.
 - `cancel_eval` gộp ASK_AGAIN cho mọi câu hỏi lại (kể cả "em chưa hiểu"); nên tách như `confirm_eval`.

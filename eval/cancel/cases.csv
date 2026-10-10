@@ -47,10 +47,10 @@ prompt,exception,CANCEL_RECONFIRM,Hủy thì có mất phí không em,QUESTION,,
 holdout,question,CANCEL_RECONFIRM,Hủy rồi đặt lại có được không,QUESTION,,ASK_AGAIN
 holdout,question,CANCEL_RECONFIRM,Bao giờ thì tôi đặt lại được,QUESTION,,ASK_AGAIN
 holdout,question,CANCEL_RECONFIRM,Em nhắc lại giúp tôi lịch hôm nào,QUESTION,,ASK_AGAIN
-holdout,question,CANCEL_RECONFIRM,Hủy xong có ảnh hưởng gì đến hồ sơ không,QUESTION,,ASK_AGAIN
-prompt,multi,CANCEL_RECONFIRM,Bận mà cũng đắt quá,INFORM_REASON,UNSPECIFIED,ASK_AGAIN
+holdout,question,CANCEL_RECONFIRM,Hủy xong có ảnh hưởng gì đến hồ sơ không,QUESTION,,TRANSFER
+prompt,multi,CANCEL_RECONFIRM,Bận mà cũng đắt quá,INFORM_REASON,COST,REASON_NOTED
 holdout,multi,CANCEL_RECONFIRM,Vừa tốn kém vừa không sắp xếp được,INFORM_REASON,UNSPECIFIED,ASK_AGAIN
-holdout,multi,CANCEL_RECONFIRM,Tôi khỏi rồi mà cũng khám chỗ khác rồi,INFORM_REASON,UNSPECIFIED,ASK_AGAIN
+holdout,multi,CANCEL_RECONFIRM,Tôi khỏi rồi mà cũng khám chỗ khác rồi,INFORM_REASON,WENT_ELSEWHERE,REASON_NOTED
 holdout,multi,CANCEL_RECONFIRM,"Hủy giúp tôi, mà cho hỏi đặt lại thế nào",QUESTION,,ASK_AGAIN
 holdout,multi,CANCEL_RECONFIRM,Hủy giúp tôi vì không cần khám nữa,AMBIGUOUS,NO_LONGER_NEEDED,ASK_AGAIN
 prompt,unaccented,CANCEL_RECONFIRM,toi khong du tien,INFORM_REASON,COST,REASON_NOTED
@@ -114,7 +114,7 @@ new,leftover,CANCEL_RECONFIRM,Tôi bận nên hủy lịch giúp tôi,CONFIRM_AC
 new,leftover,CANCEL_RECONFIRM,"Dạo này tôi bận, hủy lịch giúp tôi",CONFIRM_ACTION,PATIENT_UNAVAILABLE,CANCEL
 new,leftover,CANCEL_RECONFIRM,Tôi khám chỗ khác rồi nên hủy giúp tôi,CONFIRM_ACTION,WENT_ELSEWHERE,CANCEL
 new,leftover,CANCEL_RECONFIRM,Hủy giúp em nhé bởi vì dạo này tôi hết tiền,CONFIRM_ACTION,COST,CANCEL
-new,leftover,CANCEL_RECONFIRM,Dạo này tôi bận hủy lịch,AMBIGUOUS,PATIENT_UNAVAILABLE,ASK_AGAIN
+new,leftover,CANCEL_RECONFIRM,Dạo này tôi bận hủy lịch,CONFIRM_ACTION,PATIENT_UNAVAILABLE,CANCEL
 new,leftover,CANCEL_RECONFIRM,Tôi bận nên vợ tôi hủy lịch,AMBIGUOUS,PATIENT_UNAVAILABLE,ASK_AGAIN
 new,leftover,CANCEL_RECONFIRM,Hôm qua tôi đã hủy lịch,AMBIGUOUS,,ASK_AGAIN
 new,leftover,CANCEL_RECONFIRM,Hủy thì tiếc lắm,AMBIGUOUS,,ASK_AGAIN

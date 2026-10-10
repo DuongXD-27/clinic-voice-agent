@@ -1,5 +1,5 @@
 {
-  "label": "jev-final",
+  "label": "jev-v1",
   "mode": "semantic",
   "evaluation_scope": "no_answer_unreachable",
   "limitations": "Synthetic text regression; not audio/harness certification. REVIEW excluded from accuracy; record checks still apply. Recovery expectations include internal policy. No claim of unseen-data accuracy.",
