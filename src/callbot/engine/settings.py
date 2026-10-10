@@ -14,6 +14,13 @@ class EngineSettings(YamlSettings):
     # model thật) chưa chạy. Thiếu OPENAI_API_KEY thì factory tự về chỉ-luật, không chặn khởi động.
     # Tắt: SEMANTIC_FALLBACK_ENABLED=false. Cấu hình riêng, không dùng chung `NAME_FALLBACK_*`.
     semantic_fallback_enabled: bool
+    # openai: Structured Outputs (semantic_fallback_model). jev: TypeSafe System One, cấu hình ở
+    # llm.yaml mục typesafe; semantic_fallback_model / max_tokens không áp dụng.
+    semantic_fallback_provider: Literal["openai", "jev"]
+    # Jev: nhãn có confidence thấp hơn mức này bị bỏ (đồng ý / từ chối -> AMBIGUOUS). Lâm sàng không gate.
+    semantic_jev_min_confidence: float
+    # Jev: xác suất "có" tối thiểu của các Noul ở câu đọc lịch / "đổi hay hủy"
+    semantic_jev_min_noul: float
     semantic_fallback_model: str
     # Deadline tổng từ lúc gửi model request tới khi nhận đủ response; httpx vẫn giới hạn từng pha,
     # connect riêng 1 giây. Một request, không retry model.
