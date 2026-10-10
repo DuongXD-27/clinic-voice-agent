@@ -26,7 +26,7 @@ holdout,indirect,CANCEL_RECONFIRM,Chỗ em báo giá cao quá so với chỗ kh�
 holdout,indirect,CANCEL_RECONFIRM,Bệnh cũng đỡ nhiều rồi em ạ,INFORM_REASON,NO_LONGER_NEEDED,REASON_NOTED
 holdout,indirect,CANCEL_RECONFIRM,Lịch làm của tôi kín hết cả tuần đó,INFORM_REASON,PATIENT_UNAVAILABLE,REASON_NOTED
 holdout,indirect,CANCEL_RECONFIRM,Con tôi ốm nên tôi phải trông cháu,INFORM_REASON,PATIENT_UNAVAILABLE,REASON_NOTED
-holdout,policy,CANCEL_RECONFIRM,Bên bảo hiểm không chi trả nên tốn kém quá,,,TRANSFER
+holdout,indirect,CANCEL_RECONFIRM,Bên bảo hiểm không chi trả nên tốn kém quá,INFORM_REASON,COST,REASON_NOTED
 prompt,correction,CANCEL_RECONFIRM,"Không hủy nữa, dù tôi không đủ tiền",DECLINE_ACTION,,ABANDON
 holdout,correction,CANCEL_RECONFIRM,"À không, thôi tôi vẫn đi khám",DECLINE_ACTION,,ABANDON
 holdout,correction,CANCEL_RECONFIRM,"Hủy... à mà thôi, giữ nguyên đi em",DECLINE_ACTION,,ABANDON
@@ -90,7 +90,7 @@ holdout,keyword,CANCEL_RECONFIRM,Đắt quá,INFORM_REASON,COST,REASON_NOTED
 holdout,keyword,CANCEL_RECONFIRM,Không đủ tiền,INFORM_REASON,COST,REASON_NOTED
 holdout,keyword,CANCEL_RECONFIRM,Về quê rồi em ạ,INFORM_REASON,PATIENT_UNAVAILABLE,REASON_NOTED
 holdout,keyword,CANCEL_RECONFIRM,Hết tiền rồi em,INFORM_REASON,COST,REASON_NOTED
-holdout,conditional,CANCEL_RECONFIRM,Nếu đổi được thì tôi không hủy,CHANGE_INTENT,,ASK_AGAIN
+holdout,conditional,CANCEL_RECONFIRM,Nếu đổi được thì tôi không hủy,CHANGE_INTENT,,RESCHEDULE
 holdout,conditional,CANCEL_RECONFIRM,Hủy nếu không dời được,AMBIGUOUS,,ASK_AGAIN
 holdout,conditional,CANCEL_RECONFIRM,"Tùy em, miễn là không mất phí",AMBIGUOUS,,ASK_AGAIN
 holdout,conditional,CANCEL_RECONFIRM,Để tôi hỏi vợ đã rồi gọi lại,AMBIGUOUS,,ASK_AGAIN
