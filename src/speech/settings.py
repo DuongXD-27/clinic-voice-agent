@@ -79,6 +79,9 @@ class SpeechSettings(YamlSettings):
     # Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời: giữ riêng, decode khi bot
     # dứt lời, thành lượt nếu còn chữ sau khi bỏ tiếng vọng. False = bỏ (trước 08/10).
     turn_keep_unconfirmed_barge_in: bool
+    # Tăng âm giọng người gọi quá nhỏ trước VAD/ASR (speech/audio/quiet_gain.py). Giọng đủ to thì
+    # luồng giữ nguyên; nền nhiễu sau khi tăng không vượt -50 dBFS.
+    quiet_speech_gain_enabled: bool
 
     # THỬ NGHIỆM cổng giọng người gọi (speech/audio/speaker_gate.py): off | log | enforce.
     speaker_gate_mode: Literal["off", "log", "enforce"]

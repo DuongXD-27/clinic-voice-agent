@@ -121,7 +121,8 @@ ASR). ASR tồn ≥ 1 s audio thì log cảnh báo.
 
 ```mermaid
 flowchart TD
-    F["frame 30 ms"] --> C["detector.classify(frame)"]
+    F["frame 30 ms"] --> G["quiet_gain.apply(frame) — giọng người gọi quá nhỏ thì tăng âm"]
+    G --> C["detector.classify(frame)"]
     C --> V["vad_queue.put(frame) — luôn luôn"]
     V --> E["evidence.observe_frame(frame) — nếu bật validator"]
     E --> B{"TurnController<br/>is_bot_speaking?"}
@@ -136,6 +137,13 @@ flowchart TD
     I -- không --> D2["DISCARD câu dở trong ASR"]
     I -- có --> K["giữ câu ngắt lời đã xác nhận"]
 ```
+
+Tăng âm (`speech/audio/quiet_gain.py`, `quiet_speech_gain_enabled`, tắt cho cuộc gọi SIP): mức giọng
+người gọi (đoạn nói to nhất gần đây, không tính lúc bot nói và 0,5 s sau đó) dưới −35 dBFS thì tăng
+về −26 dBFS, tối đa +20 dB, nền nhiễu sau khi tăng (phân vị 90 mức các frame không có tiếng nói —
+đỉnh các cụm nhiễu, thứ làm Silero báo nhầm) không vượt −50 dBFS; hệ số chỉ đổi sau 1 s im lặng và
+không giảm chỉ vì người gọi nói to hơn (Silero "nhớ" mức âm: câu nhỏ hơn câu trước ~10 dB bị nhận
+trễ gần 2 s). Giọng đủ to thì frame giữ nguyên.
 
 `DISCARD` là `AsrSegmentEnd.DISCARD` đặt vào hàng đợi ASR: ASR chỉ tự chốt câu khi thấy đủ
 khoảng lặng, nên ngừng đưa frame thì phải báo bỏ câu dở, nếu không nó bị ghép vào câu sau
@@ -283,6 +291,7 @@ có câu dở. Đủ `silence_timeout_ms` thì đẩy `UserTurnCompleted(text=""
 | `vad_provider` | `silero` | classifier cho VAD + chốt câu ASR trên LiveKit (`energy` / `webrtc` / `silero`) |
 | `vad_end_silence_ms` | 600 | im lặng để VAD phát `speech_end` **và** ASR phát final |
 | `silero_min_silence_ms` | 500 | làm mượt nhãn của Silero |
+| `quiet_speech_gain_enabled` | `true` (cuộc gọi SIP: `false`, `phone_overrides`) | tăng âm giọng người gọi quá nhỏ trước VAD/ASR |
 | `turn_min_speech_ms` | 250 | lượt ngắn hơn bị bỏ |
 | `turn_max_wait_after_vad_end_ms` | 300 | chờ final sau `speech_end` rồi chốt bằng partial |
 | `turn_max_wait_for_asr_ms` | 3000 | chờ ASR xử lý hết phần tồn trước khi chốt bằng partial |

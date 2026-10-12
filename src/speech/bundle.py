@@ -23,6 +23,7 @@ from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
+from speech.audio.quiet_gain import QuietSpeechGain
 from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
@@ -268,6 +269,9 @@ def build_streaming_bundle(
     stt_pipeline = STTPipeline(
         asr,
         keep_unconfirmed_barge_in=settings.turn_keep_unconfirmed_barge_in,
+        quiet_gain=QuietSpeechGain(frame_ms=frame_ms)
+        if settings.quiet_speech_gain_enabled
+        else None,
         vad=AsyncStreamingVAD(
             detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
         ),

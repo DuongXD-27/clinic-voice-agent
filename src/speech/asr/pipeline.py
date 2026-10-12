@@ -1,6 +1,7 @@
 """STT đường LiveKit: frame PCM liên tục -> VAD + ASR song song -> TurnController -> lượt nói.
 
 Mỗi frame đi qua `_CallStream._fanout`:
+  0. (`quiet_gain`) Tăng âm khi giọng người gọi quá nhỏ — mọi bước sau thấy frame đã tăng.
   1. Bộ phân loại dùng chung gán nhãn có/không tiếng nói (đúng một lần mỗi frame).
   2. Vào hàng đợi VAD (luôn luôn) và cập nhật bằng chứng SNR (khi bật Validator).
   3. Vào hàng đợi ASR — trừ lúc bot đang nói: giữ trong pre-roll, chỉ đưa vào ASR khi
@@ -23,6 +24,7 @@ from speech.asr.stream_context import ASRStreamContext, StreamingFrame
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
 from speech.audio.noise_tracker import NoiseEvidence
+from speech.audio.quiet_gain import QuietSpeechGain
 from speech.audio.speaker_gate import SpeakerGate
 from speech.turn.controller import TurnController, is_meaningful_text, strip_echo_prefix
 from speech.turn.events import UserTurnCompleted
@@ -81,11 +83,13 @@ class STTPipeline:
         asr_stream_options: Optional[Mapping[str, object]] = None,
         speaker_gate: Optional[SpeakerGate] = None,
         keep_unconfirmed_barge_in: bool = False,
+        quiet_gain: Optional[QuietSpeechGain] = None,
     ) -> None:
         """Kích thước hàng đợi/pre-roll tính bằng frame, `build_streaming_bundle` quy đổi từ
         config/livekit.yaml. `speaker_gate`: THỬ NGHIỆM, bỏ lượt dài không phải giọng người gọi.
         `keep_unconfirmed_barge_in`: lời chen lúc bot nói chưa được xác nhận ngắt lời được giữ
-        riêng (không qua ASR streaming), decode khi bot dứt lời (`_CallStream._decode_held`)."""
+        riêng (không qua ASR streaming), decode khi bot dứt lời (`_CallStream._decode_held`).
+        `quiet_gain`: tăng âm giọng người gọi quá nhỏ trước mọi bước xử lý (VAD, ASR, bằng chứng)."""
         for name, value in (
             ("queue_max_frames", queue_max_frames),
             ("asr_queue_max_frames", asr_queue_max_frames),
@@ -106,6 +110,7 @@ class STTPipeline:
         self.barge_in_preroll_frames = barge_in_preroll_frames
         self.speaker_gate = speaker_gate
         self.keep_unconfirmed_barge_in = keep_unconfirmed_barge_in
+        self.quiet_gain = quiet_gain
 
     @property
     def provider_name(self) -> Optional[str]:
@@ -261,11 +266,17 @@ class _CallStream:
 
     async def _fanout(self, frames: AsyncIterator[bytes]) -> None:
         pipeline = self._pipeline
+        gain = pipeline.quiet_gain
         try:
             async for frame in frames:
+                if gain is not None:
+                    # Mọi bước sau (VAD, ASR, bằng chứng, tiếng vọng) thấy cùng một frame đã tăng.
+                    frame = gain.apply(frame)
                 is_speech = None
                 if pipeline.detector is not None:
                     is_speech = pipeline.detector.classify(frame)
+                if gain is not None:
+                    gain.observe(bool(is_speech), bot_speaking=self._controller.is_bot_speaking)
                 if self._context is None:
                     await self._vad_queue.put(frame)
                 else:

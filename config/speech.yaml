@@ -54,8 +54,14 @@ asr_pre_speech_ms: null
 #   ĐƯỢC" -> "CŨNG ĐƯỢC" ở bộ câu ngắn. Đổi lại thêm lượt "ĐÂY" (1 ở office@3, 2 từ clip "Ừ").
 #   Trên web (16 kHz) kết quả trái chiều nên web giữ 300.
 #   docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+#   quiet_speech_gain_enabled false: đo 11/10 trên kênh điện thoại mô phỏng, nhiễu nhỏ qua G.711 bị
+#   lượng tử thô thành tiếng lạo xạo mà Silero báo nhầm, tăng âm kéo nó lên: thêm lượt ảo giác "ĐÂY",
+#   "VÂNG" (3/36 đoạn chỉ có nhiễu, tắt: 1/36). Đường sạch thì cải thiện mạnh (giọng nhỏ 25 dB: WER
+#   lượt 0,507 -> 0,233) — bật khi đã đo trên cuộc gọi SIP thật.
+#   docs/evidence/livekit-quiet-speech-gain-2026-10-11.md
 phone_overrides:
   asr_pre_speech_ms: 1000
+  quiet_speech_gain_enabled: false
 
 # --- Câu chỉ có từ đệm ("ừ", "à", "ờ", "dạ"…) ---
 # false = gửi engine; true = bỏ từ đệm đứng riêng, vẫn giữ câu trả lời "có/không".
@@ -71,6 +77,15 @@ turn_drop_filler_words: true
 turn_echo_policy: "acoustic"
 # true: lời chen lúc bot nói chưa được xác nhận ngắt lời được giữ riêng, decode khi bot dứt lời.
 turn_keep_unconfirmed_barge_in: true
+
+# --- Giọng người gọi quá nhỏ (nói xa mic, mic nhỏ) ---
+# true: tăng âm trước VAD/ASR khi mức giọng người gọi dưới -35 dBFS, đưa về khoảng -26 dBFS (tối đa
+# +20 dB, như khuếch đại tĩnh của đường HTTP). Giọng đủ to thì luồng giữ nguyên từng byte; đỉnh các
+# cụm nhiễu (phân vị 90 nền) sau khi tăng không vượt -50 dBFS; không tính lúc bot nói; hệ số chỉ đổi
+# sau 1 s im lặng. Đo 11/10 (golden, kênh web): giọng nhỏ 25 dB WER lượt 0,340 -> 0,213, office@20
+# 0,440 -> 0,193; không thêm lượt ảo giác trên đoạn chỉ có nhiễu. Điện thoại: tắt (phone_overrides).
+# Số đo: docs/evidence/livekit-quiet-speech-gain-2026-10-11.md
+quiet_speech_gain_enabled: true
 
 # --- THỬ NGHIỆM: cổng giọng người gọi (speaker embedding theo đoạn con 1,5 s, speech/audio/speaker_gate.py) ---
 # off | log (chỉ ghi quyết định + similarity) | enforce (bỏ lượt giọng khác, cắt đầu/cuối giọng khác).
