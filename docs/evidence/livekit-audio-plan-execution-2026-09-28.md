@@ -57,17 +57,27 @@ Bộ đo giờ **xác định** và đo đúng 2 cấu hình cần so sánh — 
 | — | Giãn nhịp decode partial câu dài (`partial_interval_ratio`) | Xong, cờ tắt mặc định (0.0) | §7 |
 | — | Hangover Silero cấu hình được (`silero_min_silence_ms`) | Xong | §7 |
 
-### ❌ Đã thử và TỪ CHỐI — code đã GỠ (số đo phản bác)
+### ❌ Đã thử và TỪ CHỐI — code đã GỠ (số đo phản bác, rủi ro rõ ràng)
 
 | # | Việc | Vì sao từ chối | Bằng chứng |
 |---|---|---|---|
-| 1 | Khử nhiễu/tách giọng phía server (NC/BVC) | Làm WER và tỉ lệ mất câu **tệ hơn** `plain` ở gần mọi điều kiện đã đo | §8 |
 | 6 | Hotwords theo state | Beam đủ rộng để sửa "hủy lịch" cũng **đảo nghĩa** nhiều câu khác thành "KHÔNG ĐỒNG Ý" | §9 |
 | 2 (bước "đổi VAD chính sang Silero") | Chuyển VAD chính production sang Silero | Giảm ảo giác dưới nhiễu văn phòng nhưng **mất nhiều câu ngắn thật hơn** — đánh đổi không rõ ràng có lợi. Không có code riêng để gỡ (chỉ là chưa đổi `vad_provider`) | §5 |
 
-Với 1 và 6: không chỉ tắt cờ — toàn bộ code (provider, `CallBridge`, config, `Dockerfile`,
-`pyproject.toml`, script đo) đã bị xoá khỏi repo sau khi có kết luận. Không giữ lại "hạ tầng đã
-tắt sẵn" cho những gì đã đo là có hại.
+Với 6: không chỉ tắt cờ — toàn bộ code (provider, `CallBridge`, config, script đo) đã bị xoá
+khỏi repo sau khi có kết luận (rủi ro đảo nghĩa là loại lỗi không chấp nhận được, không chỉ
+"chưa đủ tốt"). Không giữ lại "hạ tầng đã tắt sẵn" cho những gì đã đo là có hại rõ ràng.
+
+### 🔬 Đã thử — chưa thấy cải thiện, cần đánh giá thêm (chưa đủ căn cứ kết luận chắc chắn)
+
+| # | Việc | Kết quả các lần thử | Bằng chứng |
+|---|---|---|---|
+| 1 | Khử nhiễu/tách giọng phía server (NC/BVC, Krisp VIVA) | WER và tỉ lệ mất câu cao hơn `plain` ở các điều kiện đã thử, kể cả audio sạch — cỡ mẫu còn nhỏ, không loại trừ vấn đề nằm ở cách đo (NC/BVC) hoặc cần thử thêm cấu hình khác (Krisp) | §8 |
+
+Khác nhóm trên: đây chưa phải kết luận chắc chắn "có hại", chỉ là chưa thấy cải thiện ở các lần
+thử hiện tại. Hạ tầng NC/BVC đã tạm gỡ (script đo `livekit_nc_capture.py`/`livekit_nc_eval.py`
+không còn); script đo Krisp (`eval/noise-bench/krisp_eval.py`) và tích hợp thử nghiệm trong
+`CallBridge` (`krisp_noise_suppression_enabled`, mặc định tắt) vẫn giữ lại để đánh giá tiếp.
 
 ### ⏸ Chưa làm trong đợt này
 
@@ -227,7 +237,7 @@ Admission) qua, `ruff check`/`format` sạch.
 
 ---
 
-## 8. Khử nhiễu / tách giọng phía server — TỪ CHỐI, code đã gỡ
+## 8. Khử nhiễu / tách giọng phía server — thử nghiệm, chưa thấy cải thiện, cần đánh giá thêm
 
 ### Hạ tầng đã dựng để đo, rồi gỡ sau khi có kết luận
 
@@ -241,14 +251,21 @@ thật, mở 3 `AudioStream` trên cùng track để so sánh công bằng: khô
 quan đường bao, loại trial căn kém để so sánh công bằng). Đã chạy thật qua LiveKit Cloud
 (9,6 phút audio, tốn phút kết nối thật) để lấy số liệu ở dưới.
 
-**Sau khi có kết luận (phản bác rõ ràng, xem dưới), toàn bộ hạ tầng này đã bị gỡ khỏi code**:
+**Sau khi thử (kết quả chưa cho thấy cải thiện, xem dưới), tạm gỡ hạ tầng này khỏi code**:
 `noise_cancellation_from_setting()`, tham số `noise_cancellation`/`hotwords_by_state` trong
 `CallBridge`, extra `livekit-nc` trong `pyproject.toml`, cài đặt plugin trong `Dockerfile`, và
-cả hai script `livekit_nc_capture.py`/`livekit_nc_eval.py`. Không giữ lại "hạ tầng tắt sẵn" —
-một khi số đo đã phản bác rõ, code không dùng chỉ làm rối cấu trúc hiện có. Muốn đo lại thì
+cả hai script `livekit_nc_capture.py`/`livekit_nc_eval.py`. Không giữ lại "hạ tầng tắt sẵn" khi
+chưa có hướng dùng tiếp cụ thể — code không dùng chỉ làm rối cấu trúc hiện có. Muốn đo lại thì
 viết lại từ kết quả bên dưới (đã đủ chi tiết để tái tạo).
 
-### Kết quả — phản bác rõ ràng
+### Kết quả các lần thử
+
+**Không còn file JSON kết quả gốc trên đĩa** (đã dọn cùng lúc gỡ code đo) — chỉ còn bảng số đã
+chép lại dưới đây. Không thể tái tạo lại bằng lệnh có sẵn nữa vì `livekit_nc_capture.py`/
+`livekit_nc_eval.py` đã bị xoá hẳn khỏi repo (khác Krisp VIVA ở mục sau, script vẫn còn giữ
+lại). Muốn kiểm chứng độc lập phải viết lại 2 script đó từ đầu và tốn phút kết nối LiveKit
+Cloud thật (~9,6 phút audio) — ghi rõ để không hiểu nhầm đây là số liệu có thể tự đối chiếu
+ngay, giống phần Krisp VIVA bên dưới.
 
 Tương quan trung vị sau căn chỉnh: `plain` 0,96 (căn tốt), **`nc` 0,43, `bvc` 0,39** (méo mó
 nặng so với input gốc — bản thân việc lọc đã làm tín hiệu khó đối chiếu). Trên các trial còn
@@ -260,19 +277,20 @@ giữ được (tương quan `plain` ≥ 0,9), so `plain` (qua LiveKit, không l
 | office@8 | 0,241 / 0,345 / **1,069** | 3 / 4 / **6** |
 | babble@6 | 1,562 / 1,562 / 1,488 | 0 / 2 / 4 |
 
-`nc`/`bvc` **tệ hơn không lọc gì cả** ở gần mọi điều kiện đã đo, kể cả audio sạch (`clean`) —
-plugin tự nó làm mất câu (`no_turn` tăng) và làm ASR nghe sai nhiều hơn (`wer_turn` tăng, đặc
-biệt `bvc` ở `office@8`: WER > 1 nghĩa là turn sai nhiều hơn cả số từ đúng). Chỉ ở `babble`
-(giọng nền) `bvc` nhỉnh hơn về WER nhưng đổi lại mất câu nhiều hơn — không phải cải thiện rõ
-ràng. Kết quả giống nhau trên cả 2 profile (`production`, `target`).
+Ở các lần thử này, `nc`/`bvc` **không cho thấy cải thiện so với không lọc**, ở gần mọi điều
+kiện đã đo kể cả audio sạch (`clean`) — `no_turn` và `wer_turn` đều cao hơn, đặc biệt `bvc` ở
+`office@8` (WER > 1 nghĩa là turn sai nhiều hơn cả số từ đúng). Chỉ ở `babble` (giọng nền) `bvc`
+nhỉnh hơn về WER nhưng đổi lại mất câu nhiều hơn — không phải cải thiện rõ ràng. Kết quả tương
+tự trên cả 2 profile (`production`, `target`).
 
-**Kết luận: KHÔNG dùng khử nhiễu phía server (NC/BVC).** Không loại trừ khả năng vấn đề nằm ở
-cách đo (méo tương quan 0,39-0,43 đáng ngờ, có thể do chính plugin thay đổi timing/pitch chứ
-không hẳn chất lượng kém) — nhưng với bằng chứng hiện có, **không đủ căn cứ để bật**, và việc
-dùng phút LiveKit Cloud thật cho mỗi lần đo lại khiến việc lặp lại tốn kém. Đã **gỡ toàn bộ
-code** (không chỉ tắt cờ) — xem đầu mục này.
+**Chưa thấy cải thiện, cần đánh giá thêm trước khi dùng khử nhiễu phía server (NC/BVC).** Không
+loại trừ khả năng vấn đề nằm ở cách đo (méo tương quan 0,39-0,43 đáng ngờ, có thể do chính
+plugin thay đổi timing/pitch chứ không hẳn chất lượng kém) — với bằng chứng hiện có, chưa đủ
+căn cứ để bật, và việc dùng phút LiveKit Cloud thật cho mỗi lần đo lại khiến việc lặp lại tốn
+kém. Đã tạm gỡ hạ tầng đo (không chỉ tắt cờ) — xem đầu mục này; có thể dựng lại nếu muốn đo
+tiếp theo hướng khác.
 
-### Đo lại với Krisp VIVA (`livekit-plugins-krisp` 0.4.3) — 28/09/2026, cùng kết luận
+### Thử lại với Krisp VIVA (`livekit-plugins-krisp` 0.4.3) — 28/09/2026, kết quả tương tự
 
 Sau câu hỏi liệu `livekit-plugins-krisp` (Krisp VIVA, bản kế thừa package `noise-cancellation`
 đã đo ở trên) hay `livekit-plugins-ai-coustics` (hãng khác) có khá hơn không, đã đo thử Krisp
@@ -289,7 +307,12 @@ qua WebRTC thật gặp phải (tương quan đường bao 0,39-0,43 ở trên).
 `pyproject.toml`/venv chính — xem cảnh báo về nâng cấp ngoài ý muốn bên dưới).
 
 So `plain` (không lọc) với `krisp` (`VOICE_ISOLATION`, `noise_suppression_level=90`), cùng bộ
-`web` (42 câu), 2 profile:
+`web` (42 câu), 2 profile. **File JSON kết quả gốc (không chỉ bảng chép tay dưới đây), tái tạo
+được bằng đúng lệnh đã chạy, giữ trên đĩa (không commit — không phải dữ liệu cố định để track)**:
+`temp/noise-bench/krisp_production_result.json`, `temp/noise-bench/krisp_target_result.json`.
+Lệnh tái tạo: `python3 eval/noise-bench/krisp_eval.py --profile production|target --conditions
+clean,office@8,babble@6 --out temp/noise-bench/krisp_<profile>_result.json` (cần cài
+`livekit-plugins-krisp` trước — xem cảnh báo môi trường bên dưới).
 
 | Profile | Điều kiện | `wer_drift` (plain/krisp) | `no_turn` /42 (plain/krisp) | `false_turns` /12 (plain/krisp) |
 |---|---|---|---|---|
@@ -300,14 +323,15 @@ So `plain` (không lọc) với `krisp` (`VOICE_ISOLATION`, `noise_suppression_l
 | target | office@8 | 0,095 / **0,150** | 1 / 3 | 0 / 0 |
 | target | babble@6 | 1,445 / 1,358 | 1 / 1 | 12 / 12 |
 
-**Cùng kết luận với NC/BVC: Krisp làm WER tệ hơn ở hầu hết điều kiện, kể cả `clean`** (WER
-tăng gấp ~3 lần, 0,036-0,040 → 0,106-0,124, `no_turn` 0→3 dù không có lý do gì để mất câu trên
-audio sạch không nhiễu). Chỉ nhỉnh nhẹ ở `babble@6` (giọng nền), không đáng kể.
+**Kết quả tương tự NC/BVC: ở các lần thử này Krisp chưa cho thấy cải thiện, WER cao hơn ở hầu
+hết điều kiện kể cả `clean`** (0,036-0,040 → 0,106-0,124, `no_turn` 0→3 trên audio sạch không
+nhiễu). Chỉ nhỉnh nhẹ ở `babble@6` (giọng nền), không đáng kể. Cỡ mẫu còn nhỏ (42 câu/điều
+kiện) — cần đánh giá thêm trên bộ dữ liệu lớn hơn trước khi kết luận chắc chắn.
 
 Vì lần đo này **không đi qua network/WebRTC thật** (loại trừ được giả thuyết "vấn đề là do
 cách đo qua LiveKit Cloud" nêu ở trên), có thể xem 10 câu cụ thể bị đổi trên `clean`
-(10/42, tức 24% câu, script `inspect_clean.py` không commit) để xác nhận **bản chất vấn đề
-là chính bộ lọc làm méo đặc trưng giọng nói**, không phải lỗi đo:
+(10/42, tức 24% câu, script `inspect_clean.py` không commit) làm ví dụ cụ thể về loại lỗi
+gặp phải — không phải lỗi đo:
 
 - `"NGUYỄN VĂN A"` → `"ĐIỆN THOẠI"` — tên bệnh nhân biến mất hoàn toàn, hallucinate thành từ
   không liên quan.
@@ -315,9 +339,10 @@ là chính bộ lọc làm méo đặc trưng giọng nói**, không phải lỗ
 - `"LÊ THỊ HƯƠNG"` → `"LÊ THỊ DƯƠNG"` — lỗi tên riêng tinh vi (nghe hợp lý nhưng sai), nguy
   hiểm hơn lỗi hallucinate rõ ràng vì dễ bị xác minh nhầm hồ sơ mà không ai nghi ngờ.
 
-**Kết luận: KHÔNG dùng Krisp VIVA**, cùng lý do với NC/BVC — cả hai đều dựa trên engine Krisp
-(khác thế hệ) và cho cùng một pattern lỗi. Không có bằng chứng nào cho thấy bản VIVA mới hơn
-đã khắc phục vấn đề méo tín hiệu của bản cũ.
+**Chưa thấy cải thiện, cần đánh giá thêm trước khi dùng Krisp VIVA** — cùng pattern kết quả với
+NC/BVC (cả hai đều dựa trên engine Krisp, khác thế hệ). Chưa có bằng chứng nào cho thấy bản
+VIVA mới hơn khắc phục được vấn đề của bản cũ, nhưng cũng chưa loại trừ khả năng cần thử ở mức
+`noise_suppression_level` khác hoặc bộ dữ liệu khác trước khi kết luận.
 
 **Cảnh báo quan trọng — sự cố khi cài đặt để đo:** `pip install livekit-plugins-krisp` **không
 qua `uv`** đã cài thẳng vào base env `anaconda3` (dự án này không dùng `.venv` cô lập — xem

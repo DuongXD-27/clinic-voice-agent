@@ -4,6 +4,19 @@
 gemini: # GEMINI_API_KEY
   model: gemini-2.5-flash # GEMINI_ASR_MODEL
 
+# ASR streaming qua Live API; endpoint local, transcript VERBATIM, không sinh lời bot.
+gemini_live: # GEMINI_API_KEY
+  model: gemini-3.5-transcribe-live # GEMINI_LIVE_ASR_MODEL
+  language_code: vi-VN # GEMINI_LIVE_LANGUAGE_CODE
+  connect_timeout_s: 10.0 # GEMINI_LIVE_CONNECT_TIMEOUT_S
+  final_timeout_s: 3.0 # GEMINI_LIVE_FINAL_TIMEOUT_S
+  chunk_ms: 100 # GEMINI_LIVE_CHUNK_MS
+  max_turn_speech_ms: 15000 # GEMINI_LIVE_MAX_TURN_SPEECH_MS
+  # Audio trước frame đầu tiên được báo là tiếng nói, gửi kèm khi mở đoạn (xem zipformer).
+  pre_speech_ms: 300 # GEMINI_LIVE_PRE_SPEECH_MS
+  # Chọn Gemini thì chỉ dùng Gemini, không decode lại bằng model khác: đoạn lỗi (hết hạn chờ
+  # final, mất kết nối, hết credit) chỉ mất đoạn đó; nhiều đoạn lỗi liên tiếp thì dừng luồng STT.
+
 phowhisper:
   model: vinai/PhoWhisper-large # PHOWHISPER_MODEL
 
@@ -41,3 +54,19 @@ zipformer:
   # Giãn nhịp decode partial cho câu dài: max(300 ms, tỉ lệ x độ dài buffer). 0 = tắt.
   # Chỉ bật sau khi đo CPU trên máy production.
   partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO
+  # Audio giữ lại trước frame đầu tiên được báo là tiếng nói (bù độ trễ nhận ra đầu câu của
+  # Silero, mặc định 0,25 s).
+  # Đo 06/10 (eval/noise-bench): 1000 ms giảm WER có nhãn của bộ golden (8 kHz điện thoại) ở
+  # mọi mức nhiễu văn phòng (vd. office@8 0,193 -> 0,130) nhưng trên bộ web (LiveKit 16 kHz,
+  # đường production hiện tại) trái chiều — sửa 5 câu, hỏng 5 câu ("ĐÚNG KHÔNG" -> "ĐÚNG"),
+  # 600 ms cũng vậy. Giữ 300 cho web; ứng viên cho profile điện thoại khi có SIP.
+  pre_speech_ms: 300 # ZIPFORMER_PRE_SPEECH_MS
+  # Final chỉ decode tới frame cuối còn là giọng (Silero gắn cờ, hoặc to trong vòng 25 dB đỉnh câu)
+  # + chừng này ms; null = cả ~1,1 s im lặng đuôi như trước 08/10. Đuôi im lặng dài làm câu ngắn
+  # đổi chữ ("BÂY GIỜ" -> "ĐƯỢC", "OK" -> "Ừ/ĐÂY"). 150 ms làm thêm chữ thừa sau tiếng động cuối.
+  final_tail_ms: 300 # ZIPFORMER_FINAL_TAIL_MS
+  # Ngoài pre_speech_ms, lần ngược tối đa chừng này ms tới chỗ năng lượng thật sự bắt đầu
+  # (Silero báo trễ p50 360 ms, p90 720 ms so với điểm năng lượng trên 870 câu thật). null = tắt.
+  # TẮT 08/10: noise-bench bộ web mất lượt (sạch 0 -> 2, office@3 7 -> 10) dù golden-web tốt hơn
+  # (WER 0,120 -> 0,107). Lỗi "mất HỌ VÀ TÊN" ở cuộc gọi thật là do lọc echo, không phải pre-roll.
+  onset_lookback_ms: null # ZIPFORMER_ONSET_LOOKBACK_MS

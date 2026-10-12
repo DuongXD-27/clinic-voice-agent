@@ -4,13 +4,29 @@
 # Name slot filling fallback: none | openai | gemini | groq | openrouter (cấu hình ở llm.yaml)
 name_fallback_provider: openai
 
-# Tầng ngữ nghĩa (T-05 §8), luôn OpenAI. Bật theo quyết định owner 22-09-2026; thiếu
-# OPENAI_API_KEY thì tự chạy chỉ-luật, không chặn khởi động.
+# Tầng ngữ nghĩa (T-05 §8): model đọc các câu luật không chắc. Bật theo quyết định owner 22-09-2026;
+# thiếu khóa thì tự chạy chỉ-luật, không chặn khởi động.
 semantic_fallback_enabled: true
-semantic_fallback_model: gpt-6-luna
-# Timeout httpx theo pha (không phải trần tổng); một request, không retry
+
+# Provider đọc câu (gọi trước): jev | openai. Mặc định jev — owner 10-10-2026,
+# docs/evidence/semantic-provider-jev-2026-10-10.md. jev cần TYPESAFE_API_KEY, cấu hình ở llm.yaml
+# mục typesafe; openai dùng semantic_openai_model bên dưới.
+semantic_provider: jev
+# Provider dự phòng, CHỈ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng); provider
+# chính đã trả lời thì không gọi. none = không dự phòng. Thiếu khóa provider chính -> chạy riêng dự phòng.
+semantic_backup_provider: openai
+# Chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây trong trần 3 s (OpenAI p50 ~1,4 s)
+semantic_backup_min_remaining_s: 1.5
+
+# Jev: nhãn confidence thấp hơn bị bỏ; đồng ý / từ chối thấp hơn -> AMBIGUOUS (hỏi lại)
+semantic_jev_min_confidence: 0.6
+# Jev: Noul (câu đọc lịch / "đổi hay hủy": không đến được, sẽ đến, xin giờ khác) tính là "có" từ mức này
+semantic_jev_min_noul: 0.5
+# OpenAI (khi là provider chính hoặc dự phòng)
+semantic_openai_model: gpt-6-luna
+semantic_openai_max_tokens: 400
+# Timeout httpx theo pha của mỗi provider (không phải trần tổng); một request, không retry
 semantic_fallback_timeout_s: 3.0
-semantic_fallback_max_tokens: 400
 # Câu dài hơn thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định)
 semantic_fallback_max_input_chars: 1500
 # Model đề xuất xác nhận hủy, luật kiểm chứng (docs/evidence/t05-cancel-dialogue.md, đợt 3).

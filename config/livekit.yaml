@@ -2,6 +2,9 @@
 # Ghi đè bằng LIVEKIT_<KHÓA VIẾT HOA>, vd. LIVEKIT_FRAME_MS=20.
 # LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET chỉ đặt qua env / .env.
 
+# null = dùng ASR_PROVIDER trong speech.yaml/env; override riêng: LIVEKIT_ASR_PROVIDER.
+asr_provider: null
+
 # Tiền tố room cho web call — CallBridge dùng room.name làm call_id
 room_name_prefix: web-
 # Hạn token cho browser (giây)
@@ -31,6 +34,7 @@ agent_name: ""
 # (config/engine.yaml max_silent_turns). 0 = tắt.
 silence_timeout_ms: 8000
 # THỬ NGHIỆM (docs/evidence/livekit-audio-plan-execution-2026-09-28.md §8): đo offline cho
-# thấy Krisp VIVA làm WER tệ hơn kể cả trên audio sạch — TẮT theo mặc định. Bật tạm để nghe
-# thử qua LiveKit streaming thật, cần cài `livekit-plugins-krisp` thủ công.
+# thấy Krisp VIVA làm WER tệ hơn kể cả trên audio sạch (0,04 -> 0,11-0,12; mất hẳn 3/42 câu) —
+# TẮT theo mặc định (đã thử bật 08/10 rồi tắt lại). Bật tạm để nghe thử qua LiveKit streaming
+# thật, cần cài `livekit-plugins-krisp` thủ công.
 krisp_noise_suppression_enabled: false

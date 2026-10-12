@@ -27,16 +27,20 @@ from typing import NamedTuple, Optional
 
 from callbot.engine.extraction.agreement import (
     asks_or_hesitates,
+    asks_to_keep,
     confirmation_veto,
     conflicting_confirmation,
     corrected_tail,
     extract_agreement,
     has_question_cue,
     mentions_busy,
+    mentions_cancel,
+    mentions_keeping,
     slot_answer,
     undecided_request,
 )
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
+from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
 from callbot.engine.extraction.clinical import extract_clinical
 from callbot.engine.extraction.dob import read_dob
@@ -57,7 +61,12 @@ from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import strip_honorific
 from callbot.engine.extraction.identity import Reading, Reason, identity_value
 from callbot.engine.extraction.implied_cancel import implied_cancel
-from callbot.engine.extraction.intent import PRIORITY, allowed_in_direction, extract_intent
+from callbot.engine.extraction.intent import (
+    PRIORITY,
+    allowed_in_direction,
+    extract_intent,
+    out_of_scope_request,
+)
 from callbot.engine.extraction.line_signal import extract_line_signal
 from callbot.engine.extraction.model_budget import (
     invoke_model,
@@ -167,10 +176,15 @@ _SLOT_QUESTIONS = frozenset(
 )
 
 
+# Phủ định trần của một động từ thường trong câu kể lý do ("bên bảo hiểm KHÔNG chi trả nên tốn kém")
+_BARE_NEGATORS = frozenset({"không", "khong", "chưa", "chua"})
+
+
 def _resolve_refusal_inside_reason(
     question: Optional[QuestionId],
     agreement: Field[Agreement],
     cancel_reason: Field[CancelReason],
+    transcript: str = "",
 ) -> Field[Agreement]:
     """ "tôi không đủ tiền" ở câu xác nhận hủy: chữ "không" thuộc về LÝ DO, không phải lời từ chối.
 
@@ -185,9 +199,20 @@ def _resolve_refusal_inside_reason(
         return agreement
     if not cancel_reason.found or not agreement.span or not cancel_reason.span:
         return agreement
-    if not _within(cancel_reason.span, agreement.span):
-        return agreement
-    return Field.nothing(Agreement.UNCLEAR)
+    if _within(cancel_reason.span, agreement.span):
+        return Field.nothing(Agreement.UNCLEAR)
+    if (
+        clean(agreement.span) in _BARE_NEGATORS
+        and cancel_reason.value != DEFAULT_CANCEL_REASON
+        and not mentions_cancel(transcript)
+        and not asks_to_keep(transcript)
+        and not mentions_keeping(transcript)
+    ):
+        # "Bên bảo hiểm không chi trả nên tốn kém quá": "không" phủ định một động từ thường trong câu
+        # kể lý do (COST), câu không có động từ hủy / giữ lịch -> vẫn là lượt nêu lý do. Từ chối tường
+        # minh ("không hủy", "đừng", "thôi") là cụm riêng, không rơi vào đây.
+        return Field.nothing(Agreement.UNCLEAR)
+    return agreement
 
 
 # Sau merge, AGREE nâng từ model chỉ giữ được khi lượt vẫn là câu trả lời thuần cho câu hỏi hủy
@@ -424,7 +449,7 @@ class InformationExtractor:
             cancel_reason = extract_cancel_reason(transcript)
 
         # Rule của mọi trường liên quan đã chạy xong: giờ mới thấy được xung đột giữa chúng.
-        agreement = _resolve_refusal_inside_reason(question, agreement, cancel_reason)
+        agreement = _resolve_refusal_inside_reason(question, agreement, cancel_reason, transcript)
         proposal = _time_proposal(ctx, transcript)
         route_reason = route_semantic(
             question_id=question,
@@ -527,6 +552,18 @@ class InformationExtractor:
             # "Tôi muốn đổi lịch, à thôi hủy đi": nhu cầu là phần nói sau lời tự sửa, không phải cụm
             # khớp trước theo thứ tự ưu tiên. Phần đó không có nhu cầu thì để tuyến sau đọc cả câu.
             result = extract_intent(tail, ctx.direction, allowed)
+        if (
+            ctx.question_id is QuestionId.CANCEL_RECONFIRM
+            and result.value is Intent.OUT_OF_SCOPE
+            and not has_question_cue(transcript)
+            and out_of_scope_request(transcript) is None
+            and (reason or extract_cancel_reason(transcript)).value
+            not in (None, DEFAULT_CANCEL_REASON)
+        ):
+            # "Bên bảo hiểm không chi trả nên tốn kém quá": chủ đề ngoài phạm vi chỉ được nhắc trong
+            # câu kể LÝ DO hủy (Phụ lục A: COST), không phải câu hỏi / yêu cầu về nó (§1.2.3). Chuyển
+            # máy ở đây bỏ dở kịch bản hủy đang chạy; câu hỏi / yêu cầu bảo hiểm vẫn chuyển máy.
+            result = Field.nothing(Intent.NONE)
         if result.found or identity_step:
             return result
         if reason is not None and clinical.value is ClinicalLevel.NONE:

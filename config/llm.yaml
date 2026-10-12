@@ -39,3 +39,13 @@ openrouter: # OPENROUTER_API_KEY
   timeout_s: 3.0
   connect_timeout_s: 1.0
   max_completion_tokens: 200
+
+# TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_PROVIDER=jev (engine.yaml).
+# Không phải chat provider: chỉ trả nhãn Choice/Noul có xác suất, không sinh text.
+typesafe: # TYPESAFE_API_KEY
+  endpoint: https://api.typesafe.ai/v1/systemone # TYPESAFE_ENDPOINT
+  # Pin version: ngưỡng ở engine.yaml chỉnh theo xác suất của bản này; alias jev-latest đổi khi có
+  # bản mới (docs Models)
+  model: jev-1.13.0 # TYPESAFE_MODEL
+  timeout_s: 3.0 # TYPESAFE_TIMEOUT_S
+  connect_timeout_s: 1.0 # TYPESAFE_CONNECT_TIMEOUT_S
