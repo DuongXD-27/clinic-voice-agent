@@ -130,6 +130,7 @@ def parse_spoken_number(tokens: Sequence[str]) -> Optional[int]:
       lại thành từ rồi phân tích như câu nói.
     - "linh" / "lẻ" thay "không" khi đọc rời từng chữ số: "hai không linh tư" = 2004. Chỉ nhận
       khi đứng giữa hai chữ số: "linh tư" đứng một mình vẫn không đọc ra được.
+    - Năm nói tắt bỏ "nghìn" / "không": "hai linh tư" = 2004, "hai mười ba" = 2013 (`_short_year`).
 
     Chỉ dùng cho ngày sinh: ở giờ slot, "thứ 2 ba giờ" không được thành 23.
     """
@@ -141,6 +142,9 @@ def parse_spoken_number(tokens: Sequence[str]) -> Optional[int]:
     value = parse_number(tokens)
     if value is not None:
         return value
+    short = _short_year(tokens)
+    if short is not None:
+        return short
     inner = tokens[1:-1]
     if (
         len(tokens) >= 3
@@ -157,6 +161,25 @@ def parse_spoken_number(tokens: Sequence[str]) -> Optional[int]:
 
 
 _CENTURIES = frozenset({19, 20})
+
+
+def _short_year(tokens: list[str]) -> Optional[int]:
+    """Năm nói tắt thế kỷ 21: "hai linh tư" / "hai lẻ tư" = 2004, "hai mười ba" = 2013.
+
+    Người gọi bỏ "nghìn" ("hai nghìn linh tư") hay "không" ("hai không mười ba"). Xét trước cách
+    đọc rời "hai linh tư" = 204 (không phải năm nào). Chỉ cặp đầu "hai": "một linh năm" vẫn là 105.
+    Cặp sau phải đủ hai từ: "hai mười" một mình có thể là "hai mười X" bị cắt, "hai linh" không có
+    đơn vị. "mười mốt" không ai nói ("mười một"), nên "hai mười mốt" không nhận.
+    """
+    if len(tokens) != 3 or tokens[0] != "hai":
+        return None
+    if tokens[1] in _ZERO_TENS:
+        unit = _unit(tokens[2], allow_trailing=True)
+        return None if unit in (None, 0) else 2000 + unit
+    if tokens[1] == "mười":
+        unit = _unit(tokens[2], allow_trailing=True, after_ten=True)
+        return None if unit in (None, 0) else 2010 + unit
+    return None
 
 
 def _paired_year(tokens: list[str]) -> Optional[int]:

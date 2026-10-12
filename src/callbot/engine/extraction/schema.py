@@ -260,6 +260,11 @@ class ExtractionResult:
     name_identity: Optional[IdentityValue[str]] = None
     dob_identity: Optional[IdentityValue[date]] = None
     model_status: Optional[str] = None
+    # Model đã đọc lượt này (None: chỉ luật). `model_backup_for`: provider chính đã lỗi dịch vụ, provider
+    # dự phòng `model_provider` trả lời thay (semantic_failover).
+    model_provider: Optional[str] = None
+    model_name: Optional[str] = None
+    model_backup_for: Optional[str] = None
     confirmation_conflict: bool = False
     # Câu đọc lịch mâu thuẫn mà model đọc là nhu cầu đổi / hủy (route NEED_CONFLICT): Dialogue đi nhánh
     # nhu cầu thay vì hỏi lại có/không.
@@ -340,6 +345,9 @@ class ExtractionResult:
             "name_identity": _identity_to_trace(self.name_identity),
             "dob_identity": _identity_to_trace(self.dob_identity),
             "model_status": self.model_status,
+            "model_provider": self.model_provider,
+            "model_name": self.model_name,
+            "model_backup_for": self.model_backup_for,
             "slot_act": self.slot_act.value if self.slot_act else None,
             "model_route": self.model_route,
         }

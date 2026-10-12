@@ -190,6 +190,11 @@ _AFFIRM = compile_phrases(
         "oke",
         "okay",
         "ô kê",
+        # Trộn tiếng Anh ("Yes, tôi sẽ đến"): không trùng từ tiếng Việt mất dấu
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
         "chuẩn",
         "phải",
         "chắc chắn",
@@ -216,6 +221,8 @@ _STRONG_AFFIRM = compile_phrases(
         "oke",
         "okay",
         "ô kê",
+        "yes",
+        "sure",
         "tất nhiên",
         "đương nhiên",
     ]
@@ -476,6 +483,112 @@ class UnclearCause(str, Enum):
     LEFTOVER = "LEFTOVER"
 
 
+# Người gọi nói tiếng Anh (QC qc-w6-01, 12/10/2026): "Yes, I'll be there", "No, I can't make it". Chỉ đọc
+# khi CẢ CÂU là tiếng Anh — mọi từ thuộc các bảng dưới. Câu không dấu còn từ ngoài bảng có thể là tiếng
+# Việt mất dấu ("no" = nó, "not" = nốt, "can" = cần, "the" = thế) và đi theo luật tiếng Việt như trước.
+# Cùng ngưỡng với tiếng Việt: còn từ ngoài bảng ("on the 15th") là chưa rõ, hỏi lại. Câu xác nhận hủy
+# (SF-05) không có đường tiếng Anh: vẫn cần động từ "hủy". Thêm một từ vào bảng là nới cửa ghi: mỗi từ
+# mới cần một ca âm tính trong test.
+_EN_AFFIRM_WORDS = [
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "correct", "right", "of course", "certainly",
+    "definitely", "absolutely", "confirmed", "i confirm", "that works", "that s fine", "sounds good",
+    "all right", "alright",
+]  # fmt: skip
+# Chỉ ở câu hỏi đến khám / đọc lại lịch: lời khẳng định sẽ đến (contract Bảng 1)
+_EN_ATTEND_WORDS = [
+    "i ll be there", "i will be there", "we ll be there", "we will be there", "i ll come",
+    "i will come", "i can come", "i can make it", "i ll make it", "i will make it", "i ll attend",
+    "i will attend", "i m coming", "i am coming", "see you then", "see you there", "count me in",
+]  # fmt: skip
+_EN_REFUSE_WORDS = [
+    "no", "nope", "nah", "not", "cannot", "can t", "can not", "won t", "will not", "don t", "do not",
+    "never", "i m not", "i am not",
+]  # fmt: skip
+_EN_HEDGE_WORDS = [
+    "maybe", "perhaps", "probably", "possibly", "might", "hopefully", "i think", "i guess",
+    "i believe", "i suppose", "not sure", "i ll try", "let me check", "let me see", "let me think",
+    "we ll see", "if i can", "depends",
+]  # fmt: skip
+_EN_CONTRAST_WORDS = [
+    "but",
+    "however",
+    "although",
+    "though",
+    "unless",
+    "except",
+    "actually",
+    "wait",
+]
+# Từ đệm, xưng hô, lễ phép được phép còn lại trong câu tiếng Anh
+_EN_FILLER_WORDS = [
+    "i", "we", "me", "us", "my", "our", "you", "it", "that", "this", "the", "a", "an", "ll", "will",
+    "be", "there", "then", "on", "at", "for", "to", "and", "so", "time", "appointment", "thank",
+    "thanks", "please", "much", "fine", "good", "great", "oh", "um", "uh", "hmm", "well", "s", "m",
+    "am", "is", "do", "go", "going", "come", "coming", "attend", "make", "see", "all", "sorry",
+    "madam", "sir", "miss",
+]  # fmt: skip
+_EN_AFFIRM = compile_phrases(_EN_AFFIRM_WORDS)
+_EN_ATTEND = compile_phrases(_EN_ATTEND_WORDS)
+_EN_REFUSE = compile_phrases(_EN_REFUSE_WORDS)
+_EN_HEDGE = compile_phrases(_EN_HEDGE_WORDS)
+_EN_CONTRAST = compile_phrases(_EN_CONTRAST_WORDS)
+_EN_WORDS = frozenset(
+    word
+    for phrases in (
+        _EN_AFFIRM_WORDS,
+        _EN_ATTEND_WORDS,
+        _EN_REFUSE_WORDS,
+        _EN_HEDGE_WORDS,
+        _EN_CONTRAST_WORDS,
+        _EN_FILLER_WORDS,
+    )
+    for phrase in phrases
+    for word in clean(phrase).split()
+)
+# Phủ định tiếng Anh không trùng từ tiếng Việt mất dấu: phủ quyết ở mọi câu (R-41). "no" / "not" chỉ
+# khi cả câu là tiếng Anh (xem `_is_english`).
+_EN_UNAMBIGUOUS_NEGATION = re.compile(
+    r"(?<!\w)(?:cannot|can t|won t|don t|doesn t|didn t|isn t|couldn t|wouldn t|nope|nah|never)(?!\w)"
+)
+
+
+def _is_english(text: str) -> bool:
+    """`text` đã `clean`: không dấu và mọi từ thuộc bảng tiếng Anh ở trên."""
+    return is_unaccented(text) and all(word in _EN_WORDS for word in text.split())
+
+
+def _english_answer(
+    transcript: str, text: str, question_id: QuestionId
+) -> Optional[tuple[Field[Agreement], Optional[UnclearCause]]]:
+    """Câu trả lời tiếng Anh ở câu hỏi đến khám / đọc lại lịch / chốt khung; `None` khi không phải."""
+    if question_id is QuestionId.CANCEL_RECONFIRM or not _is_english(text):
+        return None
+    matched = Provenance.NORMALIZED
+    if "?" in transcript:
+        return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.QUESTION
+    hedge = find_phrase(text, _EN_HEDGE, unaccented=True)
+    if hedge is not None:
+        return Field(Agreement.UNCLEAR, matched, span=hedge.group(0)), UnclearCause.HEDGE
+    contrast = find_phrase(text, _EN_CONTRAST, unaccented=True)
+    if contrast is not None:
+        return Field(Agreement.UNCLEAR, matched, span=contrast.group(0)), UnclearCause.CONTRAST
+    refuse = find_phrase(text, _EN_REFUSE, unaccented=True)
+    affirm = find_phrase(text, _EN_AFFIRM, unaccented=True)
+    attend = (
+        find_phrase(text, _EN_ATTEND, unaccented=True)
+        if question_id in _ATTENDANCE_QUESTIONS
+        else None
+    )
+    positive = affirm or attend
+    if refuse is not None and positive is not None:
+        return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.REFUSE_MIXED
+    if refuse is not None:
+        return Field(Agreement.REFUSE, matched, span=refuse.group(0)), None
+    if positive is not None:
+        return Field(Agreement.AGREE, matched, span=positive.group(0)), None
+    return Field.nothing(Agreement.UNCLEAR), UnclearCause.NO_SIGNAL
+
+
 def extract_agreement(
     transcript: str, question_id: QuestionId, *, attendance: Optional[str] = None
 ) -> Field[Agreement]:
@@ -500,6 +613,8 @@ def confirmation_veto(transcript: str) -> bool:
     return is_bare_da(transcript) or bool(
         re.search(r"(?<!\w)(?:không|khong|chưa|chua|đừng|đổi ý|doi y)(?!\w)", text)
         or (is_unaccented(text) and _has_ambiguous_dung(text))
+        or _EN_UNAMBIGUOUS_NEGATION.search(text)
+        or (_is_english(text) and find_phrase(text, _EN_REFUSE, unaccented=True) is not None)
     )
 
 
@@ -592,6 +707,9 @@ def _read_agreement(
     if _is_hesitation(transcript, text):
         # "ờ.... ừ ..... à": người gọi đang nghĩ, chưa trả lời. "ờ", "ừ" nói gọn vẫn là đồng ý.
         return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.HEDGE
+    english = _english_answer(transcript, text, question_id)
+    if english is not None:
+        return english
     if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
         # "... được không?" là hỏi lại, không phải từ chối
         return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.TAG_QUESTION

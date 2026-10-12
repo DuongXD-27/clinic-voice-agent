@@ -10,7 +10,8 @@ import pytest
 
 from callbot.engine import CallStart
 from callbot.engine.dialogue import templates as t
-from callbot.engine.extraction.schema import VN_TZ, QuestionId
+from callbot.engine.extraction.schema import VN_TZ, Intent, QuestionId
+from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
 from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_orchestrator import _context, _inbound, _run, create_orchestrator
 
@@ -995,3 +996,35 @@ def test_dropping_the_change_while_still_picking_an_offered_slot_reads_it_back()
     action = _say(bot, "c_khoi", "Thôi khỏi, 3 giờ chiều cũng được")
 
     assert action.outcome != "TRANSFERRED"
+
+
+# --- QC qc-w6-02: trộn tiếng Việt – Anh khi đổi lịch -----------------------------------------------
+
+
+class _ModelReadsCodeSwitchedReschedule:
+    """Jev thật (thử 12/10/2026) đọc "anh muốn change lịch" là CHANGE_INTENT / RESCHEDULE; luật intent
+    không có từ tiếng Anh. Lượt chọn khung không gọi model (không thuộc câu hỏi ngữ nghĩa)."""
+
+    def __init__(self) -> None:
+        self.transcripts: list[str] = []
+
+    def analyze(self, context) -> SemanticOutcome:
+        self.transcripts.append(context.transcript)
+        return SemanticOutcome(
+            ReplyKind.CHANGE_INTENT, intent=Intent.RESCHEDULE, intent_span="anh muốn change lịch"
+        )
+
+
+def test_code_switched_request_then_an_english_clock_pick_reschedules_at_once() -> None:
+    """Nguyên văn qc-w6-02: "Ok, 3pm ngày 14 nhé" chọn rõ khung vừa đọc -> ghi ngay (R-29 v2.1)."""
+    request = "Em ơi anh muốn change lịch, có slot nào khác không?"
+    model = _ModelReadsCodeSwitchedReschedule()
+    clinic, bot, action = _call("c_w6_02", request, semantic=model)
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+    assert _context(bot, "c_w6_02").presented_slot_ids == ["slot_91d2", "slot_b501"]
+
+    action = _say(bot, "c_w6_02", "Ok, 3pm ngày 14 nhé")
+
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+    assert model.transcripts == [request]

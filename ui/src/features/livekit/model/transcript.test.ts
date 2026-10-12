@@ -89,3 +89,42 @@ describe("toChatMessage", () => {
     });
   });
 });
+
+describe("parseTranscript: trích xuất kèm câu bot (demo_debug)", () => {
+  const botLine = (extraction: unknown) =>
+    parseTranscript(encode({ type: "transcript", role: "bot", turn: 2, text: "Dạ", extraction }));
+
+  it("đọc trích xuất của lượt (payload giống call_bridge.py)", () => {
+    const line = botLine({
+      transcript: "thôi hủy giúp tôi",
+      silent: false,
+      fields: [{ field: "intent", value: "CANCEL", span: "hủy giúp tôi", provenance: "FALLBACK" }],
+      model: { provider: "typesafe", name: "jev-1.13.0", status: "OK", backup_for: null },
+    });
+
+    expect(line?.extraction).toEqual({
+      turn: 2,
+      fields: {
+        transcript: "thôi hủy giúp tôi",
+        silent: false,
+        fields: [
+          { field: "intent", value: "CANCEL", span: "hủy giúp tôi", provenance: "FALLBACK" },
+        ],
+        model: { provider: "typesafe", name: "jev-1.13.0", status: "OK", backupFor: null },
+      },
+    });
+  });
+
+  it("lượt không qua bước trích xuất: fields null", () => {
+    expect(botLine(null)?.extraction).toEqual({ turn: 2, fields: null });
+  });
+
+  it("sai dạng: đánh dấu invalid, không lẫn với lượt không trích xuất", () => {
+    expect(botLine({ transcript: "x" })?.extraction).toBe("invalid");
+  });
+
+  it("worker không gửi (tắt demo_debug / bản cũ): không có trường extraction", () => {
+    const line = parseTranscript(encode({ type: "transcript", role: "bot", turn: 2, text: "Dạ" }));
+    expect(line && "extraction" in line).toBe(false);
+  });
+});

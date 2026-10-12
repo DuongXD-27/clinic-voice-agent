@@ -183,6 +183,41 @@ def test_a_rule_agreement_is_rechecked_when_the_sentence_is_not_a_settled_one() 
     assert reason is RouteReason.CANCEL_UNRESOLVED
 
 
+@pytest.mark.parametrize(
+    "transcript",
+    [
+        "Vâng, tôi xác nhận hủy",
+        "Dạ hủy luôn em ạ",
+        "Có, hủy đi",
+        "Đúng rồi, hủy lịch khám đi em",
+        "Ừ, xác nhận hủy nhé",
+        "OK hủy luôn cho tôi",
+        "vang toi xac nhan huy",
+    ],
+)
+def test_a_rule_agreement_in_the_closed_cancel_grammar_is_not_routed(transcript: str) -> None:
+    """QC qc-cn-08 (12/10/2026): câu chỉ gồm lời đáp, xưng hô, lời khẳng định, động từ hủy, bổ ngữ và
+    tiểu từ — model không có gì để đọc thêm, và một lần Jev chạm trần 3 s sẽ làm mất lượt."""
+    assert _route(transcript, agreement=_field(Agreement.AGREE, span="hủy")) is None
+
+
+@pytest.mark.parametrize(
+    "transcript",
+    ["Hủy giúp tôi vì chi phí cao", "Hủy đi, cảm ơn em", "Vợ tôi bảo hủy đi", "Hủy đi, hủy lịch"],
+)
+def test_a_rule_agreement_outside_the_closed_cancel_grammar_is_still_rechecked(
+    transcript: str,
+) -> None:
+    reason = _route(transcript, agreement=_field(Agreement.AGREE, span="hủy"))
+    assert reason is RouteReason.CANCEL_UNRESOLVED
+
+
+def test_the_closed_cancel_grammar_never_skips_the_model_without_a_rule_agreement() -> None:
+    """Ngữ pháp đóng không nâng gì: luật chưa AGREE thì câu vẫn được đọc lại như trước."""
+    reason = _route("Vâng, tôi xác nhận hủy", agreement=_field(Agreement.UNCLEAR, span="vâng"))
+    assert reason is RouteReason.CANCEL_CONTRADICTION
+
+
 @pytest.mark.parametrize("question_id", [QuestionId.ASK_INTENT, QuestionId.CONFIRM_READBACK])
 def test_missing_intent_at_the_open_questions_is_routed(question_id) -> None:
     assert _route("lịch cũ thì thôi", question_id=question_id) is RouteReason.INTENT_UNCLEAR
@@ -1062,8 +1097,9 @@ def test_no_merge_branch_can_promote_the_cancel_answer(monkeypatch) -> None:
     result = extractor.extract(_turn_context(), SF05_TRANSCRIPTS[1])
     assert result.agreement.value is Agreement.UNCLEAR
 
-    # Câu hủy rõ mà luật đã AGREE thì vẫn là AGREE
-    failed = extractor.extract(_turn_context(), "dạ hủy luôn em ạ")
+    # Câu hủy rõ ngoài ngữ pháp đóng ("cảm ơn em") vẫn gọi model; model trả lời hỏng thì khóa lỗi model
+    # hạ AGREE của luật như mọi lượt model lỗi
+    failed = extractor.extract(_turn_context(), "dạ hủy luôn em ạ, cảm ơn em")
     assert failed.model_status == "INVALID" and failed.agreement.value is Agreement.UNCLEAR
 
 

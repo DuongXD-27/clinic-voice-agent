@@ -29,8 +29,12 @@ class EngineSettings(YamlSettings):
     semantic_jev_min_noul: float
     semantic_openai_model: str
     # Deadline tổng từ lúc gửi model request tới khi nhận đủ response; httpx vẫn giới hạn từng pha,
-    # connect riêng 1 giây. Một request, không retry model.
+    # connect riêng 1 giây. Một request, không retry model. Áp cho provider LLM (openai); Jev có
+    # `semantic_jev_timeout_s` riêng.
     semantic_fallback_timeout_s: float
+    # Jev: deadline tổng của một request System One. Thấp hơn trần lượt (`MODEL_TIMEOUT_S`, 4 s) để Jev
+    # treo vẫn còn `semantic_backup_min_remaining_s` cho dự phòng (12/10/2026, QC qc-cn-08).
+    semantic_jev_timeout_s: float
     semantic_openai_max_tokens: int
     # Câu dài hơn mức này thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định).
     semantic_fallback_max_input_chars: int

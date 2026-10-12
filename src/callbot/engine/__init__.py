@@ -97,7 +97,7 @@ def _semantic_extractor(settings: EngineSettings) -> Optional[SemanticExtractor]
 
 def _jev_semantic(settings: EngineSettings) -> Optional[JevSemanticExtractor]:
     try:
-        typesafe = TypeSafeConfig(timeout_s=settings.semantic_fallback_timeout_s)
+        typesafe = TypeSafeConfig(timeout_s=settings.semantic_jev_timeout_s)
     except ValidationError:
         logger.warning("Tầng ngữ nghĩa: thiếu TYPESAFE_API_KEY, không dùng được jev")
         return None

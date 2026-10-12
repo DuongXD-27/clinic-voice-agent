@@ -27,7 +27,7 @@ from callbot.engine.extraction.agreement import (
     mentions_busy,
     rechooses,
 )
-from callbot.engine.extraction.model_budget import hand_over_model
+from callbot.engine.extraction.model_budget import hand_over_model, record_model
 from callbot.engine.extraction.schema import (
     Agreement,
     ClinicalLevel,
@@ -409,6 +409,7 @@ class SlotSemanticReader:
         self.last_provider = self.last_reason = None
         unaccented = is_unaccented(clean(context.transcript))
         if self.backup is not None and (unaccented or self.primary is None):
+            record_model(self.backup._gateway.model, self.backup._gateway.provider_name)
             return self._run(
                 self.backup, "luna", "unaccented" if unaccented else "primary_missing", context
             )
@@ -430,7 +431,7 @@ class SlotSemanticReader:
                 extra={"slot_failover": "skipped", "slot_remaining_s": round(remaining, 3)},
             )
             return None
-        hand_over_model(self.backup._gateway.model)
+        hand_over_model(self.backup._gateway.model, self.backup._gateway.provider_name)
         return self._run(self.backup, "luna", "failover", context)
 
     def _run(

@@ -351,6 +351,7 @@ class FakeProvider:
 
     class _G:
         model = "fake-model"
+        provider_name = "fake"
 
     _gateway = _G()
 
@@ -395,7 +396,33 @@ def test_no_fallback_when_the_turn_has_too_little_time_left() -> None:
     assert reader.analyze(_ctx("để tôi tính đã em")) is None and luna.calls == 0
 
 
-def test_route_budget_is_longer_than_the_default_three_seconds() -> None:
+def _named(model: str, provider: str, **kwargs: Any) -> FakeProvider:
+    fake = FakeProvider(**kwargs)
+    fake._gateway = type("G", (), {"model": model, "provider_name": provider})()
+    return fake
+
+
+@pytest.mark.parametrize(
+    ("transcript", "jev_status", "trace"),
+    [
+        ("để tôi tính đã em", "accepted", ("jev-m", "typesafe", None)),
+        ("de toi tinh da em", "accepted", ("luna-m", "openai", None)),
+        ("để tôi tính đã em", "timeout", ("luna-m", "openai", "typesafe")),
+    ],
+)
+def test_the_turn_trace_names_the_provider_that_answered(
+    transcript: str, jev_status: str, trace: tuple
+) -> None:
+    """Panel LiveKit / trace đọc model, provider và provider chính đã lỗi từ ngân sách lượt."""
+    jev = _named("jev-m", "typesafe", status=jev_status)
+    luna = _named("luna-m", "openai", reading=_reading("ANY"))
+    reader = SlotSemanticReader(jev, luna)
+    with model_turn() as budget:
+        invoke_model(reader, lambda: reader.analyze(_ctx(transcript)))
+    assert (budget.model, budget.provider, budget.backup_for) == trace
+
+
+def test_route_budget_overrides_the_default_turn_budget() -> None:
     with model_turn() as budget:
         assert invoke_model(object(), lambda: "ok", timeout_s=0.5) == "ok"
     assert budget.status == "OK"
