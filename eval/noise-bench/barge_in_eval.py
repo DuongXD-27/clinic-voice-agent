@@ -393,7 +393,17 @@ def run(
                 results["conditions"][key] = {"summary": summary, "rows": rows}
                 print(f"[{label}] {key:22} {json.dumps(summary, ensure_ascii=False)}", flush=True)
     out_path = bench.WORK_DIR / "results" / f"barge_{label}.json"
-    out_path.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    # Có giá trị kiểu numpy trong hàng kết quả: ghi thành list / số thay vì làm hỏng cả file ở cuối
+    # lần chạy (trước đây chỉ còn dòng tóm tắt trong log).
+    out_path.write_text(
+        json.dumps(
+            results,
+            ensure_ascii=False,
+            indent=1,
+            default=lambda o: o.tolist() if isinstance(o, np.ndarray | np.generic) else str(o),
+        ),
+        encoding="utf-8",
+    )
     print(f"-> {out_path.relative_to(bench.ROOT)}")
     return results
 

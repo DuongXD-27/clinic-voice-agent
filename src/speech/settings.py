@@ -41,6 +41,14 @@ class SpeechSettings(YamlSettings):
     silero_vad_model_path: str
     # Silero giữ "đang nói" thêm chừng này sau khi hết tiếng — cộng vào độ trễ chốt lượt.
     silero_min_silence_ms: int
+    # Xác suất tiếng nói tối thiểu để Silero bắt đầu / giữ "đang nói" (0,5 = mặc định của model).
+    silero_threshold: float
+    # v4: silero_vad_model_path qua sherpa-onnx. v6: silero_vad_v6_model_path (Silero v6.2.3 chính
+    # thức) qua onnxruntime — speech/asr/vad/silero_onnx.py, cùng máy trạng thái (sherpa chạy v6 lệch
+    # bản chính thức, mất âm đầu câu nhiều hơn). Thiếu file v6 thì cảnh báo và dùng v4. Chỉ cho bộ
+    # phân loại của LiveKit.
+    silero_vad_version: Literal["v4", "v6"]
+    silero_vad_v6_model_path: str
     # Audio riêng cho bộ phân loại tiếng nói (speech/audio/vad_frontend.py): khử nhiễu chỉ để
     # Silero quyết định có/không tiếng nói, ASR vẫn nghe audio gốc. Chỉ dùng với vad_provider=silero.
     vad_frontend: Literal["off", "webrtc", "webrtc_agc", "gtcrn", "dpdfnet"]

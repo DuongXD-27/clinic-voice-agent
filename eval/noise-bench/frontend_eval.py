@@ -20,9 +20,11 @@ Bộ dữ liệu (`--datasets`, có nhãn trừ web/short):
   là decode câu sạch.
 
 Nhiễu (`<tên>@<SNR>`): `office` (nền thật cắt từ dump LiveKit), `cafe` (DEMAND PCAFETER — căng tin,
-nhiều người nói), `traffic` (DEMAND STRAFFIC), `street` (PM duong.wav), `tv` (PM tv.wav — có giọng
-người), `babble` (3 giọng golden). DEMAND: zenodo.org/records/1227121 (CC BY-SA 3.0), giải nén
-ch01.wav vào temp/aq/data/demand/<ENV>/.
+nhiều người nói), `traffic` / `hallway` / `bus` / `station` / `square` / `kitchen` / `living` (DEMAND),
+`street` (PM duong.wav), `esc_human` / `esc_house` / `esc_street` (ESC-50: tiếng động rời ghép chuỗi).
+Nền là giọng người: `tv` (PM tv.wav), `babble` (3 giọng golden), `voice2` (một người khác nói),
+`bcast` (đài / TV thật: VietMed News, Talkshow, Podcast). DEMAND: zenodo.org/records/1227121 (CC BY-SA
+3.0), giải nén ch01.wav vào temp/aq/data/demand/<ENV>/.
 Biến thể nối bằng `~`: `q25` cả cuộc gọi nhỏ đi 25 dB (mic/đường truyền nhỏ), `far15` chỉ giọng
 nhỏ đi 15 dB (nói xa mic, nhiễu phòng giữ nguyên), `rev6` vang phòng RT60 0,6 s, `bns` khử nhiễu
 của trình duyệt (WebRTC NS + lọc thông cao, như livekit-client mặc định) trước khi tới worker.
@@ -33,6 +35,7 @@ Ví dụ: `clean`, `clean~q25`, `office@20~far15`, `cafe@5`, `clean~rev6`.
         --conditions clean,office@8,cafe@5 --set speaker_gate_mode=off
     python eval/noise-bench/frontend_eval.py pipeline --label gtcrn ... --set vad_frontend=gtcrn
     python eval/noise-bench/frontend_eval.py compare base gtcrn
+    python eval/noise-bench/frontend_eval.py paired base gtcrn   # từng cặp trial, KTC 95%
 
 Kết quả: temp/aq/results/<label>.json (không commit).
 """
@@ -262,21 +265,96 @@ def load_noises(golden: list[dict]) -> dict[str, np.ndarray]:
         "tv": _load_wav16(ROOT / "temp" / "PM_Public_Eval_STT" / "noise" / "tv.wav"),
         "babble": bench.build_babble([c["speech"] for c in golden]),
     }
-    for name, env in (
-        ("cafe", "PCAFETER"),
-        ("traffic", "STRAFFIC"),
-        ("hallway", "OHALLWAY"),
-        ("living", "DLIVING"),
-    ):
+    noises.update(load_extra_noises())
+    # Tiếng người nền: một người khác nói (giọng web, khác người với golden) và phát thanh / truyền hình
+    # thật (VietMed News, Talkshow, Podcast — 8 kHz, khác hẳn câu đang đo).
+    noises["voice2"] = np.asarray(
+        bench.build_voice2([c["speech"] for c in bench.build_web_set(None, SILERO)]),
+        dtype=np.float32,
+    )
+    bcast = _vietmed_broadcast()
+    if bcast is not None:
+        noises["bcast"] = bcast
+    return noises
+
+
+def _vietmed_broadcast(seconds: float = 300.0) -> np.ndarray | None:
+    import pyarrow.parquet as pq
+
+    path = DATA_DIR / "vietmed" / "test.parquet"
+    if not path.exists():
+        return None
+    rows = pq.read_table(path, columns=["audio", "rec_condition"]).to_pylist()
+    parts, total = [], 0
+    for row in rows:
+        if row["rec_condition"] not in ("News", "Talkshow", "Podcast"):
+            continue
+        samples, rate = _decode_audio(row["audio"]["bytes"])
+        parts.append(bench._to_16k(samples, rate))
+        total += len(parts[-1])
+        if total >= seconds * RATE:
+            break
+    return np.concatenate(parts).astype(np.float32)
+
+
+DEMAND_ENVS = {
+    "cafe": "PCAFETER",
+    "traffic": "STRAFFIC",
+    "hallway": "OHALLWAY",
+    "living": "DLIVING",
+    "bus": "TBUS",
+    "station": "PSTATION",
+    "square": "SPSQUARE",
+    "kitchen": "DKITCHEN",
+    "meeting": "OMEETING",
+    "park": "NPARK",
+}
+# ESC-50 (github.com/karoldvl/ESC-50, CC BY-NC 3.0): tiếng động rời ghép thành chuỗi (giữa các tiếng là
+# im lặng 0,3–1,5 s), mỗi nhóm một chuỗi. Giải nén vào temp/aq/data/esc50/x/ESC-50-master/.
+ESC_GROUPS = {
+    "esc_human": ["coughing", "sneezing", "breathing", "laughing", "crying_baby", "snoring",
+                  "clapping", "footsteps", "drinking_sipping", "brushing_teeth"],
+    "esc_house": ["door_wood_knock", "door_wood_creaks", "keyboard_typing", "mouse_click",
+                  "clock_tick", "clock_alarm", "can_opening", "glass_breaking", "pouring_water",
+                  "toilet_flush", "vacuum_cleaner", "washing_machine", "water_drops"],
+    "esc_street": ["car_horn", "siren", "engine", "train", "airplane", "helicopter", "church_bells",
+                   "dog", "rooster", "rain", "wind"],
+}  # fmt: skip
+
+
+def load_extra_noises() -> dict[str, np.ndarray]:
+    """Nhiễu DEMAND (zenodo 1227121, ch01) có trên đĩa + chuỗi ESC-50 theo nhóm."""
+    import csv
+
+    import soundfile as sf
+
+    out: dict[str, np.ndarray] = {}
+    for name, env in DEMAND_ENVS.items():
         path = DATA_DIR / "demand" / env / "ch01.wav"
         if path.exists():
-            import soundfile as sf
-
             samples, rate = sf.read(path, dtype="float32")
-            noises[name] = bench._to_16k(
+            out[name] = bench._to_16k(
                 np.clip(samples * 32768, -32768, 32767).astype(np.int16), rate
             )
-    return noises
+    esc = DATA_DIR / "esc50" / "x" / "ESC-50-master"
+    if esc.exists():
+        with open(esc / "meta" / "esc50.csv", encoding="utf-8") as handle:
+            meta = list(csv.DictReader(handle))
+        rng = np.random.default_rng(5)
+        for group, cats in ESC_GROUPS.items():
+            files = [m["filename"] for m in meta if m["category"] in cats]
+            rng.shuffle(files)
+            parts = []
+            for name in files[:120]:
+                clip = _load_wav16(esc / "audio" / name).astype(np.float64)
+                nz = np.nonzero(np.abs(clip) > 20)[0]
+                if not len(nz):
+                    continue
+                clip = clip[nz[0] : nz[-1] + 1]
+                parts.append(clip * (1000.0 / max(bench._active_rms(clip), 1.0)))
+                parts.append(np.zeros(int(rng.uniform(0.3, 1.5) * RATE)))
+            out[group] = np.concatenate(parts).astype(np.float32)
+    return out
 
 
 # ------------------------------------------------------------------ dựng trial
@@ -379,7 +457,9 @@ def build_trial(
         noise = noises[noise_name]
         start = int(rng.integers(0, len(noise) - total))
         segment = noise[start : start + total].astype(np.float64)
-        speech_like = noise_name in ("tv", "babble")
+        speech_like = noise_name in ("tv", "babble", "voice2", "bcast") or noise_name.startswith(
+            "esc_"
+        )
         noise_level = max((bench._active_rms if speech_like else bench._rms)(segment), 1e-6)
         if speech is not None:
             target = level / 10 ** (spec["snr"] / 20)
@@ -888,6 +968,80 @@ def report(labels: list[str], datasets: list[str] | None = None) -> None:
             print(f"| {condition} | " + " | ".join(cells) + " | " + " → ".join(false_cells) + " |")
 
 
+def paired(base: str, other: str, *, rounds: int = 2000, seed: int = 0) -> None:
+    """So từng cặp trial cùng seed (cùng câu, cùng đoạn nhiễu): ΔWER lượt (other − base) với KTC
+    95% bootstrap theo câu, số câu tốt hơn / tệ hơn, câu không thành lượt; đoạn chỉ nhiễu: lượt giả
+    và số đoạn chỉ một bên có lượt giả. Hai lần chạy phải cùng --datasets/--conditions/--noise-trials
+    (pool.imap giữ thứ tự trial nên đoạn nhiễu ghép theo thứ tự)."""
+    a, b = _load_results([base, other])
+    rng = np.random.default_rng(seed)
+
+    def speech(result: dict) -> dict:
+        return {
+            (r["condition"], r["dataset"], r["id"]): r
+            for r in result["rows"]
+            if r["kind"] == "speech" and r["labelled"]
+        }
+
+    def noise(result: dict) -> dict:
+        out: dict = {}
+        for r in result["rows"]:
+            if r["kind"] == "noise":
+                out.setdefault(r["condition"], []).append(bool(r["turns"]))
+        return out
+
+    sa, sb = speech(a), speech(b)
+    na, nb = noise(a), noise(b)
+    print(f"\n{other} so với {base} (ô ΔWER: âm = {other} tốt hơn)\n")
+    print(
+        "| Điều kiện | WER | ΔWER [KTC 95%] | câu tốt hơn / tệ hơn | không thành lượt | lượt giả (chỉ nhiễu) |"
+    )
+    print("|---|---|---|---|---|---|")
+    pooled: list[tuple[int, int, int]] = []
+    for condition in [*a["conditions"], None]:
+        if condition is None:
+            pairs = pooled
+            name = "**tất cả**"
+        else:
+            keys = sorted(k for k in sa if k[0] == condition and k in sb)
+            pairs = [(sa[k]["turn_errors"], sb[k]["turn_errors"], sa[k]["words"]) for k in keys]
+            pooled.extend(pairs)
+            name = condition
+        noise_conditions = list(na) if condition is None else [c for c in [condition] if c in na]
+        noise_pairs = [
+            pair for c in noise_conditions for pair in zip(na[c], nb.get(c, []), strict=True)
+        ]
+        if not pairs and not noise_pairs:
+            continue
+        speech_cells = "- | - | - | -"
+        if pairs:
+            arr = np.array(pairs, dtype=np.float64)
+            words = arr[:, 2].sum()
+            delta = (arr[:, 1].sum() - arr[:, 0].sum()) / words
+            idx = rng.integers(0, len(arr), (rounds, len(arr)))
+            boot = (arr[idx, 1].sum(1) - arr[idx, 0].sum(1)) / arr[idx, 2].sum(1)
+            low, high = np.percentile(boot, [2.5, 97.5])
+            better = int((arr[:, 1] < arr[:, 0]).sum())
+            worse = int((arr[:, 1] > arr[:, 0]).sum())
+            used = [k for k in sa if k in sb] if condition is None else keys
+            no_a = sum(not sa[k]["turns"] for k in used)
+            no_b = sum(not sb[k]["turns"] for k in used)
+            speech_cells = (
+                f"{arr[:, 0].sum() / words:.3f} → {arr[:, 1].sum() / words:.3f} | "
+                f"{delta:+.3f} [{low:+.3f}; {high:+.3f}] | {better} / {worse} | "
+                f"{no_a} → {no_b} /{len(arr)}"
+            )
+        false_cell = "-"
+        if noise_pairs:
+            fa, fb = sum(x for x, _ in noise_pairs), sum(y for _, y in noise_pairs)
+            only_a = sum(x and not y for x, y in noise_pairs)
+            only_b = sum(y and not x for x, y in noise_pairs)
+            false_cell = (
+                f"{fa} → {fb} /{len(noise_pairs)} (chỉ {base}: {only_a}, chỉ {other}: {only_b})"
+            )
+        print(f"| {name} | {speech_cells} | {false_cell} |")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -919,6 +1073,9 @@ def main() -> None:
     report_parser = sub.add_parser("report")
     report_parser.add_argument("labels", nargs="+")
     report_parser.add_argument("--datasets")
+    paired_parser = sub.add_parser("paired")
+    paired_parser.add_argument("base")
+    paired_parser.add_argument("other")
     args = parser.parse_args()
     if args.mode == "vad":
         run_vad(args)
@@ -926,6 +1083,8 @@ def main() -> None:
         run_pipeline_mode(args)
     elif args.mode == "report":
         report(args.labels, args.datasets.split(",") if args.datasets else None)
+    elif args.mode == "paired":
+        paired(args.base, args.other)
     else:
         compare(args.labels)
 

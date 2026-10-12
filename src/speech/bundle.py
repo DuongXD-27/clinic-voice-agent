@@ -336,12 +336,25 @@ def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassi
 
 
 def _build_silero(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+    if settings.silero_vad_version == "v6":
+        model_path = settings.silero_vad_v6_model_path
+        if Path(model_path).is_file():
+            from speech.asr.vad.silero_onnx import SileroOnnxClassifier
+
+            return SileroOnnxClassifier(
+                model_path,
+                sample_rate=sample_rate,
+                min_silence_ms=settings.silero_min_silence_ms,
+                threshold=settings.silero_threshold,
+            )
+        logger.warning("silero_vad_version=v6: không thấy model %s — dùng Silero v4", model_path)
     from speech.asr.vad.silero import SileroVadClassifier
 
     return SileroVadClassifier(
         settings.silero_vad_model_path,
         sample_rate=sample_rate,
         min_silence_ms=settings.silero_min_silence_ms,
+        threshold=settings.silero_threshold,
     )
 
 
