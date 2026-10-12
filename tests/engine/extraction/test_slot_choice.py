@@ -411,12 +411,24 @@ def test_strip_slot_phrases_removes_ordinals_and_times(text: str, rest: str) -> 
         ("10:30am", {10}, 30),
         ("12pm", {12}, 0),
         ("12am", {0}, 0),
+        # QC tuần 6 (12/10/2026): "3.30pm" từng khớp rời đuôi "30pm" và ghi thành 18 giờ
+        ("3.30pm", {15}, 30),
+        ("3.30 PM", {15}, 30),
+        ("10.30am", {10}, 30),
+        ("Ok, 3.30pm ngày 14 nhé", {15}, 30),
     ],
 )
 def test_english_clock_times(text: str, hours: set[int], minute: int) -> None:
     """ "3pm" là 15 giờ, không phải 3 giờ sáng hay 15 giờ mơ hồ (QC qc-w6-02)."""
     criteria = parse_slot_criteria(text, NOW)
     assert criteria.hours == frozenset(hours) and criteria.minute == minute
+
+
+@pytest.mark.parametrize("text", ["3 30pm", "30pm", "25am"])
+def test_clock_over_twelve_with_ampm_is_not_a_time(text: str) -> None:
+    """Đuôi "30pm" khớp rời không được gập theo 12 thành 18 giờ: không đọc ra giờ, hỏi lại."""
+    criteria = parse_slot_criteria(text, NOW)
+    assert not criteria.hours and criteria.minute is None
 
 
 # --- Merge main 07/10: khoảng giờ (main) và "sớm / muộn hơn" (nhánh) là hai tiêu chí riêng ---------------

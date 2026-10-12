@@ -106,9 +106,11 @@ _WEEKDAY_INDEX = {"hai": 0, "ba": 1, "tư": 2, "năm": 3, "sáu": 4, "bảy": 5}
 
 # Chuẩn hoá dạng số trước khi bỏ dấu câu: "14h30", "14:30" -> "14 giờ 30"; "20/10" -> "ngày 20 tháng 10"
 _NUMERIC_TIME = re.compile(r"(?<!\d)(\d{1,2})\s*(?:h|:|g)\s*(\d{2})?(?!\w)")
-# Giờ kiểu Anh khi người gọi trộn tiếng (QC qc-w6-02): "3pm", "3 pm", "10:30am" -> "15 giờ chiều",
-# "10 giờ 30 sáng". Xét trước `_NUMERIC_TIME` để "3:30pm" không bị đọc thành "3 giờ 30" rồi trơ lại "pm".
-_NUMERIC_AMPM = re.compile(r"(?<!\d)(\d{1,2})(?:[:h](\d{2}))?\s*([ap])m(?!\w)")
+# Giờ kiểu Anh khi người gọi trộn tiếng (QC qc-w6-02): "3pm", "3 pm", "10:30am", "3.30pm" -> "15 giờ
+# chiều", "10 giờ 30 sáng", "15 giờ 30 chiều". Xét trước `_NUMERIC_TIME` để "3:30pm" không bị đọc thành
+# "3 giờ 30" rồi trơ lại "pm". Phút nhận cả dấu chấm: không thì "3.30pm" chỉ khớp rời đuôi "30pm" và thành
+# 18 giờ (QC tuần 6, 12/10/2026).
+_NUMERIC_AMPM = re.compile(r"(?<!\d)(\d{1,2})(?:[:h.](\d{2}))?\s*([ap])m(?!\w)")
 _NUMERIC_DAY = re.compile(r"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)(?!\d)")
 
 _UNACCENTED_PHRASES = {
@@ -611,10 +613,15 @@ def _prepare(transcript: str) -> str:
 
 
 def _ampm_to_vietnamese(match: re.Match[str]) -> str:
-    """ "3pm" -> " 15 giờ chiều ", "12am" -> " 0 giờ sáng ", "10:30am" -> " 10 giờ 30 sáng "."""
-    hour = int(match.group(1)) % 12 + (12 if match.group(3) == "p" else 0)
-    if hour > 23:
+    """ "3pm" -> " 15 giờ chiều ", "12am" -> " 0 giờ sáng ", "10:30am" -> " 10 giờ 30 sáng ".
+
+    Số quá 12 ("30pm": đuôi của "3 30pm" bị khớp rời) không phải giờ đồng hồ: giữ nguyên văn, không gập
+    theo 12 thành "18 giờ"; câu không đọc ra giờ thì hỏi lại.
+    """
+    clock = int(match.group(1))
+    if clock > 12:
         return match.group(0)
+    hour = clock % 12 + (12 if match.group(3) == "p" else 0)
     period = "sáng" if hour < 12 else "trưa" if hour == 12 else "chiều" if hour < 18 else "tối"
     return f" {hour} giờ {match.group(2) or ''} {period} "
 

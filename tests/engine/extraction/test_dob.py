@@ -179,6 +179,16 @@ def test_english_spoken_numbers(text: str, expected: date) -> None:
         "March fourteenth, twenty one",  # 21 hay 2001: hai thế kỷ đều hợp lệ
         "nineteen seventy eight",  # chỉ năm
         "maybe March fourteenth nineteen seventy eight",
+        # 12/10/2026: từ số lạc ngay sau ngày không bị bỏ qua (từng nhận 1970 / 1978)
+        "March fourteenth nineteen seventy eighth",
+        "March fourteenth nineteen seventy-eighth",
+        "the fourteenth of March nineteen seventy eighth",
+        "March fourteenth nineteen seventy eight two",
+        "March fourteenth nineteen seventy eight thirty",
+        # 12/10/2026: năm cụt sau "thousand" / "hundred" (từng nhận 2000)
+        "March fourteenth two thousand and",
+        "March fourteenth nineteen hundred and",
+        "March fourteenth two thousand and fourteenth",
     ],
 )
 def test_unusable_english_spoken_dates_are_invalid(text: str) -> None:

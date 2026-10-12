@@ -341,7 +341,21 @@ def _english_dates(
         out_origin += [(origin[i][0], origin[end - 1][1])] * len(parts)
         spoken = spoken or any(_is_english_number_word(t) for t in tokens[i:end])
         i = end
+        # Từ số tiếng Anh dính ngay sau ngày là số lạc ("nineteen seventy eighth" = năm 1970 + "eighth",
+        # "nineteen seventy eight two"): chuyển sang chữ số để hỏi lại như dạng số ("March 14, 1978 2"),
+        # không bỏ qua rồi nhận năm cụt (12/10/2026).
+        while i < len(tokens) and _is_english_number_word(tokens[i]) and tokens[i] not in _EN_ZERO:
+            out_tokens.append(str(_english_number_word(tokens[i])))
+            out_origin.append(origin[i])
+            spoken = True
+            i += 1
     return out_tokens, out_origin, spoken
+
+
+def _english_number_word(token: str) -> int:
+    if token in _EN_UNITS:
+        return _EN_UNITS[token]
+    return _EN_TENS[token] if token in _EN_TENS else _EN_ORDINALS[token]
 
 
 def _is_english_number_word(token: str) -> bool:
@@ -426,7 +440,7 @@ def _english_year_at(tokens: list[str], at: int) -> Optional[tuple[str, int]]:
         return tokens[at], 1
     for used in range(min(_EN_YEAR_MAX_WORDS, len(tokens) - at), 0, -1):
         value = _english_number(tokens[at : at + used])
-        if value is None:
+        if value is None or _dangling_and(tokens, at + used):
             continue
         if 1000 <= value <= 9999:
             return str(value), used
@@ -445,9 +459,15 @@ def _english_year_words_at(tokens: list[str], at: int) -> Optional[tuple[str, in
         return None
     for used in range(min(_EN_YEAR_MAX_WORDS, len(tokens) - at), 1, -1):
         value = _english_number(tokens[at : at + used])
-        if value is not None and 1000 <= value <= 9999:
+        if value is not None and 1000 <= value <= 9999 and not _dangling_and(tokens, at + used):
             return str(value), used
     return None
+
+
+def _dangling_and(tokens: list[str], end: int) -> bool:
+    """Dãy số dừng ở "thousand" / "hundred" rồi tới "and" mà không có số tiếp ("two thousand and" hết
+    câu): năm cụt, không nhận "two thousand" rồi bỏ qua "and"."""
+    return tokens[end - 1] in ("thousand", "hundred") and end < len(tokens) and tokens[end] == "and"
 
 
 def _english_number(tokens: list[str]) -> Optional[int]:
@@ -466,10 +486,12 @@ def _english_structured(tokens: list[str]) -> Optional[int]:
         if high is None or high == 0:
             return None
         rest = tokens[at + 1 :]
-        if rest and rest[0] == "and":
-            rest = rest[1:]
         if not rest:
             return high * 1000
+        if rest[0] == "and":
+            rest = rest[1:]
+            if not rest:
+                return None  # "two thousand and" cụt
         low = _english_below_thousand(rest)
         return None if low is None else high * 1000 + low
     return _english_below_thousand(tokens)
@@ -481,10 +503,12 @@ def _english_below_thousand(tokens: list[str]) -> Optional[int]:
         if at != 1 or tokens[0] not in _EN_UNITS or tokens[0] in _EN_ZERO:
             return None
         rest = tokens[2:]
-        if rest and rest[0] == "and":
-            rest = rest[1:]
         if not rest:
             return _EN_UNITS[tokens[0]] * 100
+        if rest[0] == "and":
+            rest = rest[1:]
+            if not rest:
+                return None  # "nineteen hundred and" cụt
         low = _english_below_hundred(rest)
         return None if low is None else _EN_UNITS[tokens[0]] * 100 + low
     return _english_below_hundred(tokens)
