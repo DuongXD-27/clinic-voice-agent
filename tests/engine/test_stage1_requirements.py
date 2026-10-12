@@ -411,8 +411,9 @@ def test_ie_model_trace_names_the_provider_that_answered():
     sink = _MemorySink()
     tracer = _tracer(sink)
     with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
+        # "cảm ơn em" ngoài ngữ pháp đóng của xác nhận hủy nên model vẫn được gọi (settled_cancel_confirmation)
         InformationExtractor(semantic=_HandedOverSemantic()).extract(
-            context(), "tôi đồng ý hủy lịch"
+            context(), "tôi đồng ý hủy lịch, cảm ơn em"
         )
     event = next(
         event
