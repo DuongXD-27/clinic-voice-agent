@@ -186,11 +186,21 @@ BOOKING_ABANDONED = _static_group(
 SLOT_TAKEN = "Khung giờ đó vừa có người đặt. "
 SLOT_NO_MATCH = "Em chưa thấy khung giờ đó. "
 SLOT_AMBIGUOUS = "Có nhiều khung giờ phù hợp. "
+# Trang mơ hồ đọc lại y hệt: hỏi khách chọn khung nào, nêu đúng chỗ hai khung khác nhau (review 12-10 §6.1)
+SLOT_AMBIGUOUS_AGAIN = "Dạ, "
 SLOT_NOT_IN_PAGE = "Em vừa đọc hai khung thôi ạ. "
 SLOT_TWO_AT_A_TIME = "Em đọc hai khung để dễ nhớ ạ. "
 # Miền prefix riêng: không nhận câu DONE_SAFE hoặc hằng tĩnh bất kỳ làm tiền tố.
 SLOT_PREFIXES = frozenset(
-    {"", SLOT_TAKEN, SLOT_NO_MATCH, SLOT_AMBIGUOUS, SLOT_NOT_IN_PAGE, SLOT_TWO_AT_A_TIME}
+    {
+        "",
+        SLOT_TAKEN,
+        SLOT_NO_MATCH,
+        SLOT_AMBIGUOUS,
+        SLOT_AMBIGUOUS_AGAIN,
+        SLOT_NOT_IN_PAGE,
+        SLOT_TWO_AT_A_TIME,
+    }
 )
 SLOT_ACTIONS = frozenset({"RESCHEDULE", "BOOK"})
 SLOT_INVITES = frozenset({None, *SLOT_ACTIONS})
@@ -481,6 +491,13 @@ def offer_slots(
     """
     guardrails.assert_can_disclose(ctx)
     moments = [to_local(datetime.fromisoformat(slot["starts_at"])) for slot in slots]
+    more = f"Còn {remaining} khung khác. " if remaining > 0 and invite is None else ""
+    if prefix in (SLOT_AMBIGUOUS, SLOT_AMBIGUOUS_AGAIN) and len(moments) == 2:
+        contrast = _contrast(moments[0], moments[1])
+        if prefix == SLOT_AMBIGUOUS_AGAIN:
+            return f"{prefix}anh chị chọn {contrast[1]} hay {contrast[2]} ạ?"
+        if contrast[0]:
+            return f"{contrast[0]} em còn {contrast[1]} và {contrast[2]}. {more}{contrast[3]}"
     options = "; ".join(
         f"khung {index + 1}: "
         + (
@@ -509,8 +526,39 @@ def offer_slots(
             "Anh chị chọn giờ này không ạ?" if len(slots) == 1 else "Anh chị chọn khung nào ạ?"
         )
     full = f"{_full(full_date)} " if full_date is not None else ""
-    more = f"Còn {remaining} khung khác. " if remaining > 0 and invite is None else ""
     return f"{prefix}{full}{lead} {options}. {more}{question}"
+
+
+def _contrast(first: datetime, second: datetime) -> tuple[str, str, str, str]:
+    """(phần chung, khung 1, khung 2, câu hỏi) — nêu đúng chỗ hai khung khác nhau (B9, R-42 c).
+
+    "3 giờ chiều thứ Tư" / "ngày 14" / "ngày 21 tháng 10" / "chọn ngày nào". Phần chung rỗng khi hai khung
+    khác cả ngày lẫn giờ: khi đó đọc đủ từng khung.
+    """
+    if first.date() == second.date():
+        common = _speak_date(first)
+        return (
+            common[0].upper() + common[1:],
+            _speak_time(first),
+            _speak_time(second),
+            ("Anh chị chọn giờ nào ạ?"),
+        )
+    if (first.hour, first.minute) == (second.hour, second.minute):
+        same_weekday = first.weekday() == second.weekday()
+        common = _speak_time(first) + (f" {_WEEKDAYS[first.weekday()]}" if same_weekday else "")
+        days = _day_pair(first, second, with_weekday=not same_weekday)
+        return common, days[0], days[1], "Anh chị chọn ngày nào ạ?"
+    return "", speak_datetime(first.isoformat()), speak_datetime(second.isoformat()), ""
+
+
+def _day_pair(first: date, second: date, *, with_weekday: bool) -> tuple[str, str]:
+    """ "ngày 14" / "ngày 21 tháng 10" — tháng chỉ nói một lần khi hai ngày cùng tháng."""
+
+    def day(moment: date, month: bool) -> str:
+        weekday = f"{_WEEKDAYS[moment.weekday()]} " if with_weekday else ""
+        return f"{weekday}ngày {moment.day}" + (f" tháng {moment.month}" if month else "")
+
+    return day(first, first.month != second.month), day(second, True)
 
 
 def _full(day: date) -> str:

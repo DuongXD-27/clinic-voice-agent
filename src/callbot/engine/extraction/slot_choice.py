@@ -73,14 +73,16 @@ _ORDINAL = re.compile(
     r"(?!\w)(?!\s+(?:giờ|rưỡi|kém|h)(?!\w))"
 )
 # Trang đọc theo thứ tự thời gian: khung sớm nhất / gần nhất là khung 1 (T-10 §3.8.1)
+# "cái sớm hơn" / "cái muộn hơn" (có "cái") là chỉ một trong hai khung vừa đọc (held-out S005, S006);
+# "sớm hơn" trần vẫn là xin khung khác (R033 / R034)
 _FIRST = re.compile(
     r"(?<!\w)(?:đầu tiên|cái đầu|khung đầu|slot đầu|cái gần nhất|khung gần nhất|cái sớm nhất"
-    r"|khung sớm nhất|cái trước|khung trước)(?!\w)"
+    r"|khung sớm nhất|cái trước|khung trước|cái sớm hơn|khung sớm hơn)(?!\w)"
 )
 # "cái sau", "cái kia", "cái còn lại": khung còn lại của trang 2 khung. "khung sau" là xin nghe tiếp
 _LAST = re.compile(
     r"(?<!\w)(?:cái cuối|khung cuối|slot cuối|sau cùng|cuối cùng|cái sau|cái kia|cái còn lại"
-    r"|giờ còn lại|khung còn lại)(?!\w)"
+    r"|giờ còn lại|khung còn lại|cái muộn hơn|cái trễ hơn|khung muộn hơn|khung trễ hơn)(?!\w)"
 )
 # R008: "chọn giờ thứ 2" là thứ tự; "10 giờ thứ Hai" (có số trước "giờ") là giờ + thứ
 _HOUR_ORDINAL = re.compile(r"(?<!\w)giờ\s+thứ\s+(nhất|một|hai|ba|[1-3])(?!\w)")
@@ -537,11 +539,15 @@ def _choice_with_exclusion(
     else:
         pool = list(slots)
     kept = tuple(s["slot_id"] for s in pool if s["slot_id"] not in out_ids)
+    excluded = tuple(s["slot_id"] for s in slots if s["slot_id"] in out_ids)
+    request = " ".join(rest.replace(",", " ").split()) or None
     if len(kept) == 1:
-        return Field(SlotChoice("MATCH", kept, wanted), Provenance.NORMALIZED, span=span)
-    if kept:
-        return Field(SlotChoice("AMBIGUOUS", kept, wanted), Provenance.NORMALIZED, span=span)
-    return Field(SlotChoice("NO_MATCH", (), wanted), Provenance.NORMALIZED, span=span)
+        choice = SlotChoice("MATCH", kept, wanted, excluded_ids=excluded, request=request)
+    elif kept:
+        choice = SlotChoice("AMBIGUOUS", kept, wanted, excluded_ids=excluded, request=request)
+    else:
+        choice = SlotChoice("NO_MATCH", (), wanted, excluded_ids=excluded, request=request)
+    return Field(choice, Provenance.NORMALIZED, span=span)
 
 
 def filter_slots(

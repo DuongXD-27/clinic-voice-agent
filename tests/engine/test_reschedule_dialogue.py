@@ -614,7 +614,11 @@ def test_time_only_choice_matching_several_slots_off_the_page_reads_at_most_two(
     """Trang vừa đọc không có khung khớp: đọc tối đa 2 khung khớp rồi hỏi lại, không tự chọn."""
     _, bot, _ = _call("c_eval_amb2", "Tôi muốn đổi lịch")
     action = _say(bot, "c_eval_amb2", "2 giờ chiều")
-    assert action.utterance.startswith(t.SLOT_AMBIGUOUS)
+    # Nêu đúng chỗ hai khung khác nhau (review 12-10 B9)
+    assert action.utterance.startswith(
+        "2 giờ chiều em còn thứ Sáu ngày 16 và thứ Ba ngày 20 tháng 10."
+    )
+    assert "chọn ngày nào" in action.utterance
     assert _context(bot, "c_eval_amb2").presented_slot_ids == ["slot_b504", "slot_b508"]
 
 
@@ -829,7 +833,11 @@ def test_corrected_day_when_choosing_among_offered_slots() -> None:
     _, bot, _ = _call("c_r44_pick", "Tôi đổi sang buổi chiều được không?")
     action = _say(bot, "c_r44_pick", "ngày 14 à không 15")
     assert "ngày 14" not in action.utterance
-    assert _context(bot, "c_r44_pick").presented_slot_ids == ["slot_b501", "slot_b502"]
+    # Trang buổi chiều vừa đọc có đúng một khung ngày 15 (15:30): chọn khung đó (review 12-10 B7),
+    # không mời lại khung sáng 15/10 trái với "buổi chiều" khách đã xin
+    ctx = _context(bot, "c_r44_pick")
+    assert ctx.selected_slot_id == "slot_b502"
+    assert "3 giờ 30 chiều, thứ Năm ngày 15 tháng 10" in action.utterance
 
 
 def test_correction_at_readback_is_not_a_refusal_and_later_yes_writes() -> None:

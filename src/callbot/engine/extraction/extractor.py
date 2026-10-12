@@ -104,6 +104,14 @@ from callbot.engine.extraction.slot_choice import (
     proposed_time,
     without_corrected_part,
 )
+from callbot.engine.extraction.slot_semantic import (
+    SLOT_QUESTIONS,
+    SLOT_ROUTE_VALUES,
+    SlotSemanticReader,
+    merge_slot_semantic,
+    route_slot_semantic,
+    slot_semantic_context,
+)
 from callbot.engine.extraction.text import (
     clean,
     is_unaccented,
@@ -311,6 +319,7 @@ class InformationExtractor:
         name_fallback: bool = False,
         semantic: Optional[SemanticExtractor] = None,
         cancel_semantic_confirm: bool = False,
+        slot_semantic: Optional[SlotSemanticReader] = None,
     ) -> None:
         self._fallback = fallback
         # Factory bật slot filling họ tên theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
@@ -319,6 +328,9 @@ class InformationExtractor:
         self._semantic = semantic
         # CANCEL_SEMANTIC_CONFIRM_ENABLED (mặc định tắt): cho model đề xuất xác nhận hủy có kiểm chứng
         self._cancel_semantic_confirm = cancel_semantic_confirm
+        # SLOT_SEMANTIC_ENABLED (mặc định tắt): model đọc câu khó ở 4 câu hỏi chọn khung — plan
+        # `t10-slot-semantic-jev-2026-10-12.md` (Jev chính, Luna dự phòng)
+        self._slot_semantic = slot_semantic
 
     def extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
@@ -333,11 +345,19 @@ class InformationExtractor:
                     model_result=budget.status,
                 )
             if budget.status in {"TIMEOUT", "ERROR", "INVALID"}:
-                result = replace(
-                    result,
-                    intent=Field.nothing(Intent.NONE),
-                    agreement=Field.nothing(Agreement.UNCLEAR),
-                )
+                if result.model_route in SLOT_ROUTE_VALUES or ctx.question_id in SLOT_QUESTIONS:
+                    # Route chọn khung (plan §4.7, C5): giữ kết quả luật, chỉ không để AGREE mở khóa ghi
+                    if result.agreement.value is Agreement.AGREE:
+                        result = replace(
+                            result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
+                        )
+                    result = replace(result, slot_act=None)
+                else:
+                    result = replace(
+                        result,
+                        intent=Field.nothing(Intent.NONE),
+                        agreement=Field.nothing(Agreement.UNCLEAR),
+                    )
             conflict = ctx.question_id in CONFIRMATION_QUESTIONS and conflicting_confirmation(
                 transcript, ctx.question_id
             )
@@ -433,6 +453,9 @@ class InformationExtractor:
             slot_choice = extract_slot_choice(
                 slot_request, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
+            if slot_choice.value is not None and slot_choice.value.request is not None:
+                # Câu có loại trừ: yêu cầu thời gian là phần khách muốn, không gồm phần bị loại (B13)
+                slot_request = slot_choice.value.request
 
         agreement: Field[Agreement] = skipped
         # R-44: "9 giờ, à không, 10 giờ" — "không" của lời tự sửa không phải lời từ chối khung (R-41).
@@ -502,7 +525,7 @@ class InformationExtractor:
             ),
         )
         if route_reason is None:
-            return result
+            return self._apply_slot_semantic(ctx, result)
         if self._semantic is None or model_used():
             if route_reason in (RouteReason.CLINICAL_UNRESOLVED, RouteReason.INTENT_HEDGED):
                 # Không có model: vẫn hạ trường đang nghi ngờ như khi model lỗi
@@ -514,6 +537,25 @@ class InformationExtractor:
         return _keep_cancel_threshold(
             agreement, merged, ctx, outcome, promotion_enabled=self._cancel_semantic_confirm
         )
+
+    def _apply_slot_semantic(self, ctx: TurnContext, result: ExtractionResult) -> ExtractionResult:
+        """4 câu hỏi chọn khung: model chỉ đọc câu luật không có đường đi chắc (plan §4.1). Một request
+        mỗi lượt; lượt đã gọi model (vd. lâm sàng) thì không gọi nữa (C4)."""
+        if self._slot_semantic is None or model_used():
+            return result
+        route = route_slot_semantic(question_id=ctx.question_id, result=result)
+        if route is None:
+            return result
+        reader = self._slot_semantic
+        context = slot_semantic_context(ctx, result, route)
+        try:
+            reading = invoke_model(
+                reader, lambda: reader.analyze(context), timeout_s=reader.budget_s
+            )
+        except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
+            logger.warning("Tầng chọn khung lỗi, giữ kết quả luật", exc_info=False)
+            reading = None
+        return merge_slot_semantic(result, reading, context, ctx)
 
     def _apply_semantic(
         self,

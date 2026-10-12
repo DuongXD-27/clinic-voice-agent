@@ -1,6 +1,6 @@
 # Fallback Jev cho câu hỏi chọn khung (đổi lịch) — thiết kế 12-10-2026
 
-**Trạng thái:** thiết kế, **owner chốt 12-10 (tối): làm luôn, không hoãn**, trên nhánh `fix/t10-reschedule-jev` (cắt từ `main` @ `6621a8f`, PR vào `main`), sau PR 1 phần luật của [review 12-10](t10-reschedule-review-2026-10-12.md). Rủi ro lịch: Master plan ghi W5 (12–16/10) chỉ hardening, không mở feature mới; tổng luật + Jev ≈ 6,5–8 ngày công nên phần Jev sẽ qua 16/10 — giữ cờ `SLOT_SEMANTIC_ENABLED` mặc định tắt để PR 1 phần luật ra được độc lập. **Chuẩn:** contract là chuẩn duy nhất; PRD (R-xx) dưới đây là lựa chọn của đội. **Cập nhật 12-10 (tối) sau review lần hai:** base `main` @ `6621a8f`; §4.4 điểm 4 và 6 chuyển sang Dialogue; §4.7 ghi rõ chỗ lệch PRD R-31; R112/R118 tách thành B14 của plan luật. **Cập nhật 12-10 (chiều) sau review** — thêm §4.7 (chỗ sửa đường lỗi model chung), §4.9 (ma trận ưu tiên), §4.10 (hợp đồng dữ liệu), ba test chứng minh ở §7, thứ tự §8 (held-out đóng băng trước), hai quyết định §9. Điều kiện bắt đầu code phần Jev: owner chốt §9 và bước 1–2 của §8 xong. Viết lại [plan tầng LLM cho câu chọn khung (07/10)](t10-slot-semantic-fallback.md) cho provider **Jev** đang là mặc định trên `main`, và gắn với danh sách bug ở [review luồng Reschedule 12-10](t10-reschedule-review-2026-10-12.md).
+**Trạng thái:** thiết kế, **owner chốt 12-10 (tối): làm luôn, không hoãn**, trên nhánh `fix/t10-reschedule-jev` (cắt từ `main` @ `6621a8f`, PR vào `main`), sau PR 1 phần luật của [review 12-10](t10-reschedule-review-2026-10-12.md). Rủi ro lịch: Master plan ghi W5 (12–16/10) chỉ hardening, không mở feature mới; tổng luật + Jev ≈ 6,5–8 ngày công nên phần Jev sẽ qua 16/10 — giữ cờ `SLOT_SEMANTIC_ENABLED` mặc định tắt để PR 1 phần luật ra được độc lập. **Chuẩn:** contract là chuẩn duy nhất; PRD (R-xx) dưới đây là lựa chọn của đội. **Cập nhật 12-10 (khuya), owner chốt:** Luna là provider dự phòng của route chọn khung — Jev lỗi dịch vụ (trần đường dự phòng 4 s) hoặc câu không dấu (§4.11); không dấu chỉ áp cho 4 câu chọn khung. **Cập nhật 12-10 (tối) sau review lần hai:** base `main` @ `6621a8f`; §4.4 điểm 4 và 6 chuyển sang Dialogue; §4.7 ghi rõ chỗ lệch PRD R-31; R112/R118 tách thành B14 của plan luật. **Cập nhật 12-10 (chiều) sau review** — thêm §4.7 (chỗ sửa đường lỗi model chung), §4.9 (ma trận ưu tiên), §4.10 (hợp đồng dữ liệu), ba test chứng minh ở §7, thứ tự §8 (held-out đóng băng trước), hai quyết định §9. Điều kiện bắt đầu code phần Jev: owner chốt §9 và bước 1–2 của §8 xong. Viết lại [plan tầng LLM cho câu chọn khung (07/10)](t10-slot-semantic-fallback.md) cho provider **Jev** đang là mặc định trên `main`, và gắn với danh sách bug ở [review luồng Reschedule 12-10](t10-reschedule-review-2026-10-12.md).
 **Base:** `main` @ `6621a8f` (đo lại 12-10: baseline luật 109/121, giống từng câu với `bbc9f5c`; số dòng code dưới đây theo `6621a8f`). **Chuẩn:** contract Rev 1.1 (§1.1.5, §1.1.6, SF-02, SF-05), PRD v2.3 (R-19, R-23, R-29, R-30, R-31, R-41, R-44), evidence [Jev 10-10](../evidence/semantic-provider-jev-2026-10-10.md), evidence [eval mentor 06-10](../evidence/reschedule-mentor-eval-2026-10-06.md) (qc-rs-02..08).
 
 ## 0. Kết luận nhanh
@@ -52,7 +52,7 @@ Vòng lặp trang mơ hồ (B1, B2 ở review 12-10) cũng **không** đưa cho 
 | C1 | 7 case mentor qc-rs-02..08 (và các test `test_mentor_eval_reschedule.py`) cho **cùng kết quả** ở mọi chế độ: chỉ luật, Jev trả đúng, Jev timeout, Jev trả nhãn sai / adversarial | evidence 06-10 §1 ("không phụ thuộc tầng LLM") |
 | C2 | Model không mở khóa lệnh ghi RESCHEDULE / BOOK: khung có model tham gia luôn qua câu chốt; `CONFIRM` của model chỉ dẫn tới hỏi lại; guardrail từ chối bằng chứng `FALLBACK` cho RESCHEDULE / BOOK | plan 07/10 §7.3, bảng quyền IE |
 | C3 | Model không thấy giờ khung, giờ lịch hẹn, hồ sơ; không trả `slot_id`, không trả ngày giờ chuẩn hóa. Mọi khung đọc ra chỉ từ `GET /slots` của cuộc gọi | SF-02, R-19, T-05 §8.3.2 |
-| C4 | Mỗi lượt tối đa 1 request model, trần 3 s tính từ đầu lượt (`model_budget`); lượt đã gọi model (lâm sàng) thì không gọi nữa | R-31 |
+| C4 | Mỗi lượt **một** request model; chỉ khi provider chính lỗi dịch vụ mới có request thứ hai (Luna, §4.11). Trần thời gian ở route chọn khung: Jev 1,5 s; đường dự phòng tổng ≤ 4,0 s tính từ đầu lượt (owner chốt 12-10, vẫn dưới 8 s của contract §4.1.2). Ba câu hỏi đang chạy giữ trần 3 s. Lượt đã gọi model (lâm sàng) thì không gọi nữa | contract §4.1.2, §5; owner 12-10 (PRD R-31 chỉ tham khảo) |
 | C5 | Cờ tắt (`SLOT_SEMANTIC_ENABLED=false`, mặc định) → router không chạy, hành vi từng câu bằng chỉ-luật. Cờ bật mà model lỗi / timeout / bị loại → **giữ kết quả luật**, không đi đường "model lỗi" chung (`SLOT_CONFLICT`, xóa intent), không đếm thêm §1.1.5, lượt đó không ghi thẳng | plan 07/10 §8 |
 | C6 | Không sửa `semantic_jev_v6` / prompt `semantic_v*` cho 3 câu hỏi đang chạy (eval Confirm / Cancel không phải chạy lại): tầng mới là **module riêng**, chỉ dùng chung `TypeSafeClient`, `ground`/`_grounded`, ngân sách, trace | evidence 10-10 |
 
@@ -65,8 +65,8 @@ Vòng lặp trang mơ hồ (B1, B2 ở review 12-10) cũng **không** đưa cho 
 | `old_time_span` | Model viết | Noul `drops_a_time`: "khách có bỏ / loại một giờ vừa nhắc không?" + Choice `dropped_time_span` trên cùng ứng viên (chỉ đọc khi Noul ≥ ngưỡng). Dùng để kiểm chéo `KEEP_OLD` và loại trừ, không bao giờ dùng để chọn |
 | `pick` | Số trong JSON | Choice `{"1","2"}` chỉ khi `page_size == 2`; `page_size == 1` thì `pick = 1`; chỉ đọc khi `act == PICK` |
 | Gợi ý luật trong prompt | Có (`rule_hints`) | **Không** gửi (Jev bị nội dung kéo lệch — ghi chú adapter v6) |
-| Không dấu | Route `SLOT_UNACCENTED` | Jev yếu không dấu: lớp này **giữ luật** (đã sửa §12.5), chỉ gửi kèm `transcript_glossary` khi lượt vẫn route vì lý do khác |
-| Dự phòng OpenAI | Cùng tầng | Giai đoạn 1 **không** có dự phòng cho route chọn khung (cần thêm prompt `slot_reply_v1`): Jev lỗi → luật. Giai đoạn 2 tùy số đo |
+| Không dấu | Route `SLOT_UNACCENTED` | Không có route riêng: câu không dấu mà luật đã đọc đúng (§12.5) vẫn giữ luật; câu không dấu **cần** model (route §4.1) thì gửi **Luna**, không gửi Jev (Jev yếu không dấu — evidence 10-10). §4.11 |
+| Dự phòng OpenAI | Cùng tầng | **Có** (owner chốt 12-10): Luna (`gpt-6-luna`, prompt `slot_reply_v1`) đọc câu chọn khung trong hai trường hợp — Jev lỗi dịch vụ, hoặc câu không dấu. Chi tiết §4.11 |
 
 ## 4. Thiết kế
 
@@ -80,7 +80,7 @@ Chạy **sau** `route_semantic` trả `None`, chỉ khi cờ bật, có adapter 
 - luật ra chọn rõ (`explicit_slot_pick` đúng và `_picked` có khung) — gồm "Vậy 3 giờ chiều ngày 14 cũng được", "Thế ba giờ cũng được", "Đúng rồi, 15 giờ" (qc-rs-03/04/05);
 - `SLOT_READBACK` mà luật ra AGREE / REFUSE sau veto R-41 ("Ừ, 3 giờ được", "Vâng, 3 giờ được", "Không có thì 3 giờ cũng được");
 - luật ra `MORE` / `ANY` / tiêu chí thời gian hợp lệ (kể cả NO_MATCH có tiêu chí: "Không, tôi chỉ đi được 5 giờ chiều thôi" → yêu cầu mới) / cụm bỏ (`gives_up_if_unavailable`: "Không có 5 giờ thì thôi") / báo bận có khung;
-- câu gốc không dấu (giữ luật §12.5).
+- (câu không dấu **không** còn là lý do bỏ route: route xét như câu có dấu, chỉ đổi provider sang Luna — §4.11.)
 
 | Route | Điều kiện (tính bằng luật) | Ví dụ |
 | --- | --- | --- |
@@ -88,7 +88,7 @@ Chạy **sau** `route_semantic` trả `None`, chỉ khi cờ bật, có adapter 
 | `SLOT_HEDGED_ANSWER` | Câu chốt / A/B: có tín hiệu đồng ý hoặc từ chối nhưng luật hạ UNCLEAR vì còn nội dung khác, câu hỏi đuôi, hay điều kiện ("đổi giúp tôi nhưng…", "cũng được, mà có muộn hơn chút không", "vâng nhưng…"). Model chỉ được kéo về `AMBIGUOUS` / `REFUSE` / `MORE` / `TIME`, không về đồng ý | §1.3 câu chốt |
 | `SLOT_REFUSAL_WITH_CONTENT` | Từ chối trần kèm vế kể hoàn cảnh không có khung / giờ ("không được, hôm đó tôi về quê") — luật ra A/B; model có thể ra `KEEP_OLD` (đủ điều kiện) hay `OUT_OF_SCOPE` | mới |
 
-Không có route cho câu tự sửa / loại trừ (luật + B13 xử) và câu không dấu. Mục tiêu tỷ lệ gọi ≤ 30 % lượt ở câu chọn khung (`--route-only`); Jev rẻ hơn nhưng giữ mức này để C1 và độ trễ không đổi.
+Không có route cho câu tự sửa / loại trừ (luật + B13 xử).
 
 ### 4.2 State gửi Jev (`build_slot_state`)
 
@@ -202,6 +202,7 @@ Không trường nào mang `slot_id` do model chọn; `slot_choice` sau merge ch
 | File | Việc |
 | --- | --- |
 | `extraction/slot_semantic_jev.py` (mới) | `SlotSemanticContext`, `build_slot_state`, `build_slot_questions`, `slot_time_candidates`, `JevSlotSemanticExtractor.analyze` → `SlotReading` → `ground_slot_reading`; `PROMPT_VERSION = "slot_jev_v1"` |
+| `extraction/slot_semantic_luna.py` (mới), `inference/llm/prompt/slot_reply.py` (mới) | Adapter Luna cho câu chọn khung (§4.11): prompt `slot_reply_v1`, schema `SlotReplyReading` → `SlotReading` |
 | `extraction/slot_semantic.py` (mới) | `route_slot_semantic`, `merge_slot_semantic`, `SlotAct`, hàm thuần có test |
 | `extraction/schema.py` | `ExtractionResult.slot_criteria` (B13), `slot_act`, `model_route` |
 | `extraction/extractor.py` | sau `route_semantic` → `None` và cờ bật: route → adapter (qua `invoke_model`) → merge; lỗi theo §4.7 |
@@ -210,6 +211,22 @@ Không trường nào mang `slot_id` do model chọn; `slot_choice` sau merge ch
 | `engine/settings.py`, `config/engine.yaml`, `engine/__init__.py` | `slot_semantic_enabled: false`; dựng `JevSlotSemanticExtractor` từ cùng `TypeSafeConfig`; ngưỡng dùng chung `semantic_jev_min_confidence` / `min_noul` (tách riêng nếu số đo khác) |
 | `scripts/reschedule_eval.py` | `--semantic` chạy cả tầng mới; `--route-only` đếm theo route; `--fake`, `--adversarial` (mọi `slot_act` × mọi ứng viên span) đếm ghi sai **và** hại không qua lệnh ghi (chuyển máy sai, tốn vòng, đếm "không hiểu") |
 | `tests/engine/test_mentor_eval_reschedule.py` | thêm chế độ `slot-jev` (nhãn đúng), `slot-jev-wrong` (mọi lượt trả `KEEP_OLD` / `OUT_OF_SCOPE` / `PICK 2`), `slot-timeout`; 7 case phải pass và `routed == False` ở mọi lượt |
+
+### 4.11 Provider: Jev chính, Luna dự phòng (owner chốt 12-10)
+
+Router (§4.1), bộ nhãn (§4.3), kiểm sau model (§4.4), merge (§4.5), Dialogue (§4.6), ma trận (§4.9) là **một**, dùng chung cho hai provider. Chỉ khác adapter: mỗi adapter trả cùng một `SlotReading`.
+
+| Trường hợp | Provider | Trần thời gian | Ghi chú |
+| --- | --- | --- | --- |
+| Câu có dấu (kể cả lẫn dấu, vd. "Dạ toi muon doi") | **Jev** (`slot_jev_v1`) | request 1,5 s | lẫn dấu vẫn gửi Jev kèm `transcript_glossary` |
+| Câu không dấu hoàn toàn (`is_unaccented(clean(transcript))`) | **Luna** (`slot_reply_v1`), không gọi Jev | trần lượt 3 s | Jev yếu không dấu (evidence 10-10). Câu vốn không có dấu ("khung 2 cho anh") cũng đi Luna — chỉ chậm hơn, không sai |
+| Jev lỗi dịch vụ (timeout 1,5 s, lỗi mạng / HTTP, trả hỏng) | **Luna** | tổng ≤ 4,0 s từ đầu lượt; chỉ gọi khi còn ≥ 1,5 s | như `FailoverSemanticExtractor` nhưng trần riêng cho route chọn khung |
+| Jev đã trả lời (kể cả `AMBIGUOUS`, dưới ngưỡng, bị `ground_slot_reading` loại) | không gọi Luna | — | gọi thêm lúc đó là hỏi tới khi vừa ý, không phải dự phòng |
+| Cả hai lỗi / hết giờ | luật (C5) | — | không ghi thẳng, hỏi lại theo luật |
+
+**Gate cho Luna.** Jev có xác suất để so `semantic_jev_min_confidence`; Luna không có. Schema `slot_reply_v1` bắt Luna điền thêm `decides_now` (bool) và span nguyên văn cho mọi nhãn hành động; nhãn Luna coi như đạt ngưỡng ở ma trận §4.9, nhưng các cổng không dựa xác suất vẫn giữ (`decides_now`, 3 điều kiện `KEEP_OLD`, span phải nguyên văn, `PICK ≤ page_size`, `CONFIRM` không mở khóa ghi). Không đưa giờ khung, giờ lịch hẹn, tên, SĐT vào prompt (C3).
+
+**Trace / eval.** Trace thêm `slot_provider` (`jev` / `luna` / `none`) và lý do (`unaccented` / `failover`), không có nội dung câu. Eval báo theo provider. Khóa OpenAI trong `.env` chỉ chạy `gpt-6-luna` — đúng model dự phòng này.
 
 ## 5. Đối chiếu 7 case mentor: lượt nào ở câu chọn khung, luật đi đường nào, có route không
 
@@ -252,8 +269,8 @@ Các lượt trước đó (xin giờ ở câu đọc lịch, xin cùng lượt 
 | Calibration Jev trên nhãn `slot_act` (như evidence 10-10 §"Calibration") | chọn ngưỡng riêng nếu 0,6 không hợp |
 | Eval Confirm / Cancel / Identity / No-answer; sha256 `semantic_jev_v6` | không đổi |
 | `test_mentor_eval_reschedule.py` 7 case × (rule, llm, timeout, slot-jev, slot-jev-wrong, slot-timeout) | 7/7 **và** adapter chọn khung là mock ghi lại mọi lần gọi: `calls == 0` ở mọi lượt của 7 case (chứng minh `routed == False` bằng số lần gọi, không chỉ bằng kết quả cuối) |
-| Không gọi provider dự phòng ở route chọn khung | adapter chọn khung dựng **ngoài** `FailoverSemanticExtractor` (không bọc); test: secondary mock không bao giờ được gọi khi Jev timeout ở `OFFER_SLOTS` / `SLOT_READBACK` |
-| Tối đa một request mỗi lượt | `invoke_model` dùng chung `ModelBudget`; test: lượt có route lâm sàng (`CLINICAL_UNRESOLVED`) rồi tới câu chọn khung → adapter chọn khung không được gọi (`budget.used`); lượt chọn khung thường → đúng 1 lần gọi |
+| Dự phòng đúng hai trường hợp (§4.11) | test: Jev timeout / http_error / invalid ở `OFFER_SLOTS` / `SLOT_READBACK` → Luna được gọi đúng 1 lần, kết quả đi cùng `ground_slot_reading`; Jev trả lời (kể cả `AMBIGUOUS`, bị loại khi kiểm) → Luna **không** được gọi; câu không dấu → chỉ Luna, Jev không được gọi; cả hai lỗi → kết quả luật (C5); tổng thời gian model ≤ 4,0 s |
+| Tối đa một request mỗi lượt khi không lỗi | `invoke_model` dùng chung `ModelBudget`; test: lượt có route lâm sàng (`CLINICAL_UNRESOLVED`) rồi tới câu chọn khung → adapter chọn khung không được gọi (`budget.used`); lượt chọn khung thường → đúng 1 lần gọi |
 
 ## 8. Thứ tự làm và ước lượng
 
@@ -263,18 +280,36 @@ Các lượt trước đó (xin giờ ở câu đọc lịch, xin cùng lượt 
 | 1 | Plan luật (review 12-10 §6.6): test / held-out → PR 1 (B7, B1/B2, B9, B3/B4, **B13** với `slot_criteria` + `excluded_ids`, B14) → PR 2 nếu còn thời gian (B5, B6 chỉ RESCHEDULE, B8, B10, B11) → `--baseline` + `make check`, 0 ghi sai / nhầm khung | 2,5–3 ngày (W5) |
 | 2 | Bộ held-out Jev (`heldout_slot_semantic.csv`, người chưa đọc criteria viết) — **đóng băng trước** khi viết router / criteria, không song song | 0,5 ngày |
 | 3 | `slot_semantic.py`: `SlotAct`, router, merge, kiểm sau model, ma trận §4.9, test thuần (kể cả adversarial không mạng) | 1 ngày |
-| 4 | `slot_semantic_jev.py`: state, questions, candidates, adapter; cờ; nối `extractor` / `manager` (`_slot_by_model`, §4.7); guardrail; test lỗi model riêng, test "không gọi dự phòng", "một request mỗi lượt", mentor `calls == 0` | 1,5 ngày |
-| 5 | Eval: `--route-only`, `--fake`, `--adversarial`; `--semantic` Jev 3 lần (máy có khóa); calibration; evidence theo `TEMPLATE.md` | 0,5–1 ngày |
+| 4 | `slot_semantic_jev.py`: state, questions, candidates, adapter; cờ; nối `extractor` / `manager` (`_slot_by_model`, §4.7); guardrail; test lỗi model riêng, "một request mỗi lượt", mentor `calls == 0` | 1,5 ngày |
+| 4b | `slot_semantic_luna.py` + prompt `slot_reply_v1` (schema `SlotReplyReading`, theo plan 07/10 §6–7, cùng bộ nhãn §4.3); bộ chọn provider §4.11 (không dấu → Luna; Jev lỗi → Luna trong trần 4 s); test dự phòng §7 | 1–1,5 ngày |
+| 5 | Eval: `--route-only`, `--fake`, `--adversarial`; `--semantic` 3 lần với Jev chính + Luna dự phòng (khóa Jev đã có trong `.env` local từ 12-10); eval riêng nhóm không dấu (chỉ Luna) và chế độ ép Jev lỗi (chỉ Luna); calibration Jev; evidence theo `TEMPLATE.md` | 1 ngày |
 | 6 | PR vào `main` (cờ tắt) → bật cờ trên staging → user test → owner quyết bật prod | — |
 
-Tổng ≈ 6–7 ngày công; bước 1 là PR riêng, ra trước, không phụ thuộc Jev. Bước 3–4 chỉ bắt đầu sau bước 0 và 2.
+Tổng ≈ 7,5–9,5 ngày công (luật 2,5–3 + Jev / Luna 5–6,5); bước 1 là PR riêng, ra trước, không phụ thuộc model. Bước 3–4b chỉ bắt đầu sau bước 2.
 
 ## 9. Rủi ro và điểm cần owner chốt
 
 - **Calibration chưa biết.** Confirm 10-10 cho thấy Jev calibrate kém ở bin 0,7–0,8; nhãn chọn khung chưa đo. Vì vậy mọi nhãn mở hành động (`KEEP_OLD`, `TIME`, `PICK`, `CANCEL`) đều có cổng kiểm bằng luật / dữ liệu (§4.4), và nhãn sai chỉ dẫn tới hỏi lại, không ghi.
-- **Không dấu**: giữ luật, không route; nếu tỷ lệ ASR không dấu trên prod cao thì xem lại (chưa có số).
+- **Không dấu**: câu cần model thì sang Luna (§4.11). Ba câu hỏi đang chạy (đọc lịch, hỏi nhu cầu, xác nhận hủy) **giữ nguyên** Jev + glossary: đổi sẽ làm đổi hành vi đang chạy trên `main` và phải chạy lại eval Confirm / Cancel. Khóa Jev đã có trong `.env` local (12-10): đo riêng nhóm không dấu của hai eval đó (Jev vs Luna) rồi mới quyết có mở rộng hay không. Chưa có số tỷ lệ ASR không dấu trên prod; ở audio mode STT thường trả có dấu nên nhóm này chủ yếu đến từ text mode / eval.
 - **Hai quyết định nghiệp vụ — owner đã chốt 12-10 (tối), không còn chặn bước 3–4:**
   1. **"Để tôi hỏi vợ rồi gọi lại"** (khách tự hoãn quyết định): **ngoài phạm vi** — không thiết kế nhãn / route riêng, không bắt buộc có trong held-out; ưu tiên các ca quan trọng.
   2. **R075 "tôi đổi ý"** ở câu chọn khung: là **đổi ý định**, không phải yêu cầu đổi lịch, cũng không phải "giữ lịch cũ + chuyển máy". Xử lý bằng **luật** (review 12-10 B15): câu chỉ có cụm đổi ý → bỏ hành động đổi lịch (không ghi), quay lại câu hỏi lịch cũ như `_abandon` ("Lịch cũ của anh chị vẫn giữ nguyên… anh chị đến được không ạ?"); câu có vế sau thì vế sau quyết định ("tôi đổi ý, lấy khung 2" → chọn khung; "tôi đổi ý, hủy luôn" → hủy, vẫn cần xác nhận lần hai). Khớp ca contract R164 trong `eval/reschedule/cases2.csv` ("Tôi đổi ý, giữ lịch… xác nhận tôi sẽ đến" → `CONFIRMED` sau khi đọc lại lịch cũ). Nhãn eval R075 đổi từ `TRANSFER:PATIENT_REQUEST` sang nhãn mới "quay lại lịch cũ" (thêm vào `_observe`). Model không cần đọc câu này.
 - **Bật ở đâu trước**: đề xuất staging với cờ bật 1 tuần, đọc trace `slot_act` / route / latency, rồi mới prod.
 - **Chi phí**: Jev tính theo request; tỷ lệ route ≤ 30 % lượt ở câu chọn khung ≈ thêm ~0,3 request / cuộc gọi đổi lịch.
+
+## 10. Triển khai 12-10 — chỗ lệch so với thiết kế (đo trên held-out trước khi chốt)
+
+Code: `extraction/slot_semantic.py` (router, kiểm, ma trận, chọn provider, merge), `slot_semantic_jev.py`, `slot_semantic_luna.py` + `inference/llm/prompt/slot_reply.py`, `dialogue/manager.py` (`_slot_by_model`), `policy/guardrails.py`, cờ `slot_semantic_enabled` (mặc định tắt). Test `tests/engine/test_slot_semantic.py`. Evidence chung với PR 1: `docs/evidence/t10-reschedule-ambiguity-2026-10-12.md`.
+
+| Thiết kế | Triển khai | Vì sao |
+| --- | --- | --- |
+| §4.3 Noul `decides_now` gate PICK / TIME / MORE / ANY | **Bỏ khỏi request Jev**; Luna vẫn trả `decides_now` | Held-out 12-10: Noul ra 0,03–0,18 ở mọi câu, kể cả câu chọn dứt khoát (ANY 0,95, PICK 0,91) — chỉ chặn nhầm. Do dự đã là nhãn AMBIGUOUS (1,0 ở mọi câu do dự) |
+| §4.3 `drops_a_time` + `dropped_time_span`; `KEEP_OLD` nhận thẳng khi đủ 3 điều kiện | **Không hỏi**; `KEEP_OLD` của model luôn thành câu A/B | Câu có cụm giữ / bỏ của luật đã do luật xử lý và không route tới model, nên điều kiện 1 gần như không bao giờ đạt. A/B là lựa chọn không đoán (§1.1.5) |
+| §4.9 dòng 2: `OUT_OF_SCOPE` cần intent + act | Thêm: act `OUT_OF_SCOPE` của Jev ≥ 0,9 mà câu intent không chọn thì vẫn là ngoài phạm vi | Held-out S023 "lịch này ai đặt cho tôi vậy tôi có đặt đâu": act 1,0, intent NONE 0,64 |
+| §4.7 đường lỗi chỉ cho route chọn khung | **Mọi** lượt model lỗi ở 4 câu chọn khung (cả route lâm sàng cũ) đi nhánh luật, không ghi thẳng | Eval `--route-only` R122 "lay cai dau" ("dau" đọc thành "đau" → route lâm sàng → model lỗi → "đồng ý với khung vừa đọc không" sau trang 2 khung). Sau sửa `--route-only` = `--baseline` từng câu |
+| §4.11 timeout Luna 2,5 s | **3,0 s** (trần cả route vẫn 4 s) | Lượt Luna đầu tiên (cold) 2,7 s; các lượt sau 1,5–1,9 s |
+| §4.1 route `SLOT_REFUSAL_WITH_CONTENT` | Giữ | "không được, cái đó không hợp với tôi đâu em" → model đọc REFUSE / CANCEL / OUT_OF_SCOPE |
+
+Luật sửa thêm khi chạy held-out (không phụ thuộc model): "cái sớm hơn / cái muộn hơn" là chỉ khung 1 / 2 ("sớm hơn" trần vẫn là xin khung khác, R033 / R034); ở câu chốt và câu mời, lệnh hủy rõ của luật ("…xóa lịch giúp tôi") thắng lời từ chối khung (vẫn hỏi xác nhận hủy lần hai), trừ câu báo bận.
+
+Còn lại có chủ đích: "thôi bỏ luôn lịch khám đó cho tôi" (held-out S021) — luật đọc là bỏ đổi lịch → `PATIENT_REQUEST`; "bỏ lịch" chưa là cụm hủy của luật, sửa ở luật ý định (ngoài phạm vi đợt này).

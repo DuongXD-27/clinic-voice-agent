@@ -22,6 +22,9 @@ from callbot.engine.extraction.name_slot_filling import NameSlotFiller
 from callbot.engine.extraction.semantic import LLMSemanticExtractor, SemanticExtractor
 from callbot.engine.extraction.semantic_failover import FailoverSemanticExtractor
 from callbot.engine.extraction.semantic_jev import JevSemanticExtractor
+from callbot.engine.extraction.slot_semantic import SlotSemanticReader
+from callbot.engine.extraction.slot_semantic_jev import JevSlotSemanticExtractor
+from callbot.engine.extraction.slot_semantic_luna import LunaSlotSemanticExtractor
 from callbot.engine.orchestrator import CallOrchestrator, Tracer
 from callbot.engine.policy import PolicyEngine
 from callbot.engine.session import RedisSessionStore, SessionManager, SessionStore
@@ -136,6 +139,38 @@ def _openai_semantic(settings: EngineSettings) -> Optional[LLMSemanticExtractor]
     )
 
 
+def _slot_semantic_reader(settings: EngineSettings) -> Optional[SlotSemanticReader]:
+    """Tầng model của câu chọn khung (plan t10-slot-semantic-jev-2026-10-12.md §4.11): Jev chính, Luna
+    khi câu không dấu hoặc Jev lỗi dịch vụ. Tắt cờ hoặc thiếu cả hai khóa: chỉ-luật."""
+    if not settings.slot_semantic_enabled:
+        return None
+    jev = None
+    try:
+        typesafe = TypeSafeConfig(timeout_s=settings.slot_semantic_jev_timeout_s)
+        jev = JevSlotSemanticExtractor(
+            TypeSafeClient(typesafe),
+            min_confidence=settings.semantic_jev_min_confidence,
+        )
+    except ValidationError:
+        logger.warning("Tầng chọn khung: thiếu TYPESAFE_API_KEY, không dùng được jev")
+    luna = None
+    try:
+        config = OpenAIConfig(
+            model=settings.semantic_openai_model,
+            timeout_s=settings.slot_semantic_luna_timeout_s,
+            max_completion_tokens=settings.semantic_openai_max_tokens,
+        )
+        luna = LunaSlotSemanticExtractor(
+            create_gateway("openai", config=config),
+            max_completion_tokens=settings.semantic_openai_max_tokens,
+        )
+    except ValidationError:
+        logger.warning("Tầng chọn khung: thiếu OPENAI_API_KEY, không có dự phòng Luna")
+    if jev is None and luna is None:
+        return None
+    return SlotSemanticReader(jev, luna, budget_s=settings.slot_semantic_budget_s)
+
+
 _SEMANTIC_PROVIDERS: dict[str, Callable[[EngineSettings], Optional[SemanticExtractor]]] = {
     "jev": _jev_semantic,
     "openai": _openai_semantic,
@@ -162,6 +197,7 @@ def create_orchestrator(
             name_fallback=name_fallback is not None,
             semantic=_semantic_extractor(settings),
             cancel_semantic_confirm=settings.cancel_semantic_confirm_enabled,
+            slot_semantic=_slot_semantic_reader(settings),
         ),
         policy=PolicyEngine(settings),
         dialogue=DialogueManager(gateway, IdentityVerifier(gateway)),

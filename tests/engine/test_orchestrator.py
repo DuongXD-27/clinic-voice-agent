@@ -195,11 +195,14 @@ def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
     bot.start_call(_outbound("c_ambiguous"))
     _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
 
+    # "buổi chiều" khớp 14:30 (trên trang) và 16:00 (ngoài trang): chọn khung chiều duy nhất trên trang
+    # vừa đọc, không phải khung đầu trang (10:00). Chỉ nêu buổi nên đọc câu chốt, không ghi (review 12-10 B7)
     action = _run(bot, "c_ambiguous", ["buổi chiều"], start=4)
-    assert action.state == "OFFERING_SLOTS"
+    assert action.state == "AWAITING_CONFIRMATION"
     ctx = _context(bot, "c_ambiguous")
-    assert ctx.presented_slot_ids == ["slot_91d2", "slot_cc03"]
-    assert ctx.selected_slot_id is None and ctx.failed_understandings == 0
+    assert ctx.presented_slot_ids == ["slot_aa01", "slot_91d2"]
+    assert ctx.selected_slot_id == "slot_91d2" and ctx.failed_understandings == 0
+    assert clinic.writes == []
 
 
 def test_refusing_slots_drops_pending_action_without_writing() -> None:

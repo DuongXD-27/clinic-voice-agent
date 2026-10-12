@@ -1047,6 +1047,18 @@ def gives_up_slot_change(transcript: str) -> bool:
     return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
 
 
+# Đổi ý định giữa luồng chọn khung ("tôi đổi ý"): khách bỏ việc đang làm nhưng chưa nói muốn gì thay.
+_CHANGE_OF_MIND = compile_phrases(["đổi ý", "đổi ý định", "thay đổi ý định"])
+
+
+def changes_mind(transcript: str) -> bool:
+    """ "tôi đổi ý", "thôi tôi đổi ý rồi": đổi ý định, không phải yêu cầu đổi lịch (owner 12-10, B15).
+
+    Chỉ là có cụm; câu còn nêu khung / giờ / ý định khác thì Dialogue đi theo phần đó.
+    """
+    return find_phrase(clean(transcript), _CHANGE_OF_MIND) is not None
+
+
 def asks_to_keep(transcript: str) -> bool:
     """Câu có lời giữ lịch ("giữ lịch giúp tôi", "vẫn giữ nguyên")."""
     return find_phrase(clean(transcript), _KEEP) is not None

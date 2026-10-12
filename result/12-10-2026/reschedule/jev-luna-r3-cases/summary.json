@@ -1,0 +1,598 @@
+{
+  "label": "jev-luna-r3-cases",
+  "mode": "semantic",
+  "today": "2026-09-29T10:00:00+07:00",
+  "model": "jev-1.13.0",
+  "repeats": 3,
+  "ran_at": "2026-10-12T13:24:18+00:00",
+  "runs": [
+    {
+      "cases": 185,
+      "failed_cases": 5,
+      "holdout_cases": 135,
+      "holdout_passed": 130,
+      "holdout_accuracy": 0.963,
+      "rule_cases": 115,
+      "rule_passed": 110,
+      "inference_cases": 20,
+      "inference_passed": 20,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 0,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "ambiguous_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "exclusion": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_on_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 8,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 10,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 2,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 1
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 1,
+      "slot_calls": 11,
+      "slot_routes": {
+        "SLOT_UNRESOLVED": 3,
+        "SLOT_REFUSAL_WITH_CONTENT": 4,
+        "SLOT_HEDGED_ANSWER": 4
+      },
+      "slot_providers": {
+        "jev:": 11
+      },
+      "slot_statuses": {
+        "accepted": 11
+      },
+      "slot_latency_ms": {
+        "n": 11,
+        "p50": 583.0,
+        "p95": 856.9,
+        "max": 856.9
+      },
+      "model_statuses": {
+        "accepted": 1
+      },
+      "turn_latency_ms": {
+        "n": 185,
+        "p50": 3.9,
+        "p95": 569.1,
+        "max": 863.0
+      },
+      "failures": [
+        {
+          "id": "R101",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R102",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "đầu tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R105",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ 5 hoặc thứ 6",
+          "needs_inference": false,
+          "expect": "NEW_TIME:01/10|02/10",
+          "observed": "PICK:2",
+          "observed_dates": "15/10",
+          "observed_full_day": "",
+          "utterance": "Em xác nhận đổi lịch sang 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10, tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
+        },
+        {
+          "id": "R109",
+          "group": "relative_date",
+          "question_id": "SLOT_READBACK",
+          "transcript": "không, tháng sau đi",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R142",
+          "group": "today",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ ba",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Hôm nay là thứ Ba ngày 29 tháng 9. Anh chị muốn đổi sang hôm nay hay thứ Ba tuần sau ạ?"
+        }
+      ]
+    },
+    {
+      "cases": 185,
+      "failed_cases": 5,
+      "holdout_cases": 135,
+      "holdout_passed": 130,
+      "holdout_accuracy": 0.963,
+      "rule_cases": 115,
+      "rule_passed": 110,
+      "inference_cases": 20,
+      "inference_passed": 20,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 0,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "ambiguous_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "exclusion": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_on_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 8,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 10,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 2,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 1
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 1,
+      "slot_calls": 11,
+      "slot_routes": {
+        "SLOT_UNRESOLVED": 3,
+        "SLOT_REFUSAL_WITH_CONTENT": 4,
+        "SLOT_HEDGED_ANSWER": 4
+      },
+      "slot_providers": {
+        "jev:": 11
+      },
+      "slot_statuses": {
+        "accepted": 11
+      },
+      "slot_latency_ms": {
+        "n": 11,
+        "p50": 561.5,
+        "p95": 615.7,
+        "max": 615.7
+      },
+      "model_statuses": {
+        "accepted": 1
+      },
+      "turn_latency_ms": {
+        "n": 185,
+        "p50": 3.7,
+        "p95": 547.3,
+        "max": 620.2
+      },
+      "failures": [
+        {
+          "id": "R101",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R102",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "đầu tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R105",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ 5 hoặc thứ 6",
+          "needs_inference": false,
+          "expect": "NEW_TIME:01/10|02/10",
+          "observed": "PICK:2",
+          "observed_dates": "15/10",
+          "observed_full_day": "",
+          "utterance": "Em xác nhận đổi lịch sang 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10, tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
+        },
+        {
+          "id": "R109",
+          "group": "relative_date",
+          "question_id": "SLOT_READBACK",
+          "transcript": "không, tháng sau đi",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R142",
+          "group": "today",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ ba",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Hôm nay là thứ Ba ngày 29 tháng 9. Anh chị muốn đổi sang hôm nay hay thứ Ba tuần sau ạ?"
+        }
+      ]
+    },
+    {
+      "cases": 185,
+      "failed_cases": 5,
+      "holdout_cases": 135,
+      "holdout_passed": 130,
+      "holdout_accuracy": 0.963,
+      "rule_cases": 115,
+      "rule_passed": 110,
+      "inference_cases": 20,
+      "inference_passed": 20,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 0,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "ambiguous_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "exclusion": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_on_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 8,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 10,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 2,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 1
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 1,
+      "slot_calls": 11,
+      "slot_routes": {
+        "SLOT_UNRESOLVED": 3,
+        "SLOT_REFUSAL_WITH_CONTENT": 4,
+        "SLOT_HEDGED_ANSWER": 4
+      },
+      "slot_providers": {
+        "jev:": 11
+      },
+      "slot_statuses": {
+        "accepted": 11
+      },
+      "slot_latency_ms": {
+        "n": 11,
+        "p50": 585.7,
+        "p95": 650.1,
+        "max": 650.1
+      },
+      "model_statuses": {
+        "accepted": 1
+      },
+      "turn_latency_ms": {
+        "n": 185,
+        "p50": 3.7,
+        "p95": 557.3,
+        "max": 655.0
+      },
+      "failures": [
+        {
+          "id": "R101",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R102",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "đầu tháng sau",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R105",
+          "group": "relative_date",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ 5 hoặc thứ 6",
+          "needs_inference": false,
+          "expect": "NEW_TIME:01/10|02/10",
+          "observed": "PICK:2",
+          "observed_dates": "15/10",
+          "observed_full_day": "",
+          "utterance": "Em xác nhận đổi lịch sang 10 giờ 30 sáng, thứ Năm ngày 15 tháng 10, tại Vinmec Times City. Anh chị đồng ý chứ ạ?"
+        },
+        {
+          "id": "R109",
+          "group": "relative_date",
+          "question_id": "SLOT_READBACK",
+          "transcript": "không, tháng sau đi",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị muốn đổi sang ngày nào cụ thể ạ?"
+        },
+        {
+          "id": "R142",
+          "group": "today",
+          "question_id": "OFFER_SLOTS",
+          "transcript": "thứ ba",
+          "needs_inference": false,
+          "expect": "ASK_DATE",
+          "observed": "ASK_DAY",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Hôm nay là thứ Ba ngày 29 tháng 9. Anh chị muốn đổi sang hôm nay hay thứ Ba tuần sau ạ?"
+        }
+      ]
+    }
+  ]
+}

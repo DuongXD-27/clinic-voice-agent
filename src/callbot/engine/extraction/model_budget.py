@@ -21,14 +21,21 @@ class ModelBudget:
         self.model = "test-double"
         self.latency_ms = 0.0
 
-    def run(self, adapter: Any, operation: Callable[[], Any]) -> Any:
+    def run(
+        self, adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+    ) -> Any:
+        """`timeout_s`: trần riêng của route (route chọn khung có đường dự phòng 4 s — plan Jev §4.11);
+        mặc định trần chung 3 s, hoặc timeout của gateway nếu ngắn hơn."""
         if self.used:
             return None
         self.used = True
         gateway = getattr(adapter, "_gateway", None)
         self.model = getattr(gateway, "model", "test-double")
-        config = getattr(getattr(gateway, "_provider", None), "_config", None)
-        timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
+        if timeout_s is not None:
+            timeout = timeout_s
+        else:
+            config = getattr(getattr(gateway, "_provider", None), "_config", None)
+            timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
         started = monotonic()
         result: Queue[tuple[Any, str | None]] = Queue(maxsize=1)
         if not _workers.acquire(blocking=False):
@@ -68,9 +75,11 @@ def model_turn() -> Iterator[ModelBudget]:
         _current.reset(token)
 
 
-def invoke_model(adapter: Any, operation: Callable[[], Any]) -> Any:
+def invoke_model(
+    adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+) -> Any:
     budget = _current.get()
-    return operation() if budget is None else budget.run(adapter, operation)
+    return operation() if budget is None else budget.run(adapter, operation, timeout_s=timeout_s)
 
 
 def model_used() -> bool:
