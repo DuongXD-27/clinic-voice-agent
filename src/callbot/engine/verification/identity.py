@@ -84,9 +84,10 @@ class MatchDetail(str, Enum):
 # Sai một yếu tố "gần" hơn sai cả hai — chỉ để chọn detail đại diện khi 0 khớp
 _MISMATCH_RANK = {
     MatchDetail.DOB_MISMATCH: 0,
-    MatchDetail.NAME_MISMATCH: 1,
-    MatchDetail.BOTH_MISMATCH: 2,
-    MatchDetail.RECORD_UNVERIFIABLE: 3,
+    MatchDetail.NAME_SUSPICIOUS: 1,
+    MatchDetail.NAME_MISMATCH: 2,
+    MatchDetail.BOTH_MISMATCH: 3,
+    MatchDetail.RECORD_UNVERIFIABLE: 4,
 }
 
 

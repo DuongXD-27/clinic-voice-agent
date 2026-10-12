@@ -28,6 +28,7 @@ from callbot.engine.policy.sources import SourceRegistry
 from callbot.engine.policy.utterances import RENDERERS, bind_ledger, renderer
 from callbot.engine.session.context import CallContext
 from callbot.engine.types import BotAction
+from callbot.engine.verification.identity import IdentityVerifier, MatchDetail
 from callbot.engine.verification.names import NameMatch, compare_names
 from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_confirm_dialogue import _at_readback, _context
@@ -157,6 +158,14 @@ def test_dob_before_name_counts_as_understood_and_keeps_the_name_retry():
     assert _context(bot, "dob_first").identity_retries == {"ASK_NAME": 1}
     verified = bot.handle_turn("dob_first", CallerInput(3, text="Nguyễn Văn A"))
     assert verified.state == "AWAITING_INTENT"
+
+
+def test_trace_reason_prefers_the_closest_inbound_record():
+    """Nhiều hồ sơ cùng số: lý do đại diện là hồ sơ gần khớp nhất, lệch dấu gần hơn sai hẳn tên."""
+    details = [(MatchDetail.BOTH_MISMATCH, {}), (MatchDetail.NAME_SUSPICIOUS, {})]
+    assert IdentityVerifier._representative(details) is MatchDetail.NAME_SUSPICIOUS
+    details.append((MatchDetail.DOB_MISMATCH, {}))
+    assert IdentityVerifier._representative(details) is MatchDetail.DOB_MISMATCH
 
 
 def test_tone_mismatch_is_not_compared_before_dob_and_never_authenticates(monkeypatch):

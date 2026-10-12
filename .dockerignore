@@ -15,6 +15,8 @@ traces.jsonl
 tests
 docs
 clinic-mock
+# Release TTS cũ, giữ trong repo để rollback; image chỉ chở release đang chọn trong config/tts_static.yaml
+assets/tts/static/2026-10-08-v1
 # UI: stage Node tự `npm ci` trên Linux; node_modules Windows không chạy được trong image
 ui/node_modules
 ui/dist

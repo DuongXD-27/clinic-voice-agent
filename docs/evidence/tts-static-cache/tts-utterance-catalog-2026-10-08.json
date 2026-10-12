@@ -2,7 +2,7 @@
   "schema_version": 1,
   "export_date": "2026-10-08",
   "owner": "Hưng",
-  "source_revision": "685acc7",
+  "source_revision": "73f6b9d",
   "template_sha256": "f40f65d38bc69c1798474c0f664db0622e9d4d97ff848c4825ff88b0051b8bb0",
   "counts": {
     "static_unique_texts": 77,
@@ -186,9 +186,9 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:456",
-        "src/callbot/engine/dialogue/manager.py:515",
-        "src/callbot/engine/dialogue/manager.py:991"
+        "src/callbot/engine/dialogue/manager.py:459",
+        "src/callbot/engine/dialogue/manager.py:518",
+        "src/callbot/engine/dialogue/manager.py:994"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -215,7 +215,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:684"
+        "src/callbot/engine/dialogue/manager.py:687"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -242,7 +242,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:692"
+        "src/callbot/engine/dialogue/manager.py:695"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -269,7 +269,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1065"
+        "src/callbot/engine/dialogue/manager.py:1068"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -296,9 +296,9 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1038",
-        "src/callbot/engine/dialogue/manager.py:1080",
-        "src/callbot/engine/dialogue/manager.py:821"
+        "src/callbot/engine/dialogue/manager.py:1041",
+        "src/callbot/engine/dialogue/manager.py:1083",
+        "src/callbot/engine/dialogue/manager.py:824"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -325,7 +325,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1426"
+        "src/callbot/engine/dialogue/manager.py:1429"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -356,7 +356,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:456"
+        "src/callbot/engine/dialogue/manager.py:459"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -393,7 +393,7 @@
       "cache_policy": "FINITE_BRANCHES_DEFERRED",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1231"
+        "src/callbot/engine/dialogue/manager.py:1234"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -435,7 +435,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:576"
+        "src/callbot/engine/dialogue/manager.py:579"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -472,7 +472,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:515"
+        "src/callbot/engine/dialogue/manager.py:518"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -509,7 +509,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:824"
+        "src/callbot/engine/dialogue/manager.py:827"
       ],
       "success_outcome": "BOOKED",
       "discloses": true,
@@ -542,7 +542,7 @@
       "cache_policy": "REUSE_STATIC_ASSET",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:928"
+        "src/callbot/engine/dialogue/manager.py:931"
       ],
       "success_outcome": "CANCELLED",
       "discloses": false,
@@ -573,7 +573,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:629"
+        "src/callbot/engine/dialogue/manager.py:632"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -610,7 +610,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:503"
+        "src/callbot/engine/dialogue/manager.py:506"
       ],
       "success_outcome": "CONFIRMED",
       "discloses": true,
@@ -643,7 +643,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:991"
+        "src/callbot/engine/dialogue/manager.py:994"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -683,7 +683,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1122"
+        "src/callbot/engine/dialogue/manager.py:1125"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -736,7 +736,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:823"
+        "src/callbot/engine/dialogue/manager.py:826"
       ],
       "success_outcome": "RESCHEDULED",
       "discloses": true,
@@ -800,7 +800,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1151"
+        "src/callbot/engine/dialogue/manager.py:1154"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -849,8 +849,8 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1172",
-        "src/callbot/engine/dialogue/manager.py:831"
+        "src/callbot/engine/dialogue/manager.py:1175",
+        "src/callbot/engine/dialogue/manager.py:834"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -891,7 +891,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:831"
+        "src/callbot/engine/dialogue/manager.py:834"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -929,8 +929,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:507",
-        "src/callbot/engine/dialogue/manager.py:589"
+        "src/callbot/engine/dialogue/manager.py:510",
+        "src/callbot/engine/dialogue/manager.py:592"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -961,8 +961,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:507",
-        "src/callbot/engine/dialogue/manager.py:589"
+        "src/callbot/engine/dialogue/manager.py:510",
+        "src/callbot/engine/dialogue/manager.py:592"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -995,8 +995,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:507",
-        "src/callbot/engine/dialogue/manager.py:589"
+        "src/callbot/engine/dialogue/manager.py:510",
+        "src/callbot/engine/dialogue/manager.py:592"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1027,7 +1027,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1058,7 +1058,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1089,7 +1089,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1120,7 +1120,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1213,9 +1213,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1246,9 +1246,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1279,9 +1279,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1312,7 +1312,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1343,7 +1343,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1376,7 +1376,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:439"
+        "src/callbot/engine/dialogue/manager.py:442"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1407,7 +1407,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:439"
+        "src/callbot/engine/dialogue/manager.py:442"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1438,7 +1438,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:439"
+        "src/callbot/engine/dialogue/manager.py:442"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1469,7 +1469,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1500,7 +1500,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1531,7 +1531,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:315"
+        "src/callbot/engine/dialogue/manager.py:318"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1562,7 +1562,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1593,7 +1593,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1624,7 +1624,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:418"
+        "src/callbot/engine/dialogue/manager.py:421"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1688,9 +1688,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1721,9 +1721,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1754,9 +1754,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:340",
-        "src/callbot/engine/dialogue/manager.py:342",
-        "src/callbot/engine/dialogue/manager.py:415"
+        "src/callbot/engine/dialogue/manager.py:343",
+        "src/callbot/engine/dialogue/manager.py:345",
+        "src/callbot/engine/dialogue/manager.py:418"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1787,7 +1787,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1818,7 +1818,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1849,7 +1849,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1882,7 +1882,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1913,7 +1913,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1944,7 +1944,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:913"
+        "src/callbot/engine/dialogue/manager.py:916"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1977,7 +1977,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "BOOKED",
@@ -2009,7 +2009,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:985"
+        "src/callbot/engine/dialogue/manager.py:988"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2040,7 +2040,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:985"
+        "src/callbot/engine/dialogue/manager.py:988"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2073,7 +2073,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:985"
+        "src/callbot/engine/dialogue/manager.py:988"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2104,7 +2104,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "CANCELLED",
@@ -2136,8 +2136,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:946",
-        "src/callbot/engine/dialogue/manager.py:958"
+        "src/callbot/engine/dialogue/manager.py:949",
+        "src/callbot/engine/dialogue/manager.py:961"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2169,7 +2169,7 @@
       "selection": "REGISTERED_FIXED",
       "source_references": [
         "src/callbot/engine/dialogue/manager.py:266",
-        "src/callbot/engine/dialogue/manager.py:942"
+        "src/callbot/engine/dialogue/manager.py:945"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2200,7 +2200,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:952"
+        "src/callbot/engine/dialogue/manager.py:955"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2231,7 +2231,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:629"
+        "src/callbot/engine/dialogue/manager.py:632"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2262,7 +2262,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "CONFIRMED",
@@ -2326,7 +2326,7 @@
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
         "src/callbot/engine/dialogue/manager.py:187",
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2359,7 +2359,7 @@
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
         "src/callbot/engine/dialogue/manager.py:187",
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2392,7 +2392,7 @@
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
         "src/callbot/engine/dialogue/manager.py:187",
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2424,8 +2424,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:320",
-        "src/callbot/engine/dialogue/manager.py:330"
+        "src/callbot/engine/dialogue/manager.py:323",
+        "src/callbot/engine/dialogue/manager.py:333"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2456,8 +2456,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:320",
-        "src/callbot/engine/dialogue/manager.py:330"
+        "src/callbot/engine/dialogue/manager.py:323",
+        "src/callbot/engine/dialogue/manager.py:333"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2488,8 +2488,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:320",
-        "src/callbot/engine/dialogue/manager.py:330"
+        "src/callbot/engine/dialogue/manager.py:323",
+        "src/callbot/engine/dialogue/manager.py:333"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2708,7 +2708,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:431"
+        "src/callbot/engine/dialogue/manager.py:434"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2739,7 +2739,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:322"
+        "src/callbot/engine/dialogue/manager.py:325"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2770,7 +2770,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:322"
+        "src/callbot/engine/dialogue/manager.py:325"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2803,7 +2803,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:322"
+        "src/callbot/engine/dialogue/manager.py:325"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2834,7 +2834,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1284"
+        "src/callbot/engine/dialogue/manager.py:1287"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2865,7 +2865,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1284"
+        "src/callbot/engine/dialogue/manager.py:1287"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2896,7 +2896,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1284"
+        "src/callbot/engine/dialogue/manager.py:1287"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2927,7 +2927,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1042"
+        "src/callbot/engine/dialogue/manager.py:1045"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2958,7 +2958,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "RESCHEDULED",
@@ -2990,7 +2990,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1277"
+        "src/callbot/engine/dialogue/manager.py:1280"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3084,7 +3084,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1216"
+        "src/callbot/engine/dialogue/manager.py:1219"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3115,7 +3115,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1216"
+        "src/callbot/engine/dialogue/manager.py:1219"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3146,7 +3146,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1193"
+        "src/callbot/engine/dialogue/manager.py:1196"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3177,7 +3177,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1193"
+        "src/callbot/engine/dialogue/manager.py:1196"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3208,7 +3208,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1216"
+        "src/callbot/engine/dialogue/manager.py:1219"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3239,7 +3239,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1216"
+        "src/callbot/engine/dialogue/manager.py:1219"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3270,7 +3270,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1042"
+        "src/callbot/engine/dialogue/manager.py:1045"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3301,7 +3301,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1277"
+        "src/callbot/engine/dialogue/manager.py:1280"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3333,7 +3333,7 @@
       "selection": "REGISTERED_FIXED",
       "source_references": [
         "src/callbot/engine/dialogue/manager.py:142",
-        "src/callbot/engine/dialogue/manager.py:928",
+        "src/callbot/engine/dialogue/manager.py:931",
         "src/callbot/engine/orchestrator.py:60",
         "src/callbot/engine/policy/output_guard.py:262"
       ],

@@ -132,6 +132,69 @@ def test_dob_before_name_is_kept_and_only_name_is_asked() -> None:
     _assert_no_disclosure(actions)
 
 
+@pytest.mark.parametrize(
+    "lines",
+    [
+        ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A, sinh 14/3/1978"],
+        ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A", DOB],
+        ["Nguyễn Văn B", "a nham, toi la Nguyen Van A", DOB],  # ASR mất dấu
+        # Câu bị đọc nhầm thành tên, lượt sau tự giới thiệu tên thật
+        ["đường dây bận", "tôi là Nguyễn Văn A", DOB],
+    ],
+)
+def test_name_corrected_while_asking_dob_replaces_the_earlier_name(lines) -> None:
+    """R-44: chưa đối chiếu gì nên lời tự sửa tên ở lượt hỏi ngày sinh đè tên trước."""
+    actions, clinic = _call(_outbound("c_fix_name"), lines)
+    assert all(not action.ended for action in actions[1:])
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+def test_name_correction_alone_spends_the_dob_retry() -> None:
+    """Đè tên đã có không phải điền trường thiếu: lượt đó vẫn dùng lượt hỏi lại ngày sinh (R-40)."""
+    lines = ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A", "hình như 14/3/1978"]
+    actions, _ = _call(_outbound("c_fix_name_retry"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+def test_dob_corrected_while_asking_name_replaces_the_earlier_dob() -> None:
+    actions, clinic = _call(_outbound("c_fix_dob"), ["sinh 15/3/1978", "à nhầm, 14/3/1978", NAME])
+    assert actions[1].utterance == t.ASK_NAME_AFTER_DOB and not actions[2].ended
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        DOB,
+        "Ngày 14 tháng 3 năm 1978 ạ, chị Hoa",
+        "15/3, à không, 14/3/1978",
+        "bà sinh ngày 14/3/1978",
+    ],
+)
+def test_dob_answer_without_self_naming_never_replaces_the_name(answer) -> None:
+    actions, _ = _call(_outbound("c_keep_name"), [NAME, answer])
+    assert actions[-1].state == "AWAITING_INTENT"
+
+
+def test_bare_name_while_asking_dob_is_not_read_as_a_correction() -> None:
+    """Giới hạn đã chốt: ở lượt hỏi ngày sinh chỉ đọc tên khi có tín hiệu tự sửa / tự giới thiệu, để
+    câu khác không thành tên đè lên tên đúng. Tên nói trơn không đè tên trước."""
+    actions, _ = _call(_outbound("c_bare_name"), ["Nguyễn Văn B", NAME, DOB])
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "IDENTITY_FAILED")
+    assert actions[3].utterance == t.IDENTITY_FAILED_TRANSFER
+
+
+def test_wrong_name_then_unclear_dob_twice_is_not_understood() -> None:
+    """R-40: ngày sinh không chắc hai lần là chưa hiểu, chưa đối chiếu nên không phải IDENTITY_FAILED."""
+    lines = ["Nguyễn Văn B", "hình như 14/3/1978", "hình như 14/3/1978"]
+    actions, _ = _call(_outbound("c_unclear_dob"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
 def test_wrong_identity_transfers_at_once_without_saying_which_field() -> None:
     actions, clinic = _call(_outbound("c_wrong"), ["Nguyễn Văn A, sinh ngày 15/03/1978"])
     _ended(actions[-1], "TRANSFERRED", "IDENTITY_FAILED")
@@ -373,7 +436,7 @@ def test_identity_question_free_pass_is_per_call_not_per_field() -> None:
 
 def test_a_greeting_while_asking_dob_uses_the_single_retry() -> None:
     actions, _ = _call(_outbound("c_alo_dob"), [NAME, "alo", "tôi không rõ"])
-    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
@@ -458,7 +521,7 @@ def test_cannot_provide_twice_is_identity_failed() -> None:
     actions, clinic = _call(
         _outbound("c_declined"), [NAME, "tôi không nhớ ngày sinh", "không nhớ thật mà"]
     )
-    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
 

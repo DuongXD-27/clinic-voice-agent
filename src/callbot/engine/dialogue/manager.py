@@ -289,18 +289,21 @@ class DialogueManager:
 
         Tên và ngày sinh chỉ được đối chiếu khi đã có đủ cả hai (`_verify`), kể cả tên lệch dấu
         thanh: chuyển máy hay hỏi lại ngay khi nghe tên, hoặc hỏi sang ngày sinh sau khi tên đúng,
-        đều cho người gọi biết yếu tố nào sai hay gần đúng (§1.1.2).
+        đều cho người gọi biết yếu tố nào sai hay gần đúng (§1.1.2). Giá trị nói sau đè giá trị trước
+        (R-44, "à nhầm, tôi là ..."): chưa đối chiếu nên đè không cho người gọi tín hiệu gì để dò.
+        Chỉ điền được trường còn thiếu mới tính là hiểu; đè trường đã có thì không, để nhắc lại mãi
+        cùng một giá trị vẫn hết lượt hỏi lại.
         """
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
         self._keep_early_request(ctx, ex)
         progressed = False
-        if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
+        if name.status is IdentityStatus.PRESENT:
+            progressed = progressed or ctx.claimed_name is None
             ctx.claimed_name = name.value
-            progressed = True
-        if ctx.claimed_dob is None and dob.status is IdentityStatus.PRESENT:
+        if dob.status is IdentityStatus.PRESENT:
+            progressed = progressed or ctx.claimed_dob is None
             ctx.claimed_dob = dob.value
-            progressed = True
         if ctx.claimed_name is not None and ctx.claimed_dob is not None:
             return self._verify(ctx, now)
         question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
