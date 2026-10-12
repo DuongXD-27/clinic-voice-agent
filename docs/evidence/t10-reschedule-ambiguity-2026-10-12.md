@@ -120,6 +120,8 @@ Theo [plan Jev](../plans/t10-slot-semantic-jev-2026-10-12.md) (owner 12-10: làm
 
 Ca còn fail đều không qua model (luật đã có đường đi): `ASK_DATE` (R101, R102, R109, R142), R105 "thứ 5 hoặc thứ 6", S021 "thôi bỏ luôn lịch khám đó cho tôi" (luật đọc là bỏ đổi lịch), S034 "lay cai muon hon" (không dấu, luật đọc "muon" là "muốn" → xin khung khác).
 
+Kết quả chi tiết của lần đo phần 2 không giữ lại: phần 3 đo lại cùng các bộ này sau PR 2 (`pr2-rules`, `pr2-jev-luna-r3-cases`, `pr2-jev-luna-r3-heldout`).
+
 ## Ghi chú
 
 - Lệch so với thiết kế (đo trên held-out rồi mới chốt, chi tiết ở plan Jev §10): bỏ Noul `decides_now` khỏi request Jev (ra 0,03–0,18 ở mọi câu, chỉ chặn nhầm); `KEEP_OLD` của model luôn thành câu A/B; act `OUT_OF_SCOPE` của Jev ≥ 0,9 tính là ngoài phạm vi; timeout Luna 3 s (lượt đầu cold 2,7 s).
