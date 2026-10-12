@@ -5,6 +5,7 @@ from livekit import rtc
 
 from callbot.transports.livekit.settings import LiveKitSettings
 from callbot.transports.livekit.worker import speech_settings_for
+from inference.asr.base import AsrAuthError
 from speech.settings import SpeechSettings
 
 
@@ -107,3 +108,130 @@ async def test_chosen_asr_that_cannot_start_stops_the_call_instead_of_switching(
     ]
     assert "gemini_live" in published[0][1]["message"]
     assert shutdowns == ["asr unavailable"]
+
+
+async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatch) -> None:
+    """`mode=stt` (trang thử STT): không mở engine/clinic, không có CallBridge nói chuyện."""
+    from types import SimpleNamespace
+
+    from callbot.transports.livekit import worker
+
+    ran: list[object] = []
+    closed: list[bool] = []
+
+    class _Tts:
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=_Tts())
+
+    class _Session:
+        def __init__(self, room, pipeline, **kwargs) -> None:
+            assert pipeline is bundle.stt_pipeline
+            assert kwargs["caller_identity"] == "caller"
+            assert "min_speech_ms" in kwargs["turn_controller_options"]
+
+        async def run(self) -> None:
+            ran.append(self)
+
+    class _Bot:
+        async def set_attributes(self, attributes):
+            assert attributes == {worker.ASR_ATTRIBUTE: "zipformer"}
+
+    class _Job:
+        proc = SimpleNamespace(userdata={worker._PREWARMED_ASR: _PrewarmedZipFormer()})
+        room = SimpleNamespace(local_participant=_Bot())
+
+        async def connect(self):
+            pass
+
+        async def wait_for_participant(self):
+            return SimpleNamespace(
+                kind=rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+                identity="caller",
+                attributes={worker.ASR_ATTRIBUTE: "zipformer", worker.MODE_ATTRIBUTE: "stt"},
+            )
+
+    def no_bot(*args, **kwargs):
+        raise AssertionError("trang thử STT không được mở cuộc gọi với bot")
+
+    monkeypatch.setattr(worker, "build_streaming_bundle", lambda *a, **k: bundle)
+    monkeypatch.setattr(worker, "SttSession", _Session)
+    monkeypatch.setattr(worker, "CallBridge", no_bot)
+    monkeypatch.setattr(worker, "build_clinic", no_bot)
+
+    await worker.entrypoint(_Job())
+
+    assert len(ran) == 1
+    assert closed == [True]
+
+
+@pytest.mark.parametrize(
+    ("error", "shown"),
+    [
+        (
+            ModuleNotFoundError("No module named 'elevenlabs'", name="elevenlabs"),
+            "thiếu thư viện elevenlabs",
+        ),
+        (
+            AsrAuthError("ElevenLabs từ chối ELEVENLABS_API_KEY (auth_error)"),
+            "từ chối ELEVENLABS_API_KEY",
+        ),
+        (RuntimeError("lỗi lạ có thể chứa lời người gọi"), "(RuntimeError)"),
+    ],
+)
+async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
+    monkeypatch, error: Exception, shown: str
+) -> None:
+    """Provider hỏng lúc nhận dạng: trang thấy lỗi rõ, không chờ mãi. Lỗi lạ chỉ lộ tên lỗi."""
+    import json
+    from types import SimpleNamespace
+
+    from callbot.transports.livekit import worker
+
+    published: list[tuple[str, dict]] = []
+
+    class _Tts:
+        async def aclose(self) -> None:
+            pass
+
+    class _Session:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def run(self) -> None:
+            raise error
+
+    class _Bot:
+        async def set_attributes(self, attributes):
+            pass
+
+        async def publish_data(self, payload, *, reliable, topic):
+            published.append((topic, json.loads(payload)))
+
+    class _Job:
+        proc = SimpleNamespace(userdata={worker._PREWARMED_ASR: _PrewarmedZipFormer()})
+        room = SimpleNamespace(local_participant=_Bot())
+
+        async def connect(self):
+            pass
+
+        async def wait_for_participant(self):
+            return SimpleNamespace(
+                kind=rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+                identity="caller",
+                attributes={worker.ASR_ATTRIBUTE: "zipformer", worker.MODE_ATTRIBUTE: "stt"},
+            )
+
+    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=_Tts())
+    monkeypatch.setattr(worker, "build_streaming_bundle", lambda *a, **k: bundle)
+    monkeypatch.setattr(worker, "SttSession", _Session)
+
+    with pytest.raises(type(error)):
+        await worker.entrypoint(_Job())
+
+    assert [(topic, body["code"]) for topic, body in published] == [
+        ("callbot.status", "STT_FAILED")
+    ]
+    assert shown in published[0][1]["message"]
+    assert "lời người gọi" not in published[0][1]["message"]

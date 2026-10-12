@@ -597,7 +597,7 @@ export interface components {
             /** Appointment Id */
             appointment_id?: string | null;
             /** Asr Provider */
-            asr_provider?: ("zipformer" | "gemini_live") | null;
+            asr_provider?: ("zipformer" | "gemini_live" | "elevenlabs_realtime") | null;
             /** Caller Number */
             caller_number?: string | null;
             /**
@@ -606,6 +606,12 @@ export interface components {
              * @enum {string}
              */
             direction?: "inbound" | "outbound";
+            /**
+             * Mode
+             * @default call
+             * @enum {string}
+             */
+            mode?: "call" | "stt";
             /**
              * Room Name
              * @default

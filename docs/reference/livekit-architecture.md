@@ -46,6 +46,13 @@ Hai process **độc lập hoàn toàn**, không share state, không gọi trự
    từ LiveKit Cloud mỗi khi có participant mới join room, tạo 1 `CallBridge` xử lý toàn
    bộ vòng đời cuộc gọi đó.
 
+**Trang thử STT (`/ui/stt`).** Token xin với `mode=stt` gắn attribute `mode=stt` cho người dùng;
+worker khi đó không mở engine/clinic/TTS mà chạy `SttSession` (`transports/livekit/stt_session.py`):
+cùng `STTPipeline` + `TurnController` của cuộc gọi, gửi chữ qua data channel `callbot.stt` —
+`partial` (chữ lượt đang nói), `final` (lượt đã chốt, đúng chữ engine sẽ nhận), `dropped` (ASR nghe
+ra chữ nhưng pipeline bỏ: chỉ có từ đệm, Validator). Model hỏng giữa chừng thì worker báo
+`STT_FAILED` qua `callbot.status`.
+
 **Hệ quả vận hành quan trọng**: sửa `.env` (đổi `ASR_PROVIDER`, path model...) chỉ có
 hiệu lực sau khi **restart worker** — `LiveKitSettings`/`SpeechSettings` chỉ đọc
 `.env` một lần lúc process khởi động (`prewarm()`/`entrypoint()`), không tự reload.

@@ -656,6 +656,23 @@ wheels = [
 ]
 
 [[package]]
+name = "elevenlabs"
+version = "2.71.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-core" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4c/06/d5ff38adf887689c42a81fd26fa288efb3ab03f7a55798af0ebe68903446/elevenlabs-2.71.0.tar.gz", hash = "sha256:a624cc8499c31dd7a6cddd21f68ab062f28636f090fbeddece4a7fd6a8872eb4", size = 849272, upload-time = "2026-10-05T11:46:43.036Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/6a/d4ea0072ac4dbc5922d4cf9f01cfc0dc9272220e8bac278f49af82791bf3/elevenlabs-2.71.0-py3-none-any.whl", hash = "sha256:5dbe0b2b7494500f9ef74570043da3dc77d76642183e7b55b8477dc6d6967f85", size = 2237141, upload-time = "2026-10-05T11:46:41.252Z" },
+]
+
+[[package]]
 name = "eval-type-backport"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3382,6 +3399,7 @@ dev = [
     { name = "ruff" },
 ]
 livekit = [
+    { name = "elevenlabs" },
     { name = "livekit-agents" },
     { name = "livekit-api" },
 ]
@@ -3418,6 +3436,7 @@ vad-webrtc = [
 
 [package.metadata]
 requires-dist = [
+    { name = "elevenlabs", marker = "extra == 'livekit'", specifier = ">=2.71" },
     { name = "fakeredis", marker = "extra == 'dev'", specifier = ">=2.26,<3" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-genai", marker = "extra == 'llm'", specifier = ">=1.0" },

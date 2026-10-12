@@ -57,6 +57,8 @@ llm = [
 livekit = [
     "livekit-agents>=1.8",
     "livekit-api>=1.2",
+    # ASR elevenlabs_realtime (inference/asr/providers/elevenlabs_realtime.py) — chỉ đường LiveKit
+    "elevenlabs>=2.71",
 ]
 dev = [
     "fakeredis>=2.26,<3",

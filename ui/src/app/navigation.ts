@@ -2,6 +2,7 @@ import {
   Activity,
   AudioLines,
   BookOpen,
+  Captions,
   LayoutDashboard,
   PhoneCall,
   type LucideIcon,
@@ -28,6 +29,12 @@ export const TOOLS: readonly Tool[] = [
     description: "Nói chuyện liên tục với bot qua WebRTC/LiveKit như một cuộc gọi thật.",
     icon: AudioLines,
     to: "/livekit",
+  },
+  {
+    label: "Thử STT",
+    description: "Nói vào microphone, xem chữ từng lượt của ZipFormer, Gemini Live, ElevenLabs.",
+    icon: Captions,
+    to: "/stt",
   },
   {
     label: "Observability",

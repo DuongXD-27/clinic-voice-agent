@@ -21,6 +21,13 @@ export const routes: RouteObject[] = [
         }),
       },
       {
+        path: "stt",
+        // Cùng chunk livekit-client với trang gọi trực tiếp, chỉ tải khi mở trang.
+        lazy: async () => ({
+          Component: (await import("../features/stt/SttPage")).SttPage,
+        }),
+      },
+      {
         path: "observability",
         lazy: async () => ({
           Component: (await import("../features/observability/pages/ObservabilityLayout"))

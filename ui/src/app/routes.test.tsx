@@ -13,13 +13,14 @@ function renderAt(path: string) {
 }
 
 describe("app", () => {
-  it("trang tổng quan liệt kê cả ba công cụ, đều là route trong app", async () => {
+  it("trang tổng quan liệt kê đủ các công cụ, đều là route trong app", async () => {
     renderAt("/");
 
     expect(screen.getByRole("heading", { level: 1, name: "Tổng quan" })).toBeInTheDocument();
     const tools = within(screen.getByRole("region", { name: "Công cụ" }));
     expect(tools.getByRole("link", { name: /Gọi từng lượt/ })).toHaveAttribute("href", "/call");
     expect(tools.getByRole("link", { name: /Gọi trực tiếp/ })).toHaveAttribute("href", "/livekit");
+    expect(tools.getByRole("link", { name: /Thử STT/ })).toHaveAttribute("href", "/stt");
     expect(tools.getByRole("link", { name: /Observability/ })).toHaveAttribute(
       "href",
       "/observability",
