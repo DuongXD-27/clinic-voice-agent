@@ -2,8 +2,9 @@
 (value, span, provenance) and which model read it, if any.
 
 Unlike `TurnDiagnostics` this carries the caller's own words, so it only goes back to that caller for the
-demo: HTTP sends it as `X-Demo-Extraction-Fields` when the client asked for `X-Demo-Debug: 1`, LiveKit over
-the room's data channel next to the transcript. Never logged, never stored.
+demo: HTTP sends it as `X-Demo-Extraction-Fields` when the client asked for `X-Demo-Debug: 1`, LiveKit
+inside the bot's transcript line on the data channel when `demo_debug` is on (config/livekit.yaml).
+Never logged, never stored.
 """
 
 from typing import Any, Optional

@@ -38,3 +38,7 @@ silence_timeout_ms: 8000
 # TẮT theo mặc định (đã thử bật 08/10 rồi tắt lại). Bật tạm để nghe thử qua LiveKit streaming
 # thật, cần cài `livekit-plugins-krisp` thủ công.
 krisp_noise_suppression_enabled: false
+# Trang /ui/livekit: gửi kèm câu bot trích xuất của lượt (câu người gọi, giá trị / span đã đọc, model
+# đã đọc) qua data channel — có PII (tên, ngày sinh). Bật cho demo; cuộc gọi thật (SIP,
+# production) đặt LIVEKIT_DEMO_DEBUG=false. Tương đương header X-Demo-Debug: 1 của HTTP.
+demo_debug: true

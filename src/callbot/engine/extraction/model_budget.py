@@ -23,6 +23,8 @@ class ModelBudget:
         self.provider: str | None = None
         self.backup_for: str | None = None
         self.latency_ms = 0.0
+        # Lượt đã chốt kết quả (trả lời / hết giờ): worker chạy muộn không được sửa trạng thái nữa
+        self.closed = False
 
     def run(self, adapter: Any, operation: Callable[[], Any]) -> Any:
         if self.used:
@@ -59,6 +61,7 @@ class ModelBudget:
             self.status = "TIMEOUT"
             return None
         finally:
+            self.closed = True
             self.latency_ms = (monotonic() - started) * 1000
 
 
@@ -85,9 +88,12 @@ def model_used() -> bool:
 def hand_over_model(model: str, provider: str) -> None:
     """Provider chính lỗi, provider dự phòng chạy tiếp trong CÙNG ngân sách lượt: bỏ trạng thái lỗi
     đã báo (TIMEOUT / ERROR không bị ghi đè) để kết quả của provider dự phòng được dùng, và ghi đúng
-    tên model / provider trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm."""
+    tên model / provider trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm.
+
+    Chạy trong thread của model: lượt đã hết giờ (`closed`) thì không đụng tới — không xoá TIMEOUT
+    và không ghi provider dự phòng chưa kịp trả lời."""
     budget = _current.get()
-    if budget is not None:
+    if budget is not None and not budget.closed:
         budget.status = None
         budget.backup_for = budget.provider
         budget.provider = provider

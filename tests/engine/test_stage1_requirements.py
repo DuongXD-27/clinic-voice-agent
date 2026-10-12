@@ -387,6 +387,41 @@ def test_ie_model_trace_contains_metadata_only():
     )
 
 
+class _HandedOverSemantic:
+    """Provider chính lỗi, dự phòng nhận lượt (như FailoverSemanticExtractor) rồi không đọc ra gì."""
+
+    def __init__(self):
+        self._gateway = type(
+            "Gateway", (), {"model": "typesafe-model", "provider_name": "typesafe"}
+        )
+
+    def analyze(self, ctx):
+        model_budget.hand_over_model("openai-model", "openai")
+        return None
+
+
+def test_ie_model_trace_names_the_provider_that_answered():
+    """Dự phòng trả lời thay provider chính: trace lưu cả hai nhãn provider (không PII)."""
+    sink = _MemorySink()
+    tracer = _tracer(sink)
+    with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
+        InformationExtractor(semantic=_HandedOverSemantic()).extract(
+            context(), "tôi đồng ý hủy lịch"
+        )
+    event = next(
+        event
+        for span in sink.spans
+        for event in span.to_dict()["events"]
+        if event["name"] == "ie.model"
+    )
+    attributes = event["attributes"]
+    assert attributes["model"] == "openai-model"
+    assert (attributes["provider_requested"], attributes["provider_actual"]) == (
+        "typesafe",
+        "openai",
+    )
+
+
 def guard_fixture(state="AWAITING_CONFIRMATION"):
     slot = {
         "slot_id": "slot_secret",

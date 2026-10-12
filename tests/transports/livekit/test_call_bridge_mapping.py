@@ -295,8 +295,8 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
     """Trang /ui/livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
-    kèm độ tin cậy ASR, trích xuất của lượt, câu bot kèm state/outcome — theo đúng thứ tự,
-    trước khi phát audio."""
+    kèm độ tin cậy ASR, câu bot kèm state/outcome và (demo_debug) trích xuất của lượt trong
+    cùng một gói — theo đúng thứ tự, trước khi phát audio."""
     opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
     closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
     extraction = {
@@ -326,7 +326,7 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
 
     await asyncio.wait_for(bridge.run(), timeout=2.0)
 
-    assert [topic for _, topic, _ in room.local_participant.data] == [TRANSCRIPT_TOPIC] * 4
+    assert [topic for _, topic, _ in room.local_participant.data] == [TRANSCRIPT_TOPIC] * 3
     assert all(reliable for _, _, reliable in room.local_participant.data)
     assert [payload for payload, _, _ in room.local_participant.data] == [
         {
@@ -346,8 +346,13 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
             "confidence": 0.91,
         },
         {
-            "type": "extraction",
+            "type": "transcript",
+            "role": "bot",
             "turn": 1,
+            "text": "Tạm biệt",
+            "state": "ENDED",
+            "ended": True,
+            "outcome": "TRANSFERRED",
             "extraction": {
                 "transcript": "tôi là An",
                 "silent": False,
@@ -362,16 +367,35 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
                 },
             },
         },
-        {
-            "type": "transcript",
-            "role": "bot",
-            "turn": 1,
-            "text": "Tạm biệt",
-            "state": "ENDED",
-            "ended": True,
-            "outcome": "TRANSFERRED",
-        },
     ]
+
+
+async def test_extraction_is_not_published_without_demo_debug(monkeypatch) -> None:
+    """Trích xuất có PII (tên, ngày sinh): cuộc gọi thật (demo_debug tắt) chỉ nhận lời thoại."""
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    extraction = {
+        "transcript": "tôi là An",
+        "silent": False,
+        "full_name": {"value": "An", "provenance": "FALLBACK", "span": "An"},
+    }
+    orchestrator = _FakeOrchestrator(
+        opening=opening, turn_actions=[closing], extractions=[extraction]
+    )
+    stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
+    room = _FakeRoom("sip-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS(), demo_debug=False)
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    payloads = [payload for payload, _, _ in room.local_participant.data]
+    assert [payload["type"] for payload in payloads] == ["transcript"] * 3
+    assert all("extraction" not in payload for payload in payloads)
 
 
 async def test_transcript_publish_failure_does_not_break_call(monkeypatch, caplog) -> None:

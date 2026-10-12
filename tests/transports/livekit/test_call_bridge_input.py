@@ -98,8 +98,7 @@ async def test_silent_turn_publishes_no_empty_caller_line() -> None:
 
     await asyncio.wait_for(bridge.run(), timeout=2.0)
 
-    data = [payload for payload, _, _ in bridge._room.local_participant.data]
-    lines = [payload for payload in data if payload["type"] == "transcript"]
+    lines = [payload for payload, _, _ in bridge._room.local_participant.data]
     assert [(line["role"], line["text"]) for line in lines] == [
         ("bot", "Xin chào"),
         ("bot", "Tạm biệt"),

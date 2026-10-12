@@ -14,7 +14,7 @@ import traceback
 from contextlib import aclosing
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
 from callbot.engine.errors import OutboundStartFailed
@@ -48,7 +48,7 @@ _PLAYOUT_TIMEOUT_S = 20.0
 _PLAYOUT_FRAME_MS = 20
 # Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
 _SILENCE_POLL_S = 0.25
-# Topic data channel mang lời thoại và trích xuất từng lượt cho trang web /ui/livekit (để trace).
+# Topic data channel mang lời thoại cho trang /ui/livekit (câu bot kèm trích xuất khi demo_debug).
 TRANSCRIPT_TOPIC = "callbot.transcript"
 # Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
 STATUS_TOPIC = "callbot.status"
@@ -123,6 +123,7 @@ class CallBridge:
         output_queue_ms: int,
         silence_timeout_ms: int,
         krisp_noise_suppression_enabled: bool,
+        demo_debug: bool,
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
@@ -168,6 +169,8 @@ class CallBridge:
         # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
         # thật; không phải khuyến nghị bật cho production.
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
+        # config/livekit.yaml `demo_debug`: câu bot kèm trích xuất của lượt (có PII) cho trang demo.
+        self._demo_debug = demo_debug
         # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
         # tạo sẵn theo SpeechSettings).
         self._turn_controller = turn_controller
@@ -322,15 +325,9 @@ class CallBridge:
                         action.ended,
                         action.outcome,
                     )
-                    # Trích xuất trước câu bot: trang cập nhật bảng trích xuất cùng lúc với câu trả lời.
-                    await self._publish(
-                        {
-                            "type": "extraction",
-                            "turn": self._turn_number,
-                            "extraction": extraction_view(run.extraction),
-                        }
+                    await self._publish_transcript(
+                        "bot", action.utterance, action=action, extraction=run.extraction
                     )
-                    await self._publish_transcript("bot", action.utterance, action=action)
                     await self._speak(action.utterance)
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
@@ -376,9 +373,15 @@ class CallBridge:
         *,
         action: Optional[BotAction] = None,
         confidence: Optional[float] = None,
+        extraction: Optional[dict[str, Any]] = None,
     ) -> None:
         """Gửi một dòng hội thoại qua data channel tới người trong phòng — chính người đang
-        gọi, nên họ chỉ thấy lại lời của mình và của bot."""
+        gọi, nên họ chỉ thấy lại lời của mình và của bot. Không log text (PII). Gửi lỗi chỉ
+        mất dòng hiển thị, không được làm hỏng cuộc gọi.
+
+        Câu bot của lượt người gọi (`extraction` là trace của lượt) kèm `extraction_view` khi bật
+        `demo_debug`: cùng một gói nên trang demo có câu trả lời và trích xuất của lượt cùng lúc,
+        không lệch nhau. `null` = lượt không qua bước trích xuất (vd. lượt replay)."""
         payload: dict[str, object] = {
             "type": "transcript",
             "role": role,
@@ -389,19 +392,15 @@ class CallBridge:
             payload["confidence"] = confidence
         if action is not None:
             payload.update(state=action.state, ended=action.ended, outcome=action.outcome)
-        await self._publish(payload)
-
-    async def _publish(self, payload: dict[str, object]) -> None:
-        """Gửi lên TRANSCRIPT_TOPIC (lời thoại, trích xuất của lượt). Không log nội dung (PII).
-        Gửi lỗi chỉ mất phần hiển thị, không được làm hỏng cuộc gọi."""
+        if self._demo_debug and role == "bot" and self._turn_number > 0:
+            payload["extraction"] = extraction_view(extraction)
         try:
             await self._room.local_participant.publish_data(
                 json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
             )
         except Exception as exc:
             logger.warning(
-                "call_bridge: không gửi được %s room=%s: %s",
-                payload.get("type"),
+                "call_bridge: không gửi được transcript room=%s: %s",
                 self._room.name,
                 type(exc).__name__,
             )

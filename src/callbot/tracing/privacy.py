@@ -42,7 +42,9 @@ OPERATIONS = frozenset(
     }
 )
 EVENT_FIELDS: dict[str, frozenset[str]] = {
-    "ie.model": frozenset({"model", "latency_ms", "model_result"}),
+    "ie.model": frozenset(
+        {"model", "latency_ms", "model_result", "provider_requested", "provider_actual"}
+    ),
     "session.admitted": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.replayed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.committed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),

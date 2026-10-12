@@ -36,8 +36,10 @@ export interface LiveKitSession {
   audioBlocked: boolean;
   log: LogEntry[];
   transcript: TranscriptLine[];
-  /** Trích xuất của lượt người gọi gần nhất; null = chưa có (hoặc worker cũ không gửi). */
+  /** Trích xuất của lượt người gọi gần nhất, đi kèm câu bot của lượt đó; null = chưa có. */
   extraction: TurnExtraction | null;
+  /** Câu bot gần nhất (lượt ≥ 1) không kèm trích xuất dùng được: worker không gửi / gửi sai dạng. */
+  extractionIssue: "missing" | "invalid" | null;
   /** State / outcome theo câu bot gần nhất trong transcript. */
   botState: string | null;
   outcome: string | null;
@@ -61,7 +63,6 @@ export type LiveKitAction =
   | { type: "speakers"; bot: boolean; caller: boolean }
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
-  | { type: "extraction"; extraction: TurnExtraction }
   | { type: "notice"; notice: LiveKitSession["notice"] };
 
 export const initialSession: LiveKitSession = {
@@ -75,6 +76,7 @@ export const initialSession: LiveKitSession = {
   log: [],
   transcript: [],
   extraction: null,
+  extractionIssue: null,
   botState: null,
   outcome: null,
   notice: null,
@@ -232,16 +234,16 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
             )
           : next;
       }
-      const withState = { ...next, botState: line.state, outcome: line.outcome };
+      const withState = {
+        ...next,
+        botState: line.state,
+        outcome: line.outcome,
+        ...(line.turn > 0 ? extractionOf(line) : {}),
+      };
       return line.ended
         ? log(withState, action.at, `Bot kết thúc cuộc gọi: ${line.outcome ?? "—"}.`, "success")
         : withState;
     }
-
-    case "extraction":
-      // Cùng điều kiện với transcript: connecting luôn bắt đầu từ initialSession.
-      if (state.phase === "idle") return state;
-      return { ...state, extraction: action.extraction };
 
     case "notice":
       return { ...state, notice: action.notice };
@@ -272,4 +274,13 @@ export function describeConnection(state: LiveKitSession): {
     case "reconnecting":
       return { tone: "warning", label: "Đang kết nối lại…", pulse: true };
   }
+}
+
+/** Trích xuất đi kèm câu bot của một lượt người gọi (câu chào lượt 0 không có). */
+function extractionOf(
+  line: TranscriptLine,
+): Pick<LiveKitSession, "extraction" | "extractionIssue"> {
+  if (line.extraction === undefined) return { extraction: null, extractionIssue: "missing" };
+  if (line.extraction === "invalid") return { extraction: null, extractionIssue: "invalid" };
+  return { extraction: line.extraction, extractionIssue: null };
 }

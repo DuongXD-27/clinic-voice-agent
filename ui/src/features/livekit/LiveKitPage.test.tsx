@@ -233,8 +233,10 @@ describe("LiveKitPage", () => {
     expect(panel().getByText("Chưa có lượt nào.")).toBeInTheDocument();
 
     send({
-      type: "extraction",
+      type: "transcript",
+      role: "bot",
       turn: 1,
+      text: "Dạ",
       extraction: {
         transcript: "thôi hủy giúp tôi",
         silent: false,
@@ -254,8 +256,10 @@ describe("LiveKitPage", () => {
 
     // Jev lỗi dịch vụ, OpenAI dự phòng trả lời: phải báo rõ.
     send({
-      type: "extraction",
+      type: "transcript",
+      role: "bot",
       turn: 2,
+      text: "Dạ",
       extraction: {
         transcript: "vâng",
         silent: false,
@@ -268,14 +272,16 @@ describe("LiveKitPage", () => {
 
     // Lượt chỉ dùng luật.
     send({
-      type: "extraction",
+      type: "transcript",
+      role: "bot",
       turn: 3,
+      text: "Dạ",
       extraction: { transcript: "vâng", silent: false, fields: [], model: null },
     });
     expect(panel().getByText("Model đọc câu: không gọi — chỉ dùng luật.")).toBeInTheDocument();
   });
 
-  it("worker cũ không gửi trích xuất: báo thay vì để trống mãi", async () => {
+  it("worker không gửi trích xuất (tắt demo_debug / bản cũ): báo thay vì để trống mãi", async () => {
     tokenEndpoint();
     render(<LiveKitPage />);
     await connect();
@@ -291,7 +297,9 @@ describe("LiveKitPage", () => {
     );
 
     expect(
-      screen.getByText("Bot không gửi trích xuất: cuộc gọi có thể vào worker cũ."),
+      screen.getByText(
+        "Bot không gửi trích xuất: worker tắt demo_debug (config/livekit.yaml) hoặc là bản cũ.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -431,7 +439,12 @@ describe("LiveKitPage", () => {
     // Số không có trong clinic: gõ tay; để trống là kịch bản chuyển máy ngay lượt đầu.
     await userEvent.click(screen.getByRole("button", { name: "Kết thúc" }));
     await userEvent.selectOptions(select, "Nhập số khác…");
-    expect(screen.getByLabelText("Số điện thoại người gọi")).toHaveValue("");
+    const input = screen.getByLabelText("Số điện thoại người gọi");
+    expect(input).toHaveValue("");
+    // Gõ trùng một số trong danh sách: ô nhập không được biến mất giữa chừng.
+    await userEvent.type(input, "0987654321");
+    expect(screen.getByLabelText("Số điện thoại người gọi")).toHaveValue("0987654321");
+    await userEvent.clear(screen.getByLabelText("Số điện thoại người gọi"));
     await connect();
     expect(bodies.at(-1)).toEqual({ direction: "inbound", caller_number: null });
   });

@@ -21,6 +21,13 @@ import { describeConnection, isActive } from "./model/session";
 import { toChatMessage } from "./model/transcript";
 import { useLiveKitCall } from "./useLiveKitCall";
 
+/** Thẻ trích xuất khi chưa có gì để hiện, theo `extractionIssue` của câu bot gần nhất. */
+const EXTRACTION_ISSUES = {
+  none: "Chưa có lượt nào.",
+  missing: "Bot không gửi trích xuất: worker tắt demo_debug (config/livekit.yaml) hoặc là bản cũ.",
+  invalid: "Trích xuất bot gửi sai dạng: worker và trang có thể lệch phiên bản.",
+} as const;
+
 export function LiveKitPage() {
   const [config, setConfig] = useState<LiveKitConfig>(DEFAULT_LIVEKIT_CONFIG);
   const [apiKey, setApiKey] = useState(() => readSession(API_KEY_STORAGE) ?? "");
@@ -34,11 +41,6 @@ export function LiveKitPage() {
   const active = isActive(session);
   const connecting = session.phase === "connecting";
   const messages = session.transcript.map(toChatMessage);
-  // Worker gửi trích xuất trước câu bot của cùng lượt: đã có câu bot lượt ≥ 1 mà chưa có trích xuất
-  // thì worker là bản cũ, không gửi.
-  const noExtractionFromBot =
-    session.extraction === null &&
-    session.transcript.some((line) => line.role === "bot" && line.turn > 0);
 
   const handleClinicReset = async () => {
     const confirmed = window.confirm(
@@ -119,11 +121,7 @@ export function LiveKitPage() {
             <CardBody>
               <ExtractionPanel
                 extraction={session.extraction}
-                empty={
-                  noExtractionFromBot
-                    ? "Bot không gửi trích xuất: cuộc gọi có thể vào worker cũ."
-                    : "Chưa có lượt nào."
-                }
+                empty={EXTRACTION_ISSUES[session.extractionIssue ?? "none"]}
               />
             </CardBody>
           </Card>

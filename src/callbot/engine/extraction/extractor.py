@@ -331,6 +331,9 @@ class InformationExtractor:
                     model=budget.model,
                     latency_ms=budget.latency_ms,
                     model_result=budget.status,
+                    # Provider chính và provider đã trả lời: khác nhau khi dự phòng trả lời thay
+                    provider_requested=budget.backup_for or budget.provider,
+                    provider_actual=budget.provider,
                 )
             if budget.status in {"TIMEOUT", "ERROR", "INVALID"}:
                 result = replace(

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { Input, Select } from "../../../components/ui/Form";
 import type { Option } from "../model/fixtures";
 
@@ -17,7 +19,10 @@ interface Props {
  * Số không có trong danh sách (fixtures chưa tải, số gõ tay) tự hiện ô nhập.
  */
 export function CallerPhoneSelect({ id, value, phones, disabled, onChange }: Props) {
-  const manual = !phones.some((option) => option.value === value);
+  // Đã chọn "Nhập số khác…" thì giữ ô nhập, kể cả khi số đang gõ trùng một số trong danh sách
+  // (không để ô nhập biến mất giữa chừng).
+  const [typing, setTyping] = useState(false);
+  const manual = typing || !phones.some((option) => option.value === value);
   return (
     <>
       <Select
@@ -26,6 +31,7 @@ export function CallerPhoneSelect({ id, value, phones, disabled, onChange }: Pro
         disabled={disabled}
         onChange={(event) => {
           const next = event.target.value;
+          setTyping(next === MANUAL_PHONE);
           onChange(next === MANUAL_PHONE ? "" : next);
         }}
       >
