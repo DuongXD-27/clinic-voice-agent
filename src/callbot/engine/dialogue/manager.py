@@ -34,6 +34,7 @@ from callbot.engine.extraction.agreement import (
     gives_up_if_unavailable,
     gives_up_slot_change,
     is_bare_da,
+    is_hesitation_only,
     mentions_busy,
     mentions_cancel,
 )
@@ -195,6 +196,14 @@ class DialogueManager:
     # --- Điều phối theo câu hỏi đang chờ -------------------------------------------
 
     def respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
+        reply = self._respond(ctx, extraction, now)
+        if reply.understanding == "UNCLEAR" and is_hesitation_only(extraction.transcript):
+            # Câu trả lời chưa rõ được hỏi lại không tính lần đầu; ậm ừ suông thì chưa có câu trả lời
+            # nào — vẫn hỏi lại như vậy, nhưng tính §1.1.5 ngay
+            return replace(reply, understanding="NOT_UNDERSTOOD")
+        return reply
+
+    def _respond(self, ctx: CallContext, extraction: ExtractionResult, now: datetime) -> Reply:
         # Kết quả "nêu giờ khác" khi model lỗi: tính một lần, `_attendance` dùng lại
         proposal: Optional[bool] = None
         if extraction.model_failed:

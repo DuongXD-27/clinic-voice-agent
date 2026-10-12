@@ -826,10 +826,29 @@ _DRAWN_OUT = re.compile(r"\.\.|…")
 
 
 def _is_hesitation(transcript: str, text: str) -> bool:
+    return _only_words(transcript, text, _HESITATION_SOUNDS)
+
+
+def _only_words(transcript: str, text: str, allowed: frozenset[str]) -> bool:
     words = text.split()
-    if not words or any(w not in _HESITATION_SOUNDS for w in words):
+    if not words or any(w not in allowed for w in words):
         return False
     return _DRAWN_OUT.search(transcript) is not None or len(set(words)) > 1
+
+
+# Từ đệm khi đang tìm lời ("cái đó... ờ, như kiểu..."): đi cùng âm ậm ừ vẫn chưa có nội dung nào.
+_DISCOURSE_FILLERS = _HESITATION_SOUNDS | frozenset(
+    clean(w) for w in ["cái", "thì", "đó", "đấy", "ấy", "này", "kiểu", "như", "là"]
+)
+
+
+def is_hesitation_only(transcript: str) -> bool:
+    """Cả lượt chỉ là ậm ừ / từ đệm ("Ờ cái... ừ thì... à"): người gọi chưa nói gì để hiểu.
+
+    Khác ngập ngừng có nội dung ("chắc là được"): không có câu trả lời nào để đọc lại cho rõ, nên
+    §1.1.5 tính là không hiểu ngay lần đầu. "ờ", "ừ ừ" nói gọn vẫn là đồng ý.
+    """
+    return _only_words(transcript, clean(transcript), _DISCOURSE_FILLERS)
 
 
 def is_bare_da(transcript: str) -> bool:
