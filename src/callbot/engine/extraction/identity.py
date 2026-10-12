@@ -21,7 +21,7 @@ from enum import Enum
 from typing import Generic, Optional, TypeVar
 
 from callbot.engine.extraction.schema import Field, IdentityStatus, IdentityValue
-from callbot.engine.extraction.text import compile_phrases
+from callbot.engine.extraction.text import clean, compile_phrases, find_phrase
 
 T = TypeVar("T")
 
@@ -99,6 +99,14 @@ CORRECTIONS = compile_phrases(
     ],
     unaccented_exclude=["à không", "à nhầm", "à quên", "à thôi", "à mà không"],
 )
+
+
+def corrects_itself(transcript: str) -> bool:
+    """Câu có lời tự sửa ("à nhầm", "sửa lại"...). So từng cụm theo cả hai dạng có / không dấu nên
+    "nham" không khớp "nhắm"; cụm mở bằng "à" không có dạng không dấu."""
+    return find_phrase(clean(transcript), CORRECTIONS, mixed=True) is not None
+
+
 # Phần khẳng định sau một lời phủ định: "không phải A *mà là* B".
 AFFIRMATIONS = compile_phrases(["mà là", "mà phải là", "mới đúng là", "phải là", "mà"])
 # Người gọi tự báo là mình không chắc. Không dùng riêng "chắc": "Chắc" nằm được trong tên.

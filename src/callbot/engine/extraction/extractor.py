@@ -9,7 +9,7 @@ Thứ tự trong một lượt:
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
 4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
 5. full_name    — ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh. ASK_DOB chỉ
-   khi người gọi tự sửa / tự giới thiệu ("à nhầm, tôi là ...") và chỉ bằng luật (R-44).
+   khi người gọi tự sửa / tự giới thiệu ("à nhầm, tôi là ...", R-44), đọc như ở ASK_NAME.
    Outbound: ý định hủy / đổi lịch nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm
    trên phần NGOÀI tên và ngày sinh — Dialogue chỉ dùng sau khi xác minh xong (QC qc-cn-08, R-43).
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
@@ -53,6 +53,7 @@ from callbot.engine.extraction.fallback import (
 )
 from callbot.engine.extraction.full_name import (
     MIN_WORDS_AFTER_HONORIFIC,
+    introduces_oneself,
     name_after_dob,
     name_before_dob,
     read_full_name,
@@ -60,7 +61,7 @@ from callbot.engine.extraction.full_name import (
 )
 from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import strip_honorific
-from callbot.engine.extraction.identity import Reading, Reason, identity_value
+from callbot.engine.extraction.identity import Reading, Reason, corrects_itself, identity_value
 from callbot.engine.extraction.implied_cancel import implied_cancel
 from callbot.engine.extraction.intent import (
     PRIORITY,
@@ -380,9 +381,12 @@ class InformationExtractor:
 
         full_name: Field[str] = skipped
         name_reading = Reading(Field.nothing(), Reason.NO_SIGNAL)
-        # R-44: ở ASK_DOB người gọi có thể sửa tên đã khai ("à nhầm, tôi là ..."). Chỉ đọc khi có tín
-        # hiệu tự sửa / tự giới thiệu và chỉ bằng luật, để câu khác không thành tên đè lên tên đúng.
-        corrects_name = question is QuestionId.ASK_DOB and _names_oneself(transcript)
+        # R-44: ở ASK_DOB người gọi có thể sửa tên đã khai ("à nhầm, tôi là Lê Na"). Chỉ đọc khi có
+        # tín hiệu tự sửa / tự giới thiệu, để câu khác không thành tên đè lên tên đúng; khi đọc thì
+        # đọc như ASK_NAME (luật nới + slot filling) để tên không có họ phổ biến vẫn nhận được.
+        corrects_name = question is QuestionId.ASK_DOB and (
+            corrects_itself(transcript) or introduces_oneself(transcript)
+        )
         if (
             (question is QuestionId.ASK_NAME or corrects_name)
             and intent.value is Intent.NONE
@@ -398,11 +402,7 @@ class InformationExtractor:
                     transcript, dob_reading.zone
                 )
             if zone:
-                name_reading = (
-                    read_full_name(zone)
-                    if corrects_name
-                    else self._full_name(zone, transcript, ctx)
-                )
+                name_reading = self._full_name(zone, transcript, ctx)
             full_name = name_reading.field
 
         if (
@@ -746,14 +746,6 @@ _IDENTITY_FILLER = frozenset(
 # Không dấu "dung" còn là "đừng": "dung huy" (đừng hủy) không được coi là chỉ có từ đệm
 _IDENTITY_FILLER_UNACCENTED = frozenset(strip_diacritics(w) for w in _IDENTITY_FILLER) - {"dung"}
 _CLAUSE_BREAK = re.compile(r"[,;.!?…]")
-# Tự sửa / tự giới thiệu ở lượt hỏi ngày sinh (so trên bản bỏ dấu: ASR có thể mất dấu)
-_NAMES_ONESELF = re.compile(
-    r"(?<!\w)(?:nham|a khong|toi la|em la|ten (?:toi|em|la|cua toi|cua em)|toi ten|em ten)(?!\w)"
-)
-
-
-def _names_oneself(transcript: str) -> bool:
-    return _NAMES_ONESELF.search(strip_diacritics(clean(transcript))) is not None
 
 
 class _Deferred(NamedTuple):

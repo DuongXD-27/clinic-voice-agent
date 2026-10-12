@@ -71,7 +71,7 @@ Lượt n -> Policy.check_preconditions
   -> IE (ASK_NAME: dob + tên trước ngày sinh; nhãn dự phòng khi không có tên / ngày sinh hợp lệ)
   -> Policy.check_silence / check_signals (không đổi: im lặng, voicemail, lâm sàng, xin nhân viên, OUT_OF_SCOPE)
   -> Dialogue._identity
-       ghi claimed_name / claimed_dob (nói sau đè trước, R-44; chưa đối chiếu) -> progressed nếu điền trường thiếu
+       ghi claimed_name / claimed_dob; lời tự sửa đè giá trị cũ (R-44; chưa đối chiếu) -> progressed nếu điền trường thiếu / sửa sang giá trị khác
        đủ cả hai -> _verify: VERIFIED -> ASK_INTENT (inbound) | đọc lịch (outbound)
                               khác     -> chuyển máy theo transfer_reason, câu IDENTITY_FAILED_TRANSFER (12/10/2026)
        tiến triển   -> hỏi phần còn thiếu                   UNDERSTOOD

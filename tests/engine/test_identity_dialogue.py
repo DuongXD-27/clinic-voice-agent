@@ -6,16 +6,18 @@ từ chối cung cấp, tra cứu lượt 0 thất bại. Mọi lượt trước
 
 import copy
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 
-from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
+from callbot.engine import BotAction, CallerInput, CallStart, EngineSettings, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
 from clinic_mock_sim import FakeClinicAPI, store
+from tests.engine.test_name_slot_status import FakeGateway, named
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -150,12 +152,47 @@ def test_name_corrected_while_asking_dob_replaces_the_earlier_name(lines) -> Non
     _assert_no_disclosure(actions)
 
 
-def test_name_correction_alone_spends_the_dob_retry() -> None:
-    """Đè tên đã có không phải điền trường thiếu: lượt đó vẫn dùng lượt hỏi lại ngày sinh (R-40)."""
-    lines = ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A", "hình như 14/3/1978"]
-    actions, _ = _call(_outbound("c_fix_name_retry"), lines)
+def test_name_correction_counts_as_understood_even_after_the_dob_retry() -> None:
+    """Sửa sang tên khác là câu đã hiểu: không tốn lượt hỏi lại, không đáp "em chưa nghe rõ"."""
+    lines = ["Nguyễn Văn B", "hình như 14/3/1978", "à nhầm, tôi là Nguyễn Văn A", DOB]
+    actions, clinic = _call(_outbound("c_fix_name_retry"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    assert not actions[3].ended and actions[3].utterance in t.static_choices(t.ASK_DOB)
+    assert actions[4].state == "AWAITING_INTENT" and clinic.writes == []
+
+
+def test_repeating_the_same_name_while_asking_dob_still_spends_the_retry() -> None:
+    lines = [NAME, f"tôi là {NAME}", f"tôi là {NAME}"]
+    actions, _ = _call(_outbound("c_same_name"), lines)
     assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+@pytest.mark.parametrize("fallback", [None, "Lê Na"])
+def test_name_without_common_surname_can_be_corrected_while_asking_dob(
+    monkeypatch, fallback
+) -> None:
+    """Lượt hỏi ngày sinh đọc lời tự sửa tên như lượt hỏi tên (luật nới / slot filling)."""
+    clinic = FakeClinicAPI()
+    clinic.seed_patient(
+        {
+            "patient_id": "pt_lena",
+            "phone": "0912000111",
+            "verify": {"full_name": "Lê Na", "dob": "1990-01-01"},
+        }
+    )
+    if fallback is None:
+        settings = EngineSettings(name_fallback_provider="none", _env_file=None)
+        bot = create_orchestrator(clinic, settings=settings)
+    else:
+        monkeypatch.setenv("OPENAI_API_KEY", "synthetic-test-secret")
+        settings = EngineSettings(name_fallback_provider="openai", _env_file=None)
+        with patch("callbot.engine.create_gateway", return_value=FakeGateway(named(fallback))):
+            bot = create_orchestrator(clinic, settings=settings)
+    bot.start_call(_inbound("c_lena", "0912000111"))
+    for turn, line in enumerate(["Nguyễn Văn B", "à nhầm, tôi là Lê Na", "01/01/1990"], start=1):
+        action = bot.handle_turn("c_lena", CallerInput(turn=turn, text=line))
+    assert action.state == "AWAITING_INTENT"
 
 
 def test_dob_corrected_while_asking_name_replaces_the_earlier_dob() -> None:
@@ -165,13 +202,17 @@ def test_dob_corrected_while_asking_name_replaces_the_earlier_dob() -> None:
 
 
 @pytest.mark.parametrize(
-    "answer",
-    [
-        DOB,
-        "Ngày 14 tháng 3 năm 1978 ạ, chị Hoa",
-        "15/3, à không, 14/3/1978",
-        "bà sinh ngày 14/3/1978",
-    ],
+    "answer", ["Nguyễn Văn A, con tôi sinh 5/6/2010", "Nguyễn Văn A, 15/3/1978", "15/3/1978"]
+)
+def test_another_date_without_self_correction_keeps_the_earlier_dob(answer) -> None:
+    """Ngày sinh đã khai chỉ bị đè khi có lời tự sửa: ngày của người thân không thay ngày sinh."""
+    actions, clinic = _call(_outbound("c_keep_dob"), [DOB, answer, NAME])
+    verified = next(a for a in actions[2:] if a.state != "AWAITING_IDENTITY")
+    assert verified.state == "AWAITING_INTENT" and clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["Ngày 14 tháng 3 năm 1978 ạ, chị Hoa", "15/3, à không, 14/3/1978"]
 )
 def test_dob_answer_without_self_naming_never_replaces_the_name(answer) -> None:
     actions, _ = _call(_outbound("c_keep_name"), [NAME, answer])

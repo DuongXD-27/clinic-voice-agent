@@ -13,6 +13,8 @@ from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import InformationExtractor, model_budget
 from callbot.engine.extraction.agreement import confirmation_veto, extract_agreement
 from callbot.engine.extraction.fallback import SlotFillingResult, SlotFillingStatus
+from callbot.engine.extraction.full_name import introduces_oneself
+from callbot.engine.extraction.identity import corrects_itself
 from callbot.engine.extraction.schema import (
     VN_TZ,
     Agreement,
@@ -158,6 +160,24 @@ def test_dob_before_name_counts_as_understood_and_keeps_the_name_retry():
     assert _context(bot, "dob_first").identity_retries == {"ASK_NAME": 1}
     verified = bot.handle_turn("dob_first", CallerInput(3, text="Nguyễn Văn A"))
     assert verified.state == "AWAITING_INTENT"
+
+
+@pytest.mark.parametrize(
+    "text,correction,introduction",
+    [
+        ("à nhầm, 14/3/1978", True, False),
+        ("sửa lại là 14/3/1978", True, False),
+        ("tôi là Nguyễn Văn A", False, True),
+        ("toi la Nguyen Van A", False, True),  # ASR mất dấu
+        ("nhắm mắt cũng nhớ, 14/3/1978", False, False),
+        ("tối là tôi rảnh", False, False),
+        ("Nhâm Văn A", False, False),
+        ("a khong, 14/3/1978", False, False),  # "à" không có dạng không dấu: "A" là tên thật
+    ],
+)
+def test_self_correction_cues_compare_with_diacritics(text, correction, introduction):
+    assert corrects_itself(text) is correction
+    assert introduces_oneself(text) is introduction
 
 
 def test_trace_reason_prefers_the_closest_inbound_record():
