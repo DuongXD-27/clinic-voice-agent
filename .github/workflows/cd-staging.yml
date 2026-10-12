@@ -88,6 +88,11 @@ jobs:
       NAME_FALLBACK_MODEL: ${{ vars.NAME_FALLBACK_MODEL }}
       NAME_FALLBACK_MAX_TOKENS: ${{ vars.NAME_FALLBACK_MAX_TOKENS }}
       NAME_FALLBACK_TIMEOUT_S: ${{ vars.NAME_FALLBACK_TIMEOUT_S || '3.0' }}
+      # ASR của cuộc gọi LiveKit: gemini_live = Gemini Live; rỗng/không đặt = zipformer (mặc định).
+      LIVEKIT_ASR_PROVIDER: ${{ vars.LIVEKIT_ASR_PROVIDER }}
+      # Bot staging dispatch đích danh worker staging: không để worker không tên (prod, máy dev)
+      # cùng project LiveKit nhận phòng staging và chạy ASR khác lựa chọn trên trang gọi thử.
+      LIVEKIT_AGENT_NAME: ${{ vars.LIVEKIT_AGENT_NAME || 'callbot-staging' }}
       GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout tested commit
@@ -102,6 +107,10 @@ jobs:
           : "${EC2_HOST:?Missing secret EC2_HOST}"
           : "${EC2_SSH_KEY:?Missing secret EC2_SSH_KEY}"
           : "${BOT_DOMAIN:?Missing variable BOT_DOMAIN}"
+          case "${LIVEKIT_ASR_PROVIDER:-}" in
+            "" | zipformer | gemini_live) ;;
+            *) echo "Invalid LIVEKIT_ASR_PROVIDER: zipformer | gemini_live | empty" >&2; exit 1 ;;
+          esac
 
       - name: Configure SSH
         shell: bash
@@ -165,10 +174,17 @@ jobs:
               "umask 077; cat > '$REMOTE_DIR/.env.next' && mv '$REMOTE_DIR/.env.next' '$REMOTE_DIR/.env'"
           fi
 
-          # IMAGE đổi mỗi lần deploy nên nằm ở file riêng, để không phải đụng tới .env.
-          # Bản đang chạy được giữ ở image.env.prev để rollback (xem docker-compose.prod.yml).
-          printf '%s\n' "IMAGE=$IMAGE:$DEPLOY_SHA" | ssh -o BatchMode=yes "$SSH_TARGET" \
-            "cat > '$REMOTE_DIR/image.env.next'"
+          if [ "${LIVEKIT_ASR_PROVIDER:-}" = "gemini_live" ] && ! ssh -o BatchMode=yes "$SSH_TARGET" \
+            "grep -q '^GEMINI_API_KEY=.' '$REMOTE_DIR/.env'"; then
+            echo "LIVEKIT_ASR_PROVIDER=gemini_live but $REMOTE_DIR/.env has no GEMINI_API_KEY" >&2
+            exit 1
+          fi
+
+          # IMAGE và ASR LiveKit đổi theo mỗi lần deploy nên nằm ở file riêng, để không phải đụng tới
+          # .env. Bản đang chạy được giữ ở image.env.prev để rollback (xem docker-compose.prod.yml).
+          printf '%s\n' "IMAGE=$IMAGE:$DEPLOY_SHA" "LIVEKIT_ASR_PROVIDER=${LIVEKIT_ASR_PROVIDER:-}" \
+            "LIVEKIT_AGENT_NAME=$LIVEKIT_AGENT_NAME" \
+            | ssh -o BatchMode=yes "$SSH_TARGET" "cat > '$REMOTE_DIR/image.env.next'"
           ssh -o BatchMode=yes "$SSH_TARGET" \
             "set -eu; cd '$REMOTE_DIR'; \
             if [ -f image.env ] && ! cmp -s image.env image.env.next; then cp image.env image.env.prev; fi; \

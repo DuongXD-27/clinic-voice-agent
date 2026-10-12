@@ -39,6 +39,9 @@ class TranscriptEvent:
     confidence: Optional[float] = None
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
+    # Cloud callbacks có thể đến sau discard hoặc speech_start của lượt tiếp theo.
+    generation: Optional[int] = field(default=None, compare=False)
+    segment_id: Optional[int] = field(default=None, compare=False)
 
 
 class AsrSegmentEnd(Enum):
@@ -51,9 +54,13 @@ class AsrSegmentEnd(Enum):
     nguyên văn lượt 1, lượt 3 thành "ANH SINH ANH SINH NGÀY ...".
 
     DISCARD: bỏ phần đang có, không phát event nào.
+    FINALIZE: chốt ngay phần đang có thành final (nếu đủ tiếng nói) rồi đóng câu — lời người gọi
+    bắt đầu trước khi bot nói, kết thúc giữa lúc bot nói mà chưa được xác nhận ngắt lời. Chỉ gửi
+    cho provider có `supports_segment_finalize`.
     """
 
     DISCARD = "discard"
+    FINALIZE = "finalize"
 
 
 @dataclass(frozen=True)

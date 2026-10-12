@@ -1737,3 +1737,34 @@ def test_model_cancel_intent_gets_a_targeted_reconfirmation_and_no_write(line: s
     semantic._replies["hủy lịch"] = SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="hủy lịch")
     done = _run(bot, "c_model_intent", ["Hủy lịch"], start=5)
     assert done.outcome == "CANCELLED"
+
+
+# --- Chủ đề ngoài phạm vi trong câu kể lý do; xin đổi ở dạng điều kiện (eval contract review) -----
+
+
+def test_an_out_of_scope_topic_inside_a_cancel_reason_is_a_reason_not_a_transfer() -> None:
+    """ "Bên bảo hiểm không chi trả nên tốn kém quá": lý do COST (Phụ lục A), không phải câu hỏi hay yêu
+    cầu về bảo hiểm (§1.2.3). Chuyển máy ở đây bỏ dở kịch bản hủy đang chạy."""
+    bot, clinic = _requesting("c_reason_mentions_insurance")
+    action = _run(
+        bot, "c_reason_mentions_insurance", ["Bên bảo hiểm không chi trả nên tốn kém quá"], start=4
+    )
+    assert action.utterance == t.CANCEL_REASON_NOTED and clinic.writes == []
+    ctx = _context(bot, "c_reason_mentions_insurance")
+    assert (ctx.pending_action, ctx.cancel_reason) == ("CANCEL", "COST")
+
+
+def test_asking_about_insurance_at_the_cancel_question_still_transfers() -> None:
+    bot, clinic = _requesting("c_insurance_question")
+    action = _run(bot, "c_insurance_question", ["Tôi muốn hỏi về bảo hiểm"], start=4)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "OUT_OF_SCOPE")
+    assert _cancel_writes(clinic) == []
+
+
+def test_a_conditional_change_request_at_the_cancel_question_starts_a_reschedule() -> None:
+    """ "Nếu đổi được thì tôi không hủy": xin đổi (Bảng 1), như "thay vì hủy thì cho tôi dời sang thứ
+    sáu"; không ghi gì cho tới khi chọn và xác nhận khung giờ."""
+    bot, clinic = _requesting("c_conditional_change")
+    _run(bot, "c_conditional_change", ["Nếu đổi được thì tôi không hủy"], start=4)
+    assert _context(bot, "c_conditional_change").pending_action == "RESCHEDULE"
+    assert clinic.writes == []

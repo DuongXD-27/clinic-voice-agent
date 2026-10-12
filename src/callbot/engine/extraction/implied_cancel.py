@@ -23,9 +23,17 @@ Không liệt kê các cách nói "không phải đã khám": khuôn nhận vào
 import re
 from typing import Optional
 
+from callbot.engine.extraction.agreement import undecided_request
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason, reason_matches
 from callbot.engine.extraction.schema import Field
-from callbot.engine.extraction.text import clean, is_unaccented, normalize, strip_diacritics
+from callbot.engine.extraction.text import (
+    clean,
+    compile_phrases,
+    find_phrase,
+    is_unaccented,
+    normalize,
+    strip_diacritics,
+)
 from callbot.engine.types import CancelReason
 
 _CLAUSE_BREAK = re.compile(r"[,;.!?…]")
@@ -109,3 +117,40 @@ def _gap(matches: list[re.Match[str]]) -> bool:
 
 def _only(words: list[str], allowed: tuple[frozenset[str], frozenset[str]], clause: str) -> bool:
     return set(words) <= allowed[1 if is_unaccented(clause) else 0]
+
+
+# --- Lý do do MODEL đọc ra -------------------------------------------------------------------
+
+# Việc chưa xảy ra / nói về đúng hôm hẹn: "tuần sau tôi khám chỗ khác rồi", "tôi định khám chỗ khác",
+# "tôi đã đặt hẹn ở bệnh viện khác", "tối đó tôi đến viện khác rồi" — còn lịch để đổi, hỏi "đổi hay hủy".
+_PLANNED = compile_phrases(
+    [
+        "sẽ", "định", "dự định", "sắp", "mai", "ngày mai", "hôm sau", "tuần sau", "tháng sau",
+        "tới đây", "sắp tới", "đặt hẹn", "đặt lịch", "có hẹn", "có lịch", "hôm đó", "ngày đó",
+        "tối đó", "sáng đó", "chiều đó", "giờ đó", "lúc đó", "hôm ấy", "bữa đó",
+    ]
+)  # fmt: skip
+# Người gọi tự thấy chưa chắc: "tôi hết đau rồi, chắc không cần nữa đâu" (không gồm "chắc chắn")
+_SOFTENED = re.compile(r"(?<!\w)(?:chắc(?! chắn)|có lẽ|hình như|có khi|không chắc)(?!\w)")
+_DONE = re.compile(r"(?<!\w)(?:rồi|đã|xong)(?!\w)")
+
+
+def implied_cancel_from_model(transcript: str, reason: Optional[str], span: Optional[str]) -> bool:
+    """Lý do model đọc ra ở câu đọc lịch / "đổi hay hủy" đủ để hiểu là yêu cầu hủy — cùng nghĩa
+    với `implied_cancel` của luật nhưng cho cụm luật không biết ("khám ở viện tỉnh rồi", "khỏi bệnh
+    rồi"). Vẫn CHỈ là lượt yêu cầu: lệnh ghi cần lượt xác nhận có động từ hủy (§1.1.4, SF-05).
+
+    Điều kiện: mã WENT_ELSEWHERE / NO_LONGER_NEEDED, span có dấu hiệu đã xảy ra ("rồi" / "đã"), câu
+    có dấu, không phải câu hỏi, không ngập ngừng / điều kiện / kể lại, không nói về việc sắp tới.
+    """
+    if reason not in ("WENT_ELSEWHERE", "NO_LONGER_NEEDED") or not span or "?" in transcript:
+        return False
+    text, part = clean(transcript), clean(span)
+    if not part or part not in text or is_unaccented(text):
+        # Không dấu: "da" là đã / dạ, "roi" mơ hồ -> để luật và câu hỏi lại xử lý
+        return False
+    if undecided_request(transcript, part) or _SOFTENED.search(text):
+        return False
+    if find_phrase(text, _PLANNED) is not None:
+        return False
+    return _DONE.search(part) is not None

@@ -57,8 +57,10 @@ class _AudioTime(logging.Filter):
 def _spy_validator() -> None:
     original = TurnValidator.evaluate
 
-    def evaluate(self, text, *, noise_evidence=None, stability=None):
-        decision = original(self, text, noise_evidence=noise_evidence, stability=stability)
+    def evaluate(self, text, *, noise_evidence=None, stability=None, **kwargs):
+        decision = original(
+            self, text, noise_evidence=noise_evidence, stability=stability, **kwargs
+        )
         snr = None if noise_evidence is None else round(noise_evidence.snr_db, 1)
         print(f"{_stamp()}   validator {text!r} snr={snr} {stability} -> {decision}")
         return decision

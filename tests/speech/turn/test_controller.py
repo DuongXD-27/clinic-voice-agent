@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from speech.asr.vad.base import VadEvent
-from speech.turn.controller import TurnController, is_meaningful_text
+from speech.turn.controller import TurnController, is_meaningful_text, strip_echo_prefix
 from speech.types import TranscriptEvent
 
 
@@ -79,7 +79,7 @@ async def test_empty_partial_does_not_emit_turn() -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["à", "ừ", "ờm", "Dạ", " ờ ", "...", "?!", "---", "  ,  "],
+    ["à", "ừ", "ờm", "Dạ", " ờ ", "Ừ.", "Dạ,", "...", "?!", "---", "  ,  "],
 )
 async def test_filler_word_or_punctuation_only_is_not_meaningful(text: str) -> None:
     assert is_meaningful_text(text) is False
@@ -182,6 +182,53 @@ async def test_confirmed_barge_in_candidate_is_preserved_on_stop() -> None:
 
     turn = await _next_turn(controller)
     assert turn.text == "dừng lại"
+
+
+async def test_confirmed_barge_in_turn_drops_echoed_bot_words() -> None:
+    """Đo 07/10 (barge_in_eval, echo qua kênh điện thoại): lượt ngắt lời gửi engine là
+    "ANH CHỊ CHẮC CHẮN MUỐN HỦY TÔI LÀ NGUYỄN VĂN A" — engine đọc ra ý "hủy" từ chính câu bot."""
+    controller = TurnController(max_wait_after_vad_end_ms=20, min_speech_ms=0)
+    controller.on_bot_speaking_changed(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_echo("Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?")
+    await controller.on_transcript_event(
+        TranscriptEvent(text="ANH CHỊ CHẮC CHẮN MUỐN HỦY TÔI LÀ NGUYỄN VĂN A", is_final=True)
+    )
+
+    controller.on_bot_speaking_changed(False, preserve_candidate=True)
+
+    turn = await _next_turn(controller)
+    assert turn.text == "TÔI LÀ NGUYỄN VĂN A"
+
+
+@pytest.mark.parametrize(
+    ("text", "bot_text", "expected"),
+    [
+        # Câu bot vọng lại nguyên câu (ASR chép sai vài chữ) -> không còn gì của người gọi.
+        ("DẠ VIN BÁCH XIN NGHE EM LÀ TRỢ LÝ", "Dạ Vinmec xin nghe, em là trợ lý ảo AI", ""),
+        (
+            "DẠ VIN BÁCH XIN NGHE NGÀY MƯỜI BỐN THÁNG BA",
+            "Dạ Vinmec xin nghe, em là trợ lý ảo AI",
+            "NGÀY MƯỜI BỐN THÁNG BA",
+        ),
+        # Lời người gọi tình cờ có vài từ của câu bot nhưng không thành khối: giữ nguyên.
+        ("Anh muốn", "Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?", "Anh muốn"),
+        ("ANH MUỐN EM ĐẶT PHÒNG", "Dạ anh chị cho em xin họ tên", "ANH MUỐN EM ĐẶT PHÒNG"),
+        ("tôi muốn hủy", "", "tôi muốn hủy"),
+    ],
+)
+def test_strip_echo_prefix(text: str, bot_text: str, expected: str) -> None:
+    assert strip_echo_prefix(text, bot_text) == expected
+
+
+def test_echo_prefix_does_not_consume_caller_start_on_an_isolated_shared_word() -> None:
+    assert (
+        strip_echo_prefix(
+            "DẠ VINM XIN NGHE TÔI LÀ NGUYỄN VĂN A",
+            "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài",
+        )
+        == "TÔI LÀ NGUYỄN VĂN A"
+    )
 
 
 async def test_user_can_speak_normally_right_after_bot_stops() -> None:
@@ -414,6 +461,146 @@ async def test_silence_elapsed_counts_from_bot_stop_and_last_vad_activity() -> N
     await asyncio.sleep(0.05)  # 100 ms < min_speech_ms: câu bị huỷ sau timeout
     clock.advance(1.0)
     assert controller.silence_elapsed_s() == pytest.approx(1.0)
+
+
+async def test_remote_final_for_earlier_segment_waits_for_later_segment() -> None:
+    """ASR remote: final của đoạn 1 tới khi đoạn 2 đã mở; lượt chờ cả final của đoạn 2 rồi
+    ghép theo thứ tự đoạn."""
+    controller = TurnController(min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    await controller.on_vad_event(VadEvent("speech_end"))
+    assert controller.continues_turn() is True  # đoạn 1 chưa có final
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(2)
+    await controller.on_transcript_event(
+        TranscriptEvent(text="sinh ngày", is_final=False, segment_id=2)
+    )
+    await controller.on_transcript_event(
+        TranscriptEvent(text="Anh tên là A.", is_final=True, segment_id=1)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await asyncio.sleep(0.02)
+    assert controller._queue.empty()
+
+    await controller.on_transcript_event(
+        TranscriptEvent(text="sinh ngày 14.", is_final=True, segment_id=2)
+    )
+    assert (await _next_turn(controller)).text == "Anh tên là A. sinh ngày 14."
+
+
+@pytest.mark.parametrize("text", ["Ừ.", "ờ", "dạ", "à"])
+async def test_single_syllable_reply_is_a_turn_when_filler_words_are_kept(text: str) -> None:
+    """Engine hiểu được "ừ/ờ" (đồng ý), "dạ" (hỏi lại), "à" (đang nghĩ) — tầng speech không bỏ."""
+    controller = TurnController(min_speech_ms=0, drop_filler_words=False)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    await controller.on_transcript_event(TranscriptEvent(text=text, is_final=True))
+
+    turn = await _next_turn(controller)
+
+    assert turn.text == text
+
+
+async def test_punctuation_only_is_dropped_even_when_filler_words_are_kept() -> None:
+    controller = TurnController(min_speech_ms=0, drop_filler_words=False)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    await controller.on_transcript_event(TranscriptEvent(text="...", is_final=True))
+
+    await asyncio.sleep(0.05)
+
+    assert controller._queue.empty()
+
+
+async def test_filler_heard_while_bot_was_speaking_is_still_dropped() -> None:
+    """ "ừ" chen lúc bot đang nói là tiếng đệm ("tôi đang nghe"), không phải câu trả lời."""
+    controller = TurnController(min_speech_ms=0, drop_filler_words=False)
+    controller.on_bot_speaking_changed(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.on_bot_speaking_changed(False)
+    controller.expect_echo("Anh chị có đến khám được theo lịch này không ạ?")
+    await controller.on_transcript_event(TranscriptEvent(text="Ừ", is_final=True))
+
+    await asyncio.sleep(0.05)
+
+    assert controller._queue.empty()
+
+
+async def _segment(controller: TurnController, segment_id: int, text: str) -> None:
+    """Một câu của ASR remote: final tới trước speech_end."""
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(segment_id)
+    await controller.on_transcript_event(
+        TranscriptEvent(text=text, is_final=True, segment_id=segment_id)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+
+
+async def test_merge_window_joins_continuation_into_one_turn() -> None:
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150)
+    controller.set_asr_final_required(True)
+    await _segment(controller, 1, "14 tháng 3")
+    await asyncio.sleep(0.05)  # ầm ừ, rồi nói tiếp trong cửa sổ gộp
+    await _segment(controller, 2, "năm 1978")
+
+    turn = await _next_turn(controller)
+
+    assert turn.text == "14 tháng 3 năm 1978"
+    assert controller._queue.empty()
+
+
+async def test_merge_window_commits_after_window_without_continuation() -> None:
+    controller = TurnController(min_speech_ms=0, merge_window_ms=50)
+    controller.set_asr_final_required(True)
+    await _segment(controller, 1, "tôi muốn đặt lịch")
+
+    assert controller._queue.empty()  # chưa chốt ngay
+    turn = await _next_turn(controller, timeout=0.5)
+    assert turn.text == "tôi muốn đặt lịch"
+
+
+async def test_without_merge_window_continuation_is_a_new_turn() -> None:
+    controller = TurnController(min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await _segment(controller, 1, "14 tháng 3")
+    await _segment(controller, 2, "năm 1978")
+
+    assert (await _next_turn(controller)).text == "14 tháng 3"
+    assert (await _next_turn(controller)).text == "năm 1978"
+
+
+async def test_empty_final_after_partial_does_not_leave_the_turn_hanging() -> None:
+    """ASR remote (final bắt buộc): đã có partial nên timeout không bỏ lượt, rồi final tới rỗng.
+    Lượt phải được bỏ — giữ lại thì silence_elapsed_s() mãi là None, bot không bao giờ nhắc
+    khi người gọi im lặng."""
+    controller = TurnController(max_wait_after_vad_end_ms=20, min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    await controller.on_transcript_event(TranscriptEvent(text="anh", is_final=False, segment_id=1))
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await asyncio.sleep(0.05)  # timeout đã chạy, còn chờ final
+    await controller.on_transcript_event(TranscriptEvent(text="", is_final=True, segment_id=1))
+
+    assert controller.silence_elapsed_s() is not None
+    assert not controller.has_pending_turn()
+
+
+async def test_final_that_is_only_bot_echo_does_not_leave_the_turn_hanging() -> None:
+    controller = TurnController(max_wait_after_vad_end_ms=20, min_speech_ms=0)
+    controller.set_asr_final_required(True)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.expect_final(1)
+    controller.expect_echo("Dạ Vinmec xin nghe, em là trợ lý ảo AI")
+    await controller.on_transcript_event(
+        TranscriptEvent(text="dạ vin", is_final=False, segment_id=1)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await controller.on_transcript_event(
+        TranscriptEvent(text="DẠ VINMEC XIN NGHE EM LÀ", is_final=True, segment_id=1)
+    )
+
+    assert controller.silence_elapsed_s() is not None
 
 
 if __name__ == "__main__":

@@ -15,14 +15,20 @@ Quy tắc chốt turn (UserTurnCompleted):
 4. Turn phải kéo dài ít nhất `min_speech_ms` (tính từ VAD speech_start) — chặn "ừ", ho,
    tiếng động ngắn lọt qua VAD. Bắt đầu sát lúc bot vừa dứt lời thì phải dài thêm phần còn
    thiếu của `post_bot_guard_ms` (chống tiếng vọng).
-5. Text phải có nghĩa (`is_meaningful_text`) và TurnValidator (nếu có) không DROP.
+5. Text phải có nghĩa (`is_meaningful_text`; `drop_filler_words=False` thì chỉ cần có chữ —
+   engine tự hiểu "ừ/ờ/dạ/à" — trừ từ đệm nghe lúc bot đang nói) và TurnValidator (nếu có)
+   không DROP.
+6. Một lượt gồm một hay nhiều đoạn ASR: `speech_start` khi lượt đang dở (đã có chữ, hoặc VAD
+   hết đoạn mà ASR còn chưa trả final) mở đoạn mới trong cùng lượt, không bỏ đoạn trước.
+   Bug thật 06/10 (Gemini): người gọi ngừng giữa "...Nguyễn Văn A" và "sinh ngày...", đoạn
+   mới bắt đầu trước khi final có tên tới -> final đó bị bỏ, mất tên.
 """
 
 import asyncio
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Optional
 
 from speech.asr.evidence import StabilityVerdict
@@ -36,34 +42,130 @@ logger = logging.getLogger(__name__)
 
 # Từ đệm không mang nội dung — gửi lên core thì bot hỏi lại, tệ hơn bỏ qua. Chỉ gồm các từ
 # đã gặp trong log.
+#
+# "ừ"/"ờ"/"dạ" vẫn bị bỏ dù engine dùng được ("ừ/ờ" = đồng ý, "dạ" = hỏi lại): đo 06/10
+# (eval/noise-bench, docs/evidence/stt-turn-segments-backchannel-fallback-2026-10-06.md) cho
+# chúng qua theo SNR đoạn nói thì ở mọi ngưỡng đã thử (6/10/15 dB) nhiễu văn phòng thuần vẫn
+# thành lượt "Ừ" — đồng ý giả; confidence ZipFormer của "Ừ" giả và thật cũng chồng lấn.
 _FILLER_WORDS = frozenset(
     {"à", "ừ", "ờ", "ạ", "ơ", "ừm", "ờm", "à ừ", "dạ", "ừa", "ơ kìa", "hửm", "hử"}
 )
 _PUNCTUATION_ONLY_RE = re.compile(r"^[\W_]+$", re.UNICODE)
+# Gemini trả "Ừ." còn ZipFormer trả "Ừ": bỏ dấu câu trước khi so với các tập từ ở trên.
+_PUNCTUATION_RE = re.compile(r"[^\w\s]+", re.UNICODE)
 _ASR_POLL_S = 0.05
+# `strip_echo_prefix`: khối từ trùng câu bot bắt đầu trong chừng này từ đầu, hai khối cách nhau
+# không quá chừng này từ (ASR chép sai/tách tên riêng "VINMEC" -> "VI MAX", "ALO" -> "A LÔ"); cần
+# đủ số từ trùng và chiếm phần lớn đoạn bị bỏ.
+_ECHO_PREFIX_MAX_GAP = 2
+_ECHO_PREFIX_MIN_WORDS = 3
+_ECHO_PREFIX_MIN_COVERAGE = 0.6
+# Đoạn chỉ gồm chừng này từ cuối của câu bot (đang phát khi ASR nghe) là tiếng vọng.
+_ECHO_TAIL_MAX_WORDS = 2
+# Câu bot vọng lại chỉ có thể nằm ở lượt bắt đầu sát lúc bot dứt lời (trễ vọng <= 1 s + VAD báo
+# trễ): lượt mở sau chừng này giây thì bỏ gợi ý vọng (`expect_echo` lúc bot dứt lời).
+_ECHO_HINT_MAX_AGE_S = 2.0
+
+
+def spoken_words(text: str) -> str:
+    """Chữ thường, bỏ dấu câu, một khoảng trắng giữa các từ."""
+    return " ".join(_PUNCTUATION_RE.sub(" ", text.lower()).split())
+
+
+def strip_echo_prefix(text: str, bot_text: str) -> str:
+    """Bỏ phần đầu `text` là câu bot vọng lại, giữ nguyên chữ gốc của phần còn lại.
+
+    Người gọi chen vào khi tiếng bot còn vọng trong mic: ASR chép câu bot trước rồi tới lời
+    người gọi ("ANH CHỊ CHẮC CHẮN MUỐN HỦY TÔI LÀ NGUYỄN VĂN A"). So khớp theo TỪ (difflib),
+    không theo ký tự: so mờ ký tự trên cả đoạn đầu ăn luôn lời người gọi ("TÔI TÊN LÀ" mất).
+
+    Chỉ so chữ thì không phân biệt được người gọi nhắc lại lời bot: chỉ gọi khi mic thật sự có
+    tiếng bot vọng lại, với phần bot phát trong lúc ASR nghe (`InterruptionController.echo_text`)."""
+    import difflib
+
+    tokens = text.split()
+    words = [spoken_words(token) for token in tokens]
+    bot = spoken_words(bot_text).split()
+    if not bot:
+        return text
+    spoken = [word for word in words if word]
+    if 0 < len(spoken) <= _ECHO_TAIL_MAX_WORDS and spoken == bot[-len(spoken) :]:
+        # Chỉ còn đuôi câu bot vọng lại ("KHÔNG Ạ" của "...theo lịch này không ạ?"): để lọt thì
+        # thành câu trả lời "không" giả. Chỉ tới đây khi mic có tiếng vọng (`echo_text`).
+        return ""
+    end = matched = 0
+    blocks = difflib.SequenceMatcher(None, words, bot, autojunk=False).get_matching_blocks()
+    for block in blocks:
+        if block.size == 0 or block.a - end > _ECHO_PREFIX_MAX_GAP:
+            break
+        if matched >= _ECHO_PREFIX_MIN_WORDS and block.a > end and block.size == 1:
+            # An isolated shared word after a gap is weak evidence. Extending the echo
+            # prefix over it can consume the caller's opening words ("TÔI LÀ ...").
+            break
+        end = block.a + block.size
+        matched += block.size
+    if matched >= _ECHO_PREFIX_MIN_WORDS and matched >= _ECHO_PREFIX_MIN_COVERAGE * end:
+        return " ".join(tokens[end:])
+    return text
+
+
+# Từ đệm mang nghĩa trả lời ("ừ/ờ" đồng ý, "dạ" hỏi lại) vẫn tới engine khi bằng chứng mạnh, dù
+# `drop_filler_words`: ASR rất chắc chắn VÀ đủ to so với nền. Đo 08/10: "Ừ" thật của người gọi
+# (to, kéo dài) 0,996-0,998; "Ừ/À/ĐÂY" ASR nghe ra từ nhiễu thuần trên 175 lần chạy noise-bench
+# cao nhất 0,849 / 0,933 / 0,863; "Ừ/À" giả trong cuộc gọi thật 0,895 / 0,849. SNR chỉ là điều kiện
+# phụ: có TV/điện thoại phát gần mic, "Ừ" thật 0,955-0,979 bị bỏ ở ngưỡng 10 dB (08/10).
+_ANSWER_FILLERS = frozenset({"ừ", "ờ", "ừa", "dạ", "à ừ", "vâng"})
+_CONFIDENT_FILLER_MIN_CONFIDENCE = 0.9
+_CONFIDENT_FILLER_MIN_SNR_DB = 6.0
+_FILLER_NO_CONFIDENCE_SNR_DB = 15.0
+
+
+def is_confident_answer_filler(
+    text: str, confidence: Optional[float], noise_evidence: Optional[NoiseEvidence]
+) -> bool:
+    """ "Ừ/ờ/dạ" đứng riêng mà ASR rất chắc chắn và giọng rõ hơn nền: câu trả lời thật."""
+    if spoken_words(text) not in _ANSWER_FILLERS:
+        return False
+    if confidence is None:
+        # ASR không trả độ tin cậy (Gemini Live): chỉ dựa vào giọng rõ hơn hẳn nền.
+        return noise_evidence is not None and noise_evidence.snr_db >= _FILLER_NO_CONFIDENCE_SNR_DB
+    if confidence < _CONFIDENT_FILLER_MIN_CONFIDENCE:
+        return False
+    return noise_evidence is None or noise_evidence.snr_db >= _CONFIDENT_FILLER_MIN_SNR_DB
 
 
 def is_meaningful_text(text: str) -> bool:
-    """False cho text rỗng, chỉ có dấu câu, hoặc chỉ là từ đệm. Không lọc theo độ dài:
-    "có"/"không" là câu trả lời hợp lệ."""
+    """False cho text rỗng, chỉ có dấu câu, hoặc chỉ là từ đệm (kể cả có dấu câu như "Ừ." của
+    Gemini). Không lọc theo độ dài: "có"/"không" là câu trả lời hợp lệ."""
     normalized = text.strip().lower()
     if not normalized:
         return False
     if _PUNCTUATION_ONLY_RE.match(normalized):
         return False
-    if normalized in _FILLER_WORDS:
-        return False
-    return True
+    return spoken_words(normalized) not in _FILLER_WORDS
+
+
+@dataclass
+class _Segment:
+    """Một đoạn ASR trong lượt. `key`: segment_id của ASR remote (Gemini, final có thể tới sau
+    khi đoạn sau đã bắt đầu); None với ASR cục bộ (ZipFormer, event tới đúng thứ tự)."""
+
+    key: Optional[int]
+    text: str = ""
+    final: bool = False
 
 
 @dataclass
 class _Candidate:
-    """Turn đang hình thành: text/confidence tốt nhất đã biết, chờ điều kiện chốt."""
+    """Turn đang hình thành: các đoạn ASR đã nghe, chờ điều kiện chốt."""
 
-    text: str = ""
+    segments: list[_Segment] = field(default_factory=list)
     confidence: Optional[float] = None
-    has_final_transcript: bool = False
     vad_ended: bool = False
+    # VAD đang trong một đoạn nói của lượt này.
+    vad_speaking: bool = False
+    # Lượt có từ hai đoạn VAD trở lên (quy tắc 6).
+    continued: bool = False
     finalized: bool = False
     started_at: Optional[float] = None
     vad_ended_at: Optional[float] = None
@@ -72,9 +174,37 @@ class _Candidate:
     partial_count: int = 0
     # Thời lượng phải có thêm khi câu bắt đầu sát lúc bot dứt lời (post_bot_guard).
     guard_extra_s: float = 0.0
+    # Câu bot có thể vọng lại ở đầu chữ của lượt này (expect_echo).
+    echo_text: str = ""
+    # Lời người gọi nói chen lúc bot nói trước lượt này, chưa được xác nhận (on_held_barge_in).
+    held_text: str = ""
+    # Đã đủ điều kiện chốt, đang chờ hết cửa sổ gộp (merge_window_ms).
+    merge_pending: bool = False
     # Bằng chứng mới nhất cho TurnValidator (on_evidence_updated).
     noise_evidence: Optional[NoiseEvidence] = None
     stability: StabilityVerdict = StabilityVerdict.UNKNOWN
+
+    @property
+    def text(self) -> str:
+        return " ".join(seg.text.strip() for seg in self.segments if seg.text.strip())
+
+    @property
+    def has_final_transcript(self) -> bool:
+        """Mọi đoạn đã nghe (hoặc đã mở ở ASR remote, xem `expect_final`) đều có final."""
+        return bool(self.segments) and all(seg.final for seg in self.segments)
+
+    def segment_for(self, key: Optional[int]) -> _Segment:
+        if key is not None:
+            for seg in self.segments:
+                if seg.key == key:
+                    return seg
+            self.segments.append(_Segment(key))
+            self.segments.sort(key=lambda seg: seg.key)
+            return next(seg for seg in self.segments if seg.key == key)
+        # ASR cục bộ: final đóng đoạn hiện tại, event sau đó thuộc đoạn ASR kế tiếp.
+        if not self.segments or self.segments[-1].final:
+            self.segments.append(_Segment(None))
+        return self.segments[-1]
 
 
 class TurnController:
@@ -88,6 +218,8 @@ class TurnController:
         sleep: Optional[Callable[[float], Awaitable[None]]] = None,
         validator: Optional[TurnValidator] = None,
         max_wait_for_asr_ms: int = 3_000,
+        merge_window_ms: int = 0,
+        drop_filler_words: bool = True,
     ) -> None:
         """`validator`: chỉ được WAIT khi còn event mới có thể tới; ở "cơ hội cuối" (đã có
         final, hoặc hết timeout) WAIT coi như ACCEPT để lượt không treo mãi.
@@ -95,7 +227,11 @@ class TurnController:
         `clock`/`sleep` đi thành cặp: bộ đo offline chạy cả đồng hồ lẫn hẹn giờ theo thời gian ảo.
 
         `max_wait_for_asr_ms`: VAD đã hết câu nhưng ASR (decode chậm) còn tồn audio của câu —
-        chờ tối đa chừng này rồi mới chốt bằng partial."""
+        chờ tối đa chừng này rồi mới chốt bằng partial.
+
+        `merge_window_ms`: lượt đã đủ điều kiện chốt vẫn chờ thêm chừng này; người gọi nói tiếp
+        trong lúc đó ("14 tháng 3" … "năm 1978") thì nối vào cùng lượt. 0 = chốt ngay.
+        `drop_filler_words`: bỏ lượt chỉ có từ đệm (`_FILLER_WORDS`)."""
         self._max_wait_after_vad_end_s = max_wait_after_vad_end_ms / 1000
         self._min_speech_s = min_speech_ms / 1000
         self._post_bot_guard_s = post_bot_guard_ms / 1000
@@ -103,23 +239,43 @@ class TurnController:
         self._sleep = sleep or asyncio.sleep
         self._validator = validator
         self._max_wait_for_asr_s = max_wait_for_asr_ms / 1000
+        self._merge_window_s = merge_window_ms / 1000
+        self._drop_filler_words = drop_filler_words
         self._asr_pending: Optional[Callable[[], bool]] = None
+        # Đường truyền có tiếng bot vọng lại (InterruptionController): lượt "bắt đầu trước khi
+        # bot nói" khi đó có thể là đuôi vọng câu bot trước, không giữ qua câu bot.
+        self._echo_line: Optional[Callable[[], bool]] = None
+        self._asr_final_required = False
         self._queue: "asyncio.Queue[UserTurnCompleted]" = asyncio.Queue()
         self._candidate = _Candidate()
         self._bot_speaking = False
         self._bot_stopped_at: Optional[float] = None
         self._last_vad_activity_at: Optional[float] = None
         self._timeout_task: Optional[asyncio.Task] = None
+        # Câu bot vọng lại ở đầu final kế tiếp, kể cả khi lượt dở đã bị bỏ (expect_echo).
+        self._echo_hint = ""
+        self._barge_in_recoveries = 0
+        self._recovered_turns: list[UserTurnCompleted] = []
+        self._bot_started_at: Optional[float] = None
+        # Lời người gọi bắt đầu TRƯỚC khi bot nói, đã dừng giữa lúc bot nói rồi người gọi nói
+        # tiếp (speech_start mới): giữ ở đây, giao khi bot dứt lời (`_stash_pre_bot_candidate`).
+        self._pre_bot_turns: list[UserTurnCompleted] = []
 
     def on_bot_speaking_changed(self, speaking: bool, *, preserve_candidate: bool = False) -> None:
         """CallBridge gọi khi bot bắt đầu/dừng phát TTS.
 
         Bot vừa dứt lời: bỏ câu dở nghe được trong lúc bot nói (nhiều khả năng là tiếng bot
-        vọng lại) — trừ khi đó là lần ngắt lời đã xác nhận (`preserve_candidate=True`)."""
+        vọng lại) — trừ khi đó là lần ngắt lời đã xác nhận (`preserve_candidate=True`), hoặc
+        câu bắt đầu TRƯỚC khi bot nói (người gọi nói tiếp trong lúc core trả lời: không thể là
+        tiếng vọng của câu này; bỏ thì mất lời người gọi)."""
         self._bot_speaking = speaking
-        if not speaking:
-            self._bot_stopped_at = self._clock()
-        if not speaking and not preserve_candidate:
+        if speaking:
+            self._echo_hint = ""
+            self._bot_started_at = self._clock()
+            return
+        self._bot_stopped_at = self._clock()
+        preserve = preserve_candidate or self._started_before_bot()
+        if not preserve:
             if self._candidate.started_at is not None and not self._candidate.finalized:
                 # DEBUG: text có thể chứa PII.
                 logger.debug(
@@ -128,9 +284,57 @@ class TurnController:
                     self._candidate.text,
                 )
             self._reset_candidate()
-        elif not speaking:
-            # Ngắt lời đã xác nhận: chốt ngay nếu final đã tới, nếu chưa thì chờ phần còn lại.
+        pre_bot, self._pre_bot_turns = self._pre_bot_turns, []
+        for turn in pre_bot:
+            # Đứng trước lượt đang giữ (nếu có) — đúng thứ tự người gọi nói.
+            self._place_held_barge_in(turn)
+        if preserve:
+            # Chốt ngay nếu final đã tới, nếu chưa thì chờ phần còn lại.
             self._try_emit(allow_partial=True)
+
+    def _started_before_bot(self) -> bool:
+        """Lượt đang dở bắt đầu trước câu bot đang/vừa đọc. ASR remote (cần final) không áp
+        dụng: đoạn của nó đã bị bỏ thì final không bao giờ tới, lượt sẽ treo."""
+        candidate = self._candidate
+        return (
+            not self._asr_final_required
+            and not (self._echo_line is not None and self._echo_line())
+            and candidate.started_at is not None
+            and not candidate.finalized
+            and self._bot_started_at is not None
+            and candidate.started_at < self._bot_started_at
+        )
+
+    def _stash_pre_bot_candidate(self) -> None:
+        """Người gọi nói tiếp giữa lúc bot nói: giữ phần đã nói trước khi bot nói (qua các bộ lọc
+        như lượt thường) để giao khi bot dứt lời, thay vì bỏ khi mở lượt mới."""
+        candidate = self._candidate
+        text = f"{candidate.held_text} {candidate.text.strip()}".strip()
+        if not is_meaningful_text(text):
+            return
+        if (
+            self._validator is not None
+            and self._validator.evaluate(
+                text,
+                noise_evidence=candidate.noise_evidence,
+                stability=candidate.stability,
+                confidence=candidate.confidence,
+            )
+            == ValidationDecision.DROP
+        ):
+            return
+        started = candidate.started_at
+        ended = candidate.vad_ended_at
+        self._pre_bot_turns.append(
+            UserTurnCompleted(
+                text=text,
+                confidence=candidate.confidence,
+                audio_duration_ms=max(0.0, (ended - started) * 1000)
+                if started is not None and ended is not None
+                else None,
+                vad_end_reason="pre_bot",
+            )
+        )
 
     @property
     def is_bot_speaking(self) -> bool:
@@ -140,6 +344,14 @@ class TurnController:
     def set_asr_pending_probe(self, probe: Optional[Callable[[], bool]]) -> None:
         """STTPipeline.stream() gắn hàm cho biết ASR còn audio chưa xử lý (None = không biết)."""
         self._asr_pending = probe
+
+    def set_echo_line_probe(self, probe: Optional[Callable[[], bool]]) -> None:
+        """STTPipeline gắn hàm cho biết đường truyền đã có tiếng bot vọng lại (None = không biết)."""
+        self._echo_line = probe
+
+    def set_asr_final_required(self, required: bool) -> None:
+        """Cloud STT phải có final; timeout không được đưa partial thiếu phủ định tới engine."""
+        self._asr_final_required = required
 
     def silence_elapsed_s(self) -> Optional[float]:
         """Số giây người dùng im lặng, tính từ lúc bot dứt lời hoặc lần cuối VAD còn thấy tiếng
@@ -154,11 +366,120 @@ class TurnController:
             return None
         return self._clock() - max(marks)
 
+    def continues_turn(self) -> bool:
+        """`speech_start` lúc này mở đoạn mới trong lượt đang dở thay vì bắt đầu lượt mới:
+        lượt chưa chốt và đã có chữ, hoặc còn đoạn ASR remote chưa trả final.
+        STTPipeline hỏi trước khi báo cho ASR remote để giữ lại final của đoạn trước."""
+        candidate = self._candidate
+        if candidate.started_at is None or candidate.finalized or self._bot_speaking:
+            return False
+        return bool(candidate.text.strip()) or not candidate.has_final_transcript
+
+    def expect_final(self, segment_id: int) -> None:
+        """ASR remote vừa mở đoạn `segment_id` cho `speech_start` vừa báo: lượt chỉ chốt khi
+        đoạn này đã có final (kể cả final rỗng), dù final tới sau khi VAD đã hết đoạn."""
+        self._candidate.segment_for(segment_id)
+
+    def expect_echo(self, bot_text: str) -> None:
+        """ASR đã nghe audio lúc bot phát `bot_text` (ứng viên ngắt lời): chữ của lượt đang dở và
+        của final kế tiếp — tới sau cả khi bot dứt lời đã bỏ lượt dở — có thể bắt đầu bằng câu
+        bot vọng lại. Lúc chốt, bỏ phần đó (`strip_echo_prefix`). `bot_text` chỉ gồm chữ bot
+        phát trong lúc ASR nghe (`InterruptionController.echo_text`), không phải cả câu."""
+        self._candidate.echo_text = bot_text
+        self._echo_hint = bot_text
+
+    def begin_barge_in_recovery(self) -> None:
+        self._barge_in_recoveries += 1
+
+    def end_barge_in_recovery(self) -> None:
+        self._barge_in_recoveries = max(0, self._barge_in_recoveries - 1)
+        if self._barge_in_recoveries:
+            return
+        recovered, self._recovered_turns = self._recovered_turns, []
+        if recovered:
+            durations = [turn.audio_duration_ms for turn in recovered]
+            confidences = [turn.confidence for turn in recovered if turn.confidence is not None]
+            self._place_held_barge_in(
+                UserTurnCompleted(
+                    text=" ".join(turn.text for turn in recovered),
+                    confidence=min(confidences) if confidences else None,
+                    audio_duration_ms=sum(durations)
+                    if all(d is not None for d in durations)
+                    else None,
+                    vad_end_reason="held_barge_in",
+                )
+            )
+        # Do not flush a partial early just because an older candidate finished decoding.
+        self._try_emit(allow_partial=False, is_last_chance=True)
+
+    def on_held_barge_in(
+        self,
+        text: str,
+        *,
+        confidence: Optional[float] = None,
+        speech_ms: Optional[float] = None,
+        noise_evidence: Optional[NoiseEvidence] = None,
+        answers_bot: bool = False,
+    ) -> None:
+        """Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời — STTPipeline giữ
+        riêng, decode và bỏ tiếng vọng sau khi bot dứt lời. Có lượt đang hình thành (người gọi
+        nói tiếp) thì đứng trước chữ của lượt đó; không thì thành một lượt.
+
+        `answers_bot`: nói ở cuối câu bot (trả lời câu hỏi bot vừa đọc, không phải tiếng đệm
+        "tôi đang nghe" giữa câu) — "Ừ" rất rõ khi đó vẫn là câu trả lời."""
+        if not is_meaningful_text(text) and not (
+            answers_bot and is_confident_answer_filler(text, confidence, noise_evidence)
+        ):
+            return
+        if speech_ms is not None and speech_ms < self._min_speech_s * 1000:
+            return
+        # Batch decoding is a final result, but it must still pass the same DROP gates.
+        if (
+            self._validator is not None
+            and self._validator.evaluate(text, noise_evidence=noise_evidence, confidence=confidence)
+            == ValidationDecision.DROP
+        ):
+            return
+        turn = UserTurnCompleted(
+            text=text,
+            confidence=confidence,
+            audio_duration_ms=speech_ms,
+            vad_end_reason="held_barge_in",
+        )
+        if self._barge_in_recoveries:
+            self._recovered_turns.append(turn)
+        else:
+            self._place_held_barge_in(turn)
+
+    def _place_held_barge_in(self, turn: UserTurnCompleted) -> None:
+        candidate = self._candidate
+        if not candidate.finalized and (candidate.started_at is not None or candidate.segments):
+            candidate.held_text = f"{candidate.held_text} {turn.text}".strip()
+        else:
+            self._queue.put_nowait(turn)
+
     async def on_vad_event(self, event: VadEvent) -> None:
         self._last_vad_activity_at = self._clock()
-        if event.kind == "speech_start":
+        if event.kind == "speech_start" and self.continues_turn():
+            self._cancel_timeout()
+            candidate = self._candidate
+            candidate.vad_speaking = True
+            candidate.vad_ended = False
+            candidate.continued = True
+            candidate.merge_pending = False
+        elif event.kind == "speech_start":
+            if self._bot_speaking and self._started_before_bot():
+                self._stash_pre_bot_candidate()
             self._reset_candidate()
+            self._candidate.vad_speaking = True
             now = self._clock()
+            if (
+                self._echo_hint
+                and not self._bot_speaking
+                and self._bot_stopped_at is not None
+                and now - self._bot_stopped_at > _ECHO_HINT_MAX_AGE_S
+            ):
+                self._echo_hint = ""
             self._candidate.started_at = now
             if self._bot_stopped_at is not None:
                 elapsed_since_bot_stopped = now - self._bot_stopped_at
@@ -169,22 +490,34 @@ class TurnController:
                         self._post_bot_guard_s - elapsed_since_bot_stopped
                     )
         elif event.kind == "speech_end":
+            self._candidate.vad_speaking = False
             self._candidate.vad_ended = True
             self._candidate.vad_ended_at = self._clock()
             # Final có thể đã tới trước speech_end; nếu chưa thì chờ final, chưa dùng partial.
             if self._try_emit(allow_partial=False):
                 return
+            if self._candidate.merge_pending:
+                return  # đã đủ điều kiện, đang chờ hết cửa sổ gộp
             self._start_timeout()
 
     async def on_transcript_event(self, event: TranscriptEvent) -> None:
-        self._candidate.text = event.text
-        self._candidate.confidence = event.confidence
+        if self._echo_hint:
+            self._candidate.echo_text = self._echo_hint
+            if event.is_final:
+                self._echo_hint = ""
+        segment = self._candidate.segment_for(event.segment_id)
         now = self._clock()
         if event.is_final:
+            segment.text = event.text
+            segment.final = True
+            self._candidate.confidence = event.confidence
             self._candidate.final_at = now
-            self._candidate.has_final_transcript = True
             self._try_emit(allow_partial=True, is_last_chance=True)
         else:
+            if segment.final:
+                return  # partial tới muộn của đoạn đã có final
+            segment.text = event.text
+            self._candidate.confidence = event.confidence
             self._candidate.partial_count += 1
             if self._candidate.first_partial_at is None:
                 self._candidate.first_partial_at = now
@@ -201,24 +534,53 @@ class TurnController:
         if stability is not None:
             self._candidate.stability = stability
 
-    def _try_emit(self, *, allow_partial: bool, is_last_chance: bool = False) -> bool:
+    def _try_emit(
+        self, *, allow_partial: bool, is_last_chance: bool = False, merge_due: bool = False
+    ) -> bool:
         """Chốt lượt nếu đủ điều kiện và bot không đang nói. Trả True nếu đã chốt.
 
         `allow_partial`: cho chốt bằng partial khi VAD đã hết câu (final chưa tới).
         `is_last_chance`: không còn event nào tới cho câu này (đã có final, hoặc hết
         timeout) — validator WAIT khi đó coi như ACCEPT.
+        `merge_due`: cửa sổ gộp đã hết, chốt luôn.
         """
         candidate = self._candidate
-        if candidate.finalized or self._bot_speaking:
+        if self._asr_final_required and not candidate.has_final_transcript:
             return False
+        if candidate.finalized or self._bot_speaking or self._barge_in_recoveries:
+            return False
+        if candidate.continued and candidate.vad_speaking:
+            return False  # đoạn sau của lượt còn đang nói
         if not candidate.has_final_transcript:
             if not allow_partial or not candidate.vad_ended:
                 return False
         text = candidate.text.strip()
+        if candidate.echo_text:
+            text = strip_echo_prefix(text, candidate.echo_text)
+        if candidate.held_text:
+            text = f"{candidate.held_text} {text}".strip()
         if not text:
+            if candidate.has_final_transcript and not candidate.vad_speaking:
+                # Final rỗng (hoặc chỉ có câu bot vọng lại) và người gọi đã ngừng: không còn gì
+                # để chờ. Giữ lại thì lượt treo mãi — ASR remote chốt bằng final, timeout không
+                # bỏ được lượt đã có partial — và không bao giờ có lượt im lặng.
+                self._reset_candidate()
             return False
-        if not is_meaningful_text(text):
-            # Chờ thêm không giúp gì — bỏ câu.
+        # Từ đệm nghe lúc bot đang nói (echo_text) là tiếng đệm "tôi đang nghe", không phải trả lời.
+        keep_filler = not candidate.echo_text and (
+            not self._drop_filler_words
+            or is_confident_answer_filler(text, candidate.confidence, candidate.noise_evidence)
+        )
+        if not is_meaningful_text(text) and not (keep_filler and spoken_words(text)):
+            # Chờ thêm không giúp gì — bỏ câu. Từ đệm không phải PII: ghi để chỉnh ngưỡng.
+            evidence = candidate.noise_evidence
+            logger.info(
+                "turn_controller: drop filler text=%r confidence=%s snr_db=%s heard_during_bot=%s",
+                spoken_words(text),
+                None if candidate.confidence is None else round(candidate.confidence, 3),
+                None if evidence is None else round(evidence.snr_db, 1),
+                bool(candidate.echo_text),
+            )
             self._reset_candidate()
             return False
         if not self._has_min_duration(candidate):
@@ -230,12 +592,16 @@ class TurnController:
                 text,
                 noise_evidence=candidate.noise_evidence,
                 stability=candidate.stability,
+                confidence=candidate.confidence,
             )
             if decision == ValidationDecision.DROP:
                 self._reset_candidate()
                 return False
             if decision == ValidationDecision.WAIT and not is_last_chance:
                 return False  # final hoặc timeout sau đó sẽ gọi lại
+        if self._merge_window_s > 0 and not merge_due:
+            self._schedule_merge_commit(candidate)
+            return False
         candidate.finalized = True
         self._cancel_timeout()
         started = candidate.started_at
@@ -279,6 +645,21 @@ class TurnController:
         required = self._min_speech_s + candidate.guard_extra_s
         remaining = max(0.0, required - (self._clock() - started_at))
         self._timeout_task = asyncio.ensure_future(self._timeout_flush(candidate, remaining))
+
+    def _schedule_merge_commit(self, candidate: _Candidate) -> None:
+        task = self._timeout_task
+        if candidate.merge_pending and task is not None and not task.done():
+            return
+        candidate.merge_pending = True
+        self._cancel_timeout()
+        self._timeout_task = asyncio.ensure_future(self._merge_commit(candidate))
+
+    async def _merge_commit(self, candidate: _Candidate) -> None:
+        """Hết cửa sổ gộp mà người gọi không nói tiếp (speech_start huỷ task này)."""
+        await self._sleep(self._merge_window_s)
+        if candidate is not self._candidate or candidate.finalized or not candidate.merge_pending:
+            return
+        self._try_emit(allow_partial=True, is_last_chance=True, merge_due=True)
 
     async def _timeout_flush(self, candidate: _Candidate, delay_s: float) -> None:
         await self._sleep(delay_s)
@@ -329,14 +710,28 @@ class TurnController:
             self._timeout_task.cancel()
         self._timeout_task = None
 
+    async def aclose(self) -> None:
+        """Stop a remote ASR turn timer before its pipeline/session is torn down."""
+        task = self._timeout_task
+        self._cancel_timeout()
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)
+        self._candidate = _Candidate()
+        self._barge_in_recoveries = 0
+        self._recovered_turns.clear()
+        self._pre_bot_turns.clear()
+
     def _reset_candidate(self) -> None:
         self._cancel_timeout()
         self._candidate = _Candidate()
 
     def has_pending_turn(self) -> bool:
         """True nếu còn UserTurnCompleted chưa được tiêu thụ — dùng để caller
-        (STTPipeline.stream) biết khi nào an toàn dừng lắng nghe sau khi audio kết thúc."""
-        return not self._queue.empty()
+        (STTPipeline.stream) biết khi nào an toàn dừng lắng nghe sau khi audio kết thúc.
+        Lượt đang chờ hết cửa sổ gộp cũng tính: audio hết thì không ai nói tiếp, lượt sẽ chốt."""
+        task = self._timeout_task
+        merging = self._candidate.merge_pending and task is not None and not task.done()
+        return merging or not self._queue.empty()
 
     async def get_turn(self) -> UserTurnCompleted:
         """Chờ turn kế tiếp. An toàn gọi lặp lại — không như một generator dùng chung,

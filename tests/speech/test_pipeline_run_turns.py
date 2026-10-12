@@ -236,5 +236,33 @@ async def _collect(agen):
     return result
 
 
+class _RejectingGate:
+    enforce = True
+
+    def __init__(self) -> None:
+        self.seen: list[tuple[int, object]] = []
+
+    def assess(self, pcm: bytes, sample_rate: int, speech_ms):
+        from speech.audio.speaker_gate import SpeakerVerdict
+
+        self.seen.append((len(pcm), speech_ms))
+        return SpeakerVerdict("block")
+
+
+async def test_turn_rejected_by_speaker_gate_is_not_yielded() -> None:
+    vad = _FakeAsyncVAD([VadEvent("speech_start"), VadEvent("speech_end")])
+    asr = _FakeASR([TranscriptEvent(text="để tôi hỏi bác sĩ", is_final=True)])
+    gate = _RejectingGate()
+    pipeline = make_stt_pipeline(asr=asr, vad=vad, speaker_gate=gate)
+
+    turns = await asyncio.wait_for(
+        _collect(pipeline.stream(_frames(5), turn_controller=TurnController(min_speech_ms=0))),
+        timeout=2.0,
+    )
+
+    assert turns == []
+    assert len(gate.seen) == 1 and gate.seen[0][0] > 0  # gate nhận audio của lượt
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

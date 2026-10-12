@@ -24,6 +24,7 @@ from callbot.engine.extraction.agreement import (
     undecided_request,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
+from callbot.engine.extraction.implied_cancel import implied_cancel_from_model
 from callbot.engine.extraction.schema import (
     Agreement,
     ClinicalLevel,
@@ -319,6 +320,22 @@ def merge_semantic(
         # Lý do có căn cứ được cập nhật ở mọi kiểu trả lời trừ khi người gọi đang bỏ hủy hẳn
         reason = Field(outcome.cancel_reason, Provenance.FALLBACK, span=outcome.reason_span)
 
+    if (
+        kind is ReplyKind.INFORM_REASON
+        and result.question_id in (QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT)
+        and Intent.CANCEL in allowed_intents
+        and implied_cancel_from_model(result.transcript, outcome.cancel_reason, outcome.reason_span)
+    ):
+        # "Tôi khám ở viện khác rồi", "vâng, tôi khỏi bệnh rồi": không còn gì để đổi -> vào thẳng
+        # câu xác nhận hủy, như `implied_cancel` của luật (QC qc-cn-03). Chỉ là lượt yêu cầu: lệnh
+        # ghi vẫn cần lượt xác nhận có động từ hủy (§1.1.4, SF-05).
+        return _replace(
+            result,
+            intent=Field(Intent.CANCEL, Provenance.FALLBACK, span=outcome.reason_span),
+            clinical=clinical,
+            agreement=Field.nothing(Agreement.UNCLEAR),
+            cancel_reason=reason,
+        )
     if kind is ReplyKind.INFORM_REASON and readback:
         # "Hôm đó tôi bận": lý do KHÔNG đến được theo lịch là từ chối câu hỏi đến khám, để Dialogue
         # hỏi đổi hay hủy thay vì "em chưa hiểu". REFUSE không mở khóa lệnh ghi nào. Lý do không

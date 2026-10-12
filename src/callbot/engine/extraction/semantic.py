@@ -225,6 +225,8 @@ class LLMSemanticExtractor:
         self._max_input_chars = max_input_chars
         self._max_completion_tokens = max_completion_tokens
         self._prompt_version = prompt_version
+        # Trạng thái lượt gần nhất: bộ chuyển provider đọc để phân biệt lỗi dịch vụ với model đã trả lời
+        self.last_status: Optional[str] = None
 
     @property
     def prompt_version(self) -> str:
@@ -272,6 +274,7 @@ class LLMSemanticExtractor:
         except ValidationError:
             status = "invalid_response"
         finally:
+            self.last_status = status
             report_model_status(status)
             # Không log transcript, prompt, tên, hay khóa API — chỉ số liệu kỹ thuật.
             logger.info(

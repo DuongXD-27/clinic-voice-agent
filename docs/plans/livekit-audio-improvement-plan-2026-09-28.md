@@ -42,7 +42,7 @@ Các mục A, B, D, 8 và việc nhỏ ở mục 7 (`partial_interval_ratio`, ha
 
 | # | Đề xuất | Kết luận lúc lập kế hoạch | Sau khi đo 28/09 |
 |---|---|---|---|
-| 1 | Khử nhiễu / tách giọng phía server | ✅ Nên làm — thử nghiệm có đo | ❌ **TỪ CHỐI, code đã gỡ** — NC/BVC tệ hơn không lọc ở gần mọi điều kiện đo qua LiveKit Cloud thật |
+| 1 | Khử nhiễu / tách giọng phía server | ✅ Nên làm — thử nghiệm có đo | 🔬 **Thử NC/BVC và Krisp VIVA — chưa thấy cải thiện, cần đánh giá thêm**: WER và tỉ lệ mất câu cao hơn không lọc ở các điều kiện đã thử, cỡ mẫu còn nhỏ |
 | 2 | Một VAD dùng chung | ✅ Nên làm — tái cấu trúc theo bước | ⚠️ **Một nửa**: bộ phân loại dùng chung AN TOÀN, đã bật được (cờ tắt); đổi VAD chính sang Silero thì KHÔNG (câu ngắn tệ hơn) |
 | 3 | Bỏ chunked-offline, dùng streaming thật | ❌ Không làm bây giờ | (không đổi — chưa làm) |
 | 4 | Đổi vai trò Speech Admission | ❌ Không đầu tư thêm — giữ tắt, gỡ khi có VAD chung | ✅ Đã **xoá hẳn** code |
@@ -50,7 +50,7 @@ Các mục A, B, D, 8 và việc nhỏ ở mục 7 (`partial_interval_ratio`, ha
 | 6 | Hotwords theo state | ✅ Nên thử nghiệm | ❌ **TỪ CHỐI, code đã gỡ** — beam đủ rộng để sửa lỗi mục tiêu cũng đảo nghĩa "đồng ý"↔"không đồng ý" nhiều câu khác |
 | 7 | Bộ sửa lỗi ASR theo nghiệp vụ trước core | ⚠️ Làm có điều kiện — sau hotwords | ❌ Điều kiện không còn (hotwords bị từ chối) — chưa làm |
 | 8 | Tách VAD khỏi backpressure của ASR | ✅ Nên làm | ✅ Đã làm, luôn bật |
-| 9 | Cổng "giọng tiền cảnh" trước barge-in | ❌ Không làm riêng — xem lại sau mục 1 | (không đổi — mục 1 đã từ chối nên không xem lại) |
+| 9 | Cổng "giọng tiền cảnh" trước barge-in | ❌ Không làm riêng — xem lại sau mục 1 | (không đổi — mục 1 chưa có kết luận chắc chắn, chưa xem lại) |
 | 10 | Tách profile web / điện thoại | ⏸ Để sau — khi làm SIP | (không đổi — chưa làm) |
 
 ### 4 điểm tự rà soát (không có trong đề xuất)

@@ -1206,3 +1206,42 @@ def test_identity_turn_reads_only_whether_the_caller_asks() -> None:
     )
     assert other.caller_question is False
     assert merge_semantic(result, None, RouteReason.IDENTITY_TURN, ()).caller_question is False
+
+
+# --- Lý do model đọc ra đủ để hiểu là yêu cầu hủy (như `implied_cancel` của luật) ------------------
+
+
+@pytest.mark.parametrize("question_id", [QuestionId.CONFIRM_READBACK, QuestionId.ASK_INTENT])
+def test_a_completed_visit_elsewhere_from_the_model_goes_to_the_cancel_question(
+    question_id: QuestionId,
+) -> None:
+    """ "Tôi khám ở viện khác rồi" không còn gì để đổi: intent CANCEL để Dialogue hỏi xác nhận hủy, không
+    phải "đổi hay hủy". Vẫn chỉ là lượt yêu cầu — agreement không có tín hiệu nào mở khóa ghi."""
+    merged = merge_semantic(
+        _result("Tôi khám ở viện khác rồi", question_id=question_id),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="WENT_ELSEWHERE",
+            reason_span="tôi khám ở viện khác rồi",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert (merged.intent.value, merged.intent.provenance) == (Intent.CANCEL, Provenance.FALLBACK)
+    assert merged.agreement.value is Agreement.UNCLEAR and not merged.agreement.found
+    assert merged.cancel_reason.value == "WENT_ELSEWHERE"
+
+
+def test_a_planned_visit_elsewhere_from_the_model_still_asks_change_or_cancel() -> None:
+    merged = merge_semantic(
+        _readback("tuần sau tôi khám chỗ khác rồi", agreement=Field.nothing(Agreement.UNCLEAR)),
+        SemanticOutcome(
+            ReplyKind.INFORM_REASON,
+            cancel_reason="WENT_ELSEWHERE",
+            reason_span="tuần sau tôi khám chỗ khác rồi",
+        ),
+        RouteReason.INTENT_UNCLEAR,
+        OUTBOUND_INTENTS,
+    )
+    assert merged.intent.value is Intent.NONE
+    assert merged.agreement.value is Agreement.REFUSE

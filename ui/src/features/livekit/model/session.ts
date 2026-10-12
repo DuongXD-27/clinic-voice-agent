@@ -10,6 +10,7 @@
  * khi bắt đầu cuộc gọi mới.
  */
 
+import { ASR_LABELS } from "./config";
 import type { TranscriptLine } from "./transcript";
 
 export type Phase = "idle" | "connecting" | "connected" | "reconnecting";
@@ -38,17 +39,22 @@ export interface LiveKitSession {
   botState: string | null;
   outcome: string | null;
   notice: { tone: Tone; text: string } | null;
+  /** ASR chọn trên trang cho cuộc gọi này; null = theo cấu hình worker. */
+  requestedAsr: string | null;
+  /** ASR worker báo đang dùng; null = chưa báo (worker cũ không báo). */
+  botAsr: string | null;
 }
 
 export type LiveKitAction =
   | { type: "connecting"; step: string }
-  | { type: "connected"; roomName: string; botPresent: boolean; at: number }
+  | { type: "connected"; roomName: string; botPresent: boolean; at: number; asr?: string | null }
   | { type: "reconnecting"; at: number }
   | { type: "reconnected"; at: number }
   | { type: "disconnected"; at: number }
   | { type: "failed"; message: string; at: number }
   | { type: "micChanged"; enabled: boolean; at: number }
   | { type: "botPresence"; present: boolean; at: number }
+  | { type: "botAsr"; provider: string; at: number }
   | { type: "speakers"; bot: boolean; caller: boolean }
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
@@ -67,9 +73,12 @@ export const initialSession: LiveKitSession = {
   botState: null,
   outcome: null,
   notice: null,
+  requestedAsr: null,
+  botAsr: null,
 };
 
 const SILENT = { bot: false, caller: false };
+const asrLabel = (provider: string) => ASR_LABELS[provider] ?? provider;
 
 export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): LiveKitSession {
   switch (action.type) {
@@ -79,9 +88,9 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
         ? { ...initialSession, phase: "connecting", step: action.step }
         : { ...state, step: action.step };
 
-    case "connected":
+    case "connected": {
       if (state.phase !== "connecting") return state;
-      return log(
+      const joined = log(
         {
           ...state,
           phase: "connected",
@@ -90,11 +99,16 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
           micEnabled: true,
           botPresent: action.botPresent,
           notice: { tone: "info", text: "Đang gọi — nói vào microphone, bot trả lời qua loa." },
+          requestedAsr: action.asr ?? null,
         },
         action.at,
         `Đã vào room ${action.roomName}, microphone đang bật.`,
         "success",
       );
+      return action.asr
+        ? log(joined, action.at, `ASR đã chọn: ${asrLabel(action.asr)}.`, "info")
+        : joined;
+    }
 
     case "reconnecting":
       if (state.phase !== "connected") return state;
@@ -169,6 +183,20 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
         action.present ? "success" : "warning",
       );
 
+    case "botAsr": {
+      if (state.phase === "idle") return state;
+      const reported = { ...state, botAsr: action.provider };
+      const used = asrLabel(action.provider);
+      return state.requestedAsr && state.requestedAsr !== action.provider
+        ? log(
+            reported,
+            action.at,
+            `Bot dùng ASR: ${used} — KHÁC lựa chọn ${asrLabel(state.requestedAsr)}.`,
+            "error",
+          )
+        : log(reported, action.at, `Bot dùng ASR: ${used}.`, "info");
+    }
+
     case "speakers":
       if (state.phase === "idle") return state;
       if (state.speaking.bot === action.bot && state.speaking.caller === action.caller) {
@@ -187,7 +215,18 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
       if (state.phase === "idle") return state;
       const { line } = action;
       const next = { ...state, transcript: [...state.transcript, line] };
-      if (line.role !== "bot") return next;
+      if (line.role !== "bot") {
+        // Tới lượt người gọi đầu tiên mà bot vẫn chưa báo ASR: worker cũ, không theo lựa chọn.
+        const firstCaller = !state.transcript.some((earlier) => earlier.role === "caller");
+        return firstCaller && state.botAsr === null
+          ? log(
+              next,
+              action.at,
+              "Bot không báo ASR đang dùng: cuộc gọi có thể vào worker cũ, không theo lựa chọn ASR.",
+              "warning",
+            )
+          : next;
+      }
       const withState = { ...next, botState: line.state, outcome: line.outcome };
       return line.ended
         ? log(withState, action.at, `Bot kết thúc cuộc gọi: ${line.outcome ?? "—"}.`, "success")
