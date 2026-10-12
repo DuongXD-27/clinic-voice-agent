@@ -21,8 +21,10 @@ OPERATIONS = frozenset(
         "http.start_call",
         "livekit.call_turn",
         "livekit.start_call",
+        "livekit.close_call",
         "core.handle_turn",
         "core.start_call",
+        "core.close_call",
         "core.extract",
         "core.dialogue",
         "core.output_guard",
@@ -46,6 +48,21 @@ EVENT_FIELDS: dict[str, frozenset[str]] = {
     "session.admitted": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.replayed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.committed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
+    "session.close_requested": frozenset({"storage_status"}),
+    "session.closed": frozenset({"replayed", "terminal", "storage_status"}),
+    "clinic.write_blocked": frozenset({"write_operation", "decision_reason"}),
+    "call.hangup": frozenset({"decision_reason", "turns_dropped"}),
+    "call.event_ignored": frozenset({"stage", "decision_reason"}),
+    "call.cleanup": frozenset(
+        {
+            "timers_stopped",
+            "input_stopped",
+            "tts_closed",
+            "queue_cleared",
+            "audio_closed",
+            "session_closed",
+        }
+    ),
     "policy.decision": frozenset({"stage", "decision", "decision_reason"}),
     "fsm.transition": frozenset(
         {"state_before", "state_after", "outcome", "status", "error_type", "error_code"}

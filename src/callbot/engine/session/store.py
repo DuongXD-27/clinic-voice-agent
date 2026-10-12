@@ -22,6 +22,12 @@ class SessionRecord:
     last_completed_turn: int = 0
     ended: bool = False
     purged_reason: Optional[str] = None
+    # Khách đã rời cuộc gọi và phiên đã đóng phía transport (R-36). Độc lập với outcome nghiệp vụ;
+    # mặc định False để đọc được bản ghi cũ.
+    transport_closed: bool = False
+    # Khách đã rời nhưng phiên có thể chưa đóng xong (lượt đang chạy). Không lưu trong JSON phiên mà
+    # đọc từ key riêng (`request_transport_close`), để lượt đang ghi JSON không xoá mất.
+    close_requested: bool = False
 
 
 @dataclass(frozen=True)
@@ -61,6 +67,12 @@ class SessionStore(Protocol):
     def get_session(self, call_id: str) -> Optional[SessionRecord]: ...
 
     def create_session(self, record: SessionRecord) -> None: ...
+
+    def request_transport_close(self, call_id: str) -> None: ...
+
+    def is_close_requested(self, call_id: str) -> bool: ...
+
+    def close_session(self, call_id: str) -> bool: ...
 
     def get_turn(self, call_id: str, turn: int) -> Optional[TurnRecord]: ...
 

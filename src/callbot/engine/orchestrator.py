@@ -199,6 +199,15 @@ class CallOrchestrator:
         logger.error("Output Guard chặn lời mở đầu %s (%s)", ctx.call_id, verdict.rule)
         raise CallStartBlocked(verdict.code)
 
+    def request_call_close(self, call_id: str) -> None:
+        """Khách vừa rời cuộc gọi (R-36): chặn ngay mọi lệnh ghi chưa gửi, không chờ lượt đang chạy."""
+        self._sessions.request_close(call_id)
+
+    def close_call(self, call_id: str) -> bool:
+        """Đóng phiên phía transport, idempotent; tách khỏi việc kết thúc nghiệp vụ (ENDED + outcome)."""
+        with self._span_tracer.span(component="CORE", operation="core.close_call"):
+            return self._sessions.close_call(call_id)
+
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
         return self.handle_turn_with_details(call_id, caller).action
 

@@ -41,11 +41,14 @@ from callbot.engine.types import (
     TransferReason,
     UnreachableReason,
 )
+from callbot.engine.write_gate import bind_write_gate
 from callbot.tracing import trace_event
 
 logger = logging.getLogger(__name__)
 
 LOCK_TIMEOUT_S = 5.0
+# Đóng phiên chờ lượt đang chạy xong (trích xuất bằng model + lệnh ghi có thể quá 5 s).
+CLOSE_LOCK_TIMEOUT_S = 15.0
 
 
 def now_vn() -> datetime:
@@ -116,6 +119,28 @@ class SessionManager:
             )
             return action, False
 
+    # --- Khách rời cuộc gọi (R-36) ----------------------------------------------------
+
+    def request_close(self, call_id: str) -> None:
+        """Ghi nhận khách đã rời, không chờ khóa: lượt đang chạy không gửi thêm lệnh ghi nào nữa
+        (cổng ghi đọc yêu cầu này trước mỗi lần gửi) và không lượt mới nào được nhận."""
+        self._store.request_transport_close(call_id)
+        trace_event("session.close_requested", storage_status="CLOSE_REQUESTED")
+
+    def close_call(self, call_id: str, lock_timeout_s: float = CLOSE_LOCK_TIMEOUT_S) -> bool:
+        """Đóng phiên phía transport sau khi lượt đang chạy (nếu có) xong. Không gửi lệnh Clinic,
+        không đặt outcome. Trả False nếu không có phiên hoặc phiên đã đóng từ trước."""
+        self._store.request_transport_close(call_id)
+        with self._store.call_lock(call_id, lock_timeout_s):
+            self._store.expire_session(call_id)
+            if self._store.get_session(call_id) is None:
+                return False
+            changed = self._store.close_session(call_id)
+        trace_event(
+            "session.closed", replayed=not changed, terminal=True, storage_status="TRANSPORT_CLOSED"
+        )
+        return changed
+
     # --- Một lượt ------------------------------------------------------------------
 
     def run_turn(
@@ -156,7 +181,10 @@ class SessionManager:
             ctx = CallContext.from_dict(session.context)
             journal = StoreCommandJournal(self._store, call_id, caller.turn)
             try:
-                with bind_journal(journal):
+                with (
+                    bind_journal(journal),
+                    bind_write_gate(lambda: not self._store.is_close_requested(call_id)),
+                ):
                     outcome = process(ctx, caller, received_at)
             except WriteOutcomeUnknown as exc:
                 self._block(call_id, caller.turn, str(exc))
@@ -196,7 +224,7 @@ class SessionManager:
             turn = max((c.turn for c in commands), default=session.last_completed_turn + 1)
             self._block(session.call_id, turn, "Customer content removed; reconcile in Clinic")
             raise ReconciliationRequired(session.call_id, turn)
-        if session.purged_reason or session.ended:
+        if session.purged_reason or session.ended or session.close_requested:
             raise CallEnded(session.call_id)
 
     @staticmethod

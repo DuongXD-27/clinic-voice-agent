@@ -293,6 +293,17 @@ def build_streaming_bundle(
     )
 
 
+def warm_static_cache(settings: SpeechSettings) -> None:
+    """Nạp và kiểm checksum audio dựng sẵn một lần mỗi process (prewarm của worker LiveKit).
+    `create_static_cache` giữ bản đã nạp theo process, nên job sau không đọc lại các file WAV trên
+    event loop lúc bắt đầu cuộc gọi (đo 12/10: chặn loop ~106 ms)."""
+    gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
+    try:
+        create_static_cache(gateway)
+    finally:
+        gateway.close()
+
+
 def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
     if settings.vad_provider == "silero":
         return _build_silero(settings, sample_rate)

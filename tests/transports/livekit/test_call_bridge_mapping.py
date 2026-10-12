@@ -101,6 +101,8 @@ class _FakeOrchestrator:
         self._turn_actions = turn_actions
         self.started_calls: list[CallStart] = []
         self.handled_turns: list[tuple[str, CallerInput]] = []
+        self.close_requests: list[str] = []
+        self.closed_calls: list[str] = []
 
     def start_call(self, call: CallStart) -> BotAction:
         self.started_calls.append(call)
@@ -109,6 +111,13 @@ class _FakeOrchestrator:
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
         self.handled_turns.append((call_id, caller))
         return self._turn_actions[len(self.handled_turns) - 1]
+
+    def request_call_close(self, call_id: str) -> None:
+        self.close_requests.append(call_id)
+
+    def close_call(self, call_id: str) -> bool:
+        self.closed_calls.append(call_id)
+        return True
 
 
 class _FakeSTTPipeline:

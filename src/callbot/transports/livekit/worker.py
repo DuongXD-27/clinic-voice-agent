@@ -21,7 +21,7 @@ from callbot.transports.livekit.call_bridge import STATUS_TOPIC, CallBridge
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
-from speech.bundle import build_streaming_bundle, warm_up
+from speech.bundle import build_streaming_bundle, warm_static_cache, warm_up
 from speech.settings import SpeechSettings
 
 if TYPE_CHECKING:
@@ -46,6 +46,10 @@ def prewarm(proc: "JobProcess") -> None:
     except NotImplementedError:
         logger.info("ASR %s uses streaming only; skipping batch warm-up", asr.name)
     proc.userdata[_PREWARMED_ASR] = asr
+    try:
+        warm_static_cache(SpeechSettings())
+    except Exception as exc:  # job vẫn tự nạp được lúc dựng bundle; chỉ mất phần làm sẵn
+        logger.warning("worker: không nạp sẵn được audio dựng sẵn: %s", type(exc).__name__)
 
 
 def speech_settings_for(
@@ -153,6 +157,9 @@ async def entrypoint(ctx: JobContext) -> None:
             close = getattr(clinic, "close", None)
             if close is not None:
                 close()
+            # Trả về từ entrypoint không kết thúc job: bot vẫn ở trong phòng tới khi LiveKit đóng
+            # phòng (~25-30 s sau khi khách rời, đo 12/10). Cuộc gọi đã xong thì rời phòng ngay.
+            ctx.shutdown(reason="call ended")
 
 
 async def _recognizer_for(provider: str, prewarmed: Any) -> Any:

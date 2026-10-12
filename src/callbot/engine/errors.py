@@ -167,8 +167,10 @@ class AppointmentNotActionable(AppointmentUnusable):
 
 
 # Orchestrator không được biến các lỗi này thành chuyển máy SYSTEM_ERROR: chuyển máy là một lệnh
-# ghi mới, trong khi lệnh trước chưa rõ kết quả hoặc chưa ghi được nhật ký.
+# ghi mới, trong khi lệnh trước chưa rõ kết quả, chưa ghi được nhật ký, hoặc khách đã rời cuộc
+# gọi (CallEnded từ cổng ghi, R-36).
 TURN_ABORTING_ERRORS: tuple[type[Exception], ...] = (
+    CallEnded,
     WriteOutcomeUnknown,
     SessionStoreUnavailable,
     ReconciliationRequired,

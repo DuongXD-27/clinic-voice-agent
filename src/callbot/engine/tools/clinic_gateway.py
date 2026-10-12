@@ -25,6 +25,7 @@ from typing import Any, Optional
 
 from callbot.engine.errors import (
     AppointmentNotActionable,
+    CallEnded,
     ClinicAPIError,
     ClinicInvalidResponse,
     ClinicWriteRejected,
@@ -45,7 +46,8 @@ from callbot.engine.tools.normalize import (
 from callbot.engine.tools.ports import PAGE_LIMIT, ClinicAPI, Page
 from callbot.engine.tools.telemetry import ApiCallRecord, collect_api_calls
 from callbot.engine.types import CancelReason, TransferReason, UnreachableReason
-from callbot.tracing import Tracer, current_span, null_tracer
+from callbot.engine.write_gate import write_allowed
+from callbot.tracing import Tracer, current_span, null_tracer, trace_event
 
 logger = logging.getLogger(__name__)
 
@@ -440,6 +442,16 @@ class ClinicGateway:
         # Lỗi của lần gửi chưa rõ kết quả gần nhất; khác None thì lệnh có thể đã được áp dụng
         uncertain: Optional[str] = None
         while True:
+            if not write_allowed():
+                # Khách đã rời cuộc gọi (R-36): không request ghi nào rời bot nữa, kể cả gửi lại.
+                trace_event(
+                    "clinic.write_blocked", write_operation=kind, decision_reason="TRANSPORT_CLOSED"
+                )
+                if uncertain is not None:
+                    # Lần gửi trước chưa rõ Clinic đã nhận chưa: để đối soát, không gửi lại
+                    raise self._unknown(journal, command, f"{uncertain}, rồi khách rời cuộc gọi")
+                journal.failed(command, "TRANSPORT_CLOSED")
+                raise CallEnded(ctx.call_id)
             sends += 1
             try:
                 result = send(version, key)

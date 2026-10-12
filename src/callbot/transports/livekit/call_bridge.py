@@ -17,7 +17,7 @@ from time import perf_counter
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
-from callbot.engine.errors import OutboundStartFailed
+from callbot.engine.errors import CallEnded, OutboundStartFailed, ReconciliationRequired
 from callbot.engine.types import Direction
 from callbot.tracing import Tracer, null_tracer
 from callbot.tracing.pricing import tts_cost
@@ -153,6 +153,13 @@ class CallBridge:
         self._active_speak_task: Optional[asyncio.Task] = None
         self._closing = False
         self._input_done = False
+        # Phiên Core đã mở (start_call xong): chỉ khi đó mới có phiên để đóng lúc kết thúc.
+        self._session_opened = False
+        # Khách đã rời cuộc gọi (R-36): lý do (`PARTICIPANT_DISCONNECTED` | `ROOM_DISCONNECTED`).
+        # Từ lúc này không gửi lượt nào cho Core, không phát gì, phiên được đóng khi run() kết thúc.
+        self._hangup: Optional[str] = None
+        self._turns_dropped = 0
+        self._close_intent_task: Optional[asyncio.Task] = None
         # Chỉ nghe mic của người gọi (participant worker.py đã chờ). None: khoá vào participant
         # đầu tiên có track mic. Trước đây mọi track audio của mọi participant (người thứ hai,
         # track share màn hình) cùng đổ vào MỘT hàng đợi — hai luồng PCM xen kẽ nhau.
@@ -188,6 +195,9 @@ class CallBridge:
         # xong trước đó, khiến CallBridge không bao giờ nhận được audio user.
         try:
             self._room.on("track_subscribed", self._on_track_subscribed)
+            # Khách rời phòng: biết ngay qua participant_disconnected. `disconnected` của chính
+            # phòng chỉ tới khi LiveKit đóng phòng (~25-30 s sau, đo 12/10) — giữ làm dự phòng.
+            self._room.on("participant_disconnected", self._on_participant_disconnected)
             self._room.on("disconnected", self._on_disconnected)
             for participant in self._room.remote_participants.values():
                 for publication in participant.track_publications.values():
@@ -213,6 +223,9 @@ class CallBridge:
                     opening: BotAction = await asyncio.to_thread(
                         self._orchestrator.start_call, call_start
                     )
+                    self._session_opened = True
+                    if self._hangup is not None:
+                        return
                     await self._publish_tts_track()
                     # Receive audio during the opening; the consumer has its own task context.
                     self._pipeline_task = asyncio.create_task(self._consume_turns())
@@ -251,16 +264,19 @@ class CallBridge:
                     )
                 return
 
-            if opening.ended:
+            if opening.ended or self._hangup is not None:
                 return
             self._start_silence_timer()
 
             while True:
                 item = await self._turn_queue.get()
                 if item is _TURN_DONE:
-                    if self._pipeline_error is not None:
+                    if self._pipeline_error is not None and self._hangup is None:
                         raise self._pipeline_error
                     return
+                if self._hangup is not None:
+                    self._turns_dropped += 1
+                    continue
                 if isinstance(item, _SilenceTimeout):
                     if item.generation != self._silence_generation:
                         continue
@@ -310,9 +326,28 @@ class CallBridge:
                                 vad_end_reason=turn.vad_end_reason,
                             )
                     caller = caller_input_from_turn(self._turn_number, turn)
-                    action = await asyncio.to_thread(
-                        self._orchestrator.handle_turn, self._room.name, caller
-                    )
+                    try:
+                        action = await asyncio.to_thread(
+                            self._orchestrator.handle_turn, self._room.name, caller
+                        )
+                    except (CallEnded, ReconciliationRequired):
+                        # Khách rời giữa lượt: cổng ghi đã chặn lệnh chưa gửi (CallEnded) hoặc lệnh
+                        # đã gửi chưa rõ kết quả chờ đối soát. Không còn ai để nói.
+                        if self._hangup is None:
+                            raise
+                        root.event(
+                            "call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED"
+                        )
+                        return
+                    if self._hangup is not None:
+                        # Lượt xong sau khi khách rời: kết quả (nếu đã ghi) giữ nguyên, không phát.
+                        root.event(
+                            "call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED"
+                        )
+                        root.enrich(
+                            state_after=action.state, ended=action.ended, outcome=action.outcome
+                        )
+                        return
                     logger.info(
                         "call_bridge: turn %d action state=%s ended=%s outcome=%s",
                         self._turn_number,
@@ -325,7 +360,7 @@ class CallBridge:
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
                     )
-                if action.ended:
+                if action.ended or self._hangup is not None:
                     return
                 self._start_silence_timer()
         finally:
@@ -333,7 +368,7 @@ class CallBridge:
 
     def _start_silence_timer(self) -> None:
         self._stop_silence_timer()
-        if self._silence_timeout_ms > 0:
+        if self._silence_timeout_ms > 0 and self._hangup is None and not self._closing:
             self._silence_task = asyncio.create_task(self._watch_silence(self._silence_generation))
 
     def _stop_silence_timer(self) -> None:
@@ -398,6 +433,9 @@ class CallBridge:
                 turn_controller=self._turn_controller,
                 interruption=self._interruption,
             ):
+                if self._hangup is not None or self._closing:
+                    self._turns_dropped += 1
+                    continue
                 await self._turn_queue.put(turn)
         except asyncio.CancelledError:
             raise
@@ -422,7 +460,7 @@ class CallBridge:
     ) -> None:
         from livekit import rtc
 
-        if self._closing or track.kind != rtc.TrackKind.KIND_AUDIO:
+        if self._closing or self._hangup is not None or track.kind != rtc.TrackKind.KIND_AUDIO:
             return
         identity = getattr(participant, "identity", None)
         source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
@@ -440,11 +478,51 @@ class CallBridge:
         self._pump_task = asyncio.ensure_future(self._pump_track(track))
         self._tasks.append(self._pump_task)
 
+    def _on_participant_disconnected(self, participant: object) -> None:
+        identity = getattr(participant, "identity", None)
+        if self._caller_identity is not None and identity != self._caller_identity:
+            return  # người khác trong phòng rời đi, không phải người gọi
+        self._on_caller_left("PARTICIPANT_DISCONNECTED")
+
     def _on_disconnected(self, *_args: object) -> None:
+        self._on_caller_left("ROOM_DISCONNECTED")
+
+    def _on_caller_left(self, reason: str) -> None:
+        """Khách rời cuộc gọi (R-36). Chạy trong callback của SDK nên không chặn: ghi nhận yêu cầu
+        đóng phiên ở thread (lệnh ghi chưa gửi bị chặn ngay cả giữa lượt), bỏ lượt đang chờ, dừng
+        phát. Lượt Core đang chạy không bị bỏ ngang; run() chờ nó xong rồi đóng phiên."""
+        if self._hangup is not None or self._closing:
+            return
+        self._hangup = reason
+        logger.info("call_bridge: khách rời cuộc gọi (%s) room=%s", reason, self._room.name)
+        self._stop_silence_timer()
+        if self._session_opened:
+            self._close_intent_task = asyncio.ensure_future(self._publish_close_intent())
         self._signal_input_done()
+        while True:
+            try:
+                item = self._turn_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is not _TURN_DONE:
+                self._turns_dropped += 1
+        self._turn_queue.put_nowait(_TURN_DONE)
+        if self._audio_source is not None:
+            self._audio_source.clear_queue()
         task = self._active_speak_task
         if task is not None and not task.done():
             task.cancel()
+
+    async def _publish_close_intent(self) -> None:
+        try:
+            await asyncio.to_thread(self._orchestrator.request_call_close, self._room.name)
+        except Exception as exc:
+            # aclose() vẫn đóng phiên (close_call ghi lại yêu cầu này trước khi lấy khóa).
+            logger.warning(
+                "call_bridge: không ghi được yêu cầu đóng phiên room=%s: %s",
+                self._room.name,
+                type(exc).__name__,
+            )
 
     def _krisp_processor(self) -> object | None:
         """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
@@ -571,22 +649,22 @@ class CallBridge:
                     if chunk and first_audio_ms is None:
                         first_audio_ms = (perf_counter() - started) * 1000
                     total_bytes += len(chunk)
-                    if self._is_interrupted():
+                    if self._stopped():
                         break
                     self._interruption.on_bot_audio(chunk, sample_rate)
                     pending.extend(chunk)
-                    while len(pending) >= frame_bytes and not self._is_interrupted():
+                    while len(pending) >= frame_bytes and not self._stopped():
                         await self._capture(bytes(pending[:frame_bytes]), sample_rate)
                         del pending[:frame_bytes]
-                    if self._is_interrupted():
+                    if self._stopped():
                         break
-            if not self._is_interrupted():
+            if not self._stopped():
                 self._interruption.on_bot_audio(b"", sample_rate, complete=True)
             # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
             tail = len(pending) - len(pending) % 2
-            if tail and not self._is_interrupted():
+            if tail and not self._stopped():
                 await self._capture(bytes(pending[:tail]), sample_rate)
-            interrupted = self._is_interrupted()
+            interrupted = self._stopped()
             if interrupted:
                 # Chỉ dừng đẩy chunk MỚI là chưa đủ — chunk đã capture nhưng chưa phát
                 # ra loa vẫn còn trong hàng đợi playout của AudioSource, phải xoá luôn
@@ -611,11 +689,11 @@ class CallBridge:
                             _PLAYOUT_TIMEOUT_S,
                         )
         except asyncio.CancelledError:
-            interrupted = self._is_interrupted()
+            interrupted = self._stopped()
             if not interrupted:
                 raise
         finally:
-            interrupted = interrupted or self._is_interrupted()
+            interrupted = interrupted or self._stopped()
             actual = getattr(self._tts, "last_stream_result", None)
             actual_provider = getattr(actual, "provider_actual", None) or getattr(
                 self._tts, "name", None
@@ -639,7 +717,7 @@ class CallBridge:
                 bytes=total_bytes,
                 interrupted=interrupted,
                 truncated=interrupted or stream_error is not None,
-                barge_in=interrupted,
+                barge_in=self._is_interrupted(),
                 result="ERROR" if failed else "CANCELLED" if interrupted else "OK",
             )
             if stream_error is not None:
@@ -655,12 +733,18 @@ class CallBridge:
                 if cost is not None:
                     tts_span.enrich(cost_usd=cost)
             scope.__exit__(*sys.exc_info())
-            self._turn_controller.on_bot_speaking_changed(False, preserve_candidate=interrupted)
+            self._turn_controller.on_bot_speaking_changed(
+                False, preserve_candidate=self._is_interrupted()
+            )
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None
 
     def _is_interrupted(self) -> bool:
         return self._interruption.state == InterruptionState.INTERRUPTED
+
+    def _stopped(self) -> bool:
+        """Câu đang phát phải dừng: khách nói chen, khách đã rời cuộc gọi, hoặc bridge đang đóng."""
+        return self._hangup is not None or self._closing or self._is_interrupted()
 
     async def _capture(self, pcm: bytes, sample_rate: int) -> None:
         segment = AudioSegment(pcm=pcm, sample_rate=sample_rate)
@@ -711,7 +795,65 @@ class CallBridge:
         pending = list(self._tasks)
         if self._pipeline_task is not None and self._pipeline_task is not asyncio.current_task():
             pending.append(self._pipeline_task)
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        if self._audio_source is not None:
-            await self._audio_source.aclose()
+        stopped = await asyncio.gather(*pending, return_exceptions=True) if pending else []
+        with self._tracer.start_trace(
+            call_id=self._room.name,
+            turn=self._turn_number,
+            component="TURN",
+            operation="livekit.close_call",
+        ) as root:
+            if self._hangup is not None:
+                root.event(
+                    "call.hangup", decision_reason=self._hangup, turns_dropped=self._turns_dropped
+                )
+            tts_closed = queue_cleared = audio_closed = True
+            try:
+                # Đóng hẳn request TTS còn mở (vd. đang chờ chunk đầu của Vbee lúc khách cúp máy).
+                await self._tts.cancel()
+            except Exception as exc:
+                tts_closed = False
+                logger.warning("call_bridge: không hủy được TTS: %s", type(exc).__name__)
+            if self._audio_source is not None:
+                try:
+                    self._audio_source.clear_queue()
+                except Exception:
+                    queue_cleared = False
+                try:
+                    await self._audio_source.aclose()
+                except Exception:
+                    audio_closed = False
+            session_closed = None
+            if self._session_opened:
+                session_closed = await self._close_session()
+            logger.info(
+                "call_bridge: đã đóng cuộc gọi room=%s hangup=%s turns_dropped=%d session_closed=%s",
+                self._room.name,
+                self._hangup,
+                self._turns_dropped,
+                session_closed,
+            )
+            root.event(
+                "call.cleanup",
+                timers_stopped=True,
+                input_stopped=not any(isinstance(result, Exception) for result in stopped),
+                tts_closed=tts_closed,
+                queue_cleared=queue_cleared,
+                audio_closed=audio_closed,
+                session_closed=session_closed,
+            )
+
+    async def _close_session(self) -> bool:
+        """Đóng phiên Core (R-36): chờ lượt đang chạy xong, không gửi lệnh Clinic, không đổi outcome
+        đã có. Gọi cả khi cuộc gọi kết thúc bình thường (phiên đã ENDED thì chỉ đánh dấu đã đóng)."""
+        if self._close_intent_task is not None:
+            await asyncio.gather(self._close_intent_task, return_exceptions=True)
+        try:
+            await asyncio.to_thread(self._orchestrator.close_call, self._room.name)
+            return True
+        except Exception as exc:
+            logger.error(
+                "call_bridge: không đóng được phiên room=%s: %s",
+                self._room.name,
+                type(exc).__name__,
+            )
+            return False
