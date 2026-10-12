@@ -26,6 +26,7 @@ from speech.asr.vad.shared import SharedSpeechDetector
 from speech.audio.quiet_gain import QuietSpeechGain
 from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
+from speech.audio.vad_frontend import VadFrontend, build_vad_frontend
 from speech.settings import SpeechSettings
 from speech.tts.static_cache import StaticAudioCache, create_static_cache
 from speech.turn.controller import TurnController
@@ -274,6 +275,7 @@ def build_streaming_bundle(
         quiet_gain=QuietSpeechGain(frame_ms=frame_ms)
         if settings.quiet_speech_gain_enabled
         else None,
+        vad_frontend=_build_vad_frontend(settings, sample_rate),
         vad=AsyncStreamingVAD(
             detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
         ),
@@ -301,6 +303,23 @@ def build_streaming_bundle(
         tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     return StreamingSpeechBundle(
         stt_pipeline=stt_pipeline, turn_controller=turn_controller, tts=tts, validator=validator
+    )
+
+
+def _build_vad_frontend(settings: SpeechSettings, sample_rate: int) -> Optional[VadFrontend]:
+    """Mỗi cuộc gọi một instance (bộ khử nhiễu có trạng thái). Đầu ra có độ dài thay đổi theo bước
+    của bộ khử nhiễu — chỉ Silero (tự gom cửa sổ 512 mẫu) nhận được."""
+    if settings.vad_frontend == "off":
+        return None
+    if settings.vad_provider != "silero":
+        logger.warning("vad_frontend=%s cần vad_provider=silero — bỏ qua", settings.vad_frontend)
+        return None
+    return build_vad_frontend(
+        settings.vad_frontend,
+        sample_rate=sample_rate,
+        model_path=settings.vad_frontend_model_path,
+        gain_db=settings.vad_frontend_gain_db,
+        floor_dbfs=settings.vad_frontend_floor_dbfs,
     )
 
 

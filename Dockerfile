@@ -46,6 +46,14 @@ RUN mkdir -p /app/models/silero && \
     curl -fL -o /app/models/silero/silero_vad.onnx \
     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
 
+# GTCRN (~520KB): khử nhiễu CHỈ cho bộ phân loại tiếng nói (vad_frontend trong config/speech.yaml,
+# speech/audio/vad_frontend.py) — ASR vẫn nghe audio gốc. Biến môi trường ghi đè đường dẫn tương
+# đối của config.
+RUN mkdir -p /app/models/vad && \
+    curl -fL -o /app/models/vad/gtcrn_simple.onnx \
+    https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
+ENV VAD_FRONTEND_MODEL_PATH=/app/models/vad/gtcrn_simple.onnx
+
 # Layer dependency: chỉ build lại khi pyproject.toml đổi. Package stub để hatchling build được
 # trước khi có src; code thật được cài đè ở bước sau với --no-deps.
 COPY pyproject.toml ./

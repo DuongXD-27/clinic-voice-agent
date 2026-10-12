@@ -41,6 +41,15 @@ class SpeechSettings(YamlSettings):
     silero_vad_model_path: str
     # Silero giữ "đang nói" thêm chừng này sau khi hết tiếng — cộng vào độ trễ chốt lượt.
     silero_min_silence_ms: int
+    # Audio riêng cho bộ phân loại tiếng nói (speech/audio/vad_frontend.py): khử nhiễu chỉ để
+    # Silero quyết định có/không tiếng nói, ASR vẫn nghe audio gốc. Chỉ dùng với vad_provider=silero.
+    vad_frontend: Literal["off", "webrtc", "webrtc_agc", "gtcrn", "dpdfnet"]
+    vad_frontend_model_path: str
+    # Tăng âm sau khi khử nhiễu, chỉ cho bộ phân loại (Silero phụ thuộc mức âm tuyệt đối).
+    vad_frontend_gain_db: float
+    # Nhiễu trắng nền (RMS, dBFS) cộng vào sau khi khử nhiễu: Silero không bao giờ nghe im lặng
+    # tuyệt đối. None = không cộng.
+    vad_frontend_floor_dbfs: Optional[float]
 
     # --- Chốt lượt (TurnController) ---
     # Lượt ngắn hơn ngưỡng này bị coi là tiếng động/backchannel.
