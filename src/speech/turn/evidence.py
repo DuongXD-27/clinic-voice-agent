@@ -47,3 +47,7 @@ class TurnEvidence:
             # "vâng" -> "có" -> "vâng" khớp mẫu dao động và câu thứ ba bị DROP.
             self._transcript.reset()
         return verdict
+
+    def reset_transcript(self) -> None:
+        """Đoạn ASR đang mở bị bỏ (không có final): bắt đầu lại độ ổn định cho đoạn sau."""
+        self._transcript.reset()

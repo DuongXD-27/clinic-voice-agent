@@ -667,13 +667,14 @@ class CallBridge:
         await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
 
     async def cancel(self) -> None:
-        """Interruption target: dừng network TTS và audio đã queue ngay lập tức."""
-        await self._tts.cancel()
+        """Interruption target: tắt tiếng ngay (xoá audio đã queue, dừng vòng phát) rồi mới đóng
+        request TTS — đóng kết nối có thể chậm, người gọi không được nghe tiếp trong lúc chờ."""
         if self._audio_source is not None:
             self._audio_source.clear_queue()
         task = self._active_speak_task
         if task is not None and task is not asyncio.current_task() and not task.done():
             task.cancel()
+        await self._tts.cancel()
 
     def _signal_input_done(self) -> None:
         if self._input_done:

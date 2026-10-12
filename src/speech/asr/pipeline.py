@@ -542,6 +542,11 @@ class _CallStream:
                 self._context.invalidate()
             await self._asr_queue.put(AsrSegmentEnd.DISCARD)
             self._asr_segment_open = False
+            if self._pipeline.evidence is not None:
+                # Partial của đoạn bỏ đi không được tính vào độ ổn định của đoạn sau: chuỗi chữ
+                # ngắn cũ còn trong cửa sổ thì partial thật của lần chen lời sau bị DROP vì
+                # "dao động" ("ĐÚNG" -> "Ừ" -> "ĐÚNG", 08/10).
+                self._pipeline.evidence.reset_transcript()
 
     async def _finalize_asr_segment(self) -> None:
         """Chốt câu dở thành final (provider hỗ trợ), không thì bỏ như `_discard_asr_segment`."""
@@ -596,6 +601,8 @@ class _CallStream:
                     await self._interruption.on_speech_started(event)
                 elif event.kind == "speech_end":
                     await self._interruption.on_speech_ended_without_confirmation()
+                elif await self._interruption.on_speech_frame():
+                    self._barge_in_confirmed()
 
     async def _drain_asr(self) -> None:
         pipeline = self._pipeline
@@ -618,8 +625,12 @@ class _CallStream:
             await self._controller.on_transcript_event(event)
             if self._interruption is not None:
                 if await self._interruption.on_partial_transcript(event):
-                    self._unconfirmed_barge_in_audio = False
-                    self._expect_echo()
+                    self._barge_in_confirmed()
+
+    def _barge_in_confirmed(self) -> None:
+        """Đoạn ASR của ứng viên là lượt ngắt lời, đi tiếp như thường (không giữ riêng/bỏ)."""
+        self._unconfirmed_barge_in_audio = False
+        self._expect_echo()
 
     def _expect_echo(self) -> None:
         """ASR đã nghe audio lúc bot nói: chỉ chữ bot phát trong khoảng đó mới có thể vọng vào."""

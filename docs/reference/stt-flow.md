@@ -240,16 +240,33 @@ stateDiagram-v2
     INTERRUPTED --> IDLE: on_bot_stopped_speaking
 ```
 
-Gate xác nhận (mọi điều kiện đều phải qua — thà bỏ lỡ một lần ngắt lời còn hơn cắt lời bot sai):
+Gate (`InterruptionController._gate`) xét mỗi partial, và xét lại partial mới nhất trên mỗi frame
+VAD còn là tiếng nói (`on_speech_frame`) — GipFormer chỉ phát partial khi chữ đổi, nên ngưỡng thời
+lượng có thể đạt mà không có event ASR mới.
+
+Điều kiện chặn (một điều kiện không qua là không ngắt):
 
 1. Candidate kéo dài ≥ 200 ms.
-2. `is_meaningful_text(partial)`.
-3. Không phải tiếng bot vọng lại: `fuzz.partial_ratio` với câu bot đang đọc < 70.
-4. SNR frame ≥ `interruption_min_snr_db`.
-5. `TurnValidator` trả ACCEPT (WAIT cũng bị chặn).
+2. `is_meaningful_text(partial)` (từ đệm "ừ/à/dạ" chỉ ngắt được khi là câu trả lời câu hỏi cuối).
+3. Không phải tiếng bot vọng lại: trùng một đoạn từ liên tiếp của câu bot (khớp đúng khi < 3 từ,
+   khớp mờ ≥ 70 khi dài hơn). Bỏ qua khi đường truyền đã cho thấy không vọng — policy `acoustic`:
+   một câu bot phát 2 s mà VAD không mở ứng viên nào và mic lúc này không có bản sao tiếng bot.
+4. SNR câu ≥ `interruption_min_snr_db`.
+5. `TurnValidator` không DROP.
+
+Đủ bằng chứng để ngắt (một trong các điều kiện):
+
+- câu trả lời/lệnh ngắn rõ ràng (`is_short_answer`, ≥ 0,3 s, SNR ≥ 10 dB, ASR ≥ 0,7);
+- ≥ 2 chữ có nghĩa và `TurnValidator` ACCEPT (hai partial hội tụ) hoặc final;
+- ≥ 2 chữ có nghĩa, ≥ 0,4 s, SNR ≥ 10 dB, ASR ≥ 0,7 nếu chỉ 2 chữ — chỉ khi đường truyền không
+  có tiếng vọng (có vọng thì vẫn đòi partial hội tụ).
+
+Một chữ không phải câu trả lời ("ĐÂY", "MÌNH") không bao giờ tự ngắt lời bot. Số đo:
+`docs/evidence/livekit-barge-in-confirmation-2026-10-10.md`.
 
 Chỉ khi state là `INTERRUPTION_CANDIDATE` thì `_fanout` mới phát lại pre-roll và đưa audio vào
-ASR — đó là cách ASR có partial để gate xét (xem 2.3).
+ASR — đó là cách ASR có partial để gate xét (xem 2.3). Xác nhận rồi thì `CallBridge.cancel()` xoá
+hàng đợi phát và dừng vòng phát trước, sau đó mới đóng request TTS.
 
 ### 2.7 Lượt im lặng
 

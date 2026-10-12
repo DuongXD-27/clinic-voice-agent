@@ -171,13 +171,11 @@ Quy tắc chốt turn:
 
 State machine: `IDLE → BOT_SPEAKING → INTERRUPTION_CANDIDATE → INTERRUPTED`.
 
-Barge-in **chỉ được xác nhận qua `on_partial_transcript`**, luôn đi qua `_passes_gate()`
-gồm 3 điều kiện (không điều kiện nào một mình đủ):
-- **Duration**: candidate phải tồn tại ít nhất `min_speech_ms` (200ms mặc định).
-- **Nội dung có nghĩa**: `is_meaningful_text(event.text)` — dùng chung hàm với
-  `TurnController`.
-- **Confidence** (nếu provider hỗ trợ — hiện ZipFormer/gipformer1.5 luôn trả `None`,
-  kiểm tra này tắt hẳn khi không có tín hiệu).
+Barge-in **luôn cần chữ ASR**: gate (`_gate()`) xét mỗi partial (`on_partial_transcript`) và
+xét lại partial mới nhất khi VAD còn nghe tiếng nói (`on_speech_frame`). Điều kiện chi tiết
+(độ dài, chữ có nghĩa, tiếng vọng, SNR, TurnValidator, số chữ) ở docstring module và
+`docs/reference/stt-flow.md` §2.6; số đo ở
+`docs/evidence/livekit-barge-in-confirmation-2026-10-10.md`.
 
 Lịch sử 2 lỗ hổng đã gặp và sửa (ghi lại trong docstring module, không lặp lại):
 1. Từng tự xác nhận ngay khi ASR trả về BẤT KỲ text non-empty nào — ASR hallucinate 1
