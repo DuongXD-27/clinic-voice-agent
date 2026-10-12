@@ -636,6 +636,8 @@ def test_name_and_dob_in_one_turn_over_http(client) -> None:
     [
         ["Alo", "nguyen van a", DOB],
         ["Hello?", "Nguyen Van A", "March 14, 1978"],
+        # QC qc-w6-01 nguyên văn: ASR tiếng Anh ghi số bằng chữ
+        ["Hello?", "Nguyen Van A", "March fourteenth, nineteen seventy-eight"],
         ["Hello?", "My name is Nguyen Van A, born on March 14th 1978"],
         ["I'm Nguyen Van A", "1978-03-14"],
         ["NGUYEN VAN A, 14/3/1978"],

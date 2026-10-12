@@ -7,7 +7,7 @@ Chỉ chuyển khi provider chính không trả lời được (timeout, lỗi m
 exception). Khi provider chính đã trả lời — kể cả đọc ra "chưa rõ" hay bị `ground_reading` loại span
 — đó là kết quả của lượt: gọi thêm provider khác lúc đó là hỏi tới khi vừa ý, không phải dự phòng.
 
-Thời gian tính từ đầu lượt (`model_budget.MODEL_TIMEOUT_S`, trần 3 s): provider chính lỗi muộn thì
+Thời gian tính từ đầu lượt (`model_budget.MODEL_TIMEOUT_S`, trần 4 s): provider chính lỗi muộn thì
 không còn đủ thời gian, lượt đi đường "model không dùng được" như cũ. Hai provider đều đi qua đúng
 `ground_reading` / `merge_semantic`, nên bảng quyền hợp nhất, chốt SF-05 và quy tắc model không mở khóa
 ghi không đổi.

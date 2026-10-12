@@ -63,9 +63,9 @@ _NUMERIC_DATE = re.compile(r"(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?")
 # "1978-03-14" (ISO, năm đứng trước)
 _ISO_DATE = re.compile(r"(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})")
 _TRIM = ",.;:!?\"'()[]"
-# Người gọi nói tiếng Anh (QC qc-w6-01): "March 14, 1978", "14th of March 1978". Ngày, tháng, năm viết
-# bằng chữ số; số đọc bằng chữ tiếng Anh ("nineteen seventy eight") chưa hỗ trợ. Ngày thiếu năm
-# ("April 15") vẫn được chuyển để kiểm tra thiếu năm / nhiều giá trị nhìn thấy nó.
+# Người gọi nói tiếng Anh (QC qc-w6-01): "March 14, 1978", "14th of March 1978", và ASR tiếng Anh
+# ghi số bằng chữ: "March fourteenth, nineteen seventy-eight". Ngày thiếu năm ("April 15") vẫn được
+# chuyển để kiểm tra thiếu năm / nhiều giá trị nhìn thấy nó.
 EN_MONTHS = {
     "january": 1,
     "jan": 1,
@@ -94,6 +94,69 @@ EN_MONTHS = {
 }
 _EN_DAY = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?")
 _EN_YEAR = re.compile(r"\d{2}|\d{4}")
+# Số đọc bằng chữ tiếng Anh (QC qc-w6-01, 12/10/2026). Ngày: số đếm hoặc số thứ tự ("fourteen",
+# "fourteenth", "twenty first"). Năm: hai cặp "nineteen seventy eight" / "twenty twenty" / "nineteen oh
+# five", hoặc "two thousand (and) four", "nineteen hundred (and) seventy eight"; "seventy eight" là năm
+# 2 chữ số như "78". Cặp sau chỉ một từ đơn vị ("twenty one") không nhận là năm hai cặp: 21 hay 2001.
+_EN_UNITS = {
+    "zero": 0,
+    "oh": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+}
+_EN_TENS = {
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+_EN_ORDINALS = {
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+    "thirtieth": 30,
+}
+_EN_ZERO = frozenset({"zero", "oh"})
+_EN_CENTURIES = frozenset({19, 20})
+_EN_YEAR_MAX_WORDS = 6  # "one thousand nine hundred seventy eight"
 _LUNAR = compile_phrases(["âm lịch", "âm", "lịch âm"])
 _AGE = compile_phrases(["tuổi"])
 _DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
@@ -158,7 +221,7 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     if not text:
         return Reading(Field.nothing(), Reason.NO_SIGNAL)
     words = text.split()
-    spoken, origin = _parse_stream(transcript)
+    spoken, origin, english_words = _parse_stream(transcript)
     tokens = restore_number_words(spoken, _UNACCENTED_WORDS)
     keep = _without_lead_ins(tokens)
     spoken = [spoken[i] for i in keep]
@@ -166,7 +229,7 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     tokens = [tokens[i] for i in keep]
     provenance = (
         Provenance.NORMALIZED
-        if tokens != spoken or _uses_spoken_numbers(tokens)
+        if tokens != spoken or _uses_spoken_numbers(tokens) or english_words
         else Provenance.EXACT
     )
     joined = " ".join(tokens)
@@ -214,8 +277,8 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     return Reading(Field(value, provenance, span=text), Reason.OK, zone)
 
 
-def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]]]:
-    """Token để phân tích, kèm vị trí của chúng trong `clean(transcript)`.
+def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]], bool]:
+    """Token để phân tích, vị trí của chúng trong `clean(transcript)`, và có số tiếng Anh đọc bằng chữ không.
 
     "14/3/1978" được đọc thành "ngày 14 tháng 3 năm 1978" cho cùng một bộ luật, nhưng cả sáu
     token đều trỏ về ba từ có thật ("14", "3", "1978"), nên vùng ngày báo ra vẫn là lời người
@@ -248,17 +311,26 @@ def _parse_stream(transcript: str) -> tuple[list[str], list[tuple[int, int]]]:
 
 def _english_dates(
     tokens: list[str], origin: list[tuple[int, int]]
-) -> tuple[list[str], list[tuple[int, int]]]:
+) -> tuple[list[str], list[tuple[int, int]], bool]:
     """ "march 14 1978" / "the 14th of march 1978" -> "ngày 14 tháng 3 năm 1978", cùng ngữ pháp.
 
     Như dạng số, mọi token dựng ra trỏ về cả cụm có thật, nên vùng ngày vẫn là lời người gọi nói.
+    Cờ cuối: có số đọc bằng chữ ("fourteenth", "nineteen seventy eight") -> `Provenance.NORMALIZED`.
     """
     out_tokens: list[str] = []
     out_origin: list[tuple[int, int]] = []
+    spoken = False
     i = 0
     while i < len(tokens):
         found = _english_date_at(tokens, i)
         if found is None:
+            year_words = _english_year_words_at(tokens, i)
+            if year_words is not None:
+                out_tokens.append(year_words[0])
+                out_origin.append((origin[i][0], origin[i + year_words[1] - 1][1]))
+                i += year_words[1]
+                spoken = True
+                continue
             out_tokens.append(tokens[i])
             out_origin.append(origin[i])
             i += 1
@@ -267,8 +339,13 @@ def _english_dates(
         parts = ["ngày", day, "tháng", str(month)] + (["năm", year] if year else [])
         out_tokens += parts
         out_origin += [(origin[i][0], origin[end - 1][1])] * len(parts)
+        spoken = spoken or any(_is_english_number_word(t) for t in tokens[i:end])
         i = end
-    return out_tokens, out_origin
+    return out_tokens, out_origin, spoken
+
+
+def _is_english_number_word(token: str) -> bool:
+    return token in _EN_UNITS or token in _EN_TENS or token in _EN_ORDINALS
 
 
 def _english_date_at(
@@ -282,43 +359,173 @@ def _english_date_at(
     def skip(at: int, *words: str) -> int:
         return at + 1 if at < len(tokens) and tokens[at] in words else at
 
-    def day_at(at: int) -> Optional[str]:
-        match = _EN_DAY.fullmatch(tokens[at]) if at < len(tokens) else None
-        return match.group(1) if match else None
-
-    def year_at(at: int) -> Optional[str]:
-        return tokens[at] if at < len(tokens) and _EN_YEAR.fullmatch(tokens[at]) else None
-
     def partial(month: str) -> bool:
         return month != "may"
 
-    # "march 14 1978", "march the 14th, 1978", "april 15"
+    # "march 14 1978", "march the 14th, 1978", "march fourteenth nineteen seventy eight", "april 15"
     if tokens[i] in EN_MONTHS:
         at = skip(i + 1, "the")
-        day = day_at(at)
+        day = _english_day_at(tokens, at)
         if day is not None:
-            after_day = at + 1
+            after_day = at + day[1]
             at = skip(after_day, "of", "in")
-            year = year_at(at)
+            year = _english_year_at(tokens, at)
             if year is not None:
-                return (day, EN_MONTHS[tokens[i]], year), at + 1
+                return (day[0], EN_MONTHS[tokens[i]], year[0]), at + year[1]
             if partial(tokens[i]):
-                return (day, EN_MONTHS[tokens[i]], None), after_day
-    # "14 march 1978", "the 14th of march, 1978"
+                return (day[0], EN_MONTHS[tokens[i]], None), after_day
+    # "14 march 1978", "the 14th of march, 1978", "the fourteenth of march nineteen seventy eight"
     at = skip(i, "the")
-    day = day_at(at)
+    day = _english_day_at(tokens, at)
     if day is None:
         return None
-    month_at = skip(at + 1, "of")
+    month_at = skip(at + day[1], "of")
     if month_at >= len(tokens) or tokens[month_at] not in EN_MONTHS:
         return None
     at = skip(month_at + 1, "of", "in")
-    year = year_at(at)
+    year = _english_year_at(tokens, at)
     if year is None:
         if not partial(tokens[month_at]):
             return None
-        return (day, EN_MONTHS[tokens[month_at]], None), month_at + 1
-    return (day, EN_MONTHS[tokens[month_at]], year), at + 1
+        return (day[0], EN_MONTHS[tokens[month_at]], None), month_at + 1
+    return (day[0], EN_MONTHS[tokens[month_at]], year[0]), at + year[1]
+
+
+def _english_day_at(tokens: list[str], at: int) -> Optional[tuple[str, int]]:
+    """(ngày dạng chữ số, số token) tại `at`: "14", "14th", "fourteen", "fourteenth", "twenty first"."""
+    if at >= len(tokens):
+        return None
+    token = tokens[at]
+    match = _EN_DAY.fullmatch(token)
+    if match is not None:
+        day, used = int(match.group(1)), 1
+    elif token in _EN_TENS:
+        day, used = _EN_TENS[token], 1
+        if at + 1 < len(tokens):
+            unit = _EN_ORDINALS.get(tokens[at + 1], _EN_UNITS.get(tokens[at + 1]))
+            if unit is not None and 1 <= unit <= 9:
+                day, used = day + unit, 2
+    elif token in _EN_ORDINALS:
+        day, used = _EN_ORDINALS[token], 1
+    elif token in _EN_UNITS and token not in _EN_ZERO:
+        day, used = _EN_UNITS[token], 1
+    else:
+        return None
+    return (str(day), used) if 1 <= day <= 31 else None
+
+
+def _english_year_at(tokens: list[str], at: int) -> Optional[tuple[str, int]]:
+    """(năm dạng chữ số, số token) tại `at`: "1978", "78", hoặc năm đọc bằng chữ (dài nhất trước).
+
+    Năm bằng chữ nhận đủ 4 chữ số, hoặc 2 chữ số khi có ít nhất hai từ ("seventy eight"); một từ đơn
+    ("nineteen") không phải năm.
+    """
+    if at >= len(tokens):
+        return None
+    if _EN_YEAR.fullmatch(tokens[at]):
+        return tokens[at], 1
+    for used in range(min(_EN_YEAR_MAX_WORDS, len(tokens) - at), 0, -1):
+        value = _english_number(tokens[at : at + used])
+        if value is None:
+            continue
+        if 1000 <= value <= 9999:
+            return str(value), used
+        if used >= 2 and 10 <= value <= 99:
+            return f"{value:02d}", used
+    return None
+
+
+def _english_year_words_at(tokens: list[str], at: int) -> Optional[tuple[str, int]]:
+    """Năm 4 chữ số đọc bằng chữ đứng riêng (không trong một ngày tiếng Anh): "nineteen seventy eight".
+
+    Chuyển sang chữ số để "or nineteen seventy nine" sau một ngày vẫn là giá trị thứ hai (`_ambiguous`).
+    Không chuyển số nhỏ hơn: "twenty one" trong câu khác không phải năm.
+    """
+    if at >= len(tokens) or tokens[at] not in _EN_UNITS and tokens[at] not in _EN_TENS:
+        return None
+    for used in range(min(_EN_YEAR_MAX_WORDS, len(tokens) - at), 1, -1):
+        value = _english_number(tokens[at : at + used])
+        if value is not None and 1000 <= value <= 9999:
+            return str(value), used
+    return None
+
+
+def _english_number(tokens: list[str]) -> Optional[int]:
+    """Giá trị của dãy từ số tiếng Anh, hoặc None nếu dãy không phải một số."""
+    if not tokens:
+        return None
+    value = _english_structured(tokens)
+    return value if value is not None else _english_paired_year(tokens)
+
+
+def _english_structured(tokens: list[str]) -> Optional[int]:
+    """ "two thousand (and) four", "nineteen hundred (and) seventy eight", "seventy eight", "fourteen"."""
+    if "thousand" in tokens:
+        at = tokens.index("thousand")
+        high = _english_below_thousand(tokens[:at])
+        if high is None or high == 0:
+            return None
+        rest = tokens[at + 1 :]
+        if rest and rest[0] == "and":
+            rest = rest[1:]
+        if not rest:
+            return high * 1000
+        low = _english_below_thousand(rest)
+        return None if low is None else high * 1000 + low
+    return _english_below_thousand(tokens)
+
+
+def _english_below_thousand(tokens: list[str]) -> Optional[int]:
+    if "hundred" in tokens:
+        at = tokens.index("hundred")
+        if at != 1 or tokens[0] not in _EN_UNITS or tokens[0] in _EN_ZERO:
+            return None
+        rest = tokens[2:]
+        if rest and rest[0] == "and":
+            rest = rest[1:]
+        if not rest:
+            return _EN_UNITS[tokens[0]] * 100
+        low = _english_below_hundred(rest)
+        return None if low is None else _EN_UNITS[tokens[0]] * 100 + low
+    return _english_below_hundred(tokens)
+
+
+def _english_below_hundred(tokens: list[str]) -> Optional[int]:
+    """ "fourteen", "twenty", "seventy eight", "oh five" (chỉ sau một cặp thế kỷ)."""
+    if len(tokens) == 1:
+        token = tokens[0]
+        if token in _EN_TENS:
+            return _EN_TENS[token]
+        if token in _EN_UNITS and token not in _EN_ZERO:
+            return _EN_UNITS[token]
+        return None
+    if len(tokens) == 2:
+        unit = _EN_UNITS.get(tokens[1])
+        if unit is None or not 1 <= unit <= 9:
+            return None
+        if tokens[0] in _EN_TENS:
+            return _EN_TENS[tokens[0]] + unit
+        if tokens[0] in _EN_ZERO:
+            return unit
+    return None
+
+
+def _english_paired_year(tokens: list[str]) -> Optional[int]:
+    """ "nineteen seventy eight" = 19 | 78, "twenty twenty" = 20 | 20, "nineteen oh five" = 19 | 05.
+
+    Cặp đầu là 19 hoặc 20; cặp sau là hai từ, hoặc một từ hàng chục ("nineteen ninety"). Một từ đơn vị
+    ("twenty one") không nhận: có thể là 21.
+    """
+    if len(tokens) < 2 or tokens[0] not in _EN_UNITS and tokens[0] not in _EN_TENS:
+        return None
+    century = _english_below_hundred(tokens[:1])
+    tail = tokens[1:]
+    if century not in _EN_CENTURIES or len(tail) > 2:
+        return None
+    if len(tail) == 1 and tail[0] not in _EN_TENS and _EN_UNITS.get(tail[0], 0) < 10:
+        return None  # "twenty ten" = 2010 nhận; "twenty one" không
+    rest = _english_below_hundred(tail)
+    return None if rest is None else century * 100 + rest
 
 
 def _without_lead_ins(tokens: list[str]) -> list[int]:

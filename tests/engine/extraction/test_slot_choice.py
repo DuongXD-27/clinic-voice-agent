@@ -50,6 +50,10 @@ def choose(text: str):
         ("cai gan nhat", "wed_1000"),
         ("mười giờ", "wed_1000"),
         ("14h30 thứ tư", "wed_1430"),
+        # Giờ kiểu Anh khi trộn tiếng (QC qc-w6-02)
+        ("2:30pm thứ tư", "wed_1430"),
+        ("10am thứ tư", "wed_1000"),
+        ("4 pm thứ năm", "thu_1600"),
         ("chiều thứ năm lúc bốn giờ", "thu_1600"),
         ("thứ năm tuần sau", "next_thu_0900"),
         ("ngày mai", "tue_0800"),
@@ -390,10 +394,29 @@ def test_requests_time_needs_the_whole_sentence_to_be_a_request(text: str, expec
         ("lấy cái số một đi", "lấy đi"),
         ("đúng rồi 3 giờ chiều ngày 14", "đúng rồi"),
         ("khung khác", "khung khác"),
+        ("ok 3pm nhé", "ok nhé"),
+        ("vâng 3 pm ngày 14", "vâng"),
     ],
 )
 def test_strip_slot_phrases_removes_ordinals_and_times(text: str, rest: str) -> None:
     assert strip_slot_phrases(text) == rest
+
+
+@pytest.mark.parametrize(
+    "text, hours, minute",
+    [
+        ("3pm", {15}, 0),
+        ("3 pm", {15}, 0),
+        ("3:30 PM", {15}, 30),
+        ("10:30am", {10}, 30),
+        ("12pm", {12}, 0),
+        ("12am", {0}, 0),
+    ],
+)
+def test_english_clock_times(text: str, hours: set[int], minute: int) -> None:
+    """ "3pm" là 15 giờ, không phải 3 giờ sáng hay 15 giờ mơ hồ (QC qc-w6-02)."""
+    criteria = parse_slot_criteria(text, NOW)
+    assert criteria.hours == frozenset(hours) and criteria.minute == minute
 
 
 # --- Merge main 07/10: khoảng giờ (main) và "sớm / muộn hơn" (nhánh) là hai tiêu chí riêng ---------------

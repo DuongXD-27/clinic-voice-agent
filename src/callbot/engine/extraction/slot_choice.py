@@ -106,6 +106,9 @@ _WEEKDAY_INDEX = {"hai": 0, "ba": 1, "tư": 2, "năm": 3, "sáu": 4, "bảy": 5}
 
 # Chuẩn hoá dạng số trước khi bỏ dấu câu: "14h30", "14:30" -> "14 giờ 30"; "20/10" -> "ngày 20 tháng 10"
 _NUMERIC_TIME = re.compile(r"(?<!\d)(\d{1,2})\s*(?:h|:|g)\s*(\d{2})?(?!\w)")
+# Giờ kiểu Anh khi người gọi trộn tiếng (QC qc-w6-02): "3pm", "3 pm", "10:30am" -> "15 giờ chiều",
+# "10 giờ 30 sáng". Xét trước `_NUMERIC_TIME` để "3:30pm" không bị đọc thành "3 giờ 30" rồi trơ lại "pm".
+_NUMERIC_AMPM = re.compile(r"(?<!\d)(\d{1,2})(?:[:h](\d{2}))?\s*([ap])m(?!\w)")
 _NUMERIC_DAY = re.compile(r"(?<!\d)(\d{1,2})\s*/\s*(\d{1,2})(?!\s*/)(?!\d)")
 
 _UNACCENTED_PHRASES = {
@@ -384,6 +387,7 @@ _TIME_ANCHORS = frozenset(
     for w in [
         "giờ", "h", "rưỡi", "phút", "kém", "sáng", "trưa", "chiều", "tối", "thứ", "chủ", "nhật",
         "ngày", "tháng", "hôm", "mai", "buổi", "đầu", "tiên", "nhất", "cuối", "tuần",
+        "am", "pm",  # "3 pm" khi người gọi trộn tiếng (QC qc-w6-02)
     ]
 )  # fmt: skip
 _TIME_LINKS = frozenset(clean(w) for w in ["lúc", "vào", "cái", "số", "này", "nay", "tới", "sau"])
@@ -425,8 +429,9 @@ def strip_slot_phrases(text: str) -> str:
 
 
 def _is_clock(word: str) -> bool:
-    """ "15h", "15h30", "9g" sau khi bỏ dấu câu ("15:30" đã tách thành hai số)."""
-    return re.fullmatch(r"\d{1,2}(?:h|g)(?:\d{2})?", word) is not None
+    """ "15h", "15h30", "9g", "3pm", "30pm" (đuôi của "3:30pm") sau khi bỏ dấu câu ("15:30" đã tách
+    thành hai số)."""
+    return re.fullmatch(r"\d{1,2}(?:h|g|am|pm)(?:\d{2})?", word) is not None
 
 
 def asks_back(transcript: str) -> bool:
@@ -592,6 +597,8 @@ def without_corrected_part(transcript: str, now: datetime) -> str:
 def _prepare(transcript: str) -> str:
     text = normalize(transcript)
     unaccented = is_unaccented(clean(text))
+    # Trước `clean`: "10:30am" còn dấu ":" (câu không dấu cũng vậy, không thì "30am" thành 6 giờ)
+    text = _NUMERIC_AMPM.sub(_ampm_to_vietnamese, text)
     if unaccented:
         text = _restore_unaccented(clean(text))
     text = _NUMERIC_TIME.sub(lambda m: f" {m.group(1)} giờ {m.group(2) or ''} ", text)
@@ -601,6 +608,15 @@ def _prepare(transcript: str) -> str:
     if count is not None:
         text = _cut(text, count)
     return text
+
+
+def _ampm_to_vietnamese(match: re.Match[str]) -> str:
+    """ "3pm" -> " 15 giờ chiều ", "12am" -> " 0 giờ sáng ", "10:30am" -> " 10 giờ 30 sáng "."""
+    hour = int(match.group(1)) % 12 + (12 if match.group(3) == "p" else 0)
+    if hour > 23:
+        return match.group(0)
+    period = "sáng" if hour < 12 else "trưa" if hour == 12 else "chiều" if hour < 18 else "tối"
+    return f" {hour} giờ {match.group(2) or ''} {period} "
 
 
 # R-44: cụm tự sửa, thêm vào `CORRECTIONS` của danh tính. Ở đây không có tên người nên "a khong" không dấu

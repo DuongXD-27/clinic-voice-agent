@@ -60,6 +60,16 @@ TODAY = date(2026, 9, 15)
         ("mười bảy tháng tám năm một chín chín mươi", date(1990, 8, 17)),
         ("mười bảy tháng tám mười chín chín mươi lăm", date(1995, 8, 17)),
         ("mười bảy tháng tám hai không mười lăm", date(2015, 8, 17)),
+        # Năm nói tắt bỏ "nghìn" / "không" (12/10/2026): "hai linh tư" = 2004, "hai mười ba" = 2013
+        ("mười sáu tháng năm hai linh tư", date(2004, 5, 16)),
+        ("mười sáu tháng năm năm hai lẻ tư", date(2004, 5, 16)),
+        ("16 tháng 5 hai linh tư", date(2004, 5, 16)),
+        ("mười sáu tháng năm 2 linh 4", date(2004, 5, 16)),
+        ("muoi sau thang nam hai linh tu", date(2004, 5, 16)),
+        ("ba tháng bảy hai mười ba", date(2013, 7, 3)),
+        ("sinh ngày ba tháng bảy hai mười ba", date(2013, 7, 3)),
+        ("ngày 3 tháng 7 năm hai mười lăm", date(2015, 7, 3)),
+        ("ba tháng mười hai mười ba", date(2013, 10, 3)),
     ],
 )
 def test_valid_dates(text: str, expected: date) -> None:
@@ -82,6 +92,9 @@ def test_valid_dates(text: str, expected: date) -> None:
         "mười bốn tháng ba năm linh tư",  # "linh" đứng đầu: không đọc rời được
         "mười bốn tháng ba năm một chín chín linh",  # "linh" đứng cuối
         "mười bốn tháng ba năm hai không mười",
+        "mười sáu tháng năm hai mười",  # năm nói tắt bị cắt: "hai mười X"
+        "mười sáu tháng năm hai linh",  # thiếu đơn vị
+        "mười sáu tháng năm hai mười mốt",  # không ai nói "mười mốt"
         "mười bốn tháng ba năm hai 14",  # chữ số nhiều chữ lẫn với từ số
         "ngày 1 tháng 1 năm 2030",  # tương lai
         "ngày 1 tháng 1 năm 1900",  # quá 110 tuổi
@@ -127,10 +140,49 @@ def test_provenance_distinguishes_digits_from_spoken_numbers() -> None:
         "1978-03-14",
         "1978/3/14",
         "14 march 78",
+        # Số đọc bằng chữ (QC qc-w6-01, 12/10/2026): ASR tiếng Anh ghi "March fourteenth, nineteen seventy-eight"
+        "March fourteenth, nineteen seventy-eight",
+        "March fourteenth nineteen seventy eight",
+        "the fourteenth of March, nineteen seventy-eight",
+        "March fourteen nineteen seventy eight",
+        "March 14th nineteen seventy-eight",
+        "March fourteenth, nineteen hundred and seventy-eight",
+        "fourteenth of March seventy eight",
+        "born on March fourteenth, nineteen seventy-eight",
     ],
 )
 def test_english_and_iso_dates(text: str) -> None:
     assert extract_dob(text, TODAY).value == date(1978, 3, 14)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("March twenty-first, nineteen ninety", date(1990, 3, 21)),
+        ("the thirty-first of May, two thousand and four", date(2004, 5, 31)),
+        ("June second, twenty ten", date(2010, 6, 2)),
+        ("January fifth nineteen twenty", date(1920, 1, 5)),
+        ("the first of December two thousand", date(2000, 12, 1)),
+    ],
+)
+def test_english_spoken_numbers(text: str, expected: date) -> None:
+    field = extract_dob(text, TODAY)
+    assert field.value == expected and field.provenance is Provenance.NORMALIZED
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "March fourteenth",  # thiếu năm
+        "March fourteenth nineteen seventy eight or nineteen seventy nine",  # hai giá trị
+        "March fourteenth or fifteenth nineteen seventy eight",
+        "March fourteenth, twenty one",  # 21 hay 2001: hai thế kỷ đều hợp lệ
+        "nineteen seventy eight",  # chỉ năm
+        "maybe March fourteenth nineteen seventy eight",
+    ],
+)
+def test_unusable_english_spoken_dates_are_invalid(text: str) -> None:
+    assert extract_dob(text, TODAY).value == INVALID
 
 
 @pytest.mark.parametrize(
