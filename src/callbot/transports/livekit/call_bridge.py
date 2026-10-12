@@ -17,9 +17,10 @@ from time import perf_counter
 from typing import TYPE_CHECKING, AsyncIterator, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
+from callbot.engine.dialogue.templates import TRANSFER
 from callbot.engine.errors import CallEnded, OutboundStartFailed, ReconciliationRequired
-from callbot.engine.types import Direction
-from callbot.tracing import Tracer, null_tracer
+from callbot.engine.types import Direction, TTSRecovery
+from callbot.tracing import SpanHandle, Tracer, null_tracer
 from callbot.tracing.pricing import tts_cost
 from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
@@ -28,6 +29,7 @@ from callbot.transports.livekit.audio_adapter import (
 )
 from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
+from speech.tts.fixed_fallback import fixed_utterance_pcm
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import EchoPolicy, InterruptionController, InterruptionState
@@ -51,6 +53,16 @@ _SILENCE_POLL_S = 0.25
 TRANSCRIPT_TOPIC = "callbot.transcript"
 # Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
 STATUS_TOPIC = "callbot.status"
+
+
+class TTSPlaybackError(Exception):
+    """TTS không phát được câu (R-39): provider lỗi trước chunk đầu (không có hoặc hết dự phòng), lỗi
+    giữa câu, hoặc không trả byte nào. Chỉ mang mã lỗi, không mang message gốc của provider.
+    Bị ngắt lời / khách rời cuộc gọi không phải lỗi TTS."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -160,6 +172,8 @@ class CallBridge:
         self._hangup: Optional[str] = None
         self._turns_dropped = 0
         self._close_intent_task: Optional[asyncio.Task] = None
+        # Đã chuyển máy do lỗi kỹ thuật (R-39): tối đa một lần mỗi cuộc gọi.
+        self._system_error_handled = False
         # Chỉ nghe mic của người gọi (participant worker.py đã chờ). None: khoá vào participant
         # đầu tiên có track mic. Trước đây mọi track audio của mọi participant (người thứ hai,
         # track share màn hình) cùng đổ vào MỘT hàng đợi — hai luồng PCM xen kẽ nhau.
@@ -231,7 +245,7 @@ class CallBridge:
                     self._pipeline_task = asyncio.create_task(self._consume_turns())
                     await asyncio.sleep(0)
                     await self._publish_transcript("bot", opening.utterance, action=opening)
-                    await self._speak(opening.utterance)
+                    spoken = await self._speak_or_fail(root, opening.utterance)
                     root.enrich(
                         state_after=opening.state, ended=opening.ended, outcome=opening.outcome
                     )
@@ -264,6 +278,9 @@ class CallBridge:
                     )
                 return
 
+            if not spoken:
+                await self._recover_tts_error()
+                return
             if opening.ended or self._hangup is not None:
                 return
             self._start_silence_timer()
@@ -356,10 +373,13 @@ class CallBridge:
                         action.outcome,
                     )
                     await self._publish_transcript("bot", action.utterance, action=action)
-                    await self._speak(action.utterance)
+                    spoken = await self._speak_or_fail(root, action.utterance)
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
                     )
+                if not spoken:
+                    await self._recover_tts_error()
+                    return
                 if action.ended or self._hangup is not None:
                     return
                 self._start_silence_timer()
@@ -628,6 +648,7 @@ class CallBridge:
         # Chunk TTS cắt theo byte HTTP tuỳ ý; gom lại rồi cắt đúng ranh giới frame PCM16.
         pending = bytearray()
         interrupted = False
+        failure: Optional[str] = None
         total_bytes = 0
         started = perf_counter()
         first_audio_ms = None
@@ -692,6 +713,10 @@ class CallBridge:
             interrupted = self._stopped()
             if not interrupted:
                 raise
+        except Exception as exc:
+            # Provider chính lỗi trước chunk đầu và không có / cũng hỏng dự phòng (R-39)
+            if not self._stopped():
+                failure = type(exc).__name__
         finally:
             interrupted = interrupted or self._stopped()
             actual = getattr(self._tts, "last_stream_result", None)
@@ -702,7 +727,12 @@ class CallBridge:
             # Provider lỗi giữa câu: gateway dừng êm (không đọc lại) và chỉ ghi mã lỗi — người
             # gọi nghe thiếu câu, nên span phải là ERROR + truncated, không tính tiền (§4.1.3).
             stream_error = None if interrupted else getattr(actual, "error_code", None)
-            failed = sys.exc_info()[0] is not None or stream_error is not None
+            if failure is None and not interrupted:
+                if stream_error is not None:
+                    failure = str(stream_error)
+                elif total_bytes == 0:
+                    failure = "TTS_EMPTY_AUDIO"
+            failed = sys.exc_info()[0] is not None or failure is not None
             tts_span.enrich(
                 provider_actual=actual_provider,
                 voice=voice,
@@ -720,9 +750,9 @@ class CallBridge:
                 barge_in=self._is_interrupted(),
                 result="ERROR" if failed else "CANCELLED" if interrupted else "OK",
             )
-            if stream_error is not None:
-                tts_span.enrich(provider_error_code=stream_error)
-                if stream_error == "timeout":
+            if failure is not None:
+                tts_span.enrich(provider_error_code=failure)
+                if failure == "timeout":
                     tts_span.set_error_code("TIMEOUT", "TTS_TIMEOUT")
                 else:
                     tts_span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
@@ -738,6 +768,166 @@ class CallBridge:
             )
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None
+        if failure is not None:
+            raise TTSPlaybackError(failure)
+
+    async def _speak_or_fail(self, root: SpanHandle, text: str) -> bool:
+        """Phát câu của lượt; False khi TTS lỗi (người gọi chưa nghe trọn câu) — run() chuyển sang
+        `_recover_tts_error` sau khi đóng trace của lượt."""
+        try:
+            await self._speak(text)
+        except TTSPlaybackError as exc:
+            logger.error(
+                "call_bridge: TTS lỗi room=%s code=%s -> phát câu chuyển máy ghi sẵn",
+                self._room.name,
+                exc.code,
+            )
+            root.event("tts.playback_failed", provider_error_code=exc.code)
+            return False
+        return True
+
+    async def _recover_tts_error(self) -> None:
+        """TTS lỗi giữa cuộc gọi (R-39, bảng 2.2 của plan 11/10). Phía khách luôn như nhau: nghe câu
+        TRANSFER ghi sẵn (giọng Vbee đã duyệt) rồi được chuyển nhân viên (SYSTEM_ERROR); Core quyết
+        định phía Clinic. Khách đã rời thì không phát, không chuyển. Tối đa một lần mỗi cuộc gọi."""
+        if self._system_error_handled or self._hangup is not None or self._closing:
+            return
+        self._system_error_handled = True
+        self._stop_silence_timer()
+        # Không nhận lượt mới: cuộc gọi kết thúc sau câu chuyển máy
+        self._signal_input_done()
+        self._turn_number += 1
+        with self._tracer.start_trace(
+            call_id=self._room.name,
+            turn=self._turn_number,
+            component="TURN",
+            operation="livekit.tts_recovery",
+        ) as root:
+            root.enrich(direction=self._direction, mode="livekit")
+            try:
+                recovery: TTSRecovery = await asyncio.to_thread(
+                    self._orchestrator.handle_tts_error, self._room.name
+                )
+            except CallEnded:
+                root.event("call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED")
+                return
+            except Exception as exc:
+                # Không biết Clinic đã ghi gì: vẫn chuyển nhân viên, kèm cờ cần đối soát
+                logger.error(
+                    "call_bridge: Core không xử lý được lỗi TTS room=%s: %s",
+                    self._room.name,
+                    type(exc).__name__,
+                )
+                recovery = TTSRecovery(TRANSFER, reconciliation_required=True)
+            if self._hangup is not None:
+                root.event("call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED")
+                return
+            if recovery.action is not None:
+                root.enrich(
+                    state_after=recovery.action.state,
+                    ended=recovery.action.ended,
+                    outcome=recovery.action.outcome,
+                )
+            try:
+                await self._tts.cancel()
+            except Exception as exc:
+                logger.warning("call_bridge: không hủy được TTS: %s", type(exc).__name__)
+            if self._audio_source is not None:
+                self._audio_source.clear_queue()
+            await self._publish_transcript("bot", recovery.utterance, action=recovery.action)
+            await self._play_fixed(root, recovery.utterance)
+            if self._hangup is not None:
+                root.event("call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED")
+                return
+            await self._request_handoff(root, recovery)
+
+    async def _play_fixed(self, root: SpanHandle, text: str) -> None:
+        """Phát câu ghi sẵn theo frame 20 ms như `_speak` (dừng ngay khi khách rời). Thiếu audio
+        hoặc phát lỗi thì chỉ ghi log/trace: việc chuyển nhân viên vẫn tiếp tục."""
+        if self._audio_source is None:
+            root.event("tts.fallback_played", played=False, decision_reason="NO_AUDIO_TRACK")
+            return
+        sample_rate = self._tts.stream_sample_rate
+        pcm = await asyncio.to_thread(fixed_utterance_pcm, text, sample_rate)
+        if pcm is None:
+            root.event(
+                "tts.fallback_played", played=False, decision_reason="TTS_FALLBACK_AUDIO_MISSING"
+            )
+            return
+        frame_bytes = sample_rate * _PLAYOUT_FRAME_MS // 1000 * 2
+        end = len(pcm) - len(pcm) % 2
+        self._active_speak_task = asyncio.current_task()
+        played = False
+        try:
+            for offset in range(0, end, frame_bytes):
+                if self._stopped():
+                    break
+                await self._capture(pcm[offset : min(offset + frame_bytes, end)], sample_rate)
+            if self._stopped():
+                self._audio_source.clear_queue()
+            else:
+                played = True
+                wait_for_playout = getattr(self._audio_source, "wait_for_playout", None)
+                if wait_for_playout is not None:
+                    try:
+                        await asyncio.wait_for(wait_for_playout(), timeout=_PLAYOUT_TIMEOUT_S)
+                    except TimeoutError:
+                        logger.warning(
+                            "call_bridge: wait_for_playout timeout sau %.0fs (câu ghi sẵn)",
+                            _PLAYOUT_TIMEOUT_S,
+                        )
+        except asyncio.CancelledError:
+            if not self._stopped():
+                raise
+        except Exception as exc:
+            logger.error("call_bridge: không phát được câu ghi sẵn: %s", type(exc).__name__)
+        finally:
+            self._active_speak_task = None
+        root.event(
+            "tts.fallback_played",
+            played=played,
+            decision_reason=None if played else "INTERRUPTED",
+            audio_duration_ms=round(end / (2 * sample_rate) * 1000),
+        )
+
+    async def _request_handoff(self, root: SpanHandle, recovery: TTSRecovery) -> None:
+        """HANDOFF_REQUESTED: chuyển cuộc gọi cho nhân viên. Demo web chưa có tổng đài viên (chuyển
+        máy SIP thật ngoài phạm vi) nên báo qua `STATUS_TOPIC` + trace để vận hành theo dõi."""
+        logger.info(
+            "call_bridge: HANDOFF_REQUESTED room=%s reason=SYSTEM_ERROR outcome=%s preserve=%s "
+            "reconcile=%s",
+            self._room.name,
+            recovery.action.outcome if recovery.action is not None else None,
+            recovery.preserve_business_outcome,
+            recovery.reconciliation_required,
+        )
+        root.event(
+            "call.handoff_requested",
+            transfer_reason="SYSTEM_ERROR",
+            preserve_business_outcome=recovery.preserve_business_outcome,
+            reconciliation_required=recovery.reconciliation_required,
+        )
+        try:
+            await self._room.local_participant.publish_data(
+                json.dumps(
+                    {
+                        "code": "HANDOFF_REQUESTED",
+                        "message": "Bot gặp lỗi giọng nói, đã chuyển cuộc gọi tới nhân viên "
+                        "(SYSTEM_ERROR).",
+                        "transfer_reason": "SYSTEM_ERROR",
+                        "preserve_business_outcome": recovery.preserve_business_outcome,
+                        "reconciliation_required": recovery.reconciliation_required,
+                    },
+                    ensure_ascii=False,
+                ),
+                reliable=True,
+                topic=STATUS_TOPIC,
+            )
+        except Exception as exc:
+            logger.warning(
+                "call_bridge: không gửi được HANDOFF_REQUESTED tới browser (%s)",
+                type(exc).__name__,
+            )
 
     def _is_interrupted(self) -> bool:
         return self._interruption.state == InterruptionState.INTERRUPTED

@@ -26,7 +26,7 @@ from speech.asr.vad.shared import SharedSpeechDetector
 from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
 from speech.settings import SpeechSettings
-from speech.tts.static_cache import StaticAudioCache, create_static_cache
+from speech.tts.static_cache import StaticAudioCache, create_static_cache, load_release
 from speech.turn.controller import TurnController
 from speech.turn.evidence import TurnEvidence
 from speech.turn.validator import TurnValidator
@@ -296,12 +296,14 @@ def build_streaming_bundle(
 def warm_static_cache(settings: SpeechSettings) -> None:
     """Nạp và kiểm checksum audio dựng sẵn một lần mỗi process (prewarm của worker LiveKit).
     `create_static_cache` giữ bản đã nạp theo process, nên job sau không đọc lại các file WAV trên
-    event loop lúc bắt đầu cuộc gọi (đo 12/10: chặn loop ~106 ms)."""
+    event loop lúc bắt đầu cuộc gọi (đo 12/10: chặn loop ~106 ms). Nạp cả release theo manifest cho
+    câu chuyển máy ghi sẵn khi TTS lỗi (R-39), dùng chung bản nạp khi cùng cấu hình audio."""
     gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
     try:
         create_static_cache(gateway)
     finally:
         gateway.close()
+    load_release()
 
 
 def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:

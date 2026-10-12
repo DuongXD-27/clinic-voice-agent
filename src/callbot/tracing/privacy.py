@@ -22,9 +22,11 @@ OPERATIONS = frozenset(
         "livekit.call_turn",
         "livekit.start_call",
         "livekit.close_call",
+        "livekit.tts_recovery",
         "core.handle_turn",
         "core.start_call",
         "core.close_call",
+        "core.system_error",
         "core.extract",
         "core.dialogue",
         "core.output_guard",
@@ -53,6 +55,11 @@ EVENT_FIELDS: dict[str, frozenset[str]] = {
     "clinic.write_blocked": frozenset({"write_operation", "decision_reason"}),
     "call.hangup": frozenset({"decision_reason", "turns_dropped"}),
     "call.event_ignored": frozenset({"stage", "decision_reason"}),
+    "tts.playback_failed": frozenset({"provider_error_code", "error_class", "decision_reason"}),
+    "tts.fallback_played": frozenset({"played", "decision_reason", "audio_duration_ms"}),
+    "call.handoff_requested": frozenset(
+        {"transfer_reason", "preserve_business_outcome", "reconciliation_required"}
+    ),
     "call.cleanup": frozenset(
         {
             "timers_stopped",

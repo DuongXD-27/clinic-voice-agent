@@ -15,6 +15,7 @@ from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     TRANSCRIPT_TOPIC,
     CallBridge,
+    TTSPlaybackError,
     call_start_from_room,
     caller_input_from_turn,
 )
@@ -565,8 +566,11 @@ async def test_sentence_cut_by_provider_error_is_traced_as_truncated_error(
         lambda *args: priced.append("tts") or 0.01,
     )
 
-    await bridge._speak("một câu bị rớt giữa chừng")
+    # R-39: câu bị cắt là lỗi TTS — run() chuyển sang phát câu chuyển máy ghi sẵn
+    with pytest.raises(TTSPlaybackError) as raised:
+        await bridge._speak("một câu bị rớt giữa chừng")
 
+    assert raised.value.code == code
     (span,) = tracer.spans
     assert span.attributes["result"] == "ERROR"
     assert span.attributes["truncated"] is True

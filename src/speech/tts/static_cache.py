@@ -140,7 +140,26 @@ def create_static_cache(
     identity = getattr(gateway.provider, "audio_identity", None)
     if not isinstance(identity, dict):
         return None
+    return _shared_cache(str(catalog_directory(settings)), canonical_json(identity))
+
+
+def catalog_directory(settings: StaticCacheSettings) -> Path:
     directory = Path(settings.directory)
     if not directory.is_absolute():
         directory = CONFIG_DIR.parent / directory
-    return _shared_cache(str(directory.resolve()), canonical_json(identity))
+    return directory.resolve()
+
+
+def load_release(settings: StaticCacheSettings | None = None) -> StaticAudioCache | None:
+    """Release đã duyệt theo đúng `audio_config` ghi trong manifest, không cần gateway và không phụ
+    thuộc cờ `enabled`. Checksum từng file vẫn được kiểm như cache thường."""
+    directory = catalog_directory(settings or StaticCacheSettings())
+    try:
+        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        identity = manifest["audio_config"]
+        if not isinstance(identity, dict):
+            raise ValueError("Invalid audio_config")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.error("TTS_STATIC_MANIFEST_UNAVAILABLE: %s", type(exc).__name__)
+        return None
+    return _shared_cache(str(directory), canonical_json(identity))

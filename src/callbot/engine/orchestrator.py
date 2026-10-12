@@ -23,6 +23,7 @@ from callbot.engine.errors import (
     TURN_ABORTING_ERRORS,
     CallStartBlocked,
     EngineError,
+    ReconciliationRequired,
     WriteOutcomeUnknown,
 )
 from callbot.engine.extraction.extractor import InformationExtractor
@@ -36,7 +37,7 @@ from callbot.engine.policy.sources import SourceRegistry, bind_sources
 from callbot.engine.policy.utterances import RenderRecord, bind_ledger
 from callbot.engine.session.context import CallContext, Question
 from callbot.engine.session.manager import SessionManager, TurnOutcome, TurnRun
-from callbot.engine.types import BotAction, CallerInput, CallStart
+from callbot.engine.types import BotAction, CallerInput, CallStart, ControlEvent, TTSRecovery
 from callbot.tracing import SpanHandle, current_span, null_tracer, trace_event
 from callbot.tracing import Tracer as SpanTracer
 from callbot.tracing.errors import classify_guardrail
@@ -208,6 +209,38 @@ class CallOrchestrator:
         with self._span_tracer.span(component="CORE", operation="core.close_call"):
             return self._sessions.close_call(call_id)
 
+    def handle_tts_error(self, call_id: str) -> TTSRecovery:
+        """TTS lỗi giữa cuộc gọi (R-39)."""
+        return self.handle_system_error(call_id, "TTS_ERROR")
+
+    def handle_system_error(self, call_id: str, event: ControlEvent) -> TTSRecovery:
+        """Lỗi kỹ thuật phía transport: khách luôn nghe câu TRANSFER cố định rồi được chuyển nhân
+        viên; chỉ phía Clinic khác nhau theo trạng thái phiên (bảng 2.2 của plan 11/10).
+
+        Lượt điều khiển (nếu chạy) ghi TRANSFERRED/SYSTEM_ERROR qua đúng đường chuyển máy thường, nên
+        cổng ghi (R-36), nhật ký lệnh và Output Guard vẫn áp dụng. `CallEnded` (khách đã rời) ném
+        nguyên: transport không phát, không chuyển máy.
+        """
+        verdict = output_guard.check_tts_fallback(t.TRANSFER)
+        if not verdict.ok:
+            # Hằng của code: chỉ hỏng khi templates đổi sai; vẫn chuyển máy, không phát câu khác.
+            logger.error("Câu TRANSFER không qua Output Guard (%s)", verdict.rule)
+        with self._span_tracer.span(component="CORE", operation="core.system_error") as core:
+            core.enrich(decision="TRANSFER", decision_reason=event)
+            try:
+                run = self._sessions.run_system_error(call_id, event, self._process)
+            except ReconciliationRequired:
+                return TTSRecovery(t.TRANSFER, reconciliation_required=True)
+            if run is None:
+                return TTSRecovery(t.TRANSFER, preserve_business_outcome=True)
+            core.enrich(
+                state_after=run.action.state,
+                outcome=run.action.outcome,
+                replayed=run.replayed,
+                dialogue_action=self._trace_dialogue_action(run.action, None),
+            )
+        return TTSRecovery(t.TRANSFER, action=run.action)
+
     def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
         return self.handle_turn_with_details(call_id, caller).action
 
@@ -258,7 +291,9 @@ class CallOrchestrator:
             core.enrich_ancestor("TURN", direction=ctx.call.direction, state_before=state_before)
         ctx.turn = caller.turn
         ctx.business_write_blocked = False
-        ctx.record("caller", caller.transcript)
+        if caller.control_event is None:
+            # Lượt điều khiển không có lời khách: không vào lịch sử hội thoại
+            ctx.record("caller", caller.transcript)
         # R-01: chụp đầu lượt (deepcopy) — câu hỏi đang chờ và slot vừa nạp từ store
         turn = _TurnOutput(deepcopy(ctx.question), SourceRegistry(ctx.slots))
         extraction: Optional[ExtractionResult] = None
@@ -266,8 +301,13 @@ class CallOrchestrator:
         handled: Optional[Exception] = None
         with bind_sources(turn.sources), bind_ledger(turn.ledger):
             try:
-                decision = self._policy.check_preconditions(ctx)
-                self._policy_event("preconditions", decision)
+                if caller.control_event is not None:
+                    # Lỗi kỹ thuật: không trích xuất, không tính im lặng / không hiểu (R-39)
+                    decision = PolicyDecision.transfer("SYSTEM_ERROR")
+                    self._policy_event("control", decision, caller.control_event)
+                else:
+                    decision = self._policy.check_preconditions(ctx)
+                    self._policy_event("preconditions", decision)
                 if decision.kind != "CONTINUE":
                     action = self._execute(ctx, decision)
                 elif caller.phone_status is not None:
@@ -563,8 +603,10 @@ class CallOrchestrator:
             lambda item: self._dialogue.transfer(item, decision.transfer_reason or "SYSTEM_ERROR"),
         )
 
-    def _policy_event(self, stage: str, decision: PolicyDecision) -> None:
-        reason = decision.transfer_reason or decision.unreachable_reason
+    def _policy_event(
+        self, stage: str, decision: PolicyDecision, reason: Optional[str] = None
+    ) -> None:
+        reason = reason or decision.transfer_reason or decision.unreachable_reason
         trace_event("policy.decision", stage=stage, decision=decision.kind, decision_reason=reason)
         core = current_span()
         if core is not None and core.component == "CORE":
