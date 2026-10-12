@@ -155,6 +155,8 @@ def test_garbage_the_model_names_is_matched_and_transferred(monkeypatch, directi
     call_id = f"garbage-{direction}"
     actions = [bot.start_call(_start(direction, call_id))]
     actions.append(bot.handle_turn(call_id, CallerInput(turn=1, text="Trần Thế Gian")))
+    assert not actions[-1].ended  # §1.1.2: hỏi ngày sinh rồi mới đối chiếu
+    actions.append(bot.handle_turn(call_id, CallerInput(turn=2, text="14/03/1978")))
     context = bot.sessions.store.get_session(call_id).context
     assert context == {}  # Ended sessions discard identifying data.
 
@@ -168,10 +170,12 @@ def test_garbage_the_model_names_is_matched_and_transferred(monkeypatch, directi
     "transcript",
     ["dạ Lê Na ạ", "Lê Na", "trần thế gian"],
 )
-def test_without_a_model_an_unmatched_rule_name_transfers_immediately(monkeypatch, transcript):
+def test_without_a_model_an_unmatched_rule_name_transfers_after_dob(monkeypatch, transcript):
     bot, _ = _bot(monkeypatch, None)
     bot.start_call(_start("inbound", "rules-only"))
-    action = bot.handle_turn("rules-only", CallerInput(turn=1, text=transcript))
+    asked = bot.handle_turn("rules-only", CallerInput(turn=1, text=transcript))
+    assert not asked.ended and asked.state == "AWAITING_IDENTITY"
+    action = bot.handle_turn("rules-only", CallerInput(turn=2, text="14/03/1978"))
     assert action.outcome == "TRANSFERRED"
     assert action.transfer_reason == "PATIENT_NOT_FOUND"
     assert bot.sessions.store.get_session("rules-only").context == {}

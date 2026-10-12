@@ -255,6 +255,13 @@ ASK_SLOT_PREFERENCE: dict[str, str] = {
     ),
 }
 TRANSFER = static("TRANSFER", "Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.")
+# Xác minh không đạt: nói lý do chuyển máy nhưng không nói yếu tố nào sai (§1.1.2), dùng chung cho
+# không khớp, không có hồ sơ và nhiều hồ sơ cùng khớp (inbound).
+IDENTITY_FAILED_TRANSFER = static(
+    "IDENTITY_FAILED_TRANSFER",
+    "Em chưa xác minh được thông tin của anh chị. "
+    "Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.",
+)
 # Không để lại chi tiết lịch, không hứa gọi lại khi chưa có scheduler.
 GOODBYE_UNREACHABLE = _static_group(
     "GOODBYE_UNREACHABLE",

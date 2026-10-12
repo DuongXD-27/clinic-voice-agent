@@ -44,6 +44,7 @@ from callbot.engine.extraction.greeting import (
     is_identity_question,
     is_return_signal,
 )
+from callbot.engine.extraction.identity import corrects_itself
 from callbot.engine.extraction.schema import (
     INVALID,
     Agreement,
@@ -80,8 +81,11 @@ from callbot.engine.types import (
     TransferReason,
     UnreachableReason,
 )
-from callbot.engine.verification.identity import IdentityVerifier, VerificationStatus
-from callbot.engine.verification.names import NameMatch
+from callbot.engine.verification.identity import (
+    IdentityVerifier,
+    MatchDetail,
+    VerificationStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -282,32 +286,36 @@ class DialogueManager:
     # --- Danh tính ---------------------------------------------------------------------
 
     def _identity(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
-        """R-40: only PRESENT values reach the verifier; each identifier gets one open retry."""
+        """R-40: only PRESENT values reach the verifier; each identifier gets one open retry.
+
+        Tên và ngày sinh chỉ được đối chiếu khi đã có đủ cả hai (`_verify`), kể cả tên lệch dấu
+        thanh: chuyển máy hay hỏi lại ngay khi nghe tên, hoặc hỏi sang ngày sinh sau khi tên đúng,
+        đều cho người gọi biết yếu tố nào sai hay gần đúng (§1.1.2).
+
+        Lời tự sửa đè giá trị đã khai (R-44, "à nhầm, tôi là ..."); chưa đối chiếu nên đè không cho
+        người gọi tín hiệu gì để dò. Tên chỉ được IE đọc lại ở ASK_DOB khi có lời tự sửa / tự giới
+        thiệu; ngày sinh đã có chỉ bị đè khi câu có lời tự sửa ("Nguyễn Văn A, con tôi sinh 5/6/2010"
+        không đè). Điền trường thiếu hoặc sửa sang giá trị khác là hiểu; nhắc lại đúng giá trị cũ thì
+        không, nên vẫn hết lượt hỏi lại (đổi qua đổi lại mãi thì dừng ở max_turns).
+        """
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
         self._keep_early_request(ctx, ex)
-        name_suspicious = False
         progressed = False
-        if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
-            match = self._verifier.compare_name(ctx, name.value)
-            if match is NameMatch.MISMATCH:
-                return Reply(self.transfer(ctx, self._identity_failure_reason(ctx)))
-            if match is NameMatch.SUSPICIOUS:
-                name_suspicious = True
-            else:
-                ctx.claimed_name = name.value
-                progressed = True
-        if ctx.claimed_dob is None and dob.status is IdentityStatus.PRESENT:
-            if not self._verifier.compare_dob(ctx, dob.value):
-                return Reply(self.transfer(ctx, self._identity_failure_reason(ctx)))
+        if name.status is IdentityStatus.PRESENT and name.value != ctx.claimed_name:
+            ctx.claimed_name = name.value
+            progressed = True
+        if (
+            dob.status is IdentityStatus.PRESENT
+            and dob.value != ctx.claimed_dob
+            and (ctx.claimed_dob is None or corrects_itself(ex.transcript))
+        ):
             ctx.claimed_dob = dob.value
             progressed = True
         if ctx.claimed_name is not None and ctx.claimed_dob is not None:
             return self._verify(ctx, now)
         question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
         ctx.identity_step = question.value
-        if name_suspicious:
-            return self._retry_identity(ctx, QuestionId.ASK_NAME, suspicious=True)
         if progressed:
             # Q-1: filling a missing identifier counts as understood, even when it was not the one
             # asked ("sinh ngày 14/3/1978" while asking the name). Only an unclear attempt at the
@@ -402,22 +410,16 @@ class DialogueManager:
             return IdentityValue(IdentityStatus.PRESENT, item.value, transcript)
         return IdentityValue(IdentityStatus.UNCERTAIN if item.found else IdentityStatus.ABSENT)
 
-    @staticmethod
-    def _identity_failure_reason(ctx: CallContext) -> TransferReason:
-        return "PATIENT_NOT_FOUND" if ctx.call.direction == "inbound" else "IDENTITY_FAILED"
-
     def _retry_identity(
         self,
         ctx: CallContext,
         question: QuestionId,
         *,
-        suspicious: bool = False,
         request: bool = False,
     ) -> Reply:
         key = question.value
         if ctx.identity_retries.get(key, 0) >= 1:
-            reason = self._identity_failure_reason(ctx) if suspicious else "NOT_UNDERSTOOD"
-            return Reply(self.transfer(ctx, reason))
+            return Reply(self.transfer(ctx, "NOT_UNDERSTOOD"))
         ctx.identity_retries[key] = 1
         if request:
             text = (
@@ -430,8 +432,14 @@ class DialogueManager:
     def _verify(self, ctx: CallContext, now: datetime) -> Reply:
         result = self._verifier.verify(ctx)
         if result.status is not VerificationStatus.VERIFIED:
-            # Không hỏi lại, không nói yếu tố nào sai — "ngày sinh chưa khớp" xác nhận tên đúng (§1.1.2)
-            return Reply(self.transfer(ctx, result.transfer_reason or "IDENTITY_FAILED"))
+            # Không hỏi lại, không nói yếu tố nào sai — "ngày sinh chưa khớp" xác nhận tên đúng (§1.1.2).
+            # Yếu tố sai chỉ ghi vào trace/log cho vận hành.
+            ctx.identity_result = (result.detail or MatchDetail.NO_REFERENCE).value
+            logger.info("%s: xác minh không đạt %s", ctx.call_id, result.to_trace())
+            reason = result.transfer_reason or "IDENTITY_FAILED"
+            if result.status is VerificationStatus.UNAVAILABLE:
+                return Reply(self.transfer(ctx, reason))
+            return Reply(self.transfer(ctx, reason, t.IDENTITY_FAILED_TRANSFER))
         if not result.patient_id:
             logger.error("Xác minh %s không có patient_id", ctx.call_id)
             return Reply(self.transfer(ctx, "SYSTEM_ERROR"))

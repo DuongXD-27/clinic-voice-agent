@@ -7,7 +7,7 @@ from inference.tts import TTSGateway, TTSResult
 from speech.bundle import SpeechSynthesizer
 from speech.tts.static_cache import StaticAudioCache
 
-RELEASE = Path(__file__).resolve().parents[3] / "assets/tts/static/2026-10-08-v1"
+RELEASE = Path(__file__).resolve().parents[3] / "assets/tts/static/2026-10-08-v2"
 
 
 def release_manifest():

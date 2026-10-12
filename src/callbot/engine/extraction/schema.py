@@ -342,3 +342,14 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, frozenset):
         return sorted(value)
     return value
+
+
+def compact_json_schema(schema: dict[str, Any], model: type) -> None:
+    """`json_schema_extra` cho model gửi Structured Outputs: bỏ docstring và `title` tự sinh.
+
+    Chúng không thêm ràng buộc (strict đã có `additionalProperties` / `required`) nhưng tốn token
+    mỗi request và đưa ghi chú nội bộ của class vào prompt."""
+    schema.pop("description", None)
+    schema.pop("title", None)
+    for prop in schema.get("properties", {}).values():
+        prop.pop("title", None)

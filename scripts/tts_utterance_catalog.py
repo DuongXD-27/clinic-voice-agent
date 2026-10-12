@@ -25,7 +25,13 @@ from callbot.engine.policy.utterances import RENDERERS, STATIC_UTTERANCES
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = ROOT / "src/callbot/engine/dialogue/templates.py"
 FIXED_GROUPS = frozenset(
-    {"GREETING_OUTBOUND", "GREETING_INBOUND", "GREETING_HANDOFF_INBOUND", "TRANSFER"}
+    {
+        "GREETING_OUTBOUND",
+        "GREETING_INBOUND",
+        "GREETING_HANDOFF_INBOUND",
+        "TRANSFER",
+        "IDENTITY_FAILED_TRANSFER",
+    }
 )
 DEFERRED_STATICS = frozenset({"ASK_NAME_DECLINED", "ASK_DOB_INVALID", "ASK_DOB_DECLINED"})
 RENDERER_SCENARIOS = {
@@ -52,7 +58,7 @@ def text_hash(text: str) -> str:
 
 
 def scenario(template_id: str) -> str:
-    if template_id.startswith("GREETING_HANDOFF"):
+    if template_id.startswith("GREETING_HANDOFF") or template_id == "IDENTITY_FAILED_TRANSFER":
         return "Identity/Transfer"
     if template_id.startswith(("GREETING", "ASK_NAME", "ASK_DOB", "INTRODUCE")):
         return "Identity"
