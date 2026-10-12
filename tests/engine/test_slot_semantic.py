@@ -73,7 +73,7 @@ def _call(call_id: str, reader: Any, direction: str = "outbound", now: datetime 
     if direction == "outbound":
         start = CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417")
     else:
-        start = CallStart(call_id=call_id, direction="inbound", caller_number="0901234501")
+        start = CallStart(call_id=call_id, direction="inbound", caller_number="0967769004")
     bot.start_call(start)
     return clinic, bot
 

@@ -22,7 +22,7 @@ NOW = datetime(2026, 10, 12, 10, 0, tzinfo=VN_TZ)
 IDENTITY = ["Nguyễn Văn A", "14 tháng 3 năm 1978"]
 FIRST_PAGE = [*IDENTITY, "Đổi lịch cho tôi"]
 SECOND_PAGE = [*FIRST_PAGE, "khung khác"]
-BOOK_IDENTITY = ["Trần Thị Bình", "21 tháng 6 năm 1990"]
+BOOK_IDENTITY = ["Ngô Huy Hoàn", "16 tháng 5 năm 2004"]
 
 
 class _ModelDown:
@@ -42,7 +42,7 @@ def _call(call_id: str, mode: str = "rule", direction: str = "outbound"):
     if direction == "outbound":
         start = CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417")
     else:
-        start = CallStart(call_id=call_id, direction="inbound", caller_number="0901234501")
+        start = CallStart(call_id=call_id, direction="inbound", caller_number="0967769004")
     bot.start_call(start)
     return clinic, bot
 

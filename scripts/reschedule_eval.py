@@ -6,7 +6,7 @@
     python scripts/eval_compare.py result/<dd-mm-yyyy>/reschedule/<A> result/<dd-mm-yyyy>/reschedule/<B>
 
 Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator thật + `FakeClinicAPI.mentor_mock()`**
-(dữ liệu như Clinic Mock deploy: Trần Thị Bình `apt_00418` 8 giờ sáng 15/10, 11 khung trống 14–21/10),
+(dữ liệu như Clinic Mock deploy: Ngô Huy Hoàn `apt_00418` 8 giờ sáng 15/10, 11 khung trống 14–21/10),
 đồng hồ cố định **thứ Ba 29/09/2026 10:00** để ngày tương đối có đáp án cố định. Ngữ cảnh dựng theo
 (`direction`, `question_id`, `page_size`) — bảng `SETUP`:
 
@@ -17,7 +17,7 @@ Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator th
     outbound SLOT_READBACK 2        + "khung nào cũng được"         -> câu chốt 14/10 15:00, trang 2 khung
     outbound SLOT_REFUSE_CHOICE 2   + "không"                       -> "nghe khung khác hay giữ lịch cũ"
     outbound ASK_SLOT_PREFERENCE 1  14/10 + "không"                 -> hết khung, hỏi ngày khác (vòng 1)
-    inbound  OFFER_SLOTS / SLOT_READBACK 2: như trên với "Tôi muốn đặt lịch" (BOOK, SĐT 0901234501)
+    inbound  OFFER_SLOTS / SLOT_READBACK 2: như trên với "Tôi muốn đặt lịch" (BOOK, SĐT 0967769004)
 
 Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dưới đây:
 
@@ -97,8 +97,8 @@ CASES = ROOT / "eval" / "reschedule" / "cases.csv"
 SLOT_PICK_QUESTIONS = frozenset(DIRECT_PICK_QUESTION_FOR.values())
 NOW = datetime(2026, 9, 29, 10, 0, tzinfo=VN_TZ)  # thứ Ba
 APPOINTMENT = "apt_00418"
-PHONE = "0901234501"
-VERIFIED = ["Trần Thị Bình", "21 tháng 6 năm 1990"]
+PHONE = "0967769004"
+VERIFIED = ["Ngô Huy Hoàn", "16 tháng 5 năm 2004"]
 SETUP: dict[tuple[str, str, str], list[str]] = {
     ("outbound", "OFFER_SLOTS", "2"): ["Tôi muốn đổi lịch"],
     ("outbound", "OFFER_SLOTS", "2-trang2"): ["Tôi muốn đổi lịch", "khung khác"],
