@@ -1,0 +1,219 @@
+{
+  "label": "pr2-rules",
+  "mode": "baseline",
+  "today": "2026-09-29T10:00:00+07:00",
+  "model": null,
+  "repeats": 1,
+  "ran_at": "2026-10-12T16:17:11+00:00",
+  "runs": [
+    {
+      "cases": 210,
+      "failed_cases": 4,
+      "holdout_cases": 160,
+      "holdout_passed": 156,
+      "holdout_accuracy": 0.975,
+      "rule_cases": 140,
+      "rule_passed": 140,
+      "inference_cases": 20,
+      "inference_passed": 16,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 4,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "ambiguous_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 6,
+          "routed": 0
+        },
+        "bare_agreement": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "cai_thu": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "current_time": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "exclusion": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_on_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "rechoose": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "refuse_page": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 12,
+          "routed": 0
+        },
+        "restate_slot": {
+          "total": 4,
+          "ok": 4,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 8,
+          "routed": 0
+        },
+        "switch_cancel": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 0,
+      "slot_calls": 0,
+      "slot_routes": {},
+      "slot_providers": {},
+      "slot_statuses": {},
+      "slot_latency_ms": {
+        "n": 0,
+        "p50": 0.0,
+        "p95": 0.0,
+        "max": 0.0
+      },
+      "model_statuses": {},
+      "turn_latency_ms": {
+        "n": 210,
+        "p50": 3.7,
+        "p95": 5.3,
+        "max": 8.5
+      },
+      "failures": [
+        {
+          "id": "R056",
+          "group": "any",
+          "question_id": "ASK_SLOT_PREFERENCE",
+          "transcript": "lúc nào thuận tiện cũng được",
+          "needs_inference": true,
+          "expect": "ANY",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Em chưa hiểu rõ ý anh chị. Anh chị nói lại giúp em ạ."
+        },
+        {
+          "id": "R060",
+          "group": "any",
+          "question_id": "ASK_SLOT_PREFERENCE",
+          "transcript": "không biết nữa",
+          "needs_inference": true,
+          "expect": "ASK_DAY",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Em chưa nắm được yêu cầu. Anh chị nói lại yêu cầu giúp em ạ."
+        },
+        {
+          "id": "R113",
+          "group": "safety_transfer",
+          "question_id": "SLOT_READBACK",
+          "transcript": "tôi không nhớ là đã đặt lịch này",
+          "needs_inference": true,
+          "expect": "TRANSFER:OUT_OF_SCOPE",
+          "observed": "REFUSE_CHOICE",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Em đã đọc hết giờ trống phù hợp. Anh chị muốn tìm ngày khác hay giữ lịch cũ ạ?"
+        },
+        {
+          "id": "R120",
+          "group": "safety_transfer",
+          "question_id": "SLOT_READBACK",
+          "transcript": "tôi đang lái xe",
+          "needs_inference": true,
+          "expect": "REREAD_YESNO",
+          "observed": "NOT_UNDERSTOOD",
+          "observed_dates": "",
+          "observed_full_day": "",
+          "utterance": "Anh chị nói rõ hơn một chút giúp em được không ạ?"
+        }
+      ]
+    }
+  ]
+}

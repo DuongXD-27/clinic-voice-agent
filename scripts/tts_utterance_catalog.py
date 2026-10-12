@@ -41,6 +41,7 @@ RENDERER_SCENARIOS = {
     "CANCEL_READBACK": "Cancel",
     "CONFIRMED_DONE": "Confirm",
     "KEEP_APPOINTMENT": "Reschedule/Confirm",
+    "CURRENT_TIME_CHOICE": "Reschedule",
     "OFFER_SLOTS": "Reschedule/Booking",
     "ASK_DATE_AGAIN": "Reschedule/Booking",
     "SLOT_OFFER_READBACK": "Reschedule/Booking",

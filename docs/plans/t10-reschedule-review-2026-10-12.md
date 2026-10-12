@@ -208,3 +208,22 @@ Viết `tests/engine/test_reschedule_ambiguity.py` (các ca 6.1–6.5, 6.7 + tra
 | `tôi cần tư vấn bác sĩ` / `tôi có câu hỏi về bệnh` ở mọi câu hỏi, model tắt | "em chưa hiểu" | `TRANSFERRED / CLINICAL_QUESTION` (B14) |
 | `tôi đổi ý` ở câu mời khung | "em chưa hiểu" | bỏ đổi lịch, quay lại câu hỏi lịch cũ, không ghi (B15) |
 | `tôi đổi ý, lấy khung 2` | — | chọn khung 2 như câu chọn khung (B15 không chặn vế sau) |
+
+### 6.8 PR 2 — chốt 12-10 (đêm), căn cứ từng mục
+
+Owner duyệt cả danh sách sau khi xem ví dụ chạy thật. Đối chiếu lại PRD bản mới nhất (v2.3) thay cho v2.1 ở các bảng trên. Contract chỉ đặt ranh giới (§1.1.4, §1.1.5, §1.1.6, §1.1.10); câu chữ và cách hỏi lại là của đội (§6.1).
+
+| Mục | Cách làm | Căn cứ |
+| --- | --- | --- |
+| B5 | "được / đồng ý / dạ / ok / ừ" sau câu mời nhiều khung: đọc câu chốt khung sớm nhất, hỏi có/không, không ghi, UNCLEAR (owner chọn cách 1, không hỏi "khung 1 hay khung 2") | PRD R-23 (không xác định được khách chọn giờ nào là mơ hồ), GC-RES-04; §1.1.5 |
+| B6 | Đổi lịch: ở câu chốt, câu chỉ nhắc lại đúng khung đang chốt ("3 giờ chiều", "thứ Tư ngày 14") là đồng ý, ghi ngay. Không áp cho câu hỏi lại, chỉ có buổi, có phủ định; không áp cho đặt lịch | Ví dụ Reschedule của contract (ghi ngay sau "Được, đổi giúp tôi"); §1.1.10 cho đặt lịch; PRD R-23, GC-RES-03; mentor qc-rs-05 |
+| B8 | "cái thứ N" mà N lớn hơn số khung vừa đọc là thứ trong tuần, đi luật như "thứ N" (B7). "cái thứ nhất / hai" vẫn là số khung; "khung thứ ba", "khung số 3" vẫn là số khung | Tự thiết kế; §1.1.5 |
+| B10 | Câu mở bằng "không / chưa" rồi nêu giờ khác: ghi các khung vừa đọc vào `refused_slot_ids` trước khi tra yêu cầu mới (tính vòng R-29). Không tính vế "không có … thì", "không phải …", câu hỏi lại | Mentor qc-rs-08 (đúng mẫu câu, phải giữ pass); PRD R-29, GC-RES-05, R-42(b) |
+| B11 | Ở câu chốt, câu nêu lại lịch hẹn đang đổi (có ngày / thứ của lịch đó, hoặc chỉ giờ khi khung đang chốt cùng ngày lịch cũ): nói rõ đó là giờ lịch hiện tại, hỏi "giữ lịch cũ hay chọn giờ khác", không tra, không tính vòng. Renderer mới `CURRENT_TIME_CHOICE`; nhánh model đọc ra giờ lịch cũ dùng chung câu này | `eval/reschedule/cases2.csv` R011 (chọn đúng giờ đang có → SCHEDULED hoặc TRANSFERRED); §1.1.6 |
+| `ASK_DATE` | Bot đã đúng R-30; eval so chuỗi câu cũ ("hôm nay là" chữ thường, "ngày cụ thể") từ trước đợt chuẩn hoá câu thoại 08/10. Sửa bộ chấm | PRD R-30, GC-DATE-03 |
+| R105 | Nhận cả câu chốt khung thứ Năm trên trang (B7, không ghi) lẫn tra thứ 5 / thứ 6; chưa làm tập nhiều thứ | Quyết định owner B7 |
+| S021 | Thêm cụm hủy "bỏ luôn lịch", "bỏ hẳn lịch", "bỏ cái lịch"; "bỏ đổi lịch" vẫn là bỏ việc đổi lịch | §1.1.4 (hủy luôn xác nhận lần hai); `cases2.csv` R159–R163 |
+| S034 | "cai muon hon / cai som hon / cai tre hon" không dấu là "cái muộn / sớm / trễ hơn". Câu không dấu vẫn không phải chọn rõ nên đọc câu chốt | Tự thiết kế |
+| B16 (ca user 12-10 tối) | "tôi muốn chọn lại lịch", "để tôi chọn lại", "ừ từ từ tôi muốn chọn lại" (không kèm khung / giờ / ý định khác): ở câu chốt và câu A/B, bỏ chọn khung đang chốt (không coi là từ chối) và đọc lại trang khách đang chọn, mở bằng "Dạ, em đọc lại để anh chị chọn ạ." kèm lời mời đổi ngày khác, UNDERSTOOD, không tính vòng. Câu chốt của lời mời một khung: đọc khung khác của yêu cầu, hết thì hỏi ngày. Ở câu mời: đọc lại đúng trang, UNCLEAR (nói mãi thì chuyển máy như B1). Câu đọc lịch đầu: "chọn lại lịch / giờ / ngày" là xin đổi lịch. Router tầng model không gửi câu "chọn lại" trần | Tự thiết kế (contract, eval mentor, `cases2.csv` không có ca này); §1.1.5, §6.1; PRD R-42(c) cho câu mở đầu |
+
+Khác với bản nháp: B11 thêm điều kiện cùng ngày, vì khi đang chốt khung ngày khác thì "3 giờ rưỡi" là giờ đó của ngày khác (vd. 15/10 15:30 có thật). Router tầng model không gửi câu chỉ có lời đồng ý ở câu mời khung, để B5 luôn do luật quyết.

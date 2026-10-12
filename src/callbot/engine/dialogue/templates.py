@@ -190,6 +190,8 @@ SLOT_AMBIGUOUS = "Có nhiều khung giờ phù hợp. "
 SLOT_AMBIGUOUS_AGAIN = "Dạ, "
 SLOT_NOT_IN_PAGE = "Em vừa đọc hai khung thôi ạ. "
 SLOT_TWO_AT_A_TIME = "Em đọc hai khung để dễ nhớ ạ. "
+# Khách xin chọn lại ở câu chốt: đọc lại trang vừa chọn (review 12-10 B16)
+SLOT_RECHOOSE = "Dạ, em đọc lại để anh chị chọn ạ. "
 # Miền prefix riêng: không nhận câu DONE_SAFE hoặc hằng tĩnh bất kỳ làm tiền tố.
 SLOT_PREFIXES = frozenset(
     {
@@ -200,6 +202,7 @@ SLOT_PREFIXES = frozenset(
         SLOT_AMBIGUOUS_AGAIN,
         SLOT_NOT_IN_PAGE,
         SLOT_TWO_AT_A_TIME,
+        SLOT_RECHOOSE,
     }
 )
 SLOT_ACTIONS = frozenset({"RESCHEDULE", "BOOK"})
@@ -463,6 +466,24 @@ def keep_appointment(ctx: CallContext, appointment: dict[str, Any], *, variant: 
     return (
         f"Lịch cũ của anh chị vẫn giữ nguyên: lịch khám {_department(appointment)}"
         f"{attendance_facts(appointment)}. {ASK_ATTENDANCE}"
+    )
+
+
+@renderer(
+    "CURRENT_TIME_CHOICE",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": ("v0",)},
+)
+def current_time_choice(
+    ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0"
+) -> str:
+    """Khách nêu lại giờ lịch đang đổi khi chọn khung: nói rõ đó là lịch hiện tại, hỏi giữ lịch hay chọn
+    giờ khác — không đoán (§1.1.5, review 12-10 B11)."""
+    guardrails.assert_can_disclose(ctx)
+    return (
+        f"Dạ, {speak_datetime(appointment['starts_at'])} là giờ lịch hiện tại của anh chị. "
+        "Anh chị muốn giữ lịch cũ hay chọn giờ khác ạ?"
     )
 
 

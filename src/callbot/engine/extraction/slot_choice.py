@@ -86,6 +86,12 @@ _LAST = re.compile(
 )
 # R008: "chọn giờ thứ 2" là thứ tự; "10 giờ thứ Hai" (có số trước "giờ") là giờ + thứ
 _HOUR_ORDINAL = re.compile(r"(?<!\w)giờ\s+thứ\s+(nhất|một|hai|ba|[1-3])(?!\w)")
+# "cái thứ năm" mà trang chỉ có 2 khung: không có khung số 5, khách nói thứ Năm (review 12-10 B8). Bỏ "cái"
+# để đọc như "thứ năm". "khung thứ ba", "số 3" vẫn là số khung: bot đọc "khung 1", "khung 2"
+_CAI_BEFORE_WEEKDAY = re.compile(
+    r"(?<!\w)(?:cái|cai)\s+(?=(?:thứ|thu)\s+(?:hai|ba|tư|tu|năm|nam|sáu|sau|bảy|bay|[2-7])(?!\w))",
+    re.IGNORECASE,
+)
 
 _RELATIVE_DAYS = [
     (re.compile(r"(?<!\w)hôm nay(?!\w)"), 0),
@@ -139,6 +145,13 @@ _UNACCENTED_PHRASES = {
     "cai gan nhat": "cái gần nhất",
     "cai som nhat": "cái sớm nhất",
     "cai truoc": "cái trước",
+    # "cai muon hon": "cái muốn hơn" không có nghĩa, chỉ có thể là "cái muộn hơn" (held-out S034)
+    "cai som hon": "cái sớm hơn",
+    "khung som hon": "khung sớm hơn",
+    "cai muon hon": "cái muộn hơn",
+    "khung muon hon": "khung muộn hơn",
+    "cai tre hon": "cái trễ hơn",
+    "khung tre hon": "khung trễ hơn",
     "cai kia": "cái kia",
     "cai con lai": "cái còn lại",
     "cai sau": "cái sau",
@@ -468,6 +481,13 @@ def extract_slot_choice(
             transcript, excluded.group("out"), rest, slots, presented_slot_ids, now
         )
     criteria = parse_slot_criteria(transcript, now)
+    request = None
+    if criteria.ordinal is not None and criteria.ordinal > len(presented_slot_ids):
+        weekday = _CAI_BEFORE_WEEKDAY.sub("", transcript)
+        if weekday != transcript:
+            # Yêu cầu thời gian (nếu không khớp trang) là thứ đó, không phải "khung số 5" (B8)
+            transcript, request = weekday, weekday
+            criteria = parse_slot_criteria(transcript, now)
     # "sớm hơn / muộn hơn" trần ở câu chọn khung là xin khung khác (T-10 R033/R034): sớm hơn khung vừa
     # đọc hay lịch cũ là mơ hồ. Có kèm ngày / buổi / giờ thì mới là yêu cầu mới.
     if replace(criteria, relative=None).empty:
@@ -487,10 +507,12 @@ def extract_slot_choice(
     matched = tuple(s["slot_id"] for s in filter_slots(slots, criteria, presented_slot_ids))
     span = clean(transcript)
     if len(matched) == 1:
-        return Field(SlotChoice("MATCH", matched, criteria), Provenance.NORMALIZED, span=span)
-    if matched:
-        return Field(SlotChoice("AMBIGUOUS", matched, criteria), Provenance.NORMALIZED, span=span)
-    return Field(SlotChoice("NO_MATCH", (), criteria), Provenance.NORMALIZED, span=span)
+        choice = SlotChoice("MATCH", matched, criteria, request=request)
+    elif matched:
+        choice = SlotChoice("AMBIGUOUS", matched, criteria, request=request)
+    else:
+        choice = SlotChoice("NO_MATCH", (), criteria, request=request)
+    return Field(choice, Provenance.NORMALIZED, span=span)
 
 
 # Tự sửa: "không phải khung 1 mà là khung 2" -> chỉ đọc phần sau "mà (là)"; "khung 2 chứ không phải

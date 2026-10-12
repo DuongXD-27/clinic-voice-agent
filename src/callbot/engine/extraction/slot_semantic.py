@@ -19,11 +19,13 @@ from typing import Any, Optional, Protocol
 
 from callbot.engine.extraction.agreement import (
     changes_mind,
+    explicit_slot_pick,
     gives_up_if_unavailable,
     gives_up_slot_change,
     is_bare_da,
     is_hesitation_only,
     mentions_busy,
+    rechooses,
 )
 from callbot.engine.extraction.model_budget import hand_over_model
 from callbot.engine.extraction.schema import (
@@ -211,6 +213,7 @@ def route_slot_semantic(
         gives_up_if_unavailable(transcript)
         or gives_up_slot_change(transcript)
         or changes_mind(transcript)
+        or rechooses(transcript)
         or mentions_busy(transcript)
     ):
         return None
@@ -220,6 +223,9 @@ def route_slot_semantic(
     ):
         return None
     if not _has_content(text):
+        return None
+    if question_id is QuestionId.OFFER_SLOTS and explicit_slot_pick(transcript):
+        # Chỉ có lời đồng ý ("đồng ý đổi", "được, đổi giúp tôi"): luật đọc câu chốt khung sớm nhất (B5)
         return None
     agreement = result.agreement.value if result.agreement.found else None
     if agreement is Agreement.AGREE:

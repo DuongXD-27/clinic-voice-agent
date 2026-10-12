@@ -1,4 +1,4 @@
-# Evidence: T-10 đổi lịch 12-10 — PR 1 (luật) và tầng model chọn khung (Jev + Luna)
+# Evidence: T-10 đổi lịch 12-10 — PR 1 (luật), tầng model chọn khung (Jev + Luna) và PR 2
 
 ## Mục tiêu
 
@@ -127,3 +127,59 @@ Ca còn fail đều không qua model (luật đã có đường đi): `ASK_DATE`
 - Hành vi mới không phụ thuộc cờ: lượt model lỗi ở 4 câu chọn khung (kể cả route lâm sàng cũ) đi nhánh luật thay vì câu "đồng ý với khung giờ vừa đọc không" — R122 "lay cai dau" ở `--route-only` hết sai.
 - **Bật cờ**: theo plan, bật trên staging trước, đọc trace `slot_act` / `model_route` / độ trễ, rồi owner quyết bật prod. Cần `TYPESAFE_API_KEY` (Jev) và `OPENAI_API_KEY` (Luna) trên server.
 - Chi phí: khoảng 1 request Jev mỗi lượt được route (6% lượt ở câu chọn khung trên bộ eval chính); Luna chỉ khi câu không dấu hoặc Jev lỗi.
+
+# Phần 3 — PR 2: câu trả lời ở câu mời / câu chốt khung (B5, B6, B8, B10, B11, B16) và các ca eval còn lại
+
+## Mục tiêu
+
+Làm các mục PR 2 owner duyệt tối 12-10 sau khi xem ví dụ chạy thật: B5, B6, B8, B10, B11, cùng B16 ("tôi muốn chọn lại", từ cuộc gọi thử của owner tối 12-10) và các ca còn trượt (`ASK_DATE`, R105, held-out S021, S034). Căn cứ từng mục ở [plan review §6.8](../plans/t10-reschedule-review-2026-10-12.md): contract đặt ranh giới, PRD v2.3 (R-23, R-29, GC-RES-03/04/05) và eval mentor (qc-rs-05, qc-rs-08) cho hướng làm, bộ ca contract-oracle `eval/reschedule/cases2.csv` (R011, R159–R163) cho kết cục.
+
+## Bằng chứng trong repo
+
+| Acceptance criterion | Bằng chứng |
+| --- | --- |
+| B5: "được / đồng ý / vâng / ok / ừ / dạ / được, đổi giúp tôi" sau câu mời 2 khung → câu chốt khung 1, không ghi, không tính hiểu sai; "đúng rồi" sau đó ghi; "không, khung 2" chốt khung 2; "được không em", "không" không phải đồng ý; đặt lịch cũng chỉ đọc câu chốt | `tests/engine/test_reschedule_slot_answers.py` (nhóm B5); `_bare_agreement` + `_slot_choice` trong `manager.py`; router `slot_semantic.py` không gửi câu chỉ có lời đồng ý ở câu mời khung |
+| B6: đổi lịch, nhắc lại đúng khung đang chốt ("3 giờ chiều", "3 giờ chiều thứ 4", "thứ Tư ngày 14", "ba giờ") → ghi ngay, cả khi model lỗi; "3 giờ chiều à", "chiều", "dạ" → hỏi lại; đặt lịch nhắc lại giờ → hỏi lại (§1.1.10) | Nhóm B6; `_slot_readback` dùng lại `_direct_pick` (chỉ RESCHEDULE, khung của câu hỏi vừa nói, không hỏi lại, không phủ định, câu được giải thích hết) và bằng chứng CONFIRMATION như chọn rõ ở câu mời |
+| B8: "cái thứ tư / năm / 5" → khung thứ đó trên trang (như "thứ 4"); "cái thứ 6", "cái thứ sáu" → tra thứ Sáu; "cái thứ hai" vẫn là khung 2; "khung thứ ba", "khung số 3" vẫn là số khung | Nhóm B8; `_CAI_BEFORE_WEEKDAY` + `SlotChoice.request` trong `slot_choice.py` |
+| B10: "không, 5 giờ chiều" → "Em chưa thấy khung giờ đó", trang mới không có 2 khung vừa từ chối, tính 1 vòng; "Không có 5 giờ thì thôi" sau đó → `TRANSFERRED / PATIENT_REQUEST` (qc-rs-08); "5 giờ chiều" không có "không" vẫn đọc khung gần nhất | Nhóm B10; `leads_with_refusal` (`agreement.py`), `_refuse_page_if_declined` (`manager.py`); `tests/engine/test_mentor_eval_reschedule.py` vẫn pass |
+| B11: câu chốt 14/10 15:00, "3 giờ rưỡi" / "3 rưỡi chiều" / "3 giờ 30 chiều thứ 4" → "Dạ, 3 giờ 30 chiều, thứ Tư ngày 14 tháng 10 là giờ lịch hiện tại của anh chị. Anh chị muốn giữ lịch cũ hay chọn giờ khác ạ?", không tra, `slot_round` = 0; "giữ lịch cũ" → `PATIENT_REQUEST`; "chọn giờ khác" → trang kế; "3 giờ rưỡi ngày 15" hoặc đang chốt khung ngày khác → yêu cầu mới | Nhóm B11; `_restates_current_appointment`, `_current_time_choice`; renderer `CURRENT_TIME_CHOICE` (`templates.py`, Output Guard nguồn APPOINTMENT) |
+| S021 / S034 | Nhóm S021, S034; cụm hủy trong `intent.py`; cụm không dấu trong `slot_choice.py` |
+| B16 (ca owner gọi thử): câu chốt 16/10 9:00, "ừ từ từ tôi muốn chọn lại lịch" / "tôi muốn chọn lại lịch" / "cho tôi chọn lại" / "để tôi chọn lại" / "chon lai" → "Dạ, em đọc lại để anh chị chọn ạ." + đúng trang khách đang chọn + mời đổi ngày khác, khung đang chốt bỏ chọn nhưng không bị từ chối, không tính hiểu sai, không tính vòng; sau đó "khung 1" / "khung 2" ghi đúng khung; "chọn lại khung 1", "chọn lại ngày 20" đi theo phần khung / giờ; câu A/B cũng đọc lại trang; lời mời một khung thì đọc khung khác hoặc hỏi ngày; ở câu mời nói "chọn lại" mãi thì chuyển máy `NOT_UNDERSTOOD`; câu đọc lịch đầu "tôi muốn chọn lại lịch" mời khung kể cả chỉ có luật | Nhóm B16 trong `test_reschedule_slot_answers.py`; `rechooses` (`agreement.py`), `_only_rechooses` + `_rechoose` (`manager.py`), tiền tố `SLOT_RECHOOSE` (`templates.py`), cụm "chọn lại lịch / giờ / ngày" (`intent.py`), router `slot_semantic.py` |
+| Eval: bộ chấm `ASK_DATE` so chữ thường và "cụ thể"; R105 nhận `PICK:2` hoặc thứ 5 / thứ 6 tuần này; thêm R187–R211 (25 ca hồi quy cho các mục trên, R206–R211 cho B16; bộ chấm nhận "từ câu chốt quay lại đúng trang" là `REREAD_PAGE`, viết cùng lúc với sửa, không phải held-out) | `scripts/reschedule_eval.py`, `eval/reschedule/cases.csv` |
+| Eval baseline không dựng tầng model chọn khung kể cả khi `.env` bật `SLOT_SEMANTIC_ENABLED` | `confirm_eval.py`, `cancel_eval.py` gán `_slot_semantic = None`; `no_answer_eval.py`, `w4_voice_eval.py` truyền `slot_semantic_enabled=False`; `tests/eval/test_no_answer_evaluator.py::test_no_implicit_model_gateway_with_enabled_environment` (trước đó trượt khi `.env` bật cờ) |
+| Eval reschedule không gọi model điền tên khi dựng ngữ cảnh: sau khi owner đổi bệnh nhân demo của sim (12-10 tối, `apt_00418` thành Ngô Huy Hoàn), cấu hình mặc định gọi OpenAI điền tên ở mọi ca dù luật tự xác minh được, thỉnh thoảng lỗi làm eval dừng | `reschedule_eval.py` dựng Orchestrator với `name_fallback_provider="none"` |
+
+## Quy trình xác minh
+
+```powershell
+python -m ruff check src tests scripts
+python -m ruff format --check src tests
+python -m pytest tests/engine/test_reschedule_slot_answers.py tests/engine/test_mentor_eval_reschedule.py tests/engine/test_reschedule_ambiguity.py tests/engine/test_slot_semantic.py -q
+python -m pytest -q --continue-on-collection-errors
+python scripts/reschedule_eval.py --baseline --label pr2-rules
+python scripts/reschedule_eval.py --semantic --repeats 3 --label pr2-jev-luna-r3-cases
+python scripts/reschedule_eval.py --semantic --repeats 3 --cases eval/reschedule/heldout_slot_semantic.csv --label pr2-jev-luna-r3-heldout
+python scripts/tts_utterance_catalog.py --date 2026-10-08
+```
+
+`templates.py` có renderer mới (`CURRENT_TIME_CHOICE`) và tiền tố mới (`SLOT_RECHOOSE`) nên catalog TTS được export lại (chỉ giữ file JSON). Không có câu tĩnh mới, không cần thu audio.
+
+## Kết quả eval (2026-10-12)
+
+| Bộ | Trước PR 2 | Sau PR 2 |
+| --- | --- | --- |
+| `cases.csv`, chỉ luật | 126/135 (rule 110/115) | **156/160** (rule **140/140**, cần suy nghĩa 16/20 như cũ) |
+| `cases.csv`, Jev + Luna ×3 | 130/135 | **160/160** cả 3 lần, cần suy nghĩa 20/20 |
+| `heldout_slot_semantic.csv`, Jev + Luna ×3 | 42/44 | **44/44** cả 3 lần (S021, S034 giờ đạt) |
+| Ghi sai / nhầm khung | 0 | **0** |
+| Độ trễ model ở câu chọn khung | p50 ~560 ms, p95 ≤ 0,86 s | p50 550–656 ms, p95 ≤ 0,85 s, lâu nhất 1,96 s (Luna); câu "chọn lại" không gọi model (vẫn 11 lượt mỗi lần chạy `cases.csv`) |
+
+- So từng ca 135 ca cũ (chỉ luật) với `rules-final-cases`: chỉ đổi ở R101, R102, R109, R142 (bộ chấm), R105 (nhãn), R133 "cái thứ Tư" và R134 "cái thứ năm ấy" (B8: chọn khung thứ đó trên trang, vẫn đạt). Các ca khác chỉ khác biến thể câu chữ R-42.
+- Eval hồi quy chỉ luật, so từng ca với kết quả đã commit (`confirm/after`, `cancel/after`, `no_answer/after`, `identity/baseline`): confirm 187 dòng, cancel 120, no-answer 86, identity 215 — **không ca nào đổi**. Chạy lại sau B16: vẫn không ca nào đổi.
+- Toàn bộ test (`PYTHONUTF8=1`, `.env` local bật `SLOT_SEMANTIC_ENABLED`, dữ liệu sim mới của owner): 5436 passed, 26 skipped; 1 lỗi collect `livekit` (máy local không cài). `ruff check src tests scripts`, `ruff format --check src tests`: pass.
+
+## Ghi chú
+
+- B6 không đổi hành vi qc-rs-05 ("Đúng rồi, 15 giờ" vẫn đi nhánh AGREE như cũ); B6 chỉ thêm trường hợp nhắc lại giờ không có lời đồng ý.
+- B10 chỉ ghi nhận từ chối khi câu mở bằng "không / chưa"; IE không đọc có / không khi câu đã có giờ nên Dialogue đọc lời mở câu (`leads_with_refusal`).
+- Kết quả: `result/12-10-2026/reschedule/pr2-rules`, `pr2-jev-luna-r3-cases`, `pr2-jev-luna-r3-heldout`.

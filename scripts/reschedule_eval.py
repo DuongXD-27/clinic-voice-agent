@@ -43,7 +43,7 @@ Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dướ
     MORE            Đọc khung chưa đọc (trang kế), không lặp khung vừa đọc / vừa từ chối.
     REREAD_YESNO    Hỏi lại câu có/không của đúng khung đang chốt, không ghi.
     ASK_WHICH       Trang mơ hồ không thu hẹp được: hỏi lại chọn khung nào trong đúng trang đó (B1).
-    REREAD_PAGE     Đọc lại đúng trang vừa đọc.
+    REREAD_PAGE     Đọc lại đúng trang vừa đọc (kể cả từ câu chốt quay lại trang, "chọn lại" — B16).
     AMBIGUOUS       Đọc một trang khác chồng lên trang cũ (khớp nhiều khung).
     OTHER           Không khớp nhãn nào.
 
@@ -110,8 +110,9 @@ SETUP: dict[tuple[str, str, str], list[str]] = {
     ("inbound", "OFFER_SLOTS", "2"): ["Tôi muốn đặt lịch"],
     ("inbound", "SLOT_READBACK", "2"): ["Tôi muốn đặt lịch", "khung 1"],
 }
-# Câu hỏi lại ngày của `t.ask_date_again` (R-30)
-_DATE_REASK = ("đã qua rồi", "không có trong lịch", "ngày cụ thể", "hôm nay là")
+# Câu hỏi lại ngày của `t.ask_date_again` (R-30), so trên chữ thường: câu thoại chuẩn hoá 08/10 viết hoa
+# "Hôm nay là", hỏi "ngày nào cụ thể"
+_DATE_REASK = ("đã qua rồi", "không có trong lịch", "cụ thể", "hôm nay là")
 _FULL_DAY = re.compile(r"ngày (\d{1,2}) tháng (\d{1,2}) đã kín lịch")
 _PERIODS = {"sáng": range(0, 12), "chiều": range(12, 18), "tối": range(18, 24)}
 
@@ -247,7 +248,7 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
         return Observed("NOT_UNDERSTOOD")
     asked = after.question.question_id if after.question else None
     if asked is QuestionId.ASK_SLOT_PREFERENCE:
-        if any(marker in utterance for marker in _DATE_REASK):
+        if any(marker in utterance.lower() for marker in _DATE_REASK):
             return Observed("ASK_DATE")
         if utterance in t.SLOT_EXHAUSTED.values():
             return Observed("REFUSE_CHOICE")
@@ -284,6 +285,9 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
         return Observed("PICK_SLOT", dates, hours)
     if asked is QuestionId.OFFER_SLOTS:
         previous = list(before.presented_slot_ids)
+        if was is QuestionId.SLOT_READBACK and shown == previous:
+            # Từ câu chốt quay lại đúng trang khách đang chọn ("tôi muốn chọn lại", B16)
+            return Observed("REREAD_PAGE", dates, hours)
         if was is QuestionId.SLOT_READBACK:
             return Observed(
                 "MORE" if before.selected_slot_id not in shown else "OTHER", dates, hours
@@ -347,7 +351,10 @@ def _run_case(
     slot: Optional[SlotCounting] = None,
 ) -> dict[str, Any]:
     clinic = FakeClinicAPI.mentor_mock()
-    bot = create_orchestrator(clinic, store=_store())
+    # Bước xác minh chỉ là dựng ngữ cảnh: không gọi model điền tên (luật xác minh được bệnh nhân demo)
+    bot = create_orchestrator(
+        clinic, settings=EngineSettings(name_fallback_provider="none"), store=_store()
+    )
     bot.sessions._clock = lambda: NOW
     bot._extractor._semantic = semantic
     bot._extractor._slot_semantic = slot

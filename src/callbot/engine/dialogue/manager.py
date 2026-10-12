@@ -36,8 +36,10 @@ from callbot.engine.extraction.agreement import (
     gives_up_slot_change,
     is_bare_da,
     is_hesitation_only,
+    leads_with_refusal,
     mentions_busy,
     mentions_cancel,
+    rechooses,
 )
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
@@ -60,6 +62,7 @@ from callbot.engine.extraction.schema import (
     SlotAct,
     SlotChoice,
     SlotCriteria,
+    to_local,
 )
 from callbot.engine.extraction.slot_choice import (
     TIME_PROPOSAL_QUESTIONS,
@@ -673,6 +676,8 @@ class DialogueManager:
             return self._give_up(ctx)
         if _only_changes_mind(ex):
             return self._abandon(ctx)
+        if _only_rechooses(ex):
+            return self._rechoose(ctx, now)
         _drop_excluded(ctx, choice)
         # Lời bỏ có vế sau nêu khung / giờ ("3 giờ chiều thì thôi, lấy khung 2"): vế sau là câu trả lời;
         # IE đã tìm khung trên đúng vế đó (`slot_request`)
@@ -685,6 +690,7 @@ class DialogueManager:
             # "thứ Ba" / "chiều thứ Sáu" không khớp khung nào vừa đọc: yêu cầu mới, quy thứ trần theo
             # R-30 (tuần này; đã qua / hôm nay thì hỏi lại) — không tự hiểu thành thứ đó tuần sau
             # (GC-DATE-03, eval R142)
+            _refuse_page_if_declined(ctx, ex)
             return self._new_request(ctx, now, request)
         picked = _picked(ctx, choice)
         if (
@@ -708,6 +714,11 @@ class DialogueManager:
             # "khung nào cũng được": người gọi để bot chọn — đọc câu chốt khung sớm nhất trang này,
             # vẫn phải đồng ý mới ghi (D-1)
             return Reply(self._read_back(ctx, ctx.presented_slot_ids[0]))
+        if ctx.presented_slot_ids and _bare_agreement(ex):
+            # "được", "đồng ý", "dạ": đồng ý mà chưa nói khung nào là mơ hồ (PRD R-23, GC-RES-04) — không
+            # ghi, không coi là hiểu sai: đọc câu chốt khung sớm nhất như "khung nào cũng được", hỏi có/không
+            # (review 12-10 B5). Khách muốn khung kia thì nói "không, khung 2"
+            return Reply(self._read_back(ctx, ctx.presented_slot_ids[0]), "UNCLEAR")
         if choice is not None and ex.slot_choice.found:
             if choice.kind == "AMBIGUOUS" and not _names_a_date(choice.criteria):
                 # "cái 3 giờ", "buổi sáng": chỉ giờ / buổi / thứ, khớp nhiều khung đã có -> không tự chọn
@@ -725,6 +736,7 @@ class DialogueManager:
                     return Reply(self._read_back(ctx, candidates[0]["slot_id"]))
             if _new_time_request(choice.criteria):
                 # "ngày 19 thì sao": yêu cầu thời gian mới, lọc lại từ GET /slots (T-10 V-10)
+                _refuse_page_if_declined(ctx, ex)
                 return self._new_request(ctx, now, request)
             # "khung 3" khi mới đọc 2 khung: nói rõ rồi đọc lại trang, không tự chọn
             page = [s for s in ctx.slots if s["slot_id"] in ctx.presented_slot_ids]
@@ -787,7 +799,7 @@ class DialogueManager:
             if act is SlotAct.TIME and choice is not None and _new_time_request(choice.criteria):
                 if self._names_current_appointment(ctx, _slot_request(ex), now):
                     # Thời gian khách nêu chính là lịch đang đổi: có thể là muốn giữ lịch -> câu A/B
-                    return self._model_refuse_choice(ctx, now)
+                    return self._current_time_choice(ctx)
                 self._drop_read_back_slot(ctx, question)
                 return self._new_request(ctx, now, _slot_request(ex))
             return self._reask_slot_question(ctx, now)
@@ -848,6 +860,51 @@ class DialogueManager:
             "UNCLEAR",
         )
 
+    def _rechoose(self, ctx: CallContext, now: datetime) -> Reply:
+        """ "tôi muốn chọn lại": khách chưa chốt khung nào (review 12-10 B16). Đọc lại trang khách đang chọn;
+        khung đang chốt bỏ chọn nhưng không coi là từ chối (vẫn chọn lại được); không tính vòng (R-29).
+
+        Ở câu mời, trang đọc lại y hệt nên tính UNCLEAR: nói mãi thì chuyển máy (§1.1.5, như B1). Câu chốt
+        của lời mời một khung không có trang để đọc lại: đọc các khung khác của yêu cầu, hết thì hỏi ngày.
+        """
+        assert ctx.question is not None
+        question = ctx.question.question_id
+        ctx.select_slot(None)
+        page = [
+            slot
+            for slot in ctx.slots
+            if slot["slot_id"] in ctx.presented_slot_ids
+            and slot["slot_id"] not in ctx.refused_slot_ids
+        ]
+        if len(page) > 1:
+            understanding: Understanding = (
+                "UNCLEAR" if question is QuestionId.OFFER_SLOTS else "UNDERSTOOD"
+            )
+            return Reply(self._present(ctx, now, page, t.SLOT_RECHOOSE, invite=True), understanding)
+        if question is QuestionId.ASK_SLOT_PREFERENCE:
+            return self._ask_slot_preference(ctx)
+        return self._offer_next(ctx, now)
+
+    def _current_time_choice(self, ctx: CallContext) -> Reply:
+        """Khách nêu lại giờ lịch đang đổi: nói rõ đó là lịch hiện tại rồi hỏi A/B (review 12-10 B11).
+        Câu trả lời đi `_slot_refuse_choice` như câu A/B sau lời từ chối trần."""
+        if not ctx.presented_slot_ids:
+            return self._ask_slot_preference(ctx)
+        action = ctx.pending_action
+        assert action is not None
+        ctx.select_slot(None)
+        appointment = self._reads.get_actionable_appointment(ctx)
+        return Reply(
+            ask(
+                ctx,
+                QuestionId.SLOT_REFUSE_CHOICE,
+                t.current_time_choice(ctx, appointment),
+                "OFFERING_SLOTS",
+                action=action,
+            ),
+            "UNCLEAR",
+        )
+
     def _reask_slot_question(self, ctx: CallContext, now: datetime) -> Reply:
         """Model đọc câu là hỏi lại / mơ hồ / chưa quyết: hỏi lại đúng câu đang chờ (UNCLEAR)."""
         assert ctx.question is not None
@@ -898,6 +955,8 @@ class DialogueManager:
             return self._give_up(ctx)
         if _only_changes_mind(ex):
             return self._abandon(ctx)
+        if _only_rechooses(ex):
+            return self._rechoose(ctx, now)
         agreement = ex.agreement.value
         choice = ex.slot_choice.value
         _drop_excluded(ctx, choice)
@@ -926,14 +985,38 @@ class DialogueManager:
         if picked is not None and picked != slot_id:
             # "thôi lấy khung 2": đổi sang khung khác đã đọc, bằng chứng của khung cũ bị xóa
             return Reply(self._read_back(ctx, picked))
-        # Nhắc lại chính khung đang chốt ("3 giờ rưỡi", "cái thứ Năm") là chưa trả lời có/không
         restates = choice is not None and slot_id in choice.slot_ids
+        if (
+            restates
+            and not (asking or busy)
+            and agreement is not Agreement.REFUSE
+            and not _part_of_day_only(choice)
+            and self._direct_pick(ctx, ex, slot_id)
+        ):
+            # Đổi lịch: khách nói lại đúng khung đang chốt ("3 giờ chiều", "thứ Tư ngày 14") là khẳng định
+            # rõ (PRD R-23, GC-RES-03; review 12-10 B6) — ghi như chọn rõ ở câu mời. Đặt lịch vẫn phải có
+            # lời đồng ý (§1.1.10): `_direct_pick` chỉ cho RESCHEDULE
+            ctx.add_evidence(
+                self._evidence(
+                    ctx, ex, "CONFIRMATION", Field(Agreement.AGREE, ex.slot_choice.provenance)
+                )
+            )
+            return self._write_slot(ctx, now)
+        # Nhắc lại khung đang chốt mà chưa rõ ("chiều", "3 giờ chiều à") là chưa trả lời có/không
         new_time = (
             choice is not None
             and ex.slot_choice.found
             and _new_time_request(choice.criteria)
             and not (asking or busy or restates)
         )
+        if (
+            new_time
+            and ex.intent.value is not Intent.CANCEL
+            and self._restates_current_appointment(ctx, ex, slot, now)
+        ):
+            # "3 giờ rưỡi" khi đang chốt 3 giờ chiều cùng ngày: đó là giờ lịch hiện tại, có thể khách muốn
+            # giữ lịch — hỏi A/B, không tra giờ mới, không tính vòng (contract-oracle R011; review 12-10 B11)
+            return self._current_time_choice(ctx)
         more = choice is not None and choice.kind == "MORE"
         if (
             ctx.call.direction == "outbound"
@@ -1033,6 +1116,8 @@ class DialogueManager:
             return self._give_up(ctx)
         if _only_changes_mind(ex):
             return self._abandon(ctx)
+        if _only_rechooses(ex):
+            return self._rechoose(ctx, now)
         _drop_excluded(ctx, choice)
         if _busy(ex.transcript) and _mentioned_slot_ids(choice):
             # "chiều tôi bận": bỏ các khung đó (V-9), vẫn chưa biết nghe khung khác hay giữ lịch
@@ -1066,6 +1151,8 @@ class DialogueManager:
             return self._give_up(ctx)
         if _only_changes_mind(ex):
             return self._abandon(ctx)
+        if _only_rechooses(ex):
+            return self._rechoose(ctx, now)
         _drop_excluded(ctx, choice)
         if _busy(ex.transcript) and _mentioned_slot_ids(choice):
             # "thứ Sáu tôi bận": không phải xin thứ Sáu — bỏ các khung đó, hỏi lại ngày
@@ -1442,6 +1529,20 @@ class DialogueManager:
             return True
         return self._names_current_appointment(ctx, _slot_request(ex), now)
 
+    def _restates_current_appointment(
+        self, ctx: CallContext, ex: ExtractionResult, slot: dict[str, Any], now: datetime
+    ) -> bool:
+        """B11: câu chỉ nêu lại lịch hẹn đang đổi. Chỉ nêu giờ ("3 giờ rưỡi") thì khung đang chốt phải cùng
+        ngày với lịch đó; đang chốt khung ngày khác thì "3 giờ rưỡi" là giờ đó của ngày khác (yêu cầu mới)."""
+        request = _slot_request(ex)
+        if not self._names_current_appointment(ctx, request, now):
+            return False
+        criteria = parse_slot_criteria(request, now)
+        if criteria.weekday is not None or _names_a_date(criteria):
+            return True
+        appointment = self._reads.get_actionable_appointment(ctx)
+        return _local_day(slot["starts_at"]) == _local_day(appointment["starts_at"])
+
     def _names_current_appointment(self, ctx: CallContext, request: str, now: datetime) -> bool:
         """Đổi lịch: tiêu chí thời gian của `request` chỉ là lịch hẹn đang đổi. So trên tiêu chí CHƯA quy
         thứ trần về tuần này, như `_proposes_other_time`; lịch đọc qua cổng một-lần-mỗi-lượt."""
@@ -1580,6 +1681,31 @@ def _drop_excluded(ctx: CallContext, choice: Optional[SlotChoice]) -> None:
         _refuse(ctx, list(choice.excluded_ids))
 
 
+def _refuse_page_if_declined(ctx: CallContext, ex: ExtractionResult) -> None:
+    """ "không, 5 giờ chiều": khách không nhận trang vừa đọc rồi xin giờ khác — yêu cầu mới không đọc lại
+    các khung đó (V-9, review 12-10 B10). Câu hỏi ("không có 5 giờ à") chưa phải lời từ chối."""
+    declined = ex.agreement.value is Agreement.REFUSE or leads_with_refusal(ex.transcript)
+    if declined and not asks_back(ex.transcript):
+        _refuse(ctx, ctx.presented_slot_ids)
+
+
+def _bare_agreement(ex: ExtractionResult) -> bool:
+    """ "được", "đồng ý", "dạ", "được, đổi giúp tôi": đồng ý mà không nêu khung, giờ hay ý định nào (B5).
+    `explicit_slot_pick` trên câu không có cụm khung nào là đúng phép thử "chỉ có lời đồng ý"."""
+    choice = ex.slot_choice.value
+    if choice is not None and (
+        choice.kind != "NO_MATCH" or not choice.criteria.empty or choice.excluded_ids
+    ):
+        return False
+    if ex.intent.value not in (None, Intent.NONE) or asks_back(ex.transcript):
+        return False
+    return is_bare_da(ex.transcript) or explicit_slot_pick(ex.transcript)
+
+
+def _local_day(starts_at: str) -> date:
+    return to_local(datetime.fromisoformat(starts_at)).date()
+
+
 def _only_changes_mind(ex: ExtractionResult) -> bool:
     """ "tôi đổi ý" ở câu chọn khung: đổi ý định, bỏ việc đổi / đặt lịch (owner 12-10, B15).
 
@@ -1592,6 +1718,19 @@ def _only_changes_mind(ex: ExtractionResult) -> bool:
     if choice is not None and (choice.kind != "NO_MATCH" or not choice.criteria.empty):
         return False
     return ex.intent.value in (None, Intent.NONE)
+
+
+def _only_rechooses(ex: ExtractionResult) -> bool:
+    """ "tôi muốn chọn lại lịch", "để tôi chọn lại" mà không kèm khung, giờ hay ý định khác (B16).
+    "chọn lại khung 1", "chọn lại ngày 20" đi theo phần khung / giờ như câu thường."""
+    if not rechooses(ex.transcript):
+        return False
+    choice = ex.slot_choice.value
+    if choice is not None and (
+        choice.kind != "NO_MATCH" or not choice.criteria.empty or choice.excluded_ids
+    ):
+        return False
+    return ex.intent.value in (None, Intent.NONE, Intent.RESCHEDULE, Intent.BOOK)
 
 
 def _slot_request(ex: ExtractionResult) -> str:

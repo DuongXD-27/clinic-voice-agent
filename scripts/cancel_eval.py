@@ -277,6 +277,8 @@ def _setup(call_id: str, question_id: str, semantic, cancel_semantic_confirm: bo
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=_store())
     bot._extractor._semantic = semantic
+    # Tầng model chọn khung không thuộc phạm vi eval này: tắt kể cả khi .env bật SLOT_SEMANTIC_ENABLED
+    bot._extractor._slot_semantic = None
     # Gán thẳng thuộc tính: chạy được cả trên mã mốc chưa có flag (sinh snapshot, bước 6)
     bot._extractor._cancel_semantic_confirm = cancel_semantic_confirm
     bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
