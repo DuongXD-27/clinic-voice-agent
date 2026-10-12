@@ -91,6 +91,9 @@ class CallContext:
     # SF-03/§1.1.2: KHÔNG đưa vào build_turn_context (IE), trace hay lời thoại — Verifier đọc riêng.
     identity_lookup: IdentityLookup = "PENDING"
     identity_reference: list[dict[str, Any]] = field(default_factory=list)
+    # Lý do xác minh không đạt (MatchDetail: NAME_MISMATCH, DOB_MISMATCH, AMBIGUOUS...) — chỉ cho
+    # trace/vận hành, không chứa giá trị hồ sơ và không bao giờ nói cho người gọi (§1.1.2).
+    identity_result: Optional[str] = None
 
     # Inbound: patient tìm qua GET /patients, appointment tạo bằng POST /appointments
     patient_id: Optional[str] = None
@@ -246,6 +249,7 @@ class CallContext:
             "business_write_blocked": self.business_write_blocked,
             "identity_lookup": self.identity_lookup,
             "identity_reference": [dict(item) for item in self.identity_reference],
+            "identity_result": self.identity_result,
             "patient_id": self.patient_id,
             "created_appointment_id": self.created_appointment_id,
             "question": _question_to_dict(self.question),
@@ -294,6 +298,7 @@ class CallContext:
             # Hai khóa thêm ở T-01, đọc bằng .get để phiên lưu trước đó (schema 1 cũ) vẫn mở được
             identity_lookup=data.get("identity_lookup", "PENDING"),
             identity_reference=[dict(item) for item in data.get("identity_reference", [])],
+            identity_result=data.get("identity_result"),
             patient_id=data["patient_id"],
             created_appointment_id=data["created_appointment_id"],
             question=_question_from_dict(data["question"]),

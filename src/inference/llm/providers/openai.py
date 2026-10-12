@@ -16,9 +16,12 @@ class OpenAIProvider(ChatCompletionsProvider):
         payload["service_tier"] = self._config.service_tier
         # GPT-6 defaults to reasoning; custom temperature is rejected unless effort is none.
         if self.model.startswith("gpt-6-"):
-            payload.pop("temperature", None)
-            # Call-turn structured extraction is latency-sensitive. Luna and Sol
-            # support no reasoning; Astra does not, so leave it at the default.
+            # Call-turn structured extraction is latency-sensitive. Luna and Sol support no
+            # reasoning, and with effort none the API still accepts temperature 0 (checked
+            # 12/10/2026), so classification stays deterministic. Astra cannot turn reasoning
+            # off, so it keeps the default effort and no temperature.
             if self.model.startswith(("gpt-6-luna", "gpt-6-sol")):
                 payload["reasoning_effort"] = "none"
+            else:
+                payload.pop("temperature", None)
         return payload

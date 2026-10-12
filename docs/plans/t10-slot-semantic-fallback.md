@@ -57,7 +57,7 @@ held-out mới viết riêng cho 4 lớp này (§10).
 
 ### 1.1 Confirm và Cancel đang dùng LLM thế nào
 
-Hai flow dùng chung **một** tầng ngữ nghĩa: `extraction/semantic.py`, `semantic_router.py`, prompt `semantic_v9_luna`,
+Hai flow dùng chung **một** tầng ngữ nghĩa: `extraction/semantic.py`, `semantic_router.py`, prompt `semantic_v10_luna` (12/10/2026, trước đó `semantic_v9_luna`),
 model `gpt-6-luna`. Tầng này bật mặc định từ 22/09 (`SEMANTIC_FALLBACK_ENABLED`).
 
 | Bước | Confirm (T-04) | Cancel (T-05) |

@@ -8,7 +8,8 @@ Thứ tự trong một lượt:
 2. clinical     — mọi lượt, trước intent.
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
 4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
-5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
+5. full_name    — ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh. ASK_DOB chỉ
+   khi người gọi tự sửa / tự giới thiệu ("à nhầm, tôi là ...", R-44), đọc như ở ASK_NAME.
    Outbound: ý định hủy / đổi lịch nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm
    trên phần NGOÀI tên và ngày sinh — Dialogue chỉ dùng sau khi xác minh xong (QC qc-cn-08, R-43).
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
@@ -52,6 +53,7 @@ from callbot.engine.extraction.fallback import (
 )
 from callbot.engine.extraction.full_name import (
     MIN_WORDS_AFTER_HONORIFIC,
+    introduces_oneself,
     name_after_dob,
     name_before_dob,
     read_full_name,
@@ -59,7 +61,7 @@ from callbot.engine.extraction.full_name import (
 )
 from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import strip_honorific
-from callbot.engine.extraction.identity import Reading, Reason, identity_value
+from callbot.engine.extraction.identity import Reading, Reason, corrects_itself, identity_value
 from callbot.engine.extraction.implied_cancel import implied_cancel
 from callbot.engine.extraction.intent import (
     PRIORITY,
@@ -379,11 +381,18 @@ class InformationExtractor:
 
         full_name: Field[str] = skipped
         name_reading = Reading(Field.nothing(), Reason.NO_SIGNAL)
+        # R-44: ở ASK_DOB người gọi có thể sửa tên đã khai ("à nhầm, tôi là Lê Na"). Chỉ đọc khi có
+        # tín hiệu tự sửa / tự giới thiệu, để câu khác không thành tên đè lên tên đúng; khi đọc thì
+        # đọc như ASK_NAME (luật nới + slot filling) để tên không có họ phổ biến vẫn nhận được.
+        corrects_name = question is QuestionId.ASK_DOB and (
+            corrects_itself(transcript) or introduces_oneself(transcript)
+        )
         if (
-            question is QuestionId.ASK_NAME
+            (question is QuestionId.ASK_NAME or corrects_name)
             and intent.value is Intent.NONE
             and clinical.value not in _TRANSFER_CLINICAL
         ):
+            zone: Optional[str] = transcript
             if dob_reading is not None and dob_reading.zone:
                 # Câu gộp: tên chỉ nằm ngoài vùng ngày, và chỉ được lấy khi ranh giới chắc chắn.
                 # Vùng ngày cũng được nhận khi ngày không hợp lệ ("Nguyễn Văn A, sinh ngày
@@ -392,9 +401,8 @@ class InformationExtractor:
                 zone = name_before_dob(transcript, dob_reading.zone) or name_after_dob(
                     transcript, dob_reading.zone
                 )
-                name_reading = self._full_name(zone, transcript, ctx) if zone else name_reading
-            else:
-                name_reading = self._full_name(transcript, transcript, ctx)
+            if zone:
+                name_reading = self._full_name(zone, transcript, ctx)
             full_name = name_reading.field
 
         if (

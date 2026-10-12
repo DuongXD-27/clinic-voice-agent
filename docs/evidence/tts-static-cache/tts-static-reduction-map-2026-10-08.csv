@@ -124,3 +124,4 @@ TRANSFER,TRANSFER,"Dạ, em xin phép chuyển máy cho nhân viên để hỗ t
 TRANSFER_v1,TRANSFER,"Dạ, em xin nối máy với nhân viên để hỗ trợ tiếp ạ.",851808a5e050ccc626024e17d81a7351ee463c1b4e56957153ca8ceb2f8d6ccf,TRANSFER,"[""TRANSFER""]",ENGINE_GROUP_STANDARDIZED
 TRANSFER_v2,TRANSFER,Em sẽ chuyển cuộc gọi tới nhân viên hỗ trợ anh chị ạ.,5f15f1f3384fc730dfe35311bc7f00b81a3b51d85e4eecf700157f7835ef0aad,TRANSFER,"[""TRANSFER""]",ENGINE_GROUP_STANDARDIZED
 TRANSFER_v3,TRANSFER,"Dạ, để nhân viên hỗ trợ thêm, em xin chuyển máy ạ.",cb18427b52ca54630b3089573e21204b5cdde802c76050824049205b43998035,TRANSFER,"[""TRANSFER""]",ENGINE_GROUP_STANDARDIZED
+IDENTITY_FAILED_TRANSFER,IDENTITY_FAILED_TRANSFER,Em chưa xác minh được thông tin của anh chị. Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.,7ddef66670a03a5f3ecbfe1af22ab32197dac45e12e897a4734becd694703d33,IDENTITY_FAILED_TRANSFER,"[""IDENTITY_FAILED_TRANSFER""]",ENGINE_GROUP_STANDARDIZED

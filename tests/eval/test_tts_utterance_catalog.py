@@ -41,11 +41,11 @@ def test_parameterized_templates_and_fragments_are_not_static_assets():
     assert by_id["CANCELLED_DONE"]["listening_status"] == "NOT_REVIEWED"
 
 
-def test_recording_scope_is_73_exact_texts_with_three_deferred_backups():
+def test_recording_scope_is_74_exact_texts_with_three_deferred_backups():
     rows = build_rows()
     statics = [row for row in rows if row["kind"] == "STATIC"]
     candidates = [row for row in statics if row["prebuild_candidate"]]
-    assert len(candidates) == 73
+    assert len(candidates) == 74
     assert {row["template_id"] for row in statics if not row["prebuild_candidate"]} == {
         "ASK_NAME_DECLINED",
         "ASK_DOB_INVALID",
