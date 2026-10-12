@@ -56,6 +56,12 @@ class ZipFormerASR:
         self._nbest: Optional[TransducerNBest] = None
         # Lượt tên decode bản có và không hotword song song (hai stream độc lập trên cùng model).
         self._pool: Optional[ThreadPoolExecutor] = None
+        # Top N của lượt tên đã tính sẵn lúc chọn câu (cùng một lần encoder), `nbest()` lấy lại
+        # thay vì chạy encoder thêm lần nữa. Khóa = đúng object PCM của final đó.
+        self._nbest_ready: Optional[tuple[bytes, NBest]] = None
+        # Lượt tên dùng chung encoder (`_decode_guarded_shared`) khi chạy model thật; recognizer
+        # tiêm từ ngoài (test, recognizer giả) đi nhánh sherpa.
+        self._shared_encoder = recognizer is None
 
     @property
     def model(self) -> str:
@@ -69,6 +75,9 @@ class ZipFormerASR:
     def nbest(self, pcm: bytes, source_rate: int, hotwords: tuple[str, ...] = ()) -> NBest:
         """Top `nbest_top_k` phương án của một câu, điểm cuối có cộng `hotwords` của lượt như
         lúc chọn câu (không hotword: điểm thô); chặn CPU, gọi trong thread."""
+        ready, self._nbest_ready = self._nbest_ready, None
+        if ready is not None and ready[0] is pcm:
+            return ready[1]
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
         hyps = self._nbest_at_model_rate(pcm, self._config.nbest_top_k, hotwords)
@@ -77,6 +86,12 @@ class ZipFormerASR:
     def _nbest_at_model_rate(
         self, pcm: bytes, k: int, hotwords: tuple[str, ...] = ()
     ) -> list[NBestHyp]:
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        return self._get_nbest().nbest(
+            samples, k, hotwords, self._config.hotwords_score, self._config.max_active_paths
+        )
+
+    def _get_nbest(self) -> TransducerNBest:
         if self._nbest is None:
             self._nbest = TransducerNBest(
                 encoder=self._config.encoder_path,
@@ -87,10 +102,7 @@ class ZipFormerASR:
                 sample_rate=self.input_sample_rate,
                 bpe_vocab=self._config.bpe_vocab_path,
             )
-        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        return self._nbest.nbest(
-            samples, k, hotwords, self._config.hotwords_score, self._config.max_active_paths
-        )
+        return self._nbest
 
     @property
     def supports_hotwords(self) -> bool:
@@ -257,11 +269,18 @@ class ZipFormerASR:
     def _decode_stream_hinted(self, pcm: bytes, source_rate: int, hints: Hotwords) -> _Decoded:
         if not hints or not self._config.hotwords_enabled:
             return self._decode_stream_scored(pcm, source_rate)
+        final_pcm = pcm
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
         phrases = "/".join(hints.phrases)
         if not hints.guard_one_word:
             return self._decode_scored(pcm, hotwords=phrases)
+        if self._shared_encoder:
+            try:
+                return self._decode_guarded_shared(pcm, final_pcm, hints.phrases)
+            except ImportError:
+                # Thiếu onnxruntime/kaldi-native-fbank (vd Windows Python 3.14): dùng sherpa.
+                self._shared_encoder = False
         if self._pool is None:
             self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zipformer-plain")
         # Bản không hotword (cùng beam) chạy song song bản có hotword thay vì nối tiếp.
@@ -275,6 +294,43 @@ class ZipFormerASR:
         if word_distance(plain.text, biased.text) > 1:
             return plain
         return self._accept_hinted(pcm, biased)
+
+    def _decode_guarded_shared(
+        self, pcm: bytes, final_pcm: bytes, phrases: tuple[str, ...]
+    ) -> _Decoded:
+        """Lượt tên với encoder chạy MỘT lần (phần nặng nhất): từ cùng đầu ra encoder, beam search
+        có hotword (câu chọn, cũng là top N trên UI) và không hotword (bản đối chứng + top N thô).
+        Cùng luật với nhánh sherpa bên dưới; bộ giải mã khớp câu sherpa 45/46 câu golden."""
+        nbest = self._get_nbest()
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        frames = nbest.encode(samples)
+        beam, score = self._config.max_active_paths, self._config.hotwords_score
+        cache: dict = {}
+        biased_top = nbest.search(
+            frames, max(1, self._config.nbest_top_k), phrases, score, beam, cache
+        )
+        plain_top = nbest.search(
+            frames, max(1, self._config.hotwords_accept_top_k), (), 0, beam, cache
+        )
+        if self._config.nbest_top_k > 0:
+            self._nbest_ready = (final_pcm, NBest(biased_top, phrases))
+        if not biased_top or not plain_top:
+            return _Decoded("")
+        plain, biased = _from_hyp(plain_top[0]), _from_hyp(biased_top[0])
+        if plain.text == biased.text or word_distance(plain.text, biased.text) > 1:
+            return plain
+        accepted = self._config.hotwords_accept_top_k > 0 and biased.text in (
+            h.text for h in plain_top
+        )
+        # Không log chữ: lượt tên có PII.
+        logger.info("zipformer: bản có hotword %s top N thô", "nằm trong" if accepted else "ngoài")
+        if accepted:
+            confidence = max(biased.confidence or 0.0, self._config.hotwords_accept_confidence)
+        else:
+            # Như nhánh sherpa (confidence lẫn điểm hotword nên rất thấp): cổng tên coi là không
+            # chắc, hỏi lại.
+            confidence = min(biased.confidence or 0.0, self._config.hotwords_accept_confidence / 2)
+        return biased._replace(confidence=confidence)
 
     def _accept_hinted(self, pcm: bytes, biased: _Decoded) -> _Decoded:
         """Bản có hotword lệch bản thô 1 từ: nhận (đủ qua cổng tên) khi nằm trong top N thô."""
@@ -320,6 +376,10 @@ class ZipFormerASR:
             confidence=math.exp(sum(log_probs) / len(log_probs)),
             min_token_prob=math.exp(min(log_probs)),
         )
+
+
+def _from_hyp(hyp: NBestHyp) -> _Decoded:
+    return _Decoded(hyp.text, confidence=hyp.confidence, min_token_prob=hyp.min_token_prob)
 
 
 class _Utterance:

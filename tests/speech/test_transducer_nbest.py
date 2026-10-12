@@ -49,27 +49,27 @@ def test_beam_search_ranks_hypotheses_by_log_prob() -> None:
     hyps = _search([[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]])
 
     assert hyps[0][0] == (1, 2)
-    assert [ys for ys, _, _ in hyps[:2]] == [(1, 2), (1, 3)]
-    scores = [score for _, score, _ in hyps]
+    assert [h.ys for h in hyps[:2]] == [(1, 2), (1, 3)]
+    scores = [h.score for h in hyps]
     assert scores == sorted(scores, reverse=True)
     assert all(score <= 0 for score in scores)
-    assert all(bonus == 0 for _, _, bonus in hyps)
+    assert all(bonus == 0 for _, _, bonus, _ in hyps)
 
 
 def test_beam_search_merges_identical_token_sequences() -> None:
     """Hai đường cùng ra "XIN" (XIN rồi blank, blank rồi XIN) cộng xác suất, không đứng riêng."""
     hyps = _search([[0.0, 0.0, -9.0, -9.0], [0.0, 0.0, -9.0, -9.0]], beam=8)
 
-    sequences = [ys for ys, _, _ in hyps]
+    sequences = [ys for ys, _, _, _ in hyps]
     assert len(sequences) == len(set(sequences))
-    best = {ys: score for ys, score, _ in hyps}
+    best = {ys: score for ys, score, _, _ in hyps}
     assert best[(1,)] > best[(1, 1)]
 
 
 def test_beam_search_with_hotword_flips_choice_and_reports_bonus() -> None:
     """ "XIN CHAO" kém "XIN CHÀO" 1 điểm thô; hotword XIN CHAO (2 token x 3.0) lật thứ hạng."""
     logits = [[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]]
-    plain = {ys: score for ys, score, _ in _search(logits)}
+    plain = {ys: score for ys, score, _, _ in _search(logits)}
 
     hyps = _search(logits, beam=8, context=ContextGraph([[1, 3]], 3.0))
 
@@ -189,3 +189,43 @@ async def test_zipformer_skips_nbest_when_disabled(_inline_threads) -> None:
     calls, box = await _final_tasks(top_k=0)
 
     assert box.take() == [] and calls == []
+
+
+def test_beam_search_reports_token_log_probs_for_confidence() -> None:
+    """Confidence như sherpa `ys_log_probs` (chỉ token phát ra, không lẫn điểm hotword)."""
+    logits = [[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]]
+    plain = _search(logits)[0]
+    biased = _search(logits, beam=8, context=ContextGraph([[1, 3]], 3.0))[0]
+
+    assert len(plain.token_log_probs) == 2 and all(lp < 0 for lp in plain.token_log_probs)
+    assert len(biased.token_log_probs) == 2 and all(lp < 0 for lp in biased.token_log_probs)
+    hyp = to_nbest([plain], _SYMBOLS, 1)[0]
+    assert math.isclose(hyp.confidence, math.exp(sum(plain.token_log_probs) / 2))
+    assert math.isclose(hyp.min_token_prob, math.exp(min(plain.token_log_probs)))
+
+
+def test_beam_search_decoder_cache_skips_repeated_contexts() -> None:
+    """Decoder chỉ phụ thuộc ngữ cảnh token: cùng ngữ cảnh không gọi lại, kết quả không đổi."""
+    logits = [[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]]
+    frames = np.array([[i] for i in range(len(logits))], dtype=np.float32)
+    seen: list[tuple[int, ...]] = []
+
+    def decode(contexts):
+        seen.extend(contexts)
+        return np.zeros((len(contexts), 1))
+
+    def search(cache):
+        return beam_search(
+            frames,
+            decode=decode,
+            join=lambda enc, dec: np.array([logits[int(r[0])] for r in enc]),
+            context_size=2,
+            beam=4,
+            decoder_cache=cache,
+        )
+
+    cache: dict = {}
+    first = search(cache)
+    assert len(seen) == len(set(seen))
+    calls = len(seen)
+    assert search(cache) == first and len(seen) == calls

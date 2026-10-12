@@ -42,6 +42,9 @@ def main() -> None:
     ensure_bpe_vocab(vocab)
     config = base.model_copy(update={"hotwords_enabled": True, "bpe_vocab_path": str(vocab)})
     asr = ZipFormerASR(config)
+    # Nhánh cũ (sherpa decode 2-3 lần, mỗi lần chạy lại encoder) để so tốc độ và chữ.
+    old = ZipFormerASR(config)
+    old._shared_encoder = False
     greedy = ZipFormerASR(base.model_copy(update={"hotwords_enabled": False}))
     print(
         f"hotwords_score={config.hotwords_score} max_active_paths={config.max_active_paths} "
@@ -59,13 +62,15 @@ def main() -> None:
     # Nạp model trước (lần đầu tạo session ONNX), không tính vào số đo.
     pcm0, rate0 = read_pcm(cases[0].audio_path)
     asr._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), guard_one_word=True))
+    old._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), guard_one_word=True))
     asr.nbest(pcm0, rate0, names_of(cases[0]))
     greedy._decode_stream_scored(pcm0, rate0)
 
     print(
-        "\n| câu | giây audio | greedy | có hotword | không hotword | top 10 thô | tổng lượt tên | top 4 UI |"
+        "\n| câu | giây audio | greedy | có hotword | không hotword | top 10 thô | tổng lượt tên"
+        " | top 4 UI | cũ: tổng | chữ mới = cũ |"
     )
-    print("|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|---|")
     for case in cases:
         pcm, rate = read_pcm(case.audio_path)
         hints = Hotwords(names_of(case), guard_one_word=True)
@@ -77,19 +82,22 @@ def main() -> None:
         _, b = timed(asr._decode_scored, model_pcm, hotwords="/".join(hints.phrases))
         _, p = timed(asr._decode_scored, model_pcm)
         _, t = timed(asr._nbest_at_model_rate, model_pcm, config.hotwords_accept_top_k)
-        _, total = timed(asr._decode_stream_hinted, pcm, rate, hints)
+        new, total = timed(asr._decode_stream_hinted, pcm, rate, hints)
         _, ui = timed(asr.nbest, pcm, rate, hints.phrases)
+        before, old_total = timed(old._decode_stream_hinted, pcm, rate, hints)
+        same = "khớp" if new.text == before.text else "LỆCH"
         for name, ms in (
             ("greedy", g),
             ("có hotword", b),
             ("không hotword", p),
             ("top 10 thô", t),
             ("tổng lượt tên", total),
-            ("top 4 UI", ui),
+            ("top 4 UI (lấy lại)", ui),
+            ("cũ: tổng lượt tên", old_total),
         ):
             add(name, ms)
         print(
-            f"| {case.id} | {seconds:.1f} | {g:.0f} | {b:.0f} | {p:.0f} | {t:.0f} | {total:.0f} | {ui:.0f} |"
+            f"| {case.id} | {seconds:.1f} | {g:.0f} | {b:.0f} | {p:.0f} | {t:.0f} | {total:.0f} | {ui:.0f} | {old_total:.0f} | {same} |"
         )
 
     print("\n| bước | trung vị ms | max ms |")

@@ -243,6 +243,7 @@ def test_partials_and_unhinted_turns_use_greedy_when_hotwords_enabled(monkeypatc
         sys.modules, "sherpa_onnx", types.SimpleNamespace(OfflineRecognizer=_OfflineRecognizer)
     )
     asr = ZipFormerASR(_config())
+    asr._shared_encoder = False  # nhánh sherpa (beam) cho lượt tên
 
     asr._decode_stream_scored(b"\x00\x10" * 1600, 16_000)
     assert built == ["greedy_search"]
@@ -264,3 +265,64 @@ def test_partials_and_unhinted_turns_use_greedy_when_hotwords_enabled(monkeypatc
 )
 def test_word_distance(a: str, b: str, distance: int) -> None:
     assert word_distance(a, b) == distance
+
+
+class _SharedNBest:
+    """TransducerNBest giả: một lần `encode`, `search` có/không hotword trả top cho sẵn."""
+
+    def __init__(self, plain: list[str], biased: list[str]) -> None:
+        self.plain, self.biased = plain, biased
+        self.encodes = 0
+        self.searches: list[tuple[int, tuple[str, ...]]] = []
+
+    def encode(self, samples):
+        self.encodes += 1
+        return [0]
+
+    def search(self, frames, k, hotwords=(), score=0.0, beam=4, cache=None):
+        self.searches.append((k, tuple(hotwords)))
+        texts = self.biased if hotwords else self.plain
+        return [NBestHyp(t, -float(i), 0.1, confidence=0.8) for i, t in enumerate(texts[:k])]
+
+
+def _shared_case(monkeypatch, plain: list[str], biased: list[str], **config):
+    asr = ZipFormerASR(_config(**config))
+    fake = _SharedNBest(plain, biased)
+    monkeypatch.setattr(asr, "_get_nbest", lambda: fake)
+    return asr, fake
+
+
+def test_shared_encoder_runs_encoder_once_and_accepts_in_top_k(monkeypatch) -> None:
+    asr, fake = _shared_case(
+        monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A"], ["TÔI LÀ NGUYỄN VĂN A"]
+    )
+    pcm = b"\x00\x10" * 1600
+
+    decoded = asr._decode_stream_hinted(pcm, 16_000, Hotwords(("NGUYỄN VĂN A",), True))
+
+    assert decoded.text == "TÔI LÀ NGUYỄN VĂN A" and decoded.confidence == 0.8
+    assert fake.encodes == 1
+    assert fake.searches == [(4, ("NGUYỄN VĂN A",)), (10, ())]
+    # Top 4 trên UI lấy lại kết quả vừa tính, không chạy encoder lần nữa.
+    shown = asr.nbest(pcm, 16_000, ("NGUYỄN VĂN A",))
+    assert [h.text for h in shown.hyps] == ["TÔI LÀ NGUYỄN VĂN A"] and fake.encodes == 1
+
+
+def test_shared_encoder_outside_top_k_is_uncertain(monkeypatch) -> None:
+    asr, _ = _shared_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN"], ["TÔI LÀ NGUYỄN VĂN A"])
+
+    decoded = asr._decode_stream_hinted(
+        b"\x00\x10" * 1600, 16_000, Hotwords(("NGUYỄN VĂN A",), True)
+    )
+
+    assert decoded.text == "TÔI LÀ NGUYỄN VĂN A" and decoded.confidence == 0.25
+
+
+def test_shared_encoder_keeps_plain_for_different_name(monkeypatch) -> None:
+    asr, _ = _shared_case(monkeypatch, ["TÔI LÀ TRẦN THỊ HOA"], ["TÔI LÀ NGUYỄN VĂN A"])
+
+    decoded = asr._decode_stream_hinted(
+        b"\x00\x10" * 1600, 16_000, Hotwords(("NGUYỄN VĂN A",), True)
+    )
+
+    assert decoded.text == "TÔI LÀ TRẦN THỊ HOA" and decoded.confidence == 0.8
