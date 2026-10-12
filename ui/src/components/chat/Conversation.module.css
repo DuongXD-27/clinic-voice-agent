@@ -92,6 +92,29 @@
   text-align: right;
 }
 
+/* Top N phương án ASR dưới câu người gọi: chữ trái, điểm (log-prob · tỉ lệ) phải. */
+.candidates {
+  margin: 0 var(--space-1);
+  padding-left: var(--space-4);
+  color: var(--text-subtle);
+  font-size: var(--text-xs);
+}
+
+.candidates li {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.candidateText {
+  overflow-wrap: anywhere;
+}
+
+.candidateScore {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
 .audio {
   display: block;
   width: min(100%, 300px);

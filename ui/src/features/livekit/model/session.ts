@@ -11,7 +11,7 @@
  */
 
 import { ASR_LABELS } from "./config";
-import type { TranscriptLine } from "./transcript";
+import type { NBestUpdate, TranscriptLine } from "./transcript";
 
 export type Phase = "idle" | "connecting" | "connected" | "reconnecting";
 export type Tone = "info" | "success" | "warning" | "error";
@@ -58,6 +58,7 @@ export type LiveKitAction =
   | { type: "speakers"; bot: boolean; caller: boolean }
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
+  | { type: "nbest"; update: NBestUpdate }
   | { type: "notice"; notice: LiveKitSession["notice"] };
 
 export const initialSession: LiveKitSession = {
@@ -231,6 +232,22 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
       return line.ended
         ? log(withState, action.at, `Bot kết thúc cuộc gọi: ${line.outcome ?? "—"}.`, "success")
         : withState;
+    }
+
+    case "nbest": {
+      // Gắn vào câu người gọi gần nhất của đúng lượt; chưa có câu đó thì bỏ.
+      const { turn, segments } = action.update;
+      let index = state.transcript.length - 1;
+      while (index >= 0) {
+        const line = state.transcript[index];
+        if (line?.role === "caller" && line.turn === turn) break;
+        index -= 1;
+      }
+      if (index < 0) return state;
+      const transcript = state.transcript.map((line, i) =>
+        i === index ? { ...line, nbest: segments } : line,
+      );
+      return { ...state, transcript };
     }
 
     case "notice":

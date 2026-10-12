@@ -23,7 +23,9 @@ import numpy as np
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
+from inference.asr.providers.transducer_nbest import NBestHyp, TransducerNBest
 from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords, word_distance
+from speech.asr.nbest import NBestBox
 from speech.asr.stream_context import StreamingFrame
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
@@ -47,10 +49,32 @@ class ZipFormerASR:
     def __init__(self, config: ZipFormerConfig, *, recognizer: Any = None) -> None:
         self._config = config
         self._recognizer = recognizer
+        self._nbest: Optional[TransducerNBest] = None
 
     @property
     def model(self) -> str:
         return self._config.model
+
+    @property
+    def supports_nbest(self) -> bool:
+        """Top N phương án của final (`stream(nbest=...)`) để hiện trên trang demo."""
+        return self._config.nbest_top_k > 0
+
+    def nbest(self, pcm: bytes, source_rate: int) -> list[NBestHyp]:
+        """Top `nbest_top_k` phương án (không hotword) của một câu; chặn CPU, gọi trong thread."""
+        if source_rate != self.input_sample_rate:
+            pcm = resample(pcm, source_rate, self.input_sample_rate)
+        if self._nbest is None:
+            self._nbest = TransducerNBest(
+                encoder=self._config.encoder_path,
+                decoder=self._config.decoder_path,
+                joiner=self._config.joiner_path,
+                tokens=self._config.tokens_path,
+                num_threads=self._config.num_threads,
+                sample_rate=self.input_sample_rate,
+            )
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        return self._nbest.nbest(samples, self._config.nbest_top_k)
 
     @property
     def supports_hotwords(self) -> bool:
@@ -100,6 +124,7 @@ class ZipFormerASR:
         max_turn_speech_ms: int | None = None,
         pre_speech_ms: int | None = None,
         hotwords: HotwordBox | None = None,
+        nbest: NBestBox | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """Chunked-offline: gom từng câu theo `silence_classifier`, decode lại cả câu để phát
         partial, phát final khi đủ `end_silence_ms` im lặng hoặc nói liền quá
@@ -112,6 +137,8 @@ class ZipFormerASR:
         - `hotwords`: chỉ final dùng hotword của lượt (partial giữ nguyên để barge-in và cổng từ
           đệm không đổi). `guard_one_word`: decode thêm bản không hotword, chỉ nhận bản có hotword
           khi hai bản lệch tối đa 1 từ (lượt tên — không kéo tên khác hẳn về tên hồ sơ, SF-03).
+        - `nbest`: sau mỗi final có chữ, tính top `nbest_top_k` phương án trong nền và bỏ task vào
+          hộp (chỉ để hiện trên trang demo, không đổi final).
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
@@ -138,9 +165,15 @@ class ZipFormerASR:
             pcm = utterance.final_pcm(tail_ms) if final else bytes(utterance.pcm)
             hints = hotwords.current if final and hotwords is not None else NO_HOTWORDS
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
-            return await asyncio.to_thread(
+            decoded = await asyncio.to_thread(
                 self._decode_stream_hinted, pcm, audio_sample_rate, hints
             )
+            if final and decoded.text and nbest is not None and self.supports_nbest:
+                # Trong nền: final phát ngay, top N tới sau (chỉ để xem).
+                nbest.add(
+                    asyncio.create_task(asyncio.to_thread(self.nbest, pcm, audio_sample_rate))
+                )
+            return decoded
 
         def final_event(decoded: _Decoded) -> TranscriptEvent:
             return _final_event(_prefer_confident_partial(decoded, utterance))

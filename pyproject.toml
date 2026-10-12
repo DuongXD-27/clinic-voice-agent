@@ -35,6 +35,10 @@ speech-local = [
 speech-zipformer = [
     "numpy>=1.26",
     "sherpa-onnx>=1.13",
+    # Top N phương án ASR cho trang demo (inference/asr/providers/transducer_nbest.py): sherpa-onnx
+    # chỉ trả phương án tốt nhất nên chạy lại beam search trên chính 3 file ONNX.
+    "onnxruntime>=1.17",
+    "kaldi-native-fbank>=1.20",
     "soundfile>=0.12",
     "openai>=1.0",
 ]

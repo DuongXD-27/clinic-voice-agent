@@ -287,6 +287,7 @@ class CallBridge:
                 if not turn.silence_ms:
                     # Lượt im lặng không có lời để hiện; câu hỏi lại của bot đã đủ ngữ cảnh.
                     await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
+                    self._publish_nbest_later(self._turn_number)
                 with self._tracer.start_trace(
                     call_id=self._room.name,
                     turn=self._turn_number,
@@ -383,6 +384,34 @@ class CallBridge:
             return
         box.set(Hotwords(hints.phrases, hints.guard_one_word))
         logger.info("call_bridge: hotword lượt sau: %d cụm", len(hints.phrases))
+
+    def _publish_nbest_later(self, turn_number: int) -> None:
+        """Top N phương án ASR của các final trong lượt vừa xong (provider tính trong nền), gửi
+        riêng khi xong để trang demo hiện dưới câu người gọi. Không chặn lượt."""
+        box = getattr(self._stt_pipeline, "nbest", None)
+        pending = box.take() if box is not None else []
+        if pending:
+            self._tasks.append(asyncio.create_task(self._publish_nbest(turn_number, pending)))
+
+    async def _publish_nbest(self, turn_number: int, pending: list[asyncio.Future]) -> None:
+        results = await asyncio.gather(*pending, return_exceptions=True)
+        segments = [
+            [{"text": h.text, "log_prob": h.log_prob, "share": h.share} for h in hyps]
+            for hyps in results
+            if isinstance(hyps, list) and hyps
+        ]
+        failed = [type(r).__name__ for r in results if isinstance(r, BaseException)]
+        if failed:
+            logger.warning("call_bridge: top N ASR lỗi: %s", ", ".join(failed))
+        if not segments:
+            return
+        payload = {"type": "nbest", "turn": turn_number, "segments": segments}
+        try:
+            await self._room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
+            )
+        except Exception as exc:
+            logger.warning("call_bridge: không gửi được top N ASR: %s", type(exc).__name__)
 
     async def _publish_transcript(
         self,

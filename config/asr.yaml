@@ -53,13 +53,16 @@ zipformer:
   max_turn_speech_ms: 15000 # ZIPFORMER_MAX_TURN_SPEECH_MS
   # Hotword theo lượt (callbot/engine/asr_hints.py, kế hoạch asr-rui-ro/ke-hoach-hotword-theo-state.md):
   # bật thì decode bằng modified_beam_search, final câu trả lời được bias theo câu bot vừa hỏi.
-  # Bật sau đo 12/10 (scripts/hotword_eval.py, golden 40 câu): beam không hint không tụt (18/40 như
-  # greedy), hint sửa 1/8 câu tên, câu gài không bị kéo thêm; 1.5 = 2.0 nên giữ 1.5. Docker xuất
-  # bpe.vocab từ bpe.model.
+  # Đo 12/10 (scripts/hotword_eval.py + hotword_trace.py, golden 40 câu): điểm 1.5 / beam 4 quá yếu,
+  # chỉ sửa 1/4 câu tên sai; điểm 3.0 / beam 8 sửa 3/4 ("Văn A", "Văn Anh", "Văn An"), câu gài
+  # không bị kéo. Điểm 8.0 bắt đầu bịa lặp tên. Docker xuất bpe.vocab từ bpe.model.
   hotwords_enabled: true # ZIPFORMER_HOTWORDS_ENABLED
   bpe_vocab_path: src/inference/asr/providers/assets/zipformer/bpe.vocab # ZIPFORMER_BPE_VOCAB_PATH
-  hotwords_score: 1.5 # ZIPFORMER_HOTWORDS_SCORE
-  max_active_paths: 4 # ZIPFORMER_MAX_ACTIVE_PATHS
+  hotwords_score: 3.0 # ZIPFORMER_HOTWORDS_SCORE
+  max_active_paths: 8 # ZIPFORMER_MAX_ACTIVE_PATHS
+  # Top N phương án ASR (không hotword) kèm điểm, hiện dưới câu người gọi trên trang LiveKit.
+  # Tính trong nền sau final, không làm chậm lượt. 0 = tắt.
+  nbest_top_k: 4 # ZIPFORMER_NBEST_TOP_K
   # Giãn nhịp decode partial cho câu dài: max(300 ms, tỉ lệ x độ dài buffer). 0 = tắt.
   # Chỉ bật sau khi đo CPU trên máy production.
   partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO

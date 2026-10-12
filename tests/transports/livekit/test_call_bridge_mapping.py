@@ -732,3 +732,56 @@ async def test_in_turn_violation_speaks_the_guarded_utterance(monkeypatch) -> No
     assert tts.spoken[0] == t.GREETING_OUTBOUND
     assert tts.spoken[-1] == t.DONE_SAFE["CONFIRMED"]
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+
+
+async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> None:
+    """Top N phương án ASR của lượt (provider tính trong nền) tới trang demo sau lời người gọi,
+    gắn đúng lượt; task lỗi chỉ bị bỏ qua."""
+    from inference.asr.providers.transducer_nbest import NBestHyp
+    from speech.asr.nbest import NBestBox
+
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    reply = BotAction(utterance="Dạ", state="AWAITING_DOB", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[reply, closing])
+
+    class _SlowSTTPipeline(_FakeSTTPipeline):
+        async def stream(self, frames, turn_controller=None, interruption=None):
+            for turn in self._turns:
+                yield turn
+                await asyncio.sleep(0.01)  # lượt sau tới sau một nhịp, như cuộc gọi thật
+
+    stt_pipeline = _SlowSTTPipeline(
+        [UserTurnCompleted(text="tôi là An"), UserTurnCompleted(text="mười hai")]
+    )
+    loop = asyncio.get_running_loop()
+    done = loop.create_future()
+    done.set_result([NBestHyp("TÔI LÀ AN", -0.4, 0.7), NBestHyp("TÔI LÀ ANH", -1.2, 0.3)])
+    broken = loop.create_future()
+    broken.set_exception(RuntimeError("onnx"))
+    stt_pipeline.nbest = NBestBox()
+    stt_pipeline.nbest.add(done)
+    stt_pipeline.nbest.add(broken)
+    room = _FakeRoom("web-nbest-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    nbest = [p for p, _, _ in room.local_participant.data if p["type"] == "nbest"]
+    assert nbest == [
+        {
+            "type": "nbest",
+            "turn": 1,
+            "segments": [
+                [
+                    {"text": "TÔI LÀ AN", "log_prob": -0.4, "share": 0.7},
+                    {"text": "TÔI LÀ ANH", "log_prob": -1.2, "share": 0.3},
+                ]
+            ],
+        }
+    ]

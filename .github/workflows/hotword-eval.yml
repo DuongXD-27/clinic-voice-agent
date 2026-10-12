@@ -8,12 +8,15 @@ on:
     inputs:
       scores:
         description: "hotwords_score, cách nhau bởi dấu cách"
-        default: "1.0 1.5 2.0"
+        default: "1.5 3.0"
   push:
     paths:
       - "scripts/hotword_eval.py"
+      - "scripts/hotword_trace.py"
       - "src/inference/asr/providers/zipformer.py"
       - "src/speech/asr/hotwords.py"
+      - "src/inference/asr/providers/transducer_nbest.py"
+      - "config/asr.yaml"
       - ".github/workflows/hotword-eval.yml"
 
 permissions:
@@ -28,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      SCORES: ${{ inputs.scores || '1.0 1.5 2.0' }}
+      SCORES: ${{ inputs.scores || '1.5 3.0' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +42,7 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
-        run: python -m pip install -e ".[speech,speech-zipformer]" huggingface_hub sentencepiece pyyaml jiwer
+        run: python -m pip install -e ".[speech,speech-zipformer]" huggingface_hub sentencepiece pyyaml
 
       - name: Download GipFormer 1.5
         run: |
@@ -55,6 +58,9 @@ jobs:
           args=""
           for s in $SCORES; do args="$args --score $s"; done
           python scripts/hotword_eval.py $args --out hotword-results
+
+      - name: Trace name cases
+        run: python scripts/hotword_trace.py | tee -a hotword-results/trace.md
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

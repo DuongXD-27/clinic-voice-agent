@@ -658,3 +658,31 @@ async def test_pipeline_hands_its_hotword_box_only_to_providers_that_support_it(
 
     assert (asr.options.get("hotwords") is pipeline.hotwords) is supports
     assert ("hotwords" in asr.options) is supports
+
+
+class _NBestASR(_RecordingASR):
+    def __init__(self, supports: bool) -> None:
+        super().__init__()
+        self.supports_nbest = supports
+        self.options: dict = {}
+
+    async def stream(self, frames: AsyncIterator, **options) -> AsyncIterator[TranscriptEvent]:
+        self.options = options
+        async for item in super().stream(frames):
+            yield item
+
+
+@pytest.mark.parametrize("supports", [True, False])
+async def test_pipeline_hands_its_nbest_box_only_to_providers_that_support_it(
+    supports: bool,
+) -> None:
+    asr = _NBestASR(supports)
+    pipeline = make_stt_pipeline(asr=asr, vad=_FakeAsyncVAD([]))
+    frames = [_make_frame(i) for i in range(1, 4)]
+
+    await asyncio.wait_for(
+        _collect(pipeline.stream(_realtime(frames), turn_controller=TurnController())),
+        timeout=2.0,
+    )
+
+    assert (asr.options.get("nbest") is pipeline.nbest) is supports
