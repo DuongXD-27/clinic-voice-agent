@@ -43,15 +43,7 @@ def _identity_failure(
     dob: str,
     expected_transfer_reason: str = "IDENTITY_FAILED",
 ) -> tuple[IdentityTurn, ...]:
-    if name != CORRECT_NAME:
-        return (
-            IdentityTurn(
-                name,
-                "ENDED",
-                expected_outcome="TRANSFERRED",
-                expected_transfer_reason=expected_transfer_reason,
-            ),
-        )
+    # §1.1.2: tên sai vẫn hỏi ngày sinh, chỉ đối chiếu khi đủ cả hai — người gọi không biết yếu tố nào sai
     return (
         IdentityTurn(name, "AWAITING_IDENTITY", "dob"),
         IdentityTurn(

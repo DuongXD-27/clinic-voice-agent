@@ -135,7 +135,7 @@ def test_dob_before_name_is_kept_and_only_name_is_asked() -> None:
 def test_wrong_identity_transfers_at_once_without_saying_which_field() -> None:
     actions, clinic = _call(_outbound("c_wrong"), ["Nguyễn Văn A, sinh ngày 15/03/1978"])
     _ended(actions[-1], "TRANSFERRED", "IDENTITY_FAILED")
-    assert actions[-1].utterance == t.TRANSFER
+    assert actions[-1].utterance == t.IDENTITY_FAILED_TRANSFER
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
 
 
@@ -551,8 +551,8 @@ def test_unaccented_or_english_identity_verifies(lines) -> None:
     "lines",
     [
         ["nguyen van a", "14/03/1979"],  # ngày sinh vẫn so tuyệt đối
-        ["Tran Van B"],
-        ["Nguyễn Van A"],  # có dấu một phần: luật chặt
+        ["Tran Van B", DOB],
+        ["Nguyễn Van A", DOB],  # có dấu một phần: luật chặt
     ],
 )
 def test_unaccented_name_still_needs_the_exact_dob(lines) -> None:

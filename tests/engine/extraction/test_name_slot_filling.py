@@ -341,11 +341,14 @@ def test_ner_name_ending_in_nha_still_requires_record_match(monkeypatch):
 
     bot.start_call(CallStart(call_id="slot-nha", direction="inbound", caller_number="0912345600"))
     run = bot.handle_turn_with_details("slot-nha", CallerInput(turn=1, text=name))
+    assert not run.action.ended  # §1.1.2: đủ tên + ngày sinh mới đối chiếu
+    extraction = run.extraction
+    run = bot.handle_turn_with_details("slot-nha", CallerInput(turn=2, text="14/03/1978"))
 
     assert run.action.outcome == "TRANSFERRED"
     assert run.action.transfer_reason == "PATIENT_NOT_FOUND"
-    assert run.extraction["full_name"]["value"] == "nguyễn văn nha"
-    assert run.extraction["full_name"]["provenance"] == "FALLBACK"
+    assert extraction["full_name"]["value"] == "nguyễn văn nha"
+    assert extraction["full_name"]["provenance"] == "FALLBACK"
 
 
 def test_disabled_provider_does_not_construct_adapter():

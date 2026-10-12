@@ -393,8 +393,8 @@ def test_extractor_never_sees_patient_identity() -> None:
     spy = _SpyExtractor()
     bot._extractor = spy
     bot.start_call(_outbound("c_private"))
-    # Người gọi nói sai tên: không được "sửa" theo hồ sơ
-    _run(bot, "c_private", ["Nguyễn Văn Bê"])
+    # Người gọi nói sai tên: không được "sửa" theo hồ sơ; đủ tên + ngày sinh mới đối chiếu
+    _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
 
     # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
     # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
@@ -420,6 +420,7 @@ def test_extractor_never_sees_patient_identity() -> None:
     # Câu mở đầu outbound tới IE; bước ngày sinh không mang nội dung câu hỏi
     assert [(c.question_id, c.question_text) for c in spy.contexts] == [
         (QuestionId.ASK_NAME, t.GREETING_OUTBOUND),
+        (QuestionId.ASK_DOB, None),
     ]
     session = bot.sessions.store.get_session("c_private")
     assert session.context == {} and session.ended

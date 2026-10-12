@@ -190,19 +190,6 @@ class IdentityVerifier:
             return NameMatch.SUSPICIOUS
         return NameMatch.MISMATCH
 
-    def compare_dob(self, ctx: CallContext, value: date) -> bool:
-        candidates = ctx.identity_reference
-        if ctx.claimed_name is not None:
-            candidates = [
-                ref
-                for ref in candidates
-                if ref.get("full_name")
-                and match_name(ctx.claimed_name, ref["full_name"]) is NameMatch.MATCH
-            ]
-        return any(
-            ref.get("verifiable") and parse_iso_date(ref.get("dob")) == value for ref in candidates
-        )
-
     # --- Pha 1: lượt 0 ---------------------------------------------------------------------
 
     def prepare(self, ctx: CallContext) -> PrepareResult:
