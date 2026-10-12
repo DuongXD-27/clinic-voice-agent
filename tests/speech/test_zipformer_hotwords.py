@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from inference.asr.config import ZipFormerConfig
+from inference.asr.providers.transducer_nbest import NBestHyp
 from inference.asr.providers.zipformer import ZipFormerASR
 from speech.asr.hotwords import HotwordBox, Hotwords, word_distance
 from speech.asr.vad.streaming import FRAME_MS
@@ -51,8 +52,9 @@ class _Stream:
 class _Recognizer:
     """Bản không hotword ra `plain`; có hotword ra `biased`. Ghi lại hotword từng lần decode."""
 
-    def __init__(self, plain: str, biased: str) -> None:
+    def __init__(self, plain: str, biased: str, biased_log_prob: float = -0.1) -> None:
         self.plain, self.biased = plain, biased
+        self.biased_log_prob = biased_log_prob
         self.calls: list[Optional[str]] = []
 
     def create_stream(self, hotwords: Optional[str] = None) -> _Stream:
@@ -61,7 +63,10 @@ class _Recognizer:
     def decode_stream(self, stream: _Stream) -> None:
         self.calls.append(stream.hotwords)
         text = self.biased if stream.hotwords else self.plain
-        stream.result = types.SimpleNamespace(text=text, ys_log_probs=[-0.1])
+        log_prob = self.biased_log_prob if stream.hotwords else -0.1
+        stream.result = types.SimpleNamespace(
+            text=text, ys_log_probs=[log_prob], tokens=[f" {w}" for w in text.split()]
+        )
 
 
 async def _aiter(frames: Iterable[bytes]) -> AsyncIterator[bytes]:
@@ -105,7 +110,7 @@ async def test_hotwords_apply_to_final_only() -> None:
 async def test_name_guard_accepts_one_word_correction() -> None:
     """Lỗi đúng kiểu Huy gặp: "NGUYỄN VĂN A" bị nghe thành "NGUYỄN VĂN ANH"."""
     recognizer = _Recognizer("TÔI TÊN LÀ NGUYỄN VĂN ANH", "TÔI TÊN LÀ NGUYỄN VĂN A")
-    asr = ZipFormerASR(_config(), recognizer=recognizer)
+    asr = ZipFormerASR(_config(hotwords_accept_top_k=0), recognizer=recognizer)
 
     events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
 
@@ -120,6 +125,62 @@ async def test_name_guard_rejects_pulling_a_different_name() -> None:
     events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
 
     assert [e.text for e in events if e.is_final] == ["TÔI TÊN LÀ TRẦN THỊ HOA"]
+
+
+def _accept_case(monkeypatch, top: list[str], **config) -> tuple[ZipFormerASR, list]:
+    """Lượt tên: sherpa cho bản có hotword confidence ~0 (điểm hotword trộn vào log-prob)."""
+    recognizer = _Recognizer("TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A", biased_log_prob=-10.0)
+    asr = ZipFormerASR(_config(**config), recognizer=recognizer)
+    calls: list = []
+
+    def fake_nbest(pcm: bytes, k: int, hotwords: tuple[str, ...] = ()) -> list[NBestHyp]:
+        calls.append((k, hotwords))
+        return [NBestHyp(text, -float(i), 0.1) for i, text in enumerate(top)]
+
+    monkeypatch.setattr(asr, "_nbest_at_model_rate", fake_nbest)
+    return asr, calls
+
+
+async def test_name_hotword_in_raw_top_k_passes_confidence_gate(monkeypatch) -> None:
+    asr, calls = _accept_case(
+        monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A", "TÔI LÀ NGUYỄN VĂN ANH"]
+    )
+
+    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+
+    final = [e for e in events if e.is_final][0]
+    assert final.text == "TÔI LÀ NGUYỄN VĂN A"
+    assert final.confidence == 0.5
+    assert calls == [(10, ())]
+
+
+async def test_name_hotword_outside_raw_top_k_keeps_low_confidence(monkeypatch) -> None:
+    asr, _ = _accept_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN ANH"])
+
+    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+
+    final = [e for e in events if e.is_final][0]
+    assert final.text == "TÔI LÀ NGUYỄN VĂN A"
+    assert final.confidence is not None and final.confidence < 0.01
+
+
+async def test_name_hotword_accept_disabled_keeps_old_behaviour(monkeypatch) -> None:
+    asr, calls = _accept_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN A"], hotwords_accept_top_k=0)
+
+    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+
+    assert [e for e in events if e.is_final][0].confidence < 0.01
+    assert calls == []
+
+
+async def test_name_hotword_same_as_plain_uses_plain_confidence() -> None:
+    recognizer = _Recognizer("TÔI LÀ NGUYỄN VĂN A", "TÔI LÀ NGUYỄN VĂN A", biased_log_prob=-10.0)
+    asr = ZipFormerASR(_config(), recognizer=recognizer)
+
+    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+
+    final = [e for e in events if e.is_final][0]
+    assert final.confidence is not None and final.confidence > 0.9
 
 
 async def test_disabled_or_empty_hotwords_decode_plain() -> None:

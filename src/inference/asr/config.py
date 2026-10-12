@@ -114,9 +114,21 @@ class ZipFormerConfig(ASRConfig):
     # Điểm cộng mỗi token khớp hotword; cao thì sửa nhiều hơn nhưng kéo nhầm nhiều hơn.
     hotwords_score: float = Field(default=1.5, gt=0, validation_alias="ZIPFORMER_HOTWORDS_SCORE")
     max_active_paths: int = Field(default=4, gt=0, validation_alias="ZIPFORMER_MAX_ACTIVE_PATHS")
-    # Top N phương án (không hotword) của mỗi final, tính trong nền rồi gửi lên trang LiveKit
-    # dưới câu người gọi (providers/transducer_nbest.py). 0 = tắt. Không đổi kết quả lượt.
+    # Top N phương án (điểm cuối, có cộng hotword của lượt) của mỗi final, tính trong nền rồi gửi
+    # lên trang LiveKit dưới câu người gọi (providers/transducer_nbest.py). 0 = tắt. Không đổi
+    # kết quả lượt.
     nbest_top_k: int = Field(default=0, ge=0, le=10, validation_alias="ZIPFORMER_NBEST_TOP_K")
+    # Lượt tên (guard_one_word): bản có hotword khác bản thô thì nhận với confidence
+    # `hotwords_accept_confidence` khi câu đó nằm trong top N phương án thô (transducer_nbest.py);
+    # không nằm trong thì giữ confidence sherpa (rất thấp, cổng tên identity.py coi là không chắc).
+    # Lý do: sherpa-onnx trộn điểm cộng hotword vào `ys_log_probs`, token đúng tên vẫn ra ~-10,
+    # nên bản có hotword luôn bị chặn ở 0.5 dù đúng. 0 = tắt (như cũ). Thêm ~0,4 s ở các lượt này.
+    hotwords_accept_top_k: int = Field(
+        default=10, ge=0, le=10, validation_alias="ZIPFORMER_HOTWORDS_ACCEPT_TOP_K"
+    )
+    hotwords_accept_confidence: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="ZIPFORMER_HOTWORDS_ACCEPT_CONFIDENCE"
+    )
 
     @model_validator(mode="after")
     def _hotwords_need_vocab(self) -> "ZipFormerConfig":

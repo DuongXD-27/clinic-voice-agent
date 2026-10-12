@@ -737,7 +737,7 @@ async def test_in_turn_violation_speaks_the_guarded_utterance(monkeypatch) -> No
 async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> None:
     """Top N phương án ASR của lượt (provider tính trong nền) tới trang demo sau lời người gọi,
     gắn đúng lượt; task lỗi chỉ bị bỏ qua."""
-    from inference.asr.providers.transducer_nbest import NBestHyp
+    from inference.asr.providers.transducer_nbest import NBest, NBestHyp
     from speech.asr.nbest import NBestBox
 
     opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
@@ -756,7 +756,12 @@ async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> Non
     )
     loop = asyncio.get_running_loop()
     done = loop.create_future()
-    done.set_result([NBestHyp("TÔI LÀ AN", -0.4, 0.7), NBestHyp("TÔI LÀ ANH", -1.2, 0.3)])
+    done.set_result(
+        NBest(
+            [NBestHyp("TÔI LÀ AN", -0.4, 0.7), NBestHyp("TÔI LÀ ANH", 7.8, 0.3, bonus=9.0)],
+            ("NGUYỄN VĂN ANH",),
+        )
+    )
     broken = loop.create_future()
     broken.set_exception(RuntimeError("onnx"))
     stt_pipeline.nbest = NBestBox()
@@ -779,9 +784,10 @@ async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> Non
             "turn": 1,
             "segments": [
                 [
-                    {"text": "TÔI LÀ AN", "log_prob": -0.4, "share": 0.7},
-                    {"text": "TÔI LÀ ANH", "log_prob": -1.2, "share": 0.3},
+                    {"text": "TÔI LÀ AN", "log_prob": -0.4, "share": 0.7, "bonus": 0.0},
+                    {"text": "TÔI LÀ ANH", "log_prob": 7.8, "share": 0.3, "bonus": 9.0},
                 ]
             ],
+            "hotwords": [["NGUYỄN VĂN ANH"]],
         }
     ]

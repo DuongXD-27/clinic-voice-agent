@@ -60,9 +60,17 @@ zipformer:
   bpe_vocab_path: src/inference/asr/providers/assets/zipformer/bpe.vocab # ZIPFORMER_BPE_VOCAB_PATH
   hotwords_score: 3.0 # ZIPFORMER_HOTWORDS_SCORE
   max_active_paths: 8 # ZIPFORMER_MAX_ACTIVE_PATHS
-  # Top N phương án ASR (không hotword) kèm điểm, hiện dưới câu người gọi trên trang LiveKit.
-  # Tính trong nền sau final, không làm chậm lượt. 0 = tắt.
+  # Top N phương án ASR kèm điểm CUỐI (đã cộng hotword của lượt, như lúc sherpa chọn câu) và dòng
+  # "(hotword): ..." các cụm của lượt, hiện dưới câu người gọi trên trang LiveKit. Tính trong nền
+  # sau final, không làm chậm lượt. Đo 12/10 golden: phương án 1 trùng câu sherpa 45/46. 0 = tắt.
   nbest_top_k: 4 # ZIPFORMER_NBEST_TOP_K
+  # Lượt tên: sherpa-onnx trộn điểm cộng hotword vào log-prob nên bản có hotword luôn có confidence
+  # ~0 và bị cổng tên (identity.py, 0.5) chặn dù đúng. Bản có hotword lệch bản thô 1 từ thì nhận với
+  # confidence 0.5 nếu câu đó nằm trong top N phương án thô; ngoài top N giữ confidence thấp (hỏi
+  # lại). Đo 12/10 trên golden (3 câu tên hotword sửa đúng): top 4 nhận 0/3, top 10 nhận 2/3 ("Văn
+  # Anh", "Văn An"; "Văn A" vẫn ngoài), cùng thêm ~0,35-0,4 s; câu gài không đổi chữ. 0 = tắt.
+  hotwords_accept_top_k: 10 # ZIPFORMER_HOTWORDS_ACCEPT_TOP_K
+  hotwords_accept_confidence: 0.5 # ZIPFORMER_HOTWORDS_ACCEPT_CONFIDENCE
   # Giãn nhịp decode partial cho câu dài: max(300 ms, tỉ lệ x độ dài buffer). 0 = tắt.
   # Chỉ bật sau khi đo CPU trên máy production.
   partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO

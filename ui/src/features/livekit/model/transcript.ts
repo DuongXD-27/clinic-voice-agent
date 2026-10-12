@@ -10,6 +10,10 @@ export interface NBestHyp {
   text: string;
   logProb: number;
   share: number;
+  /** Phần điểm hotword trong `logProb` (điểm cuối); 0/thiếu = không khớp cụm nào. */
+  bonus?: number;
+  /** Dòng giả cuối nhóm: `text` là các cụm hotword của lượt, không phải phương án. */
+  hotwords?: boolean;
 }
 
 /** Top N phương án của từng final trong một lượt người gọi (tới sau lời người gọi). */
@@ -64,20 +68,34 @@ export function parseNBest(payload: Uint8Array): NBestUpdate | null {
   if (data?.type !== "nbest" || typeof data.turn !== "number" || !Array.isArray(data.segments)) {
     return null;
   }
-  const segments = data.segments
-    .filter(Array.isArray)
-    .map((segment: unknown[]) =>
-      segment
-        .filter(isRecord)
-        .flatMap((hyp) =>
-          typeof hyp.text === "string" &&
-          typeof hyp.log_prob === "number" &&
-          typeof hyp.share === "number"
-            ? [{ text: hyp.text, logProb: hyp.log_prob, share: hyp.share }]
-            : [],
-        ),
-    )
-    .filter((segment) => segment.length > 0);
+  const hotwords: unknown[] = Array.isArray(data.hotwords) ? data.hotwords : [];
+  const segments = data.segments.flatMap((segment: unknown, index: number) => {
+    if (!Array.isArray(segment)) return [];
+    const hyps: NBestHyp[] = segment.filter(isRecord).flatMap((hyp) =>
+      typeof hyp.text === "string" &&
+      typeof hyp.log_prob === "number" &&
+      typeof hyp.share === "number"
+        ? [
+            {
+              text: hyp.text,
+              logProb: hyp.log_prob,
+              share: hyp.share,
+              ...(typeof hyp.bonus === "number" && hyp.bonus !== 0 ? { bonus: hyp.bonus } : {}),
+            },
+          ]
+        : [],
+    );
+    if (hyps.length === 0) return [];
+    const listed = hotwords[index];
+    const phrases = Array.isArray(listed)
+      ? listed.filter((p): p is string => typeof p === "string")
+      : [];
+    return [
+      phrases.length
+        ? [...hyps, { text: phrases.join(", "), logProb: 0, share: 0, hotwords: true }]
+        : hyps,
+    ];
+  });
   return segments.length ? { turn: data.turn, segments } : null;
 }
 
@@ -105,13 +123,20 @@ export function toChatMessage(line: TranscriptLine, index: number): ChatMessage 
       ? {
           candidates: line.nbest.map((segment) =>
             segment.map((hyp) => ({
-              text: hyp.text,
-              score: `${hyp.logProb.toFixed(2)} · ${Math.round(hyp.share * 100)}%`,
+              text: hyp.hotwords ? `(hotword): ${hyp.text}` : hyp.text,
+              score: hyp.hotwords ? "" : candidateScore(hyp),
             })),
           ),
         }
       : {}),
   };
+}
+
+/** Điểm cuối · tỉ lệ, kèm phần hotword đã cộng nếu có: "+5.06 · 98% (hotword +9.0)". */
+function candidateScore(hyp: NBestHyp): string {
+  const score = `${hyp.logProb > 0 ? "+" : ""}${hyp.logProb.toFixed(2)}`;
+  const base = `${score} · ${Math.round(hyp.share * 100)}%`;
+  return hyp.bonus ? `${base} (hotword +${hyp.bonus.toFixed(1)})` : base;
 }
 
 function decode(payload: Uint8Array): Record<string, unknown> | null {

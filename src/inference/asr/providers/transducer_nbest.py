@@ -2,17 +2,21 @@
 
 sherpa-onnx chỉ trả phương án tốt nhất, nên đây chạy lại modified beam search bằng onnxruntime
 trên đúng 3 file encoder/decoder/joiner của provider ZipFormer và giữ các phương án cuối beam.
-Không có hotword: cho thấy model "nghe" ra những gì trước khi bị bias.
 
-Điểm = tổng log-xác suất của chuỗi token (càng gần 0 càng chắc); `share` = tỉ lệ của phương án
-trong N phương án (softmax trên điểm) để đọc nhanh.
+Có hotword của lượt thì beam cộng điểm hotword như sherpa-onnx (mỗi token khớp cụm +`score`, khớp
+dở rồi trượt thì trừ lại, hết câu còn dở cũng trừ): điểm là điểm CUỐI dùng để chọn câu. Không có
+hotword: điểm thô, cho thấy model "nghe" ra những gì.
+
+Điểm = tổng log-xác suất của chuỗi token (+ điểm hotword); `bonus` = phần hotword trong đó; `share`
+= tỉ lệ của phương án trong N phương án (softmax trên điểm) để đọc nhanh.
 """
 
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional, Sequence
 
 BLANK_ID = 0
 
@@ -22,6 +26,16 @@ class NBestHyp:
     text: str
     log_prob: float
     share: float
+    # Phần điểm hotword trong `log_prob` (0 khi lượt không có hotword hoặc không khớp cụm nào).
+    bonus: float = 0.0
+
+
+@dataclass(frozen=True)
+class NBest:
+    """Top N của một final kèm các cụm hotword lượt đó (để trang demo hiện cùng)."""
+
+    hyps: list[NBestHyp]
+    hotwords: tuple[str, ...] = ()
 
 
 class TransducerNBest:
@@ -34,15 +48,27 @@ class TransducerNBest:
         tokens: str,
         num_threads: int = 1,
         sample_rate: int = 16_000,
+        bpe_vocab: str = "",
     ) -> None:
         self._paths = (encoder, decoder, joiner)
         self._tokens_path = tokens
         self._num_threads = num_threads
         self.sample_rate = sample_rate
+        self._bpe_vocab_path = bpe_vocab
+        self._bpe_vocab: Optional[dict[str, float]] = None
         self._sessions: Any = None
 
-    def nbest(self, samples: Any, k: int = 4) -> list[NBestHyp]:
-        """`samples`: float32 [-1, 1] ở `sample_rate`. Trả tối đa `k` phương án, tốt nhất trước."""
+    def nbest(
+        self,
+        samples: Any,
+        k: int = 4,
+        hotwords: Sequence[str] = (),
+        hotwords_score: float = 0.0,
+        beam: int = 4,
+    ) -> list[NBestHyp]:
+        """`samples`: float32 [-1, 1] ở `sample_rate`. Trả tối đa `k` phương án, tốt nhất trước.
+        `hotwords` + `hotwords_score`: beam cộng điểm hotword như sherpa-onnx (điểm cuối).
+        `beam`: để bằng max_active_paths của sherpa-onnx thì phương án 1 trùng câu sherpa chọn."""
         import numpy as np
 
         if len(samples) == 0 or k <= 0:
@@ -65,9 +91,26 @@ class TransducerNBest:
             decode=lambda contexts: _run(decoder, np.array(contexts, dtype=np.int64)),
             join=lambda enc, dec: _run(joiner, enc, dec),
             context_size=context_size,
-            beam=max(k, 4),
+            beam=max(k, beam),
+            context=self._context(hotwords, hotwords_score, symbols),
         )
         return to_nbest(hyps, symbols, k)
+
+    def _context(
+        self, hotwords: Sequence[str], score: float, symbols: dict[int, str]
+    ) -> Optional[ContextGraph]:
+        if not hotwords or score <= 0 or not self._bpe_vocab_path:
+            return None
+        if self._bpe_vocab is None:
+            self._bpe_vocab = load_bpe_vocab(self._bpe_vocab_path)
+        ids = {piece: i for i, piece in symbols.items()}
+        phrases = []
+        for phrase in hotwords:
+            pieces = bpe_encode(phrase, self._bpe_vocab)
+            # Như sherpa-onnx: cụm có token ngoài tokens.txt thì bỏ cả cụm.
+            if pieces and all(p in ids for p in pieces):
+                phrases.append([ids[p] for p in pieces])
+        return ContextGraph(phrases, score) if phrases else None
 
     def _features(self, samples: Any) -> Any:
         import kaldi_native_fbank as knf  # pip install kaldi-native-fbank
@@ -114,17 +157,85 @@ def _run(session: Any, *inputs: Any) -> Any:
     return session.run(None, dict(zip(names, inputs, strict=True)))[0]
 
 
+class ContextGraph:
+    """Trie Aho-Corasick các cụm hotword (theo token id), chấm điểm như ContextGraph sherpa-onnx:
+    mỗi token đi sâu thêm trong cụm +`score`; trượt khỏi cụm thì trừ phần đã cộng của đoạn khớp
+    dở; khớp trọn cụm thì giữ điểm và quay về gốc."""
+
+    def __init__(self, phrases: Sequence[Sequence[int]], score: float) -> None:
+        self.score = score
+        self._next: list[dict[int, int]] = [{}]
+        self._depth = [0]
+        self._end = [False]
+        for ids in phrases:
+            node = 0
+            for token in ids:
+                if token not in self._next[node]:
+                    self._next.append({})
+                    self._depth.append(self._depth[node] + 1)
+                    self._end.append(False)
+                    self._next[node][token] = len(self._next) - 1
+                node = self._next[node][token]
+            self._end[node] = True
+        self._fail = [0] * len(self._next)
+        queue = deque(self._next[0].values())
+        while queue:
+            node = queue.popleft()
+            for token, child in self._next[node].items():
+                fail = self._fail[node]
+                while fail and token not in self._next[fail]:
+                    fail = self._fail[fail]
+                target = self._next[fail].get(token, 0)
+                self._fail[child] = target if target != child else 0
+                queue.append(child)
+
+    def step(self, node: int, token: int) -> tuple[int, float]:
+        """(trạng thái mới, điểm cộng/trừ) khi phát `token` từ `node`."""
+        state = node
+        while state and token not in self._next[state]:
+            state = self._fail[state]
+        child = self._next[state].get(token, 0)
+        delta = (self._depth[child] - self._depth[node]) * self.score
+        return (0 if self._end[child] else child), delta
+
+    def finalize(self, node: int) -> float:
+        """Hết câu còn khớp dở: trừ lại phần đã cộng."""
+        return -self._depth[node] * self.score
+
+    def leaving(self, node: int) -> float:
+        """Điểm của token bất kỳ không đi tiếp cụm nào từ `node` (trượt về gốc)."""
+        return -self._depth[node] * self.score
+
+    def continuing(self, node: int) -> set[int]:
+        """Token có thể đi tiếp một cụm từ `node` (gồm cả nút fail và gốc)."""
+        tokens: set[int] = set()
+        state = node
+        while True:
+            tokens.update(self._next[state])
+            if state == 0:
+                return tokens
+            state = self._fail[state]
+
+
 def beam_search(
-    frames: Any, *, decode: Any, join: Any, context_size: int, beam: int
-) -> list[tuple[tuple[int, ...], float]]:
+    frames: Any,
+    *,
+    decode: Any,
+    join: Any,
+    context_size: int,
+    beam: int,
+    context: Optional[ContextGraph] = None,
+) -> list[tuple[tuple[int, ...], float, float]]:
     """Modified beam search (tối đa 1 token mỗi frame), gộp phương án trùng chuỗi token.
 
     `decode(contexts [N, context_size]) -> [N, D]`, `join(enc [N, D], dec [N, D]) -> logits [N, V]`.
-    Trả (chuỗi token không gồm phần đệm đầu, log-xác suất), tốt nhất trước."""
+    `context`: cộng điểm hotword vào điểm chọn beam. Trả (chuỗi token không gồm phần đệm đầu,
+    điểm, phần điểm hotword), tốt nhất trước."""
     import numpy as np
 
     start = (BLANK_ID,) * context_size
-    hyps: dict[tuple[int, ...], float] = {start: 0.0}
+    # ys -> (điểm, phần hotword, trạng thái context); cùng ys thì cùng trạng thái context.
+    hyps: dict[tuple[int, ...], tuple[float, float, int]] = {start: (0.0, 0.0, 0)}
     for frame in frames:
         items = list(hyps.items())
         contexts = [ys[-context_size:] for ys, _ in items]
@@ -133,45 +244,114 @@ def beam_search(
         logits = np.asarray(join(enc, dec_out), dtype=np.float64)
         logits = logits.reshape(len(items), -1)
         log_probs = logits - _logsumexp(logits)
-        totals = log_probs + np.array([score for _, score in items])[:, None]
+        totals = log_probs + np.array([h[0] for _, h in items])[:, None]
+        deltas = _context_deltas(totals.shape, items, context) if context else None
+        if deltas is not None:
+            totals = totals + deltas
         flat = totals.ravel()
         top = np.argpartition(-flat, min(beam, flat.size) - 1)[:beam]
-        merged: dict[tuple[int, ...], float] = {}
+        merged: dict[tuple[int, ...], tuple[float, float, int]] = {}
         vocab = totals.shape[1]
         for index in top:
             row, token = divmod(int(index), vocab)
-            ys = items[row][0] if token == BLANK_ID else items[row][0] + (token,)
+            ys, (_, bonus, node) = items[row]
+            if token != BLANK_ID:
+                ys = ys + (token,)
+                if context is not None:
+                    node, delta = context.step(node, token)
+                    bonus += delta
             score = float(flat[index])
-            merged[ys] = _logaddexp(merged[ys], score) if ys in merged else score
+            if ys in merged:
+                previous = merged[ys]
+                merged[ys] = (_logaddexp(previous[0], score), previous[1], previous[2])
+            else:
+                merged[ys] = (score, bonus, node)
         hyps = merged
-    ranked = sorted(hyps.items(), key=lambda item: item[1], reverse=True)
-    return [(ys[context_size:], score) for ys, score in ranked]
+    final = []
+    for ys, (score, bonus, node) in hyps.items():
+        if context is not None:
+            score, bonus = score + context.finalize(node), bonus + context.finalize(node)
+        final.append((ys[context_size:], score, bonus))
+    return sorted(final, key=lambda item: item[1], reverse=True)
+
+
+def _context_deltas(shape: tuple[int, int], items: list, context: ContextGraph) -> Any:
+    """Điểm hotword của từng ô (phương án, token): blank giữ nguyên trạng thái (0), token đi tiếp
+    cụm theo `step`, mọi token khác trượt khỏi đoạn đang khớp dở."""
+    import numpy as np
+
+    deltas = np.zeros(shape)
+    for row, (_, (_, _, node)) in enumerate(items):
+        if node:
+            deltas[row, :] = context.leaving(node)
+            deltas[row, BLANK_ID] = 0.0
+        for token in context.continuing(node):
+            if 0 < token < shape[1]:
+                deltas[row, token] = context.step(node, token)[1]
+    return deltas
 
 
 def to_nbest(
-    hyps: list[tuple[tuple[int, ...], float]], symbols: dict[int, str], k: int
+    hyps: Sequence[tuple[tuple[int, ...], float, float]], symbols: dict[int, str], k: int
 ) -> list[NBestHyp]:
     """Ghép token thành chữ (giữ phương án đầu tiên của mỗi chữ), lấy `k` phương án đầu."""
-    texts: list[tuple[str, float]] = []
+    texts: list[tuple[str, float, float]] = []
     seen: set[str] = set()
-    for ys, score in hyps:
+    for ys, score, bonus in hyps:
         text = "".join(symbols.get(t, "") for t in ys).replace("▁", " ").strip()
         text = " ".join(text.split())
         if text in seen:
             continue
         seen.add(text)
-        texts.append((text, score))
+        texts.append((text, score, bonus))
         if len(texts) == k:
             break
     if not texts:
         return []
-    best = max(score for _, score in texts)
-    weights = [math.exp(score - best) for _, score in texts]
+    best = max(score for _, score, _ in texts)
+    weights = [math.exp(score - best) for _, score, _ in texts]
     total = sum(weights)
     return [
-        NBestHyp(text=text, log_prob=round(score, 3), share=round(w / total, 3))
-        for (text, score), w in zip(texts, weights, strict=True)
+        NBestHyp(text=text, log_prob=round(score, 3), share=round(w / total, 3), bonus=round(b, 3))
+        for (text, score, b), w in zip(texts, weights, strict=True)
     ]
+
+
+def load_bpe_vocab(path: str) -> dict[str, float]:
+    """bpe.vocab ("piece<TAB>score", xuất từ bpe.model) -> điểm unigram của từng piece."""
+    vocab: dict[str, float] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) == 2 and not parts[0].startswith("<"):
+                vocab[parts[0]] = float(parts[1])
+    return vocab
+
+
+def bpe_encode(text: str, vocab: dict[str, float]) -> list[str]:
+    """Cắt cụm thành piece như sentencepiece unigram (Viterbi trên điểm piece); [] nếu không cắt
+    được. Không cần thư viện sentencepiece lúc chạy (sherpa-onnx cũng tự cắt từ bpe.vocab)."""
+    longest = max((len(p) for p in vocab), default=0)
+    pieces: list[str] = []
+    for word in text.upper().split():
+        chars = "▁" + word
+        best: list[tuple[float, int]] = [(0.0, 0)] + [(-math.inf, 0)] * len(chars)
+        for i in range(len(chars)):
+            if best[i][0] == -math.inf:
+                continue
+            for j in range(i + 1, min(len(chars), i + longest) + 1):
+                score = vocab.get(chars[i:j])
+                if score is not None and best[i][0] + score > best[j][0]:
+                    best[j] = (best[i][0] + score, i)
+        if best[-1][0] == -math.inf:
+            return []
+        word_pieces, end = [], len(chars)
+        while end:
+            start = best[end][1]
+            word_pieces.append(chars[start:end])
+            end = start
+        pieces.extend(reversed(word_pieces))
+    return pieces
 
 
 def _logsumexp(values: Any) -> Any:

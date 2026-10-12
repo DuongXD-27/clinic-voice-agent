@@ -8,7 +8,14 @@ import numpy as np
 import pytest
 
 from inference.asr.config import ZipFormerConfig
-from inference.asr.providers.transducer_nbest import NBestHyp, beam_search, to_nbest
+from inference.asr.providers.transducer_nbest import (
+    ContextGraph,
+    NBest,
+    NBestHyp,
+    beam_search,
+    bpe_encode,
+    to_nbest,
+)
 from inference.asr.providers.zipformer import ZipFormerASR
 from speech.asr.nbest import NBestBox
 from speech.asr.vad.streaming import FRAME_MS
@@ -21,7 +28,7 @@ _SILENT = b"\x00\x00" * (_FRAME_BYTES // 2)
 _SYMBOLS = {0: "<blk>", 1: "▁XIN", 2: "▁CHÀO", 3: "▁CHAO"}
 
 
-def _search(frame_logits: list[list[float]], beam: int = 4):
+def _search(frame_logits: list[list[float]], beam: int = 4, context=None):
     """Logit chỉ phụ thuộc frame (frame mang chỉ số của nó ở cột 0)."""
     frames = np.array([[i] for i in range(len(frame_logits))], dtype=np.float32)
 
@@ -34,6 +41,7 @@ def _search(frame_logits: list[list[float]], beam: int = 4):
         join=join,
         context_size=2,
         beam=beam,
+        context=context,
     )
 
 
@@ -41,29 +49,67 @@ def test_beam_search_ranks_hypotheses_by_log_prob() -> None:
     hyps = _search([[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]])
 
     assert hyps[0][0] == (1, 2)
-    assert [ys for ys, _ in hyps[:2]] == [(1, 2), (1, 3)]
-    scores = [score for _, score in hyps]
+    assert [ys for ys, _, _ in hyps[:2]] == [(1, 2), (1, 3)]
+    scores = [score for _, score, _ in hyps]
     assert scores == sorted(scores, reverse=True)
     assert all(score <= 0 for score in scores)
+    assert all(bonus == 0 for _, _, bonus in hyps)
 
 
 def test_beam_search_merges_identical_token_sequences() -> None:
     """Hai đường cùng ra "XIN" (XIN rồi blank, blank rồi XIN) cộng xác suất, không đứng riêng."""
     hyps = _search([[0.0, 0.0, -9.0, -9.0], [0.0, 0.0, -9.0, -9.0]], beam=8)
 
-    sequences = [ys for ys, _ in hyps]
+    sequences = [ys for ys, _, _ in hyps]
     assert len(sequences) == len(set(sequences))
-    best = dict(hyps)
+    best = {ys: score for ys, score, _ in hyps}
     assert best[(1,)] > best[(1, 1)]
 
 
+def test_beam_search_with_hotword_flips_choice_and_reports_bonus() -> None:
+    """ "XIN CHAO" kém "XIN CHÀO" 1 điểm thô; hotword XIN CHAO (2 token x 3.0) lật thứ hạng."""
+    logits = [[0.0, 5.0, 0.0, 0.0], [0.0, 0.0, 4.0, 3.0], [5.0, 0.0, 0.0, 0.0]]
+    plain = {ys: score for ys, score, _ in _search(logits)}
+
+    hyps = _search(logits, beam=8, context=ContextGraph([[1, 3]], 3.0))
+
+    assert hyps[0][0] == (1, 3)
+    assert hyps[0][2] == 6.0
+    assert math.isclose(hyps[0][1], plain[(1, 3)] + 6.0)
+    # "XIN CHÀO" khớp dở (chỉ "XIN") rồi trượt: phần đã cộng bị trừ lại.
+    chao = next(h for h in hyps if h[0] == (1, 2))
+    assert chao[2] == 0.0
+
+
+def test_context_graph_partial_match_is_removed_at_end() -> None:
+    graph = ContextGraph([[1, 2, 3]], 2.0)
+
+    node, delta = graph.step(0, 1)
+    node, delta2 = graph.step(node, 2)
+
+    assert (delta, delta2) == (2.0, 2.0)
+    assert graph.finalize(node) == -4.0
+    end, delta3 = graph.step(node, 3)
+    assert (end, delta3) == (0, 2.0)
+    assert graph.step(node, 9) == (0, -4.0)
+
+
+def test_bpe_encode_picks_best_scoring_pieces() -> None:
+    vocab = {"▁NGUYỄN": -5.0, "▁VĂN": -5.0, "▁A": -6.0, "▁": -3.0, "A": -4.0, "▁R": -8.0, "Ư": -6.0}
+
+    assert bpe_encode("Nguyễn Văn A", vocab) == ["▁NGUYỄN", "▁VĂN", "▁A"]
+    assert bpe_encode("RƯ", vocab) == ["▁R", "Ư"]
+    assert bpe_encode("XYZ", vocab) == []
+
+
 def test_to_nbest_joins_pieces_and_shares_sum_to_one() -> None:
-    hyps = [((1, 2), -0.5), ((1, 3), -1.5), ((1, 2), -2.0), ((1,), -3.0)]
+    hyps = [((1, 2), -0.5, 0.0), ((1, 3), -1.5, 3.0), ((1, 2), -2.0, 0.0), ((1,), -3.0, 0.0)]
 
     result = to_nbest(hyps, _SYMBOLS, 2)
 
     assert [h.text for h in result] == ["XIN CHÀO", "XIN CHAO"]
     assert result[0].log_prob == -0.5
+    assert result[1].bonus == 3.0
     assert math.isclose(sum(h.share for h in result), 1.0, abs_tol=1e-3)
     assert result[0].share > result[1].share
 
@@ -108,9 +154,9 @@ async def _final_tasks(top_k: int) -> tuple[list, NBestBox]:
     asr = ZipFormerASR(config, recognizer=_Recognizer())
     calls: list[int] = []
 
-    def fake_nbest(pcm: bytes, rate: int) -> list[NBestHyp]:
+    def fake_nbest(pcm: bytes, rate: int, hotwords: tuple[str, ...] = ()) -> NBest:
         calls.append(rate)
-        return [NBestHyp("XIN CHÀO", -0.2, 0.8), NBestHyp("XIN CHAO", -1.6, 0.2)]
+        return NBest([NBestHyp("XIN CHÀO", -0.2, 0.8), NBestHyp("XIN CHAO", -1.6, 0.2)])
 
     asr.nbest = fake_nbest  # type: ignore[method-assign]
     box = NBestBox()
@@ -134,7 +180,7 @@ async def test_zipformer_computes_nbest_for_finals_only(_inline_threads) -> None
 
     tasks = box.take()
     assert len(tasks) == 1
-    assert [h.text for h in await tasks[0]] == ["XIN CHÀO", "XIN CHAO"]
+    assert [h.text for h in (await tasks[0]).hyps] == ["XIN CHÀO", "XIN CHAO"]
     assert calls == [8000]
     assert box.take() == []
 

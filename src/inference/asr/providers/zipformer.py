@@ -23,7 +23,7 @@ import numpy as np
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
-from inference.asr.providers.transducer_nbest import NBestHyp, TransducerNBest
+from inference.asr.providers.transducer_nbest import NBest, NBestHyp, TransducerNBest
 from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords, word_distance
 from speech.asr.nbest import NBestBox
 from speech.asr.stream_context import StreamingFrame
@@ -60,10 +60,17 @@ class ZipFormerASR:
         """Top N phương án của final (`stream(nbest=...)`) để hiện trên trang demo."""
         return self._config.nbest_top_k > 0
 
-    def nbest(self, pcm: bytes, source_rate: int) -> list[NBestHyp]:
-        """Top `nbest_top_k` phương án (không hotword) của một câu; chặn CPU, gọi trong thread."""
+    def nbest(self, pcm: bytes, source_rate: int, hotwords: tuple[str, ...] = ()) -> NBest:
+        """Top `nbest_top_k` phương án của một câu, điểm cuối có cộng `hotwords` của lượt như
+        lúc chọn câu (không hotword: điểm thô); chặn CPU, gọi trong thread."""
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
+        hyps = self._nbest_at_model_rate(pcm, self._config.nbest_top_k, hotwords)
+        return NBest(hyps, hotwords)
+
+    def _nbest_at_model_rate(
+        self, pcm: bytes, k: int, hotwords: tuple[str, ...] = ()
+    ) -> list[NBestHyp]:
         if self._nbest is None:
             self._nbest = TransducerNBest(
                 encoder=self._config.encoder_path,
@@ -72,9 +79,12 @@ class ZipFormerASR:
                 tokens=self._config.tokens_path,
                 num_threads=self._config.num_threads,
                 sample_rate=self.input_sample_rate,
+                bpe_vocab=self._config.bpe_vocab_path,
             )
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        return self._nbest.nbest(samples, self._config.nbest_top_k)
+        return self._nbest.nbest(
+            samples, k, hotwords, self._config.hotwords_score, self._config.max_active_paths
+        )
 
     @property
     def supports_hotwords(self) -> bool:
@@ -170,8 +180,11 @@ class ZipFormerASR:
             )
             if final and decoded.text and nbest is not None and self.supports_nbest:
                 # Trong nền: final phát ngay, top N tới sau (chỉ để xem).
+                phrases = hints.phrases if self._config.hotwords_enabled else ()
                 nbest.add(
-                    asyncio.create_task(asyncio.to_thread(self.nbest, pcm, audio_sample_rate))
+                    asyncio.create_task(
+                        asyncio.to_thread(self.nbest, pcm, audio_sample_rate, phrases)
+                    )
                 )
             return decoded
 
@@ -236,9 +249,29 @@ class ZipFormerASR:
         if not hints.guard_one_word:
             return biased
         plain = self._decode_scored(pcm)
-        if plain.text == biased.text or word_distance(plain.text, biased.text) <= 1:
+        if plain.text == biased.text:
+            # Hotword không đổi chữ: dùng hẳn bản thô (confidence thật; sherpa trộn điểm cộng
+            # hotword vào log-prob của bản có hotword).
+            return plain
+        if word_distance(plain.text, biased.text) > 1:
+            return plain
+        return self._accept_hinted(pcm, biased)
+
+    def _accept_hinted(self, pcm: bytes, biased: _Decoded) -> _Decoded:
+        """Bản có hotword lệch bản thô 1 từ: nhận (đủ qua cổng tên) khi nằm trong top N thô."""
+        k = self._config.hotwords_accept_top_k
+        if k == 0:
             return biased
-        return plain
+        top = [h.text for h in self._nbest_at_model_rate(pcm, k)]
+        accepted = " ".join(biased.text.split()) in top
+        # Không log chữ: lượt tên có PII.
+        logger.info(
+            "zipformer: bản có hotword %s top %d thô", "nằm trong" if accepted else "ngoài", k
+        )
+        if not accepted:
+            return biased
+        confidence = max(biased.confidence or 0.0, self._config.hotwords_accept_confidence)
+        return biased._replace(confidence=confidence)
 
     def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""

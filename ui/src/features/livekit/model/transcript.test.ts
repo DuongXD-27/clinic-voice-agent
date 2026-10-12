@@ -135,6 +135,31 @@ describe("toChatMessage với top N", () => {
     expect(message.candidates).toEqual([[{ text: "TÔI LÀ AN", score: "-0.40 · 72%" }]]);
   });
 
+  it("điểm cuối kèm phần hotword và dòng (hotword) cuối nhóm", () => {
+    const update = parseNBest(
+      encode({
+        type: "nbest",
+        turn: 1,
+        segments: [
+          [
+            { text: "TÔI LÀ A", log_prob: 2.92, share: 0.98, bonus: 9 },
+            { text: "TÔI LÀ AN", log_prob: -1.02, share: 0.02, bonus: 0 },
+          ],
+        ],
+        hotwords: [["NGUYỄN VĂN A", "NGUYỄN VĂN B"]],
+      }),
+    );
+    const message = toChatMessage({ ...caller, nbest: update?.segments ?? null }, 1);
+
+    expect(message.candidates).toEqual([
+      [
+        { text: "TÔI LÀ A", score: "+2.92 · 98% (hotword +9.0)" },
+        { text: "TÔI LÀ AN", score: "-1.02 · 2%" },
+        { text: "(hotword): NGUYỄN VĂN A, NGUYỄN VĂN B", score: "" },
+      ],
+    ]);
+  });
+
   it("chưa có top N thì không có candidates", () => {
     expect(toChatMessage(caller, 1)).not.toHaveProperty("candidates");
   });

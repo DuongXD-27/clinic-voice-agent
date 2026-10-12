@@ -395,17 +395,27 @@ class CallBridge:
 
     async def _publish_nbest(self, turn_number: int, pending: list[asyncio.Future]) -> None:
         results = await asyncio.gather(*pending, return_exceptions=True)
+        # Mỗi final: top N (điểm cuối, có hotword nếu lượt có) + các cụm hotword của lượt.
+        done = [r for r in results if getattr(r, "hyps", None)]
         segments = [
-            [{"text": h.text, "log_prob": h.log_prob, "share": h.share} for h in hyps]
-            for hyps in results
-            if isinstance(hyps, list) and hyps
+            [
+                {"text": h.text, "log_prob": h.log_prob, "share": h.share, "bonus": h.bonus}
+                for h in r.hyps
+            ]
+            for r in done
         ]
+        hotwords = [list(r.hotwords) for r in done]
         failed = [type(r).__name__ for r in results if isinstance(r, BaseException)]
         if failed:
             logger.warning("call_bridge: top N ASR lỗi: %s", ", ".join(failed))
         if not segments:
             return
-        payload = {"type": "nbest", "turn": turn_number, "segments": segments}
+        payload = {
+            "type": "nbest",
+            "turn": turn_number,
+            "segments": segments,
+            "hotwords": hotwords,
+        }
         try:
             await self._room.local_participant.publish_data(
                 json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
