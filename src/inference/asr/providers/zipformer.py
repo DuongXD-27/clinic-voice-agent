@@ -23,6 +23,7 @@ import numpy as np
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
+from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords, word_distance
 from speech.asr.stream_context import StreamingFrame
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
@@ -51,10 +52,25 @@ class ZipFormerASR:
     def model(self) -> str:
         return self._config.model
 
+    @property
+    def supports_hotwords(self) -> bool:
+        """Bật hotword theo lượt (`stream(hotwords=...)`) — cần beam search, xem config/asr.yaml."""
+        return self._config.hotwords_enabled
+
     def _get_recognizer(self):
         if self._recognizer is None:
             import sherpa_onnx  # pip install -e ".[speech-zipformer]"
 
+            options: dict[str, Any] = {"decoding_method": "greedy_search"}
+            if self._config.hotwords_enabled:
+                # Hotword chỉ chạy với beam search; `bpe.vocab` để mã hóa cụm từ thành token.
+                options = {
+                    "decoding_method": "modified_beam_search",
+                    "max_active_paths": self._config.max_active_paths,
+                    "modeling_unit": "bpe",
+                    "bpe_vocab": self._config.bpe_vocab_path,
+                    "hotwords_score": self._config.hotwords_score,
+                }
             self._recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
                 tokens=self._config.tokens_path,
                 encoder=self._config.encoder_path,
@@ -63,8 +79,8 @@ class ZipFormerASR:
                 num_threads=self._config.num_threads,
                 sample_rate=self.input_sample_rate,
                 feature_dim=80,
-                decoding_method="greedy_search",
                 provider="cpu",
+                **options,
             )
         return self._recognizer
 
@@ -83,6 +99,7 @@ class ZipFormerASR:
         min_decode_ms: int | None = None,
         max_turn_speech_ms: int | None = None,
         pre_speech_ms: int | None = None,
+        hotwords: HotwordBox | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """Chunked-offline: gom từng câu theo `silence_classifier`, decode lại cả câu để phát
         partial, phát final khi đủ `end_silence_ms` im lặng hoặc nói liền quá
@@ -92,6 +109,9 @@ class ZipFormerASR:
           cụm từ từ "à"/"ờm" quá ngắn.
         - Giữ `pre_speech_ms` (None = config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
         - `AsrSegmentEnd.DISCARD`: bỏ câu dở, không phát event.
+        - `hotwords`: chỉ final dùng hotword của lượt (partial giữ nguyên để barge-in và cổng từ
+          đệm không đổi). `guard_one_word`: decode thêm bản không hotword, chỉ nhận bản có hotword
+          khi hai bản lệch tối đa 1 từ (lượt tên — không kéo tên khác hẳn về tên hồ sơ, SF-03).
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
@@ -116,8 +136,11 @@ class ZipFormerASR:
 
         async def decode(*, final: bool = False) -> _Decoded:
             pcm = utterance.final_pcm(tail_ms) if final else bytes(utterance.pcm)
+            hints = hotwords.current if final and hotwords is not None else NO_HOTWORDS
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
-            return await asyncio.to_thread(self._decode_stream_scored, pcm, audio_sample_rate)
+            return await asyncio.to_thread(
+                self._decode_stream_hinted, pcm, audio_sample_rate, hints
+            )
 
         def final_event(decoded: _Decoded) -> TranscriptEvent:
             return _final_event(_prefer_confident_partial(decoded, utterance))
@@ -171,13 +194,26 @@ class ZipFormerASR:
             if decoded.text:
                 yield final_event(decoded)
 
+    def _decode_stream_hinted(self, pcm: bytes, source_rate: int, hints: Hotwords) -> _Decoded:
+        if not hints or not self._config.hotwords_enabled:
+            return self._decode_stream_scored(pcm, source_rate)
+        if source_rate != self.input_sample_rate:
+            pcm = resample(pcm, source_rate, self.input_sample_rate)
+        biased = self._decode_scored(pcm, hotwords="/".join(hints.phrases))
+        if not hints.guard_one_word:
+            return biased
+        plain = self._decode_scored(pcm)
+        if plain.text == biased.text or word_distance(plain.text, biased.text) <= 1:
+            return biased
+        return plain
+
     def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
         return self._decode_scored(pcm)
 
-    def _decode_scored(self, pcm: bytes) -> _Decoded:
+    def _decode_scored(self, pcm: bytes, hotwords: str = "") -> _Decoded:
         """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""
         import numpy as np
 
@@ -185,7 +221,7 @@ class ZipFormerASR:
             return _Decoded("")
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         recognizer = self._get_recognizer()
-        stream = recognizer.create_stream()
+        stream = recognizer.create_stream(hotwords) if hotwords else recognizer.create_stream()
         stream.accept_waveform(self.input_sample_rate, samples)
         recognizer.decode_stream(stream)
         result = stream.result

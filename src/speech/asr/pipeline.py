@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import AsyncIterator, Optional
 
+from speech.asr.hotwords import HotwordBox
 from speech.asr.recognizer import Recognizer
 from speech.asr.stream_context import ASRStreamContext, StreamingFrame
 from speech.asr.vad.async_stream import AsyncStreamingVAD
@@ -106,6 +107,8 @@ class STTPipeline:
         self.barge_in_preroll_frames = barge_in_preroll_frames
         self.speaker_gate = speaker_gate
         self.keep_unconfirmed_barge_in = keep_unconfirmed_barge_in
+        # Hotword câu trả lời kế tiếp — transport đặt sau mỗi lượt engine (speech/asr/hotwords.py).
+        self.hotwords = HotwordBox()
 
     @property
     def provider_name(self) -> Optional[str]:
@@ -602,6 +605,8 @@ class _CallStream:
         options = dict(pipeline.asr_stream_options)
         if self._context is not None:
             options["stream_context"] = self._context
+        if getattr(pipeline.asr, "supports_hotwords", False):
+            options["hotwords"] = pipeline.hotwords
         async for event in pipeline.asr.stream(self._asr_frames(), **options):
             if self._context is not None and not self._context.accepts(event):
                 continue

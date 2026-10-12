@@ -26,6 +26,7 @@ from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
     segment_to_livekit_frame,
 )
+from speech.asr.hotwords import NO_HOTWORDS, Hotwords
 from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
@@ -213,6 +214,7 @@ class CallBridge:
                     opening: BotAction = await asyncio.to_thread(
                         self._orchestrator.start_call, call_start
                     )
+                    await self._update_hotwords()
                     await self._publish_tts_track()
                     # Receive audio during the opening; the consumer has its own task context.
                     self._pipeline_task = asyncio.create_task(self._consume_turns())
@@ -313,6 +315,7 @@ class CallBridge:
                     action = await asyncio.to_thread(
                         self._orchestrator.handle_turn, self._room.name, caller
                     )
+                    await self._update_hotwords()
                     logger.info(
                         "call_bridge: turn %d action state=%s ended=%s outcome=%s",
                         self._turn_number,
@@ -358,6 +361,28 @@ class CallBridge:
             await self._turn_queue.put(
                 _SilenceTimeout(generation=generation, silence_ms=round(elapsed * 1000))
             )
+
+    async def _update_hotwords(self) -> None:
+        """Hotword cho câu trả lời kế tiếp theo câu bot vừa hỏi (callbot/engine/asr_hints.py).
+
+        Chỉ khi provider ASR bật hotword. Có tên khách (PII): không log nội dung. Lỗi đọc phiên
+        chỉ làm lượt sau decode không hotword, không được làm hỏng cuộc gọi."""
+        box = getattr(self._stt_pipeline, "hotwords", None)
+        asr = getattr(self._stt_pipeline, "asr", None)
+        if box is None or not getattr(asr, "supports_hotwords", False):
+            return
+        try:
+            hints = await asyncio.to_thread(self._orchestrator.asr_hints, self._room.name)
+        except Exception as exc:
+            logger.warning(
+                "call_bridge: không lấy được hotword room=%s: %s",
+                self._room.name,
+                type(exc).__name__,
+            )
+            box.set(NO_HOTWORDS)
+            return
+        box.set(Hotwords(hints.phrases, hints.guard_one_word))
+        logger.info("call_bridge: hotword lượt sau: %d cụm", len(hints.phrases))
 
     async def _publish_transcript(
         self,

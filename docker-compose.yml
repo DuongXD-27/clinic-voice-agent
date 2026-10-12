@@ -50,6 +50,7 @@ services:
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+      ZIPFORMER_BPE_VOCAB_PATH: /app/models/zipformer/bpe.vocab
       # Trace JSONL (khi TRACE_ENABLED=true) ghi vào volume để trang /ui/observability đọc lại;
       # giữ qua các lần build lại. Dữ liệu đã ẩn danh (tracing/privacy.py).
       TRACE_JSONL_DIR: /app/traces
@@ -82,6 +83,7 @@ services:
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+      ZIPFORMER_BPE_VOCAB_PATH: /app/models/zipformer/bpe.vocab
     depends_on:
       redis:
         condition: service_healthy

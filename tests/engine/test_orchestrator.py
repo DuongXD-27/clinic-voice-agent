@@ -457,3 +457,19 @@ def test_trace_failure_does_not_rerun_committed_turn() -> None:
     with pytest.raises(CallEnded):
         bot.handle_turn("c_trace_fail", CallerInput(turn=3, text="Có, tôi đến được"))
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+
+
+def test_asr_hints_follow_the_question_just_asked() -> None:
+    """Hotword lượt sau theo câu bot vừa hỏi: chào hỏi tên -> tên hồ sơ; hỏi ngày sinh -> rỗng."""
+    bot = create_orchestrator(FakeClinicAPI())
+    bot.start_call(_outbound("c_asr_hints"))
+
+    name_hints = bot.asr_hints("c_asr_hints")
+    assert name_hints.guard_one_word
+    reference = _context(bot, "c_asr_hints").identity_reference
+    assert name_hints.phrases == tuple(ref["full_name"].upper() for ref in reference)
+
+    _run(bot, "c_asr_hints", [reference[0]["full_name"]])
+    assert _context(bot, "c_asr_hints").question.question_id is QuestionId.ASK_DOB
+    assert not bot.asr_hints("c_asr_hints")
+    assert not bot.asr_hints("c_unknown_call")

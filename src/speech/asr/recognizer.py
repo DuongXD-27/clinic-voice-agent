@@ -36,6 +36,10 @@ class SpeechRecognizer:
         return getattr(self._gateway.provider, "supports_stream_context", False)
 
     @property
+    def supports_hotwords(self) -> bool:
+        return getattr(self._gateway.provider, "supports_hotwords", False)
+
+    @property
     def supports_preroll_frames(self) -> bool:
         return getattr(self._gateway.provider, "supports_preroll_frames", False)
 
