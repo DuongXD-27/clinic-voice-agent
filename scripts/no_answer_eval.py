@@ -690,7 +690,7 @@ def main() -> int:
         "exit_policy": "safety_only" if args.safety_only else "all_cases",
         "groups": sorted({row["group"] for row in cases}),
         "model": gateway.model if gateway else None,
-        "prompt_version": PROMPT_VERSION if gateway else None,
+        "prompt_version": getattr(extractor, "prompt_version", PROMPT_VERSION) if gateway else None,
         "repeats": args.repeats,
         "ran_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "runs": summaries,

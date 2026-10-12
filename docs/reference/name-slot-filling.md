@@ -26,8 +26,9 @@ model mặc định của từng provider và cấu hình token budget.
   nhận thêm hai tham số keyword `question_id` và `bot_question`.
 - `callbot/engine/extraction/name_slot_filling.py`: `NameSlotFiller`, gọi gateway, kiểm tra
   tên/span và chuyển thành `Field`.
-- `inference/llm/prompt/name_slot_filling.py`: prompt `name_slot_filling_v2` và 12 cặp
-  few-shot tập trung vào ranh giới tên, tự sửa, người thân và tên chỉ có trong câu hỏi bot.
+- `inference/llm/prompt/name_slot_filling.py`: prompt `name_slot_filling_v4`, quy tắc + 18 ví dụ
+  (`input -> output`) trong một system message, tập trung vào ranh giới tên, tự sửa, người thân và
+  tên chỉ có trong câu hỏi bot.
 - `TurnContext.question_text`: nội dung câu hỏi đang chờ, chỉ có ở `ASK_NAME`.
   `build_turn_context()` lấy từ `CallContext.question.text`.
 - `inference/llm/gateway.py`: `LLMGateway` và `create_gateway()`, chọn provider và kiểm tra JSON trả về.
@@ -92,9 +93,18 @@ So với v1, cùng input rỗng và `bot_question=null`, tổng nội dung messa
 3.195 ký tự (46,6%); số message giảm từ 42 xuống 26. Đây là phép đo kích thước prompt,
 không phải mức giảm token, chi phí hay latency đo được trên API.
 
+Prompt v4 (12/10/2026) giữ nguyên quy tắc v3, chuyển 18 ví dụ vào trong system (mỗi dòng
+`input -> output`) nên request chỉ còn `[system, user]`. Lý do: prompt caching của GPT-6 cần tiền
+tố ổn định tối thiểu 1024 token tính đến cuối developer message đầu; system v3 một mình dưới
+ngưỡng nên transcript mới không trúng cache (đo 12/10: `cached_tokens` 0/1703), còn v4 cache được
+gần toàn bộ. Bốn ví dụ trùng nguyên văn `eval/identity/cases.csv` (ID038, ID049, ID062, ID063) thay
+bằng câu cùng dạng để bộ eval đo câu chưa thấy. Schema gửi model bỏ `title` tự sinh
+(`compact_json_schema`). Số liệu trước / sau: [evidence](../evidence/luna-prompt-v10-2026-10-12.md).
+
 Model mặc định là `gpt-4o-mini` với temperature 0; khi chọn `gpt-6-luna` hoặc `gpt-6-sol`,
-adapter bỏ `temperature` và dùng `reasoning_effort=none` để tương thích API và giảm độ
-trễ cuộc gọi. Giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema
+adapter dùng `reasoning_effort=none` để giảm độ trễ cuộc gọi và vẫn gửi `temperature=0`
+(API chấp nhận khi reasoning tắt, kiểm 12/10/2026); `gpt-6-astra` không tắt được reasoning
+nên bỏ `temperature`. Giới hạn output mặc định 200 token, `store=false` cho OpenAI và JSON Schema
 strict, giữ nguyên dạng output của NER:
 
 ```json
