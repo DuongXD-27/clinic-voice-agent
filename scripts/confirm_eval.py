@@ -47,7 +47,8 @@ các nhãn hỏi lại không ghi.
     ASK_CHANGE_OR_CANCEL  Bot hỏi "Dạ, anh chị muốn đổi lịch hay hủy lịch khám ạ?" — người gọi đã
                           nói không đến được / từ chối lịch.
     NOT_UNDERSTOOD        Bot nói "Dạ, em chưa hiểu ý anh chị..." — tính vào §1.1.5 (2 lần -> chuyển máy).
-    RESCHEDULE            Bot đọc các khung giờ trống (câu hỏi đang chờ OFFER_SLOTS) — bắt đầu đổi lịch.
+    RESCHEDULE            Bot bắt đầu đổi lịch (hành động chờ RESCHEDULE): đọc các khung giờ trống
+                          (OFFER_SLOTS) hoặc đọc thẳng slot duy nhất (SLOT_READBACK). Chưa ghi.
     CANCEL                Bot hỏi "chắc chắn muốn hủy lịch khám này..." (CANCEL_RECONFIRM) — bắt đầu
                           hủy, chưa ghi; cần xác nhận lần hai có động từ hủy.
     REREAD                Câu hỏi đang chờ là CONFIRM_READBACK: bot đọc lại ngày, giờ, chuyên khoa và hỏi có /
@@ -146,7 +147,9 @@ def _behaviour(action, ctx: Optional[CallContext], clinic: FakeClinicAPI) -> str
         return "ASK_CHANGE_OR_CANCEL"
     if action.utterance in t.static_choices(t.NOT_UNDERSTOOD):
         return "NOT_UNDERSTOOD"
-    if asked is QuestionId.OFFER_SLOTS:
+    if ctx.pending_action == "RESCHEDULE" or asked is QuestionId.OFFER_SLOTS:
+        # Chỉ một slot trống thì Dialogue bỏ qua OFFER_SLOTS và đọc thẳng SLOT_READBACK (như
+        # Figure 0 reschedule) — vẫn là bắt đầu đổi lịch, chưa ghi; trước đây rơi vào OTHER.
         return "RESCHEDULE"
     if asked is QuestionId.CANCEL_RECONFIRM:
         return "CANCEL"
@@ -276,6 +279,7 @@ def _run_case(
         "semantic_intent": outcome.intent.value if outcome and outcome.intent else "",
         "semantic_ms": round(semantic_ms, 1) if semantic_ms is not None else "",
         "elapsed_ms": round(elapsed_ms, 1),
+        "semantic_probabilities": semantic.last_probabilities if semantic and semantic.last else "",
     }
 
 

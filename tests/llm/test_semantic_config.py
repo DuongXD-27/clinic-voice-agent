@@ -37,9 +37,9 @@ def test_semantic_factory_uses_its_own_settings(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("NAME_FALLBACK_MODEL", "gemini-2.5-flash")
     settings = EngineSettings(
         semantic_fallback_enabled=True,
-        semantic_fallback_model="gpt-4o-mini",
+        semantic_openai_model="gpt-4o-mini",
         semantic_fallback_timeout_s=2.0,
-        semantic_fallback_max_tokens=400,
+        semantic_openai_max_tokens=400,
     )
     extractor = _semantic_extractor(settings)
     assert isinstance(extractor, LLMSemanticExtractor)

@@ -98,7 +98,17 @@ _REFUSE_COMMON = [
     "thôi khỏi",
 ]
 # Từ chối hủy / đổi: REFUSE ở câu hỏi hủy / chọn slot; ở câu hỏi đến khám xem _KEEP và _NOT_CANCEL
-_KEEP_WORDS = ["giữ lịch", "giữ nguyên", "giữ nguyên lịch", "vẫn giữ lịch"]
+_KEEP_WORDS = [
+    "giữ lịch",
+    "giữ nguyên",
+    "giữ nguyên lịch",
+    "vẫn giữ lịch",
+    # "em cứ để lịch vậy / như cũ": giữ lịch nói bằng "để" (eval confirm 10-10)
+    "để lịch vậy",
+    "để lịch như vậy",
+    "để lịch như cũ",
+    "để nguyên lịch",
+]
 _NOT_CANCEL_WORDS = ["không hủy", "không hủy nữa", "đừng hủy"]
 _REFUSE_UNACCENTED_EXCLUDE = ["đừng", "không đúng"]  # "dung" mơ hồ -> luật riêng bên dưới
 _REFUSE = compile_phrases(

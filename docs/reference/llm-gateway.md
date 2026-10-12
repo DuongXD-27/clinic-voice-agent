@@ -47,13 +47,18 @@ Factory (`callbot.engine._semantic_extractor`) dựng `OpenAIConfig` với `mode
 
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
-| `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu `OPENAI_API_KEY` → tự về chỉ-luật, không chặn khởi động |
-| `SEMANTIC_FALLBACK_MODEL` | `gpt-4o-mini` | Provider cố định OpenAI trong đợt này |
+| `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu khóa → tự về chỉ-luật, không chặn khởi động |
+| `SEMANTIC_PROVIDER` | `jev` | Provider đọc câu, gọi trước: `jev` (TypeSafe, `TYPESAFE_API_KEY`) hoặc `openai` (owner 10-10-2026) |
+| `SEMANTIC_BACKUP_PROVIDER` | `openai` | Chỉ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng), trong phần còn lại của trần 3 s; `none` = không dự phòng. Thiếu khóa provider chính → chạy riêng dự phòng |
+| `SEMANTIC_BACKUP_MIN_REMAINING_S` | `1.5` | Lượt còn ít hơn chừng này giây thì không gọi dự phòng |
+| `SEMANTIC_OPENAI_MODEL` | `gpt-6-luna` | Model OpenAI của tầng ngữ nghĩa (chính hoặc dự phòng) |
 | `SEMANTIC_FALLBACK_TIMEOUT_S` | `3.0` | Deadline tổng từ lúc gửi request tới khi nhận đủ body; HTTPX vẫn giới hạn từng pha. Parsing sau response không thuộc deadline model-call. |
-| `SEMANTIC_FALLBACK_MAX_TOKENS` | `400` | Không dùng ngầm mặc định 200 của slot filling họ tên |
+| `SEMANTIC_OPENAI_MAX_TOKENS` | `400` | Chỉ OpenAI. Không dùng ngầm mặc định 200 của slot filling họ tên |
 | `SEMANTIC_FALLBACK_MAX_INPUT_CHARS` | `1500` | Vượt giới hạn → hỏi ngắn lại, **không** âm thầm cắt (cắt có thể mất lời phủ định) |
 
-Tối đa **một** request cho mỗi lượt; không retry, không tự đổi model. Mọi lỗi provider (timeout,
+Tối đa **một** request cho mỗi provider mỗi lượt, không retry. Provider dự phòng chỉ chạy khi
+provider chính lỗi dịch vụ và lượt còn đủ thời gian; cả hai nằm trong cùng trần 3 s
+(`model_budget`, `semantic_failover.py`). Mọi lỗi provider (timeout,
 429/5xx, refusal, JSON thiếu, sai schema, response bị cắt) trả `None` → Dialogue đi nhánh hỏi lại.
 Lỗi model không bao giờ thành lỗi Clinic hay `/transfer SYSTEM_ERROR`.
 
