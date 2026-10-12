@@ -99,6 +99,6 @@ class FailoverSemanticExtractor:
                 "semantic_remaining_s": round(remaining, 3),
             },
         )
-        hand_over_model(secondary.model)
+        hand_over_model(secondary.model, secondary.provider_name)
         self.last_provider = "secondary"
         return self.secondary.analyze(context)

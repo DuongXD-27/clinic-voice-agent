@@ -6,10 +6,11 @@
  *     ▲                    │ failed                 │ disconnected
  *     └────────────────────┴────────────────────────┘
  *
- * Transcript (lời thoại worker gửi qua data channel) giữ lại sau khi ngắt để xem lại; chỉ xoá
- * khi bắt đầu cuộc gọi mới.
+ * Transcript và trích xuất (worker gửi qua data channel) giữ lại sau khi ngắt để xem lại; chỉ
+ * xoá khi bắt đầu cuộc gọi mới.
  */
 
+import type { TurnExtraction } from "../../../lib/api/demoDebug";
 import { ASR_LABELS } from "./config";
 import type { TranscriptLine } from "./transcript";
 
@@ -35,6 +36,8 @@ export interface LiveKitSession {
   audioBlocked: boolean;
   log: LogEntry[];
   transcript: TranscriptLine[];
+  /** Trích xuất của lượt người gọi gần nhất; null = chưa có (hoặc worker cũ không gửi). */
+  extraction: TurnExtraction | null;
   /** State / outcome theo câu bot gần nhất trong transcript. */
   botState: string | null;
   outcome: string | null;
@@ -58,6 +61,7 @@ export type LiveKitAction =
   | { type: "speakers"; bot: boolean; caller: boolean }
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
+  | { type: "extraction"; extraction: TurnExtraction }
   | { type: "notice"; notice: LiveKitSession["notice"] };
 
 export const initialSession: LiveKitSession = {
@@ -70,6 +74,7 @@ export const initialSession: LiveKitSession = {
   audioBlocked: false,
   log: [],
   transcript: [],
+  extraction: null,
   botState: null,
   outcome: null,
   notice: null,
@@ -232,6 +237,11 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
         ? log(withState, action.at, `Bot kết thúc cuộc gọi: ${line.outcome ?? "—"}.`, "success")
         : withState;
     }
+
+    case "extraction":
+      // Cùng điều kiện với transcript: connecting luôn bắt đầu từ initialSession.
+      if (state.phase === "idle") return state;
+      return { ...state, extraction: action.extraction };
 
     case "notice":
       return { ...state, notice: action.notice };

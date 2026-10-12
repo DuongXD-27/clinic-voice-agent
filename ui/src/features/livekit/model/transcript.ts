@@ -1,6 +1,7 @@
 import type { ChatMessage } from "../../../components/chat/Conversation";
+import { toExtractionFields, type TurnExtraction } from "../../../lib/api/demoDebug";
 
-/** Topic data channel worker gửi lời thoại (TRANSCRIPT_TOPIC trong call_bridge.py). */
+/** Topic data channel worker gửi lời thoại và trích xuất từng lượt (TRANSCRIPT_TOPIC trong call_bridge.py). */
 export const TRANSCRIPT_TOPIC = "callbot.transcript";
 /** Topic worker báo lỗi không mở được cuộc gọi (vd. lịch outbound không dùng được). */
 export const STATUS_TOPIC = "callbot.status";
@@ -41,6 +42,16 @@ export function parseTranscript(payload: Uint8Array): TranscriptLine | null {
     ended: data.ended === true,
     outcome: typeof data.outcome === "string" ? data.outcome : null,
   };
+}
+
+/**
+ * Trích xuất của một lượt (`{type: "extraction", turn, extraction}`), gửi trước câu bot của lượt đó;
+ * `extraction` null khi lượt không qua bước trích xuất. Sai dạng thì bỏ qua.
+ */
+export function parseExtraction(payload: Uint8Array): TurnExtraction | null {
+  const data = decode(payload);
+  if (data?.type !== "extraction" || typeof data.turn !== "number") return null;
+  return { turn: data.turn, fields: toExtractionFields(data.extraction) };
 }
 
 /** Thông báo lỗi trên STATUS_TOPIC (`{code, message}`); sai dạng thì bỏ qua. */

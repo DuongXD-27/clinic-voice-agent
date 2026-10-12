@@ -21,6 +21,7 @@ from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
 from callbot.tracing import Tracer, null_tracer
 from callbot.tracing.pricing import tts_cost
+from callbot.transports.extraction_view import extraction_view
 from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
@@ -47,7 +48,7 @@ _PLAYOUT_TIMEOUT_S = 20.0
 _PLAYOUT_FRAME_MS = 20
 # Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
 _SILENCE_POLL_S = 0.25
-# Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
+# Topic data channel mang lời thoại và trích xuất từng lượt cho trang web /ui/livekit (để trace).
 TRANSCRIPT_TOPIC = "callbot.transcript"
 # Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
 STATUS_TOPIC = "callbot.status"
@@ -310,15 +311,24 @@ class CallBridge:
                                 vad_end_reason=turn.vad_end_reason,
                             )
                     caller = caller_input_from_turn(self._turn_number, turn)
-                    action = await asyncio.to_thread(
-                        self._orchestrator.handle_turn, self._room.name, caller
+                    run = await asyncio.to_thread(
+                        self._orchestrator.handle_turn_with_details, self._room.name, caller
                     )
+                    action = run.action
                     logger.info(
                         "call_bridge: turn %d action state=%s ended=%s outcome=%s",
                         self._turn_number,
                         action.state,
                         action.ended,
                         action.outcome,
+                    )
+                    # Trích xuất trước câu bot: trang cập nhật bảng trích xuất cùng lúc với câu trả lời.
+                    await self._publish(
+                        {
+                            "type": "extraction",
+                            "turn": self._turn_number,
+                            "extraction": extraction_view(run.extraction),
+                        }
                     )
                     await self._publish_transcript("bot", action.utterance, action=action)
                     await self._speak(action.utterance)
@@ -368,8 +378,7 @@ class CallBridge:
         confidence: Optional[float] = None,
     ) -> None:
         """Gửi một dòng hội thoại qua data channel tới người trong phòng — chính người đang
-        gọi, nên họ chỉ thấy lại lời của mình và của bot. Không log text (PII). Gửi lỗi chỉ
-        mất dòng hiển thị, không được làm hỏng cuộc gọi."""
+        gọi, nên họ chỉ thấy lại lời của mình và của bot."""
         payload: dict[str, object] = {
             "type": "transcript",
             "role": role,
@@ -380,13 +389,19 @@ class CallBridge:
             payload["confidence"] = confidence
         if action is not None:
             payload.update(state=action.state, ended=action.ended, outcome=action.outcome)
+        await self._publish(payload)
+
+    async def _publish(self, payload: dict[str, object]) -> None:
+        """Gửi lên TRANSCRIPT_TOPIC (lời thoại, trích xuất của lượt). Không log nội dung (PII).
+        Gửi lỗi chỉ mất phần hiển thị, không được làm hỏng cuộc gọi."""
         try:
             await self._room.local_participant.publish_data(
                 json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
             )
         except Exception as exc:
             logger.warning(
-                "call_bridge: không gửi được transcript room=%s: %s",
+                "call_bridge: không gửi được %s room=%s: %s",
+                payload.get("type"),
                 self._room.name,
                 type(exc).__name__,
             )

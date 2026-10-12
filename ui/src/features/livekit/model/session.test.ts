@@ -252,6 +252,28 @@ describe("transcript", () => {
   });
 });
 
+describe("extraction", () => {
+  const extraction = { turn: 1, fields: null };
+
+  it("giữ trích xuất lượt gần nhất qua khi ngắt, xoá khi bắt đầu cuộc gọi mới", () => {
+    const first = liveKitReducer(connected, { type: "extraction", extraction });
+    const second = liveKitReducer(first, {
+      type: "extraction",
+      extraction: { turn: 2, fields: null },
+    });
+    const ended = liveKitReducer(second, { type: "disconnected", at: 3 });
+    const next = liveKitReducer(ended, { type: "connecting", step: "x" });
+
+    expect(second.extraction).toEqual({ turn: 2, fields: null });
+    expect(ended.extraction).toEqual({ turn: 2, fields: null });
+    expect(next.extraction).toBeNull();
+  });
+
+  it("bỏ qua trích xuất đến khi chưa vào room hoặc đã ngắt", () => {
+    expect(liveKitReducer(initialSession, { type: "extraction", extraction })).toBe(initialSession);
+  });
+});
+
 describe("describeConnection", () => {
   it.each([
     ["idle", initialSession, { tone: "neutral", label: "Chưa kết nối", pulse: false }],

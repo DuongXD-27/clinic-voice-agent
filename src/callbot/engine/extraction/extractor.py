@@ -347,7 +347,14 @@ class InformationExtractor:
                 result = replace(
                     result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
                 )
-            return replace(result, model_status=budget.status, confirmation_conflict=conflict)
+            return replace(
+                result,
+                model_status=budget.status,
+                model_provider=budget.provider,
+                model_name=budget.model if budget.used else None,
+                model_backup_for=budget.backup_for,
+                confirmation_conflict=conflict,
+            )
 
     def _extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0

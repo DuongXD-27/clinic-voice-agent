@@ -119,6 +119,16 @@ def test_the_turn_budget_uses_the_fallback_answer() -> None:
         result = invoke_model(extractor, lambda: extractor.analyze(CONTEXT))
     assert result is SECONDARY_OUTCOME
     assert (budget.status, budget.model) == ("OK", "openai-model")
+    # Trang demo báo đúng provider dự phòng đã trả lời và provider chính đã lỗi
+    assert (budget.provider, budget.backup_for) == ("openai", "typesafe")
+
+
+def test_the_turn_budget_names_the_primary_when_it_answers() -> None:
+    extractor, _, _ = _pair("accepted", PRIMARY_OUTCOME)
+    with model_turn() as budget:
+        invoke_model(extractor, lambda: extractor.analyze(CONTEXT))
+    assert (budget.status, budget.model) == ("OK", "typesafe-model")
+    assert (budget.provider, budget.backup_for) == ("typesafe", None)
 
 
 def test_the_turn_budget_keeps_the_failure_when_no_fallback_runs() -> None:

@@ -10,6 +10,7 @@ import { Notice } from "../../components/ui/Notice";
 import { StatusIndicator } from "../../components/ui/StatusIndicator";
 import { API_KEY_STORAGE, readSession, writeSession } from "../../lib/storage";
 import { resetClinic } from "../call/api";
+import { ExtractionPanel } from "../call/components/ExtractionPanel";
 import { useClinicFixtures } from "../call/useClinicFixtures";
 import { EventLog } from "./components/EventLog";
 import { LiveKitConfigPanel } from "./components/LiveKitConfigPanel";
@@ -33,6 +34,11 @@ export function LiveKitPage() {
   const active = isActive(session);
   const connecting = session.phase === "connecting";
   const messages = session.transcript.map(toChatMessage);
+  // Worker gửi trích xuất trước câu bot của cùng lượt: đã có câu bot lượt ≥ 1 mà chưa có trích xuất
+  // thì worker là bản cũ, không gửi.
+  const noExtractionFromBot =
+    session.extraction === null &&
+    session.transcript.some((line) => line.role === "bot" && line.turn > 0);
 
   const handleClinicReset = async () => {
     const confirmed = window.confirm(
@@ -105,6 +111,20 @@ export function LiveKitPage() {
                 lý: nếu nhiều worker cùng đăng ký một project LiveKit, cuộc gọi có thể vào worker
                 khác.
               </Notice>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Trích xuất lượt gần nhất" />
+            <CardBody>
+              <ExtractionPanel
+                extraction={session.extraction}
+                empty={
+                  noExtractionFromBot
+                    ? "Bot không gửi trích xuất: cuộc gọi có thể vào worker cũ."
+                    : "Chưa có lượt nào."
+                }
+              />
             </CardBody>
           </Card>
 

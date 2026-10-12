@@ -11,9 +11,8 @@ import {
   phoneOptions,
   type FixturesState,
 } from "../model/fixtures";
+import { CallerPhoneSelect } from "./CallerPhoneSelect";
 import styles from "./ConfigPanel.module.css";
-
-const MANUAL_PHONE = "__manual__";
 
 const DIRECTIONS = [
   { value: "outbound", label: "Outbound · bot gọi" },
@@ -54,9 +53,6 @@ export function ConfigPanel({
   useEffect(() => {
     if (apiKeyInvalid) apiKeyRef.current?.focus();
   }, [apiKeyInvalid]);
-
-  const phones = phoneOptions(fixtures);
-  const manualPhone = !phones.some((option) => option.value === config.callerNumber);
 
   return (
     <FieldGrid>
@@ -139,34 +135,15 @@ export function ConfigPanel({
         </Field>
       ) : (
         <Field label="Số người gọi" htmlFor="caller-select" wide>
-          <Select
+          <CallerPhoneSelect
             id="caller-select"
-            value={manualPhone ? MANUAL_PHONE : config.callerNumber}
+            value={config.callerNumber}
+            phones={phoneOptions(fixtures)}
             disabled={locked}
-            onChange={(event) => {
-              const value = event.target.value;
-              onChange({ callerNumber: value === MANUAL_PHONE ? "" : value });
+            onChange={(callerNumber) => {
+              onChange({ callerNumber });
             }}
-          >
-            {phones.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-            <option value={MANUAL_PHONE}>Nhập số khác…</option>
-          </Select>
-          {manualPhone && (
-            <Input
-              aria-label="Số điện thoại người gọi"
-              inputMode="tel"
-              placeholder="Ví dụ 0912345600"
-              value={config.callerNumber}
-              disabled={locked}
-              onChange={(event) => {
-                onChange({ callerNumber: event.target.value });
-              }}
-            />
-          )}
+          />
         </Field>
       )}
 

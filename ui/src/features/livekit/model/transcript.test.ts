@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTranscript, toChatMessage, type TranscriptLine } from "./transcript";
+import { parseExtraction, parseTranscript, toChatMessage, type TranscriptLine } from "./transcript";
 
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -87,5 +87,50 @@ describe("toChatMessage", () => {
       text: "(không nghe rõ)",
       meta: "NGƯỜI GỌI · lượt 1",
     });
+  });
+});
+
+describe("parseExtraction", () => {
+  it("đọc trích xuất của lượt (payload giống call_bridge.py)", () => {
+    const extraction = parseExtraction(
+      encode({
+        type: "extraction",
+        turn: 2,
+        extraction: {
+          transcript: "thôi hủy giúp tôi",
+          silent: false,
+          fields: [
+            { field: "intent", value: "CANCEL", span: "hủy giúp tôi", provenance: "FALLBACK" },
+          ],
+          model: { provider: "typesafe", name: "jev-1.13.0", status: "OK", backup_for: null },
+        },
+      }),
+    );
+
+    expect(extraction).toEqual({
+      turn: 2,
+      fields: {
+        transcript: "thôi hủy giúp tôi",
+        silent: false,
+        fields: [
+          { field: "intent", value: "CANCEL", span: "hủy giúp tôi", provenance: "FALLBACK" },
+        ],
+        model: { provider: "typesafe", name: "jev-1.13.0", status: "OK", backupFor: null },
+      },
+    });
+  });
+
+  it("lượt không qua bước trích xuất: fields null", () => {
+    expect(parseExtraction(encode({ type: "extraction", turn: 3, extraction: null }))).toEqual({
+      turn: 3,
+      fields: null,
+    });
+  });
+
+  it.each([
+    ["dòng transcript", { type: "transcript", role: "bot", turn: 1, text: "x" }],
+    ["thiếu lượt", { type: "extraction", extraction: null }],
+  ])("bỏ qua %s", (_name, payload) => {
+    expect(parseExtraction(encode(payload))).toBeNull();
   });
 });

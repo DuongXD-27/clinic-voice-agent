@@ -3,7 +3,13 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Field, FieldGrid, Input, Select } from "../../../components/ui/Form";
 import { Segmented } from "../../../components/ui/Segmented";
-import { appointmentOptions, fixturesHint, type FixturesState } from "../../call/model/fixtures";
+import { CallerPhoneSelect } from "../../call/components/CallerPhoneSelect";
+import {
+  appointmentOptions,
+  fixturesHint,
+  phoneOptions,
+  type FixturesState,
+} from "../../call/model/fixtures";
 import type { AsrChoice, Direction, LiveKitConfig } from "../model/config";
 import styles from "./LiveKitConfigPanel.module.css";
 
@@ -94,15 +100,15 @@ export function LiveKitConfigPanel({
           label="Số người gọi"
           htmlFor="livekit-caller"
           wide
-          hint="Để trống: bot không tra được hồ sơ và chuyển máy ngay lượt đầu (đúng chính sách)."
+          hint="Nhập số khác rồi để trống: bot không tra được hồ sơ và chuyển máy ngay lượt đầu (đúng chính sách)."
         >
-          <Input
+          <CallerPhoneSelect
             id="livekit-caller"
-            inputMode="tel"
             value={config.callerNumber}
+            phones={phoneOptions(fixtures)}
             disabled={locked}
-            onChange={(event) => {
-              onChange({ callerNumber: event.target.value });
+            onChange={(callerNumber) => {
+              onChange({ callerNumber });
             }}
           />
         </Field>

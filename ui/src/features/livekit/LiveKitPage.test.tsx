@@ -211,6 +211,90 @@ describe("LiveKitPage", () => {
     expect(chat.getByText("Tôi là Nguyễn Văn A")).toBeInTheDocument();
   });
 
+  it("hiện trích xuất của lượt như trang HTTP, kèm model đã đọc câu", async () => {
+    tokenEndpoint();
+    render(<LiveKitPage />);
+    await connect();
+    const send = (payload: object) => {
+      emit(
+        "dataReceived",
+        new TextEncoder().encode(JSON.stringify(payload)),
+        undefined,
+        undefined,
+        "callbot.transcript",
+      );
+    };
+    const panel = () => {
+      const card = screen.getByText("Trích xuất lượt gần nhất").closest("section");
+      if (!card) throw new Error("Không thấy card trích xuất");
+      return within(card);
+    };
+
+    expect(panel().getByText("Chưa có lượt nào.")).toBeInTheDocument();
+
+    send({
+      type: "extraction",
+      turn: 1,
+      extraction: {
+        transcript: "thôi hủy giúp tôi",
+        silent: false,
+        fields: [
+          { field: "intent", value: "CANCEL", span: "hủy giúp tôi", provenance: "FALLBACK" },
+        ],
+        model: { provider: "typesafe", name: "jev-1.13.0", status: "OK", backup_for: null },
+      },
+    });
+
+    expect(panel().getByText("hủy giúp tôi", { selector: "mark" })).toBeInTheDocument();
+    expect(panel().getByText("Ý định")).toBeInTheDocument();
+    expect(panel().getByText("Jev")).toBeInTheDocument();
+    expect(panel().getByText("jev-1.13.0")).toBeInTheDocument();
+    expect(panel().getByText("OK")).toBeInTheDocument();
+    expect(panel().queryByText(/dự phòng/)).not.toBeInTheDocument();
+
+    // Jev lỗi dịch vụ, OpenAI dự phòng trả lời: phải báo rõ.
+    send({
+      type: "extraction",
+      turn: 2,
+      extraction: {
+        transcript: "vâng",
+        silent: false,
+        fields: [],
+        model: { provider: "openai", name: "gpt-6-luna", status: "OK", backup_for: "typesafe" },
+      },
+    });
+    expect(panel().getByText("OpenAI")).toBeInTheDocument();
+    expect(panel().getByText("dự phòng — Jev lỗi")).toBeInTheDocument();
+
+    // Lượt chỉ dùng luật.
+    send({
+      type: "extraction",
+      turn: 3,
+      extraction: { transcript: "vâng", silent: false, fields: [], model: null },
+    });
+    expect(panel().getByText("Model đọc câu: không gọi — chỉ dùng luật.")).toBeInTheDocument();
+  });
+
+  it("worker cũ không gửi trích xuất: báo thay vì để trống mãi", async () => {
+    tokenEndpoint();
+    render(<LiveKitPage />);
+    await connect();
+
+    emit(
+      "dataReceived",
+      new TextEncoder().encode(
+        JSON.stringify({ type: "transcript", role: "bot", turn: 1, text: "Dạ", state: "X" }),
+      ),
+      undefined,
+      undefined,
+      "callbot.transcript",
+    );
+
+    expect(
+      screen.getByText("Bot không gửi trích xuất: cuộc gọi có thể vào worker cũ."),
+    ).toBeInTheDocument();
+  });
+
   it("tắt rồi bật lại microphone", async () => {
     tokenEndpoint();
     render(<LiveKitPage />);
@@ -320,6 +404,36 @@ describe("LiveKitPage", () => {
 
     expect(bodies).toEqual([{ direction: "outbound", appointment_id: "apt_00418" }]);
     expect(select).toBeDisabled();
+  });
+
+  it("inbound chọn số người gọi từ clinic như trang gọi HTTP, hoặc nhập số khác", async () => {
+    const bodies = tokenEndpoint();
+    server.use(
+      http.get("/demo-api/clinic-fixtures", () =>
+        HttpResponse.json({
+          ...FIXTURES,
+          phones: [...FIXTURES.phones, { phone: "0987654321", display_name: "T. T. B." }],
+        }),
+      ),
+    );
+    render(<LiveKitPage />);
+
+    const select = screen.getByLabelText("Số người gọi");
+    await screen.findByRole("option", { name: "0987654321 · T. T. B." });
+    expect(select).toHaveValue("0912345600");
+    expect(screen.queryByLabelText("Số điện thoại người gọi")).not.toBeInTheDocument();
+
+    await userEvent.selectOptions(select, "0987654321");
+    await connect();
+    expect(bodies).toEqual([{ direction: "inbound", caller_number: "0987654321" }]);
+    expect(select).toBeDisabled();
+
+    // Số không có trong clinic: gõ tay; để trống là kịch bản chuyển máy ngay lượt đầu.
+    await userEvent.click(screen.getByRole("button", { name: "Kết thúc" }));
+    await userEvent.selectOptions(select, "Nhập số khác…");
+    expect(screen.getByLabelText("Số điện thoại người gọi")).toHaveValue("");
+    await connect();
+    expect(bodies.at(-1)).toEqual({ direction: "inbound", caller_number: null });
   });
 
   it("reset clinic theo lịch đang chọn rồi tải lại danh sách; khoá khi đang gọi", async () => {
