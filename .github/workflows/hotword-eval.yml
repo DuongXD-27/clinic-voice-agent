@@ -13,6 +13,7 @@ on:
     paths:
       - "scripts/hotword_eval.py"
       - "scripts/hotword_trace.py"
+      - "scripts/name_turn_latency.py"
       - "src/inference/asr/providers/zipformer.py"
       - "src/speech/asr/hotwords.py"
       - "src/inference/asr/providers/transducer_nbest.py"
@@ -61,6 +62,9 @@ jobs:
 
       - name: Trace name cases
         run: python scripts/hotword_trace.py | tee -a hotword-results/trace.md
+
+      - name: Name turn latency
+        run: python scripts/name_turn_latency.py | tee -a hotword-results/latency.md
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

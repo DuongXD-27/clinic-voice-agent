@@ -17,6 +17,7 @@ import asyncio
 import logging
 import math
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, AsyncIterator, NamedTuple, Optional
 
 import numpy as np
@@ -49,7 +50,12 @@ class ZipFormerASR:
     def __init__(self, config: ZipFormerConfig, *, recognizer: Any = None) -> None:
         self._config = config
         self._recognizer = recognizer
+        # Greedy cho partial và câu không hotword (nhanh hơn beam, cùng độ đúng: đo 12/10 golden
+        # 19/40 cả hai); recognizer tiêm từ ngoài (test) dùng cho cả hai.
+        self._greedy_recognizer = recognizer
         self._nbest: Optional[TransducerNBest] = None
+        # Lượt tên decode bản có và không hotword song song (hai stream độc lập trên cùng model).
+        self._pool: Optional[ThreadPoolExecutor] = None
 
     @property
     def model(self) -> str:
@@ -91,35 +97,43 @@ class ZipFormerASR:
         """Bật hotword theo lượt (`stream(hotwords=...)`) — cần beam search, xem config/asr.yaml."""
         return self._config.hotwords_enabled
 
-    def _get_recognizer(self):
+    def _get_recognizer(self, *, beam: bool = True):
+        """`beam`: recognizer beam search (hotword) khi bật hotword; False: greedy."""
+        if not beam and self._config.hotwords_enabled:
+            if self._greedy_recognizer is None:
+                self._greedy_recognizer = self._build_recognizer(beam=False)
+            return self._greedy_recognizer
         if self._recognizer is None:
-            import sherpa_onnx  # pip install -e ".[speech-zipformer]"
-
-            options: dict[str, Any] = {"decoding_method": "greedy_search"}
-            if self._config.hotwords_enabled:
-                # Hotword chỉ chạy với beam search; `bpe.vocab` để mã hóa cụm từ thành token.
-                options = {
-                    "decoding_method": "modified_beam_search",
-                    "max_active_paths": self._config.max_active_paths,
-                    "modeling_unit": "bpe",
-                    "bpe_vocab": self._config.bpe_vocab_path,
-                    "hotwords_score": self._config.hotwords_score,
-                }
-            self._recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                tokens=self._config.tokens_path,
-                encoder=self._config.encoder_path,
-                decoder=self._config.decoder_path,
-                joiner=self._config.joiner_path,
-                num_threads=self._config.num_threads,
-                sample_rate=self.input_sample_rate,
-                feature_dim=80,
-                provider="cpu",
-                **options,
-            )
+            self._recognizer = self._build_recognizer(beam=self._config.hotwords_enabled)
         return self._recognizer
 
+    def _build_recognizer(self, *, beam: bool):
+        import sherpa_onnx  # pip install -e ".[speech-zipformer]"
+
+        options: dict[str, Any] = {"decoding_method": "greedy_search"}
+        if beam:
+            # Hotword chỉ chạy với beam search; `bpe.vocab` để mã hóa cụm từ thành token.
+            options = {
+                "decoding_method": "modified_beam_search",
+                "max_active_paths": self._config.max_active_paths,
+                "modeling_unit": "bpe",
+                "bpe_vocab": self._config.bpe_vocab_path,
+                "hotwords_score": self._config.hotwords_score,
+            }
+        return sherpa_onnx.OfflineRecognizer.from_transducer(
+            tokens=self._config.tokens_path,
+            encoder=self._config.encoder_path,
+            decoder=self._config.decoder_path,
+            joiner=self._config.joiner_path,
+            num_threads=self._config.num_threads,
+            sample_rate=self.input_sample_rate,
+            feature_dim=80,
+            provider="cpu",
+            **options,
+        )
+
     def transcribe(self, pcm: bytes) -> ASRResult:
-        decoded = self._decode_scored(pcm)
+        decoded = self._decode_scored(pcm, beam=False)
         return ASRResult(text=decoded.text, confidence=decoded.confidence)
 
     async def stream(
@@ -245,10 +259,15 @@ class ZipFormerASR:
             return self._decode_stream_scored(pcm, source_rate)
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
-        biased = self._decode_scored(pcm, hotwords="/".join(hints.phrases))
+        phrases = "/".join(hints.phrases)
         if not hints.guard_one_word:
-            return biased
-        plain = self._decode_scored(pcm)
+            return self._decode_scored(pcm, hotwords=phrases)
+        if self._pool is None:
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zipformer-plain")
+        # Bản không hotword (cùng beam) chạy song song bản có hotword thay vì nối tiếp.
+        plain_future = self._pool.submit(self._decode_scored, pcm)
+        biased = self._decode_scored(pcm, hotwords=phrases)
+        plain = plain_future.result()
         if plain.text == biased.text:
             # Hotword không đổi chữ: dùng hẳn bản thô (confidence thật; sherpa trộn điểm cộng
             # hotword vào log-prob của bản có hotword).
@@ -277,16 +296,17 @@ class ZipFormerASR:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
-        return self._decode_scored(pcm)
+        return self._decode_scored(pcm, beam=False)
 
-    def _decode_scored(self, pcm: bytes, hotwords: str = "") -> _Decoded:
-        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""
+    def _decode_scored(self, pcm: bytes, hotwords: str = "", *, beam: bool = True) -> _Decoded:
+        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại. `beam=False`:
+        greedy (partial, câu không hotword); có `hotwords` thì luôn beam."""
         import numpy as np
 
         if not pcm:
             return _Decoded("")
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        recognizer = self._get_recognizer()
+        recognizer = self._get_recognizer(beam=beam or bool(hotwords))
         stream = recognizer.create_stream(hotwords) if hotwords else recognizer.create_stream()
         stream.accept_waveform(self.input_sample_rate, samples)
         recognizer.decode_stream(stream)

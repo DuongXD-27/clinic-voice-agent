@@ -229,6 +229,29 @@ def test_recognizer_uses_beam_search_when_enabled(monkeypatch) -> None:
     assert "bpe_vocab" not in created
 
 
+def test_partials_and_unhinted_turns_use_greedy_when_hotwords_enabled(monkeypatch) -> None:
+    """Beam search chỉ cho câu có hotword (và bản đối chứng của nó); còn lại greedy cho nhanh."""
+    built: list[str] = []
+
+    class _OfflineRecognizer:
+        @staticmethod
+        def from_transducer(**kwargs):
+            built.append(kwargs["decoding_method"])
+            return _Recognizer("XIN CHÀO", "XIN CHÀO")
+
+    monkeypatch.setitem(
+        sys.modules, "sherpa_onnx", types.SimpleNamespace(OfflineRecognizer=_OfflineRecognizer)
+    )
+    asr = ZipFormerASR(_config())
+
+    asr._decode_stream_scored(b"\x00\x10" * 1600, 16_000)
+    assert built == ["greedy_search"]
+    asr._decode_stream_hinted(b"\x00\x10" * 1600, 16_000, Hotwords(("XIN CHÀO",), True))
+    assert built == ["greedy_search", "modified_beam_search"]
+    asr._decode_stream_scored(b"\x00\x10" * 1600, 16_000)
+    assert len(built) == 2
+
+
 @pytest.mark.parametrize(
     ("a", "b", "distance"),
     [
