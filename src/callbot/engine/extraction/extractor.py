@@ -331,6 +331,9 @@ class InformationExtractor:
                     model=budget.model,
                     latency_ms=budget.latency_ms,
                     model_result=budget.status,
+                    # Provider chính và provider đã trả lời: khác nhau khi dự phòng trả lời thay
+                    provider_requested=budget.backup_for or budget.provider,
+                    provider_actual=budget.provider,
                 )
             if budget.status in {"TIMEOUT", "ERROR", "INVALID"}:
                 result = replace(
@@ -347,7 +350,14 @@ class InformationExtractor:
                 result = replace(
                     result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
                 )
-            return replace(result, model_status=budget.status, confirmation_conflict=conflict)
+            return replace(
+                result,
+                model_status=budget.status,
+                model_provider=budget.provider,
+                model_name=budget.model if budget.used else None,
+                model_backup_for=budget.backup_for,
+                confirmation_conflict=conflict,
+            )
 
     def _extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0

@@ -56,6 +56,9 @@ class LiveKitSettings(YamlSettings):
     # phải khuyến nghị bật cho production. Cần cài `livekit-plugins-krisp` (không có sẵn trong
     # pyproject.toml — xem cảnh báo về nâng cấp livekit-agents/openai ngoài ý muốn trong evidence).
     krisp_noise_suppression_enabled: bool = False
+    # Gửi trích xuất từng lượt (có PII) kèm câu bot cho trang /ui/livekit. Chỉ cho demo: cuộc gọi
+    # thật (SIP, production) phải tắt. Cùng vai trò header `X-Demo-Debug: 1` của HTTP.
+    demo_debug: bool = False
 
     @field_validator("agent_name", mode="before")
     @classmethod

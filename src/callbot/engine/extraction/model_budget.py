@@ -19,7 +19,12 @@ class ModelBudget:
         self.used = False
         self.status: str | None = None
         self.model = "test-double"
+        # Provider của model trả lời lượt; `backup_for` = provider chính đã lỗi khi dự phòng trả lời
+        self.provider: str | None = None
+        self.backup_for: str | None = None
         self.latency_ms = 0.0
+        # Lượt đã chốt kết quả (trả lời / hết giờ): worker chạy muộn không được sửa trạng thái nữa
+        self.closed = False
 
     def run(self, adapter: Any, operation: Callable[[], Any]) -> Any:
         if self.used:
@@ -27,6 +32,7 @@ class ModelBudget:
         self.used = True
         gateway = getattr(adapter, "_gateway", None)
         self.model = getattr(gateway, "model", "test-double")
+        self.provider = getattr(gateway, "provider_name", None)
         config = getattr(getattr(gateway, "_provider", None), "_config", None)
         timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
         started = monotonic()
@@ -55,6 +61,7 @@ class ModelBudget:
             self.status = "TIMEOUT"
             return None
         finally:
+            self.closed = True
             self.latency_ms = (monotonic() - started) * 1000
 
 
@@ -78,13 +85,18 @@ def model_used() -> bool:
     return budget is not None and budget.used
 
 
-def hand_over_model(model: str) -> None:
+def hand_over_model(model: str, provider: str) -> None:
     """Provider chính lỗi, provider dự phòng chạy tiếp trong CÙNG ngân sách lượt: bỏ trạng thái lỗi
     đã báo (TIMEOUT / ERROR không bị ghi đè) để kết quả của provider dự phòng được dùng, và ghi đúng
-    tên model trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm."""
+    tên model / provider trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm.
+
+    Chạy trong thread của model: lượt đã hết giờ (`closed`) thì không đụng tới — không xoá TIMEOUT
+    và không ghi provider dự phòng chưa kịp trả lời."""
     budget = _current.get()
-    if budget is not None:
+    if budget is not None and not budget.closed:
         budget.status = None
+        budget.backup_for = budget.provider
+        budget.provider = provider
         budget.model = model
 
 

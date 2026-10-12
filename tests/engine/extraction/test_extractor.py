@@ -378,6 +378,12 @@ def test_trace_is_json_ready() -> None:
         "span": "mười bốn tháng ba năm bảy tám",
     }
     assert trace["question_id"] == "ASK_DOB"
+    # Chỉ luật đọc lượt này: không có model nào để trang demo báo
+    assert (trace["model_provider"], trace["model_name"], trace["model_backup_for"]) == (
+        None,
+        None,
+        None,
+    )
 
 
 @pytest.mark.parametrize(

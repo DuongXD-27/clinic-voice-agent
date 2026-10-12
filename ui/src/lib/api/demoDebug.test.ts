@@ -33,6 +33,7 @@ describe("readDemoDebug", () => {
         fields: [
           { field: "full_name", value: "Nguyễn Văn A", span: "Nguyễn Văn A", provenance: "EXACT" },
         ],
+        model: null,
       },
       transferReason: "IDENTITY_FAILED",
       errorType: "CLINIC",
@@ -82,5 +83,30 @@ describe("parseFields", () => {
     expect(parsed?.fields).toEqual([
       { field: "agreement", value: "AGREE", span: null, provenance: "EXACT" },
     ]);
+  });
+
+  it("đọc model đã đọc lượt, kể cả provider dự phòng", () => {
+    const parsed = parseFields(
+      encodeFields({
+        transcript: "thôi hủy giúp tôi",
+        silent: false,
+        fields: [],
+        model: { provider: "openai", name: "gpt-6-luna", status: "OK", backup_for: "typesafe" },
+      }),
+    );
+
+    expect(parsed?.model).toEqual({
+      provider: "openai",
+      name: "gpt-6-luna",
+      status: "OK",
+      backupFor: "typesafe",
+    });
+  });
+
+  it.each([
+    ["không có model (chỉ luật)", null],
+    ["thiếu tên model", { provider: "typesafe", status: "OK" }],
+  ])("model null khi %s", (_name, model) => {
+    expect(parseFields(encodeFields({ transcript: "x", fields: [], model }))?.model).toBeNull();
   });
 });
