@@ -129,7 +129,7 @@ def test_name_retry_is_open_persisted_and_limited(second, reason):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(CallStart("retry", "outbound", appointment_id="apt_00417"))
-    first = bot.handle_turn("retry", CallerInput(1, text="Nguyển Văn A"))
+    first = bot.handle_turn("retry", CallerInput(1, text="hình như Nguyễn Văn A"))
     assert first.state == "AWAITING_IDENTITY"
     assert "nguy" not in first.utterance.lower()
     stored = _context(bot, "retry")
@@ -137,7 +137,7 @@ def test_name_retry_is_open_persisted_and_limited(second, reason):
     assert stored.failed_understandings == 1
     second_action = bot.handle_turn("retry", CallerInput(2, text=second))
     if reason == "IDENTITY_FAILED":
-        # Tên vẫn lệch / sai: hết lượt hỏi lại nên giữ tên, hỏi ngày sinh rồi mới đối chiếu (§1.1.2)
+        # Tên nghe rõ (lệch dấu hay sai hẳn): hỏi ngày sinh rồi mới đối chiếu (§1.1.2)
         assert not second_action.ended and second_action.state == "AWAITING_IDENTITY"
         second_action = bot.handle_turn("retry", CallerInput(3, text="14/03/1978"))
         assert second_action.utterance == t.IDENTITY_FAILED_TRANSFER
@@ -159,14 +159,29 @@ def test_dob_before_name_counts_as_understood_and_keeps_the_name_retry():
     assert verified.state == "AWAITING_INTENT"
 
 
-def test_retry_with_exact_name_and_dob_authenticates_without_disclosing_beforehand():
+def test_tone_mismatch_is_not_compared_before_dob_and_never_authenticates(monkeypatch):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
-    bot.start_call(CallStart("recover", "outbound", appointment_id="apt_00417"))
-    bot.handle_turn("recover", CallerInput(1, text="Nguyển Văn A"))
-    action = bot.handle_turn("recover", CallerInput(2, text="Nguyễn Văn A, sinh 14/3/1978"))
-    assert action.state == "AWAITING_INTENT" and "Nội tổng quát" in action.utterance
-    assert clinic.writes == []
+    bot.start_call(CallStart("tone", "outbound", appointment_id="apt_00417"))
+    results: list = []
+    apply = bot._apply
+
+    def spy(ctx: CallContext, action: BotAction) -> None:
+        results.append(ctx.identity_result)
+        apply(ctx, action)
+
+    monkeypatch.setattr(bot, "_apply", spy)
+    # Lệch dấu thanh không được hỏi lại ngay: hỏi lại sẽ cho biết tên gần đúng (§1.1.2)
+    asked = bot.handle_turn("tone", CallerInput(1, text="Nguyển Văn A"))
+    assert not asked.ended and "nguy" not in asked.utterance.lower()
+    assert asked.utterance in t.static_choices(t.ASK_DOB)
+    assert _context(bot, "tone").identity_retries == {}
+    # R-22: ngày sinh đúng cũng không xác thực tên lệch dấu
+    action = bot.handle_turn("tone", CallerInput(2, text="14/3/1978"))
+    assert action.transfer_reason == "IDENTITY_FAILED"
+    assert action.utterance == t.IDENTITY_FAILED_TRANSFER
+    assert results == [None, "NAME_SUSPICIOUS"]
+    assert all(write[1] == "TRANSFERRED" for write in clinic.writes)
 
 
 def test_wrong_name_waits_for_dob_before_transferring_with_a_reason(monkeypatch):

@@ -85,7 +85,6 @@ from callbot.engine.verification.identity import (
     MatchDetail,
     VerificationStatus,
 )
-from callbot.engine.verification.names import NameMatch
 
 logger = logging.getLogger(__name__)
 
@@ -288,23 +287,17 @@ class DialogueManager:
     def _identity(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
         """R-40: only PRESENT values reach the verifier; each identifier gets one open retry.
 
-        Tên và ngày sinh chỉ được đối chiếu khi đã có đủ cả hai (`_verify`): chuyển máy ngay khi
-        nghe tên sai, hoặc hỏi sang ngày sinh sau khi tên đúng, đều cho người gọi biết yếu tố nào
-        sai (§1.1.2). Riêng tên lệch dấu thanh được hỏi lại một lần như chưa nghe rõ.
+        Tên và ngày sinh chỉ được đối chiếu khi đã có đủ cả hai (`_verify`), kể cả tên lệch dấu
+        thanh: chuyển máy hay hỏi lại ngay khi nghe tên, hoặc hỏi sang ngày sinh sau khi tên đúng,
+        đều cho người gọi biết yếu tố nào sai hay gần đúng (§1.1.2).
         """
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
         self._keep_early_request(ctx, ex)
-        name_suspicious = False
         progressed = False
         if ctx.claimed_name is None and name.status is IdentityStatus.PRESENT:
-            suspicious = self._verifier.compare_name(ctx, name.value) is NameMatch.SUSPICIOUS
-            if suspicious and not ctx.identity_retries.get(QuestionId.ASK_NAME.value):
-                name_suspicious = True
-            else:
-                # Hết lượt hỏi lại thì giữ tên lệch dấu, `_verify` sẽ đánh giá không khớp
-                ctx.claimed_name = name.value
-                progressed = True
+            ctx.claimed_name = name.value
+            progressed = True
         if ctx.claimed_dob is None and dob.status is IdentityStatus.PRESENT:
             ctx.claimed_dob = dob.value
             progressed = True
@@ -312,8 +305,6 @@ class DialogueManager:
             return self._verify(ctx, now)
         question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
         ctx.identity_step = question.value
-        if name_suspicious:
-            return self._retry_identity(ctx, QuestionId.ASK_NAME)
         if progressed:
             # Q-1: filling a missing identifier counts as understood, even when it was not the one
             # asked ("sinh ngày 14/3/1978" while asking the name). Only an unclear attempt at the

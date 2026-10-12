@@ -178,18 +178,6 @@ class IdentityVerifier:
     def __init__(self, gateway: ClinicGateway) -> None:
         self._gateway = gateway
 
-    def compare_name(self, ctx: CallContext, value: str) -> NameMatch:
-        candidates = [
-            match_name(value, ref["full_name"])
-            for ref in ctx.identity_reference
-            if ref.get("verifiable") and ref.get("full_name")
-        ]
-        if NameMatch.MATCH in candidates:
-            return NameMatch.MATCH
-        if NameMatch.SUSPICIOUS in candidates:
-            return NameMatch.SUSPICIOUS
-        return NameMatch.MISMATCH
-
     # --- Pha 1: lượt 0 ---------------------------------------------------------------------
 
     def prepare(self, ctx: CallContext) -> PrepareResult:
