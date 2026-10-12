@@ -17,6 +17,7 @@ _TEST_CONFIG = {
     "output_queue_ms": 200,
     "silence_timeout_ms": 0,
     "krisp_noise_suppression_enabled": False,
+    "demo_debug": True,
 }
 
 
