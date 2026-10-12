@@ -289,6 +289,19 @@ nền nên ít dính. Commit fefe572 của nhánh `fix/stt-noise-turn-loss` ("dr
 that follows an accepted sentence") sửa đúng lỗi này: chạy lại trial đó với TurnController của
 fefe572 thì lượt được chốt đủ 30 chữ, chỉ bỏ "HẠ ĐẸP".
 
+Đo lại riêng căng tin trên một lần rút mẫu mới (seed khác, 110 câu + 24 đoạn chỉ nhiễu, pre-roll
+1000 ms), có và không có TurnController của fefe572:
+
+| TurnController | WER lượt v4 → v6 | ΔWER [KTC 95%] | câu tốt hơn / tệ hơn | không thành lượt | lượt giả /24 |
+|---|---|---|---|---|---|
+| hiện tại | 0,202 → 0,212 | +0,010 [−0,003; +0,025] | 15 / 21 | 2 → 3 | 11 → 9 |
+| fefe572 (sau khi gộp hai nhánh) | 0,201 → 0,211 | +0,010 [−0,003; +0,025] | 15 / 21 | 2 → 3 | 11 → 9 |
+
+Trên lần rút mẫu này bản sửa chỉ đổi 1 trial mỗi bên. Kết luận cho căng tin (nhiều người nói, qua khử
+nhiễu trình duyệt): đây là điều kiện duy nhất trên web mà v6 không hơn v4 — qua 3 lần rút mẫu v6 đều
+hơi kém (+0,014, +0,046, +0,010), lần nào KTC 95% cũng chạm 0; lỗi gộp lượt ở trên chỉ giải thích một
+phần lần +0,046. Lượt giả trên đoạn chỉ có tiếng căng tin không tăng (7 → 7, 8 → 7, 11 → 9).
+
 ## Quyết định
 
 - **Option tốt nhất: Silero v6.2.3 chạy qua onnxruntime** (`silero_vad_version: v6`). Hơn v4 ở mọi
