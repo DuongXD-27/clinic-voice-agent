@@ -122,6 +122,10 @@ class CallContext:
     # Ngày người gọi xin (ISO), mốc tìm khung của yêu cầu — kể cả khi ngày đó kín / không đúng giờ xin
     slot_day: Optional[str] = None
     offered_slot_ids: list[str] = field(default_factory=list)
+    # Các khung câu chọn mơ hồ vừa khớp ("3 giờ chiều" khớp 14/10 và 21/10): trang mơ hồ là yêu cầu hiện
+    # hành — "khung khác" đọc tiếp trong tập này, "Còn N khung khác" đếm trong tập này (review 12-10 B3/B4).
+    # Không dùng `slot_request`: tiêu chí của yêu cầu mới quy thứ trần về tuần này, câu chọn thì không.
+    slot_candidate_ids: list[str] = field(default_factory=list)
     # Khung người gọi đã từ chối: bỏ qua suốt việc đổi / đặt đang chờ, qua mọi yêu cầu (V-9)
     refused_slot_ids: list[str] = field(default_factory=list)
     # Số ngày / khoảng thời gian người gọi đã nêu cho việc đổi / đặt đang chờ (R-29, T-10 §3.2)
@@ -211,6 +215,7 @@ class CallContext:
         self.slot_request = request
         self.slot_day = day
         self.offered_slot_ids = []
+        self.slot_candidate_ids = []
 
     def _clear_slot_search(self) -> None:
         self.reset_slot_request(None)
@@ -265,6 +270,7 @@ class CallContext:
             "slot_request": self.slot_request,
             "slot_day": self.slot_day,
             "offered_slot_ids": list(self.offered_slot_ids),
+            "slot_candidate_ids": list(self.slot_candidate_ids),
             "refused_slot_ids": list(self.refused_slot_ids),
             "slot_round": self.slot_round,
             "failed_understandings": self.failed_understandings,
@@ -319,6 +325,7 @@ class CallContext:
             slot_request=data.get("slot_request"),
             slot_day=data.get("slot_day"),
             offered_slot_ids=list(data.get("offered_slot_ids", [])),
+            slot_candidate_ids=list(data.get("slot_candidate_ids", [])),
             refused_slot_ids=list(data.get("refused_slot_ids", [])),
             slot_round=int(data.get("slot_round", 0)),
             failed_understandings=data["failed_understandings"],

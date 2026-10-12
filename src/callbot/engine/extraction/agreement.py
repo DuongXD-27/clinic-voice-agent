@@ -892,6 +892,20 @@ def without_fallback_lead(transcript: str) -> str:
     return drop_leading_words(transcript, len(lead.group(0).split()))
 
 
+# "không, 5 giờ chiều", "chưa, thứ Sáu đi": mở câu bằng lời từ chối rồi nêu giờ khác — không nhận các khung
+# vừa đọc. Không tính vế điều kiện "không có 5 giờ thì ..." (`without_fallback_lead`), lời tự sửa "không
+# phải ...", "không biết", "không sao", "không có / còn ... à" (hỏi lại)
+_LEADING_REFUSAL = re.compile(
+    r"^(?:(?:dạ|ừ|ờ|vâng)\s+)?(?:không|khong|chưa|chua)(?!\w)"
+    r"(?!\s+(?:phải|phai|biết|biet|sao|có|co|còn|con)(?!\w))"
+)
+
+
+def leads_with_refusal(transcript: str) -> bool:
+    """Câu chọn khung mở bằng lời từ chối (review 12-10 B10). IE không đọc có / không khi câu đã có giờ."""
+    return _LEADING_REFUSAL.match(clean(without_fallback_lead(transcript))) is not None
+
+
 def slot_answer(transcript: str) -> str:
     """Phần câu trả lời lời mời / câu chốt khung mà IE và Dialogue cùng đọc tiêu chí thời gian.
 
@@ -1163,6 +1177,27 @@ def _reopened(after: str, unaccented: bool, filler: frozenset[str]) -> Optional[
 def gives_up_slot_change(transcript: str) -> bool:
     """ "thôi không đổi nữa", "giữ lịch cũ": bỏ việc đổi / đặt; "không" trần thì không (T-10 Q-4)."""
     return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
+
+
+# Đổi ý định giữa luồng chọn khung ("tôi đổi ý"): khách bỏ việc đang làm nhưng chưa nói muốn gì thay.
+_CHANGE_OF_MIND = compile_phrases(["đổi ý", "đổi ý định", "thay đổi ý định"])
+
+
+def changes_mind(transcript: str) -> bool:
+    """ "tôi đổi ý", "thôi tôi đổi ý rồi": đổi ý định, không phải yêu cầu đổi lịch (owner 12-10, B15).
+
+    Chỉ là có cụm; câu còn nêu khung / giờ / ý định khác thì Dialogue đi theo phần đó.
+    """
+    return find_phrase(clean(transcript), _CHANGE_OF_MIND) is not None
+
+
+# "tôi muốn chọn lại lịch", "để tôi chọn lại": khách chưa chốt, muốn quay lại chọn khung (review 12-10 B16)
+_RECHOOSE = compile_phrases(["chọn lại", "lựa lại"])
+
+
+def rechooses(transcript: str) -> bool:
+    """Có cụm "chọn lại"; câu còn nêu khung / giờ ("chọn lại khung 1") thì Dialogue đi theo phần đó."""
+    return find_phrase(clean(transcript), _RECHOOSE) is not None
 
 
 def asks_to_keep(transcript: str) -> bool:

@@ -183,7 +183,11 @@ def _start(row: dict[str, str], call_id: str, semantic: Any):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(
         clinic,
-        settings=EngineSettings(name_fallback_provider="none", semantic_fallback_enabled=False),
+        settings=EngineSettings(
+            name_fallback_provider="none",
+            semantic_fallback_enabled=False,
+            slot_semantic_enabled=False,
+        ),
         store=_store(),
     )
     if row["direction"] == "outbound":

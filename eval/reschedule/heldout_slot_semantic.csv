@@ -1,0 +1,45 @@
+id,split,group,direction,question_id,page_size,transcript,expect,needs_inference,note
+S001,holdout,any,outbound,OFFER_SLOTS,2,giờ nào tiện cho bên em thì xếp cho tôi,PICK:1,yes,Để bot chọn: câu chốt khung sớm nhất trang
+S002,holdout,any,outbound,OFFER_SLOTS,2,khi nào bên mình có chỗ thì tôi đi,PICK:1,yes,Để bot chọn
+S003,holdout,any,outbound,ASK_SLOT_PREFERENCE,1,hôm nào bác sĩ rảnh thì xếp tôi vào,ANY,yes,Để bot chọn ở câu hỏi ngày
+S004,holdout,any,outbound,SLOT_REFUSE_CHOICE,2,giờ nào còn trống thì đọc tôi nghe,MORE|ANY,yes,Câu A/B: muốn nghe khung khác
+S005,holdout,pick,outbound,OFFER_SLOTS,2,lấy cái sớm hơn đi em,PICK:1,yes,Chỉ trỏ theo thứ tự thời gian
+S006,holdout,pick,outbound,OFFER_SLOTS,2,cái muộn hơn ấy,PICK:2,yes,Chỉ trỏ theo thứ tự thời gian
+S007,holdout,pick,outbound,OFFER_SLOTS,2,cái em nói sau ấy,PICK:2,yes,Chỉ trỏ: khung đọc sau
+S008,holdout,pick,outbound,OFFER_SLOTS,2,cái em vừa nói trước tiên,PICK:1,yes,Chỉ trỏ: khung đọc trước
+S009,holdout,pick,inbound,OFFER_SLOTS,2,chị lấy cái sớm hơn,PICK:1,yes,Đặt lịch: chỉ trỏ -> câu chốt
+S010,holdout,unclear,outbound,OFFER_SLOTS,2,để tôi tính đã em,ASK_WHICH|REREAD_PAGE,yes,Chưa quyết: hỏi lại câu mời, không ghi
+S011,holdout,unclear,outbound,OFFER_SLOTS,2,chưa biết nữa em ơi để xem lịch làm việc,ASK_WHICH|REREAD_PAGE,yes,Chưa quyết
+S012,holdout,unclear,outbound,SLOT_READBACK,1,tôi đang ở ngoài đường ồn quá,REREAD_YESNO,yes,Kể hoàn cảnh ở câu chốt: hỏi lại có/không
+S013,holdout,unclear,outbound,SLOT_READBACK,1,em đợi tôi tí để tôi xem lại,REREAD_YESNO,yes,Chưa quyết ở câu chốt
+S014,holdout,unclear,outbound,ASK_SLOT_PREFERENCE,1,tôi cũng chưa nghĩ ra ngày nào,ASK_DAY,yes,Chưa nêu ngày: hỏi lại ngày
+S015,holdout,unclear,outbound,SLOT_REFUSE_CHOICE,2,tôi chưa quyết được em ạ,REFUSE_CHOICE,yes,Câu A/B: hỏi lại A/B
+S016,holdout,hedged,outbound,SLOT_READBACK,1,được thì được nhưng hơi xa nhà,REREAD_YESNO,yes,Đồng ý có điều kiện: không ghi
+S017,holdout,hedged,outbound,SLOT_READBACK,1,đồng ý nhé mà khoan đã,REREAD_YESNO,yes,Đồng ý rồi rút lại: không ghi
+S018,holdout,hedged,outbound,SLOT_READBACK,1,ừ cũng được mà có giờ muộn hơn không em,MORE|NEW_TIME:14/10|ASK_DAY|REFUSE_CHOICE,yes,Muốn giờ muộn hơn: không ghi
+S019,holdout,keep_old,outbound,OFFER_SLOTS,2,thôi em cứ để như hiện giờ cho tôi,REFUSE_CHOICE|TRANSFER:PATIENT_REQUEST,yes,Có thể là giữ lịch: không đoán -> câu A/B hoặc giữ lịch
+S020,holdout,keep_old,outbound,SLOT_READBACK,1,mấy giờ đó tôi không ưng lắm,REFUSE_CHOICE|ASK_DAY|MORE,yes,Không nhận khung: không ghi
+S021,holdout,cancel,outbound,OFFER_SLOTS,2,thôi bỏ luôn lịch khám đó cho tôi,SWITCH:CANCEL,yes,Đổi sang hủy: vẫn cần xác nhận lần hai
+S022,holdout,cancel,outbound,SLOT_READBACK,1,tôi không khám nữa đâu xóa lịch giúp tôi,SWITCH:CANCEL,yes,Đổi sang hủy ở câu chốt
+S023,holdout,out_of_scope,outbound,OFFER_SLOTS,2,lịch này ai đặt cho tôi vậy tôi có đặt đâu,TRANSFER:OUT_OF_SCOPE,yes,Chối đã đặt lịch
+S024,holdout,out_of_scope,outbound,OFFER_SLOTS,2,lát nữa chị gọi lại cho tôi nhé,TRANSFER:OUT_OF_SCOPE,yes,Xin gọi lại sau
+S025,holdout,out_of_scope,outbound,SLOT_READBACK,1,cho tôi hỏi đường đến cơ sở đó đi thế nào,TRANSFER:OUT_OF_SCOPE,yes,Hỏi đường: ngoài phạm vi
+S026,holdout,clinical,outbound,OFFER_SLOTS,2,trước buổi đó tôi có phải nhịn ăn không,TRANSFER:CLINICAL_QUESTION,yes,Câu hỏi chuẩn bị lâm sàng
+S027,holdout,clinical,outbound,SLOT_READBACK,1,dạo này tôi hay chóng mặt thì có sao không,TRANSFER:CLINICAL_QUESTION,no,Hỏi đánh giá triệu chứng (luật đã bắt)
+S028,holdout,more,outbound,OFFER_SLOTS,2,hai giờ đó đều không được còn giờ nào nữa,MORE,yes,Muốn nghe tiếp
+S029,holdout,more,outbound,SLOT_READBACK,1,giờ đó trùng giờ làm của tôi rồi em xem giờ khác,MORE|REFUSE_CHOICE,yes,Không nhận khung + xin giờ khác
+S030,holdout,unaccented,outbound,OFFER_SLOTS,2,em chon giup toi khung nao cung duoc,PICK:1,yes,Không dấu -> Luna: để bot chọn
+S031,holdout,unaccented,outbound,OFFER_SLOTS,2,de toi tinh da em,ASK_WHICH|REREAD_PAGE,yes,Không dấu -> Luna: chưa quyết
+S032,holdout,unaccented,outbound,OFFER_SLOTS,2,lich nay toi co dat dau,TRANSFER:OUT_OF_SCOPE,yes,Không dấu -> Luna: chối đã đặt
+S033,holdout,unaccented,outbound,SLOT_READBACK,1,toi dang lai xe em noi lai sau di,REREAD_YESNO|TRANSFER:OUT_OF_SCOPE,yes,Không dấu -> Luna: kể hoàn cảnh
+S034,holdout,unaccented,outbound,OFFER_SLOTS,2,lay cai muon hon,PICK:2,yes,Không dấu -> Luna: chỉ trỏ
+S035,holdout,stay,outbound,OFFER_SLOTS,2,khung 2,PICK:2,no,Phải giữ: luật chọn rõ
+S036,holdout,stay,outbound,SLOT_READBACK,1,"Vâng, 3 giờ được",WRITE,no,Phải giữ: đồng ý rõ ở câu chốt
+S037,holdout,stay,outbound,OFFER_SLOTS,2,không,REFUSE_CHOICE,no,Phải giữ: không trần -> câu A/B
+S038,holdout,stay,outbound,SLOT_READBACK,1,dạ,REREAD_YESNO,no,Phải giữ: dạ không phải đồng ý
+S039,holdout,stay,outbound,OFFER_SLOTS,2,thôi giữ lịch cũ,TRANSFER:PATIENT_REQUEST,no,Phải giữ: bỏ đổi lịch nói rõ
+S040,holdout,stay,outbound,OFFER_SLOTS,2,tôi đổi ý,BACK_TO_APPOINTMENT,no,Phải giữ: B15
+S041,holdout,stay,outbound,OFFER_SLOTS,2,giờ chiều thứ 4,PICK:1,no,Phải giữ: B7
+S042,holdout,stay,outbound,OFFER_SLOTS,2-mo-ho,3 giờ chiều đi,ASK_WHICH,no,Phải giữ: B1
+S043,holdout,stay,outbound,SLOT_READBACK,1,khung nào cũng được,REREAD_YESNO|PICK:1,no,Phải giữ: không ghi
+S044,holdout,stay,outbound,ASK_SLOT_PREFERENCE,1,ngày 19,NEW_TIME:19/10,no,Phải giữ: nêu ngày

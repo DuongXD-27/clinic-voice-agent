@@ -37,6 +37,14 @@ semantic_fallback_max_input_chars: 1500
 # Bật dùng semantic_v8_luna với GPT-6 Luna; model khác giữ semantic_v6
 cancel_semantic_confirm_enabled: true
 
+# Model đọc câu khó ở 4 câu hỏi chọn khung (docs/plans/t10-slot-semantic-jev-2026-10-12.md). Mặc định
+# tắt; tắt thì hành vi y hệt chỉ-luật. Jev chính, Luna khi câu không dấu hoặc Jev lỗi (owner 12-10-2026).
+slot_semantic_enabled: false
+slot_semantic_jev_timeout_s: 1.5
+slot_semantic_luna_timeout_s: 3.0
+# Trần cả lượt của route chọn khung, gồm đường dự phòng Luna (vẫn dưới 8 s của contract §4.1.2)
+slot_semantic_budget_s: 4.0
+
 clinic_id: cl_vinmec
 
 # §1.1.5: chuyển máy sau 2 lần liên tiếp không hiểu

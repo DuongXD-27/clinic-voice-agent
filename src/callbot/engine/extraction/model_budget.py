@@ -26,15 +26,22 @@ class ModelBudget:
         # Lượt đã chốt kết quả (trả lời / hết giờ): worker chạy muộn không được sửa trạng thái nữa
         self.closed = False
 
-    def run(self, adapter: Any, operation: Callable[[], Any]) -> Any:
+    def run(
+        self, adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+    ) -> Any:
+        """`timeout_s`: trần riêng của route (route chọn khung, plan Jev §4.11); mặc định trần lượt chung
+        `MODEL_TIMEOUT_S`, hoặc timeout của gateway nếu ngắn hơn."""
         if self.used:
             return None
         self.used = True
         gateway = getattr(adapter, "_gateway", None)
         self.model = getattr(gateway, "model", "test-double")
         self.provider = getattr(gateway, "provider_name", None)
-        config = getattr(getattr(gateway, "_provider", None), "_config", None)
-        timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
+        if timeout_s is not None:
+            timeout = timeout_s
+        else:
+            config = getattr(getattr(gateway, "_provider", None), "_config", None)
+            timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
         started = monotonic()
         result: Queue[tuple[Any, str | None]] = Queue(maxsize=1)
         if not _workers.acquire(blocking=False):
@@ -75,14 +82,25 @@ def model_turn() -> Iterator[ModelBudget]:
         _current.reset(token)
 
 
-def invoke_model(adapter: Any, operation: Callable[[], Any]) -> Any:
+def invoke_model(
+    adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+) -> Any:
     budget = _current.get()
-    return operation() if budget is None else budget.run(adapter, operation)
+    return operation() if budget is None else budget.run(adapter, operation, timeout_s=timeout_s)
 
 
 def model_used() -> bool:
     budget = _current.get()
     return budget is not None and budget.used
+
+
+def record_model(model: str, provider: str) -> None:
+    """Adapter tự chọn provider khác provider mặc định của nó (route chọn khung: câu không dấu đi thẳng
+    Luna): ghi đúng model / provider trả lời lượt. Không phải dự phòng nên không ghi `backup_for`."""
+    budget = _current.get()
+    if budget is not None and not budget.closed:
+        budget.model = model
+        budget.provider = provider
 
 
 def hand_over_model(model: str, provider: str) -> None:
