@@ -112,6 +112,69 @@ _SETTLED = frozenset(clean(u) for u in _SETTLED_UTTERANCES) | frozenset(
     strip_diacritics(clean(u)) for u in _SETTLED_UTTERANCES
 )
 
+# Câu xác nhận hủy theo ngữ pháp đóng: [lời đáp / xưng hô / lời khẳng định]* hủy [bổ ngữ / tiểu từ /
+# xưng hô]*. Mở rộng tập liệt kê ở trên cho câu có lời đáp mở đầu hay tiểu từ cuối ("Vâng, tôi xác nhận
+# hủy", "Dạ hủy luôn em ạ", "Có, hủy đi"): QC qc-cn-08 (12/10/2026) mất lượt vì Jev chạm trần 3 s ở
+# một câu như vậy, và khóa lỗi model xóa AGREE của luật. Chỉ bỏ qua model khi luật ĐÃ đọc câu là AGREE
+# (ngưỡng SF-05 toàn câu) — ngữ pháp này không nâng gì. Mọi từ đều thuộc từ vựng câu hủy của
+# `agreement.py` (`_CANCEL_LEAD`, `_CANCEL_AFFIRM`, `_CANCEL_COMPLEMENTS`, `_CANCEL_TAIL_WORDS`), không
+# có lý do, nên model không có gì để đọc thêm. Câu có lý do hay từ ngoài danh sách ("hủy giúp tôi vì chi
+# phí cao", "thôi thì hủy giúp tôi vậy", "hủy đi, cảm ơn em") vẫn được model kiểm lại như trước.
+_SETTLED_CANCEL_SUBJECTS = ("tôi", "anh", "chị", "em", "mình", "tớ", "cháu", "bác", "cô", "chú")
+_SETTLED_CANCEL_BEFORE = (
+    "vâng", "dạ", "ừ", "ờ", "ạ", "có", "đúng", "đúng rồi", "đúng vậy", "ok", "oke", "okay", "ô kê",
+    "xác nhận", "đồng ý", "chắc chắn", "muốn", "cứ", "vẫn", "xin", "cho",
+    *_SETTLED_CANCEL_SUBJECTS,
+)  # fmt: skip
+_SETTLED_CANCEL_AFTER = (
+    "lịch khám", "lịch hẹn", "cuộc hẹn", "lịch", "hẹn", "này", "đó", "giúp", "giùm", "hộ", "cho", "ngay",
+    "đi", "luôn", "ạ", "nhé", "nha", "nhá", "nhỉ", "vậy", "ơi",
+    *_SETTLED_CANCEL_SUBJECTS,
+)  # fmt: skip
+_SETTLED_CANCEL_VERB = clean("hủy")
+
+
+def _phrase_table(phrases: tuple[str, ...]) -> dict[bool, tuple[tuple[str, ...], ...]]:
+    """Cụm từ thành dãy từ, dài trước ("đúng rồi" trước "đúng"); khóa True là bản không dấu."""
+    accented = tuple(tuple(clean(p).split()) for p in phrases)
+    unaccented = tuple(tuple(strip_diacritics(w) for w in p) for p in accented)
+    return {
+        False: tuple(sorted(accented, key=len, reverse=True)),
+        True: tuple(sorted(set(unaccented), key=len, reverse=True)),
+    }
+
+
+_SETTLED_CANCEL_BEFORE_TABLE = _phrase_table(_SETTLED_CANCEL_BEFORE)
+_SETTLED_CANCEL_AFTER_TABLE = _phrase_table(_SETTLED_CANCEL_AFTER)
+
+
+def settled_cancel_confirmation(transcript: str) -> bool:
+    """Câu chỉ gồm đúng một động từ hủy và các từ của ngữ pháp đóng ở trên."""
+    text = clean(transcript)
+    unaccented = is_unaccented(text)
+    words = (strip_diacritics(text) if unaccented else text).split()
+    verb = strip_diacritics(_SETTLED_CANCEL_VERB) if unaccented else _SETTLED_CANCEL_VERB
+    if words.count(verb) != 1:
+        return False
+    at = words.index(verb)
+    return _only_phrases(words[:at], _SETTLED_CANCEL_BEFORE_TABLE[unaccented]) and _only_phrases(
+        words[at + 1 :], _SETTLED_CANCEL_AFTER_TABLE[unaccented]
+    )
+
+
+def _only_phrases(words: list[str], phrases: tuple[tuple[str, ...], ...]) -> bool:
+    """`words` là dãy nối của các cụm trong `phrases` (tham lam, cụm dài trước)."""
+    at = 0
+    while at < len(words):
+        for phrase in phrases:
+            if tuple(words[at : at + len(phrase)]) == phrase:
+                at += len(phrase)
+                break
+        else:
+            return False
+    return True
+
+
 # Ý định model được phép đề xuất, theo ngữ cảnh. KHÔNG lọc lại bằng `allowed_in_direction`: inbound
 # phải giữ CANCEL / RESCHEDULE / CONFIRM để Dialogue còn chuyển OUT_OF_SCOPE (§8.3.3).
 # OUT_OF_SCOPE: câu diễn đạt vòng mà luật không bắt được ("lịch này tôi có đặt đâu") — chỉ dẫn tới
@@ -184,6 +247,10 @@ def route_semantic(
         return RouteReason.INTENT_HEDGED
 
     if question_id is QuestionId.CANCEL_RECONFIRM:
+        if agreement.value is Agreement.AGREE and settled_cancel_confirmation(transcript):
+            # Luật đã đủ ngưỡng SF-05 trên một câu chỉ có từ của ngữ pháp đóng: rule đã đủ, như tập
+            # toàn câu; không để một request model (có thể chạm trần) quyết lượt này (QC qc-cn-08)
+            return None
         if agreement.value is Agreement.REFUSE and cancel_reason.found:
             return RouteReason.CANCEL_REFUSAL_WITH_REASON
         if (

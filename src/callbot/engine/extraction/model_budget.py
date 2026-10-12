@@ -8,7 +8,7 @@ from threading import BoundedSemaphore, Thread
 from time import monotonic
 from typing import Any
 
-MODEL_TIMEOUT_S = 3.0
+MODEL_TIMEOUT_S = 4.0
 # Bound abandoned synchronous requests as well as active ones. Workers have no Clinic capability.
 _workers = BoundedSemaphore(16)
 _current: ContextVar["ModelBudget | None"] = ContextVar("ie_model_budget", default=None)

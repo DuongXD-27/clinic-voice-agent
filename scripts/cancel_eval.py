@@ -515,7 +515,7 @@ def main() -> int:
         "--timeout-s",
         type=float,
         default=None,
-        help="per-phase httpx timeout of the semantic layer (default: EngineSettings / .env)",
+        help="request timeout of the semantic layer, both providers (default: EngineSettings / .env)",
     )
     parser.add_argument(
         "--fake-outcomes", type=Path, default=FAKE_OUTCOMES, help="fixture for --fake"
@@ -534,7 +534,9 @@ def main() -> int:
         "semantic_fallback_enabled": mode == "semantic",
     }
     if args.timeout_s is not None:
+        # Áp cho cả hai provider: openai (semantic_fallback_timeout_s) và jev (semantic_jev_timeout_s)
         overrides["semantic_fallback_timeout_s"] = args.timeout_s
+        overrides["semantic_jev_timeout_s"] = args.timeout_s
     settings = EngineSettings(**overrides)
     confirm = settings.cancel_semantic_confirm_enabled
 

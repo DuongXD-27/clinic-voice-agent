@@ -112,8 +112,8 @@ def test_a_primary_service_failure_falls_back(status: str) -> None:
 
 
 def test_no_fallback_when_the_turn_has_too_little_time_left() -> None:
-    """Lỗi ở giây 2,5 của trần 3 s: dự phòng không kịp, gọi chỉ tốn tiền."""
-    extractor, _, secondary = _pair("network_error", cost_s=2.5)
+    """Lỗi ở giây 3,5 của trần 4 s: dự phòng không kịp, gọi chỉ tốn tiền."""
+    extractor, _, secondary = _pair("network_error", cost_s=3.5)
     assert extractor.analyze(CONTEXT) is None
     assert secondary.calls == 0 and extractor.last_provider is None
 
@@ -184,7 +184,7 @@ def test_eval_hooks_point_at_the_primary() -> None:
 def test_min_secondary_must_fit_the_budget() -> None:
     with pytest.raises(ValueError):
         FailoverSemanticExtractor(
-            FakeAdapter("a", "accepted"), FakeAdapter("b", "accepted"), min_secondary_s=4.0
+            FakeAdapter("a", "accepted"), FakeAdapter("b", "accepted"), min_secondary_s=4.5
         )
 
 
@@ -196,7 +196,7 @@ def test_config_defaults_to_jev_with_openai_fallback() -> None:
     config = yaml.safe_load((CONFIG_DIR / "engine.yaml").read_text(encoding="utf-8"))
     assert config["semantic_provider"] == "jev"
     assert config["semantic_backup_provider"] == "openai"
-    assert 0 < config["semantic_backup_min_remaining_s"] <= 3.0
+    assert 0 < config["semantic_backup_min_remaining_s"] <= 4.0  # trần lượt MODEL_TIMEOUT_S
 
 
 def _settings(**changes: Any) -> EngineSettings:

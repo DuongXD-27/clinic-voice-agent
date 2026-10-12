@@ -269,13 +269,15 @@ class FailedSemantic:
 @pytest.mark.parametrize("raises,status", [(False, "INVALID"), (True, "ERROR")])
 def test_model_failure_cannot_fall_back_to_rule_cancel_confirmation(raises, status):
     model = FailedSemantic(raises)
-    extraction = InformationExtractor(semantic=model).extract(context(), "tôi đồng ý hủy lịch")
+    extraction = InformationExtractor(semantic=model).extract(
+        context(), "tôi đồng ý hủy lịch, cảm ơn em"
+    )
     assert model.calls == 1 and extraction.model_status == status
     assert extraction.agreement.value is not Agreement.AGREE
     bot, clinic, _ = _at_readback("model_error")
     bot.handle_turn("model_error", CallerInput(3, text="tôi muốn hủy lịch"))
     bot._extractor = InformationExtractor(semantic=model)
-    action = bot.handle_turn("model_error", CallerInput(4, text="tôi đồng ý hủy lịch"))
+    action = bot.handle_turn("model_error", CallerInput(4, text="tôi đồng ý hủy lịch, cảm ơn em"))
     assert not action.ended and action.utterance == t.CANCEL_CONFLICT
     assert clinic.writes == []
     assert _context(bot, "model_error").failed_understandings == 1
@@ -304,7 +306,9 @@ def test_model_deadline_discards_late_agreement(monkeypatch):
             return object()
 
     started = monotonic()
-    result = InformationExtractor(semantic=SlowModel()).extract(context(), "tôi đồng ý hủy lịch")
+    result = InformationExtractor(semantic=SlowModel()).extract(
+        context(), "tôi đồng ý hủy lịch, cảm ơn em"
+    )
     assert monotonic() - started < 0.2
     assert result.model_status == "TIMEOUT" and result.agreement.value is not Agreement.AGREE
     release.set()
@@ -373,7 +377,9 @@ def test_ie_model_trace_contains_metadata_only():
     sink = _MemorySink()
     tracer = _tracer(sink)
     with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
-        InformationExtractor(semantic=FailedSemantic()).extract(context(), "tôi đồng ý hủy lịch")
+        InformationExtractor(semantic=FailedSemantic()).extract(
+            context(), "tôi đồng ý hủy lịch, cảm ơn em"
+        )
     event = next(
         event
         for span in sink.spans
@@ -405,8 +411,9 @@ def test_ie_model_trace_names_the_provider_that_answered():
     sink = _MemorySink()
     tracer = _tracer(sink)
     with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
+        # "cảm ơn em" ngoài ngữ pháp đóng của xác nhận hủy nên model vẫn được gọi (settled_cancel_confirmation)
         InformationExtractor(semantic=_HandedOverSemantic()).extract(
-            context(), "tôi đồng ý hủy lịch"
+            context(), "tôi đồng ý hủy lịch, cảm ơn em"
         )
     event = next(
         event
