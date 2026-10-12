@@ -117,13 +117,12 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
     from callbot.transports.livekit import worker
 
     ran: list[object] = []
-    closed: list[bool] = []
+    built: list[dict] = []
+    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=None)
 
-    class _Tts:
-        async def aclose(self) -> None:
-            closed.append(True)
-
-    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=_Tts())
+    def build(*args, **kwargs):
+        built.append(kwargs)
+        return bundle
 
     class _Session:
         def __init__(self, room, pipeline, **kwargs) -> None:
@@ -155,7 +154,7 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
     def no_bot(*args, **kwargs):
         raise AssertionError("trang thử STT không được mở cuộc gọi với bot")
 
-    monkeypatch.setattr(worker, "build_streaming_bundle", lambda *a, **k: bundle)
+    monkeypatch.setattr(worker, "build_streaming_bundle", build)
     monkeypatch.setattr(worker, "SttSession", _Session)
     monkeypatch.setattr(worker, "CallBridge", no_bot)
     monkeypatch.setattr(worker, "build_clinic", no_bot)
@@ -163,7 +162,9 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
     await worker.entrypoint(_Job())
 
     assert len(ran) == 1
-    assert closed == [True]
+    # Không dựng TTS (review PR #110): TTS cấu hình sai (vd. thiếu key của provider) không được
+    # làm hỏng trang thử STT, vốn không phát gì.
+    assert built[0]["with_tts"] is False
 
 
 @pytest.mark.parametrize(
@@ -190,10 +191,6 @@ async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
     from callbot.transports.livekit import worker
 
     published: list[tuple[str, dict]] = []
-
-    class _Tts:
-        async def aclose(self) -> None:
-            pass
 
     class _Session:
         def __init__(self, *args, **kwargs) -> None:
@@ -223,7 +220,7 @@ async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
                 attributes={worker.ASR_ATTRIBUTE: "zipformer", worker.MODE_ATTRIBUTE: "stt"},
             )
 
-    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=_Tts())
+    bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=None)
     monkeypatch.setattr(worker, "build_streaming_bundle", lambda *a, **k: bundle)
     monkeypatch.setattr(worker, "SttSession", _Session)
 
@@ -235,3 +232,53 @@ async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
     ]
     assert shown in published[0][1]["message"]
     assert "lời người gọi" not in published[0][1]["message"]
+
+
+async def test_unavailable_asr_report_reaches_the_page_before_the_job_shuts_down(
+    monkeypatch,
+) -> None:
+    """Review PR #110: job shutdown ngay sau khi gửi lỗi thì kết nối đóng trước khi gói tin tới
+    trình duyệt (đã gặp với STT_FAILED 12/10: trang đứng ở "Đang chờ worker"). Trang tự rời phòng
+    khi nhận lỗi; job chờ việc đó rồi mới dừng."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from callbot.transports.livekit import worker
+
+    room = SimpleNamespace(remote_participants={"caller": object()})
+    present_at_shutdown: list[int] = []
+
+    class _Bot:
+        async def publish_data(self, payload, *, reliable, topic):
+            # Trình duyệt nhận lỗi rồi rời phòng một lúc sau.
+            asyncio.get_running_loop().call_later(0.2, room.remote_participants.clear)
+
+        async def set_attributes(self, attributes):
+            raise AssertionError("không được báo ASR khi chưa có ASR đã chọn")
+
+    room.local_participant = _Bot()
+
+    class _Job:
+        proc = SimpleNamespace(userdata={worker._PREWARMED_ASR: _PrewarmedZipFormer()})
+
+        def __init__(self) -> None:
+            self.room = room
+
+        async def connect(self):
+            pass
+
+        async def wait_for_participant(self):
+            return SimpleNamespace(
+                kind=rtc.ParticipantKind.PARTICIPANT_KIND_STANDARD,
+                identity="caller",
+                attributes={worker.ASR_ATTRIBUTE: "gemini_live"},
+            )
+
+        def shutdown(self, reason=""):
+            present_at_shutdown.append(len(room.remote_participants))
+
+    monkeypatch.setattr(worker, "create_asr_gateway", _missing_key)
+
+    await worker.entrypoint(_Job())
+
+    assert present_at_shutdown == [0]

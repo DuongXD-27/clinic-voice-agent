@@ -24,13 +24,14 @@ không có event ASR nào tới. Điều kiện chặn — một điều kiện 
 Một chữ không phải câu trả lời ("ĐÂY", "MÌNH") không bao giờ tự ngắt lời bot.
 """
 
+import asyncio
 import logging
 import math
 import re
 import time
 from collections import deque
 from enum import Enum, auto
-from typing import Literal, Optional, Protocol
+from typing import Literal, NamedTuple, Optional, Protocol
 
 import numpy as np
 
@@ -80,8 +81,6 @@ _WORDS_CONFIDENT_COUNT = 3
 # sau AEC trình duyệt VAD không bắt nên không thành chữ (§5,
 # docs/evidence/stt-livekit-overlap-onset-filler-2026-10-08.md).
 _ECHO_CLEAR_AFTER_S = 2.0
-# Partial dài hơn chừng này chữ không phải mẫu ảo giác "chữ ngắn lật qua lại" của TurnValidator.
-_OSCILLATION_MAX_WORDS = 2
 # "Ừ/ờ/dạ" rõ ràng ngắt được bot khi bot đang đọc câu hỏi cuối ("…Anh chị đồng ý chứ ạ?") — đó là
 # câu trả lời; giữa phần bot giải thích thì vẫn là tiếng đệm "tôi đang nghe". Câu hỏi cuối bắt
 # đầu ước lượng theo vị trí ký tự trên độ dài audio TTS, sớm hơn chừng này (sai số + phản xạ).
@@ -136,6 +135,21 @@ _QUIET_MAX_ACTIVE = 0.05
 # - "three_state": đường truyền chưa biết / có vọng thì như "text" (giới hạn chữ bot đang phát);
 #   chỉ không bỏ khi đã chắc không vọng (`_QUIET_SENTENCES`).
 EchoPolicy = Literal["text", "acoustic", "three_state"]
+
+
+class _EchoEvidence(NamedTuple):
+    """Tiếng bot vọng vào mic trên phần câu bot đã phát (`_echo_evidence`)."""
+
+    score: float  # tương quan đường bao lớn nhất qua các độ trễ
+    coverage: float  # ở độ trễ đó: tỉ lệ frame bot có tiếng mà mic cũng có tiếng
+    # Đủ dữ liệu để kết luận có/không vọng: mic im (không gì đủ to để thành chữ), hoặc đã có
+    # `_ECHO_MIN_DUE_FRAMES` frame tiếng bot kịp vọng về để so. Đầu câu bot mà mic có tiếng thì
+    # chưa nói được gì.
+    measured: bool = True
+
+    @property
+    def heard(self) -> bool:
+        return self.score >= _ECHO_MIN_SCORE and self.coverage >= _ECHO_MIN_COVERAGE
 
 
 class _Cancellable(Protocol):
@@ -198,8 +212,8 @@ class InterruptionController:
         # (chỉ thiếu thời lượng) — `on_speech_frame`.
         self._last_event: Optional[TranscriptEvent] = None
         self._recheck = False
-        # Kết quả `_echo_heard` cho lần xét gate đang chạy (None = chưa tính).
-        self._echo_heard_now: Optional[bool] = None
+        # `_echo_evidence` cho lần xét gate đang chạy (None = chưa tính).
+        self._echo_now: Optional[_EchoEvidence] = None
         # `three_state`: số câu bot đọc trọn mà mic im (bằng chứng không vọng).
         self._quiet_sentences = 0
         self._next_echo_probe_at = 0.0
@@ -210,6 +224,8 @@ class InterruptionController:
         # là thứ giữ VAD "đang nói".
         self._rearmed = False
         self._prev_bot_text = ""
+        # Task huỷ TTS đang chạy (`_confirm`): giữ tham chiếu để không bị thu hồi giữa chừng.
+        self._cancel_tasks: set[asyncio.Task[None]] = set()
 
     @property
     def state(self) -> InterruptionState:
@@ -297,7 +313,7 @@ class InterruptionController:
             self._next_echo_probe_at = now + _ECHO_PROBE_INTERVAL_S
             # Remember echo while the caller is still quiet. A later overlapping voice
             # can drown out this evidence even within the first bot sentence of a call.
-            if self._echo_heard(*self._echo_evidence()):
+            if self._echo_evidence().heard:
                 self._call_has_echo = True
 
     @property
@@ -320,7 +336,7 @@ class InterruptionController:
         self._bot_finished = self._state != InterruptionState.INTERRUPTED
         self._bot_stopped_at = self._clock()
         if self._bot_finished:
-            if self._echo_heard(*self._echo_evidence()):
+            if self._echo_evidence().heard:
                 self._call_has_echo = True
             elif (
                 self._heard_from is None
@@ -348,18 +364,18 @@ class InterruptionController:
             return ""
         if self._echo_policy == "text":
             return self._bot_text
-        score, coverage = self._echo_evidence()
+        evidence = self._echo_evidence()
         logger.info(
             "interruption: echo_score=%.2f coverage=%.2f echo_path=%s policy=%s",
-            score,
-            coverage,
+            evidence.score,
+            evidence.coverage,
             self.echo_path,
             self._echo_policy,
         )
         if self._echo_policy == "three_state":
-            if self.echo_path == "no_echo" and not self._echo_heard(score, coverage):
+            if self.echo_path == "no_echo" and not evidence.heard:
                 return ""  # đã chắc đường truyền không vọng: chữ trùng câu bot là người gọi nói
-        elif not (self._call_has_echo or self._echo_heard(score, coverage)):
+        elif not (self._call_has_echo or evidence.heard):
             # Không thấy bản sao trễ của tiếng bot trong mic (AEC đã khử): chữ trùng câu bot là
             # người gọi nhắc lại, không bỏ gì.
             return ""
@@ -397,30 +413,26 @@ class InterruptionController:
             return 1.0
         return sum(db >= _ECHO_MIN_DB for db in mic) / len(mic)
 
-    @staticmethod
-    def _echo_heard(score: float, coverage: float) -> bool:
-        return score >= _ECHO_MIN_SCORE and coverage >= _ECHO_MIN_COVERAGE
-
-    def _echo_evidence(self) -> tuple[float, float]:
-        """(tương quan, độ phủ) trên cả phần câu bot đã phát. Tương quan: Pearson lớn nhất qua
-        các độ trễ giữa đường bao mic và đường bao bot. Độ phủ: ở độ trễ đó, tỉ lệ frame bot có
-        tiếng mà mic cũng có tiếng. Tiếng vọng (bản sao trễ, nhỏ đi của tiếng bot): cả hai gần 1."""
+    def _echo_evidence(self) -> _EchoEvidence:
+        """Tương quan, độ phủ trên cả phần câu bot đã phát. Tương quan: Pearson lớn nhất qua các
+        độ trễ giữa đường bao mic và đường bao bot. Độ phủ: ở độ trễ đó, tỉ lệ frame bot có tiếng
+        mà mic cũng có tiếng. Tiếng vọng (bản sao trễ, nhỏ đi của tiếng bot): cả hai gần 1."""
         if not self._bot_levels or self._bot_audio_at is None:
-            return 0.0, 0.0
+            return _EchoEvidence(0.0, 0.0, measured=False)
         stopped = self._bot_stopped_at if self._bot_stopped_at is not None else self._clock()
         start, end = self._bot_audio_at, stopped + _ECHO_MAX_LAG_S
         caller = [(t, db, sp) for t, db, sp in self._caller_levels if start <= t <= end]
-        if not caller:
-            return 0.0, 0.0
+        if len(caller) < _ECHO_MIN_DUE_FRAMES:
+            return _EchoEvidence(0.0, 0.0, measured=False)
         last_mic_at = caller[-1][0]
         times = np.array([t for t, _, _ in caller])
         mic = np.array([db for _, db, _ in caller])
         active = mic >= mic.min() + _ECHO_ACTIVE_DB
         times, mic = times[active], mic[active]
         if len(mic) < _ECHO_MIN_FRAMES or mic.std() < _ECHO_MIN_SPREAD_DB:
-            return 0.0, 0.0
+            return _EchoEvidence(0.0, 0.0)  # mic không có gì lên xuống theo tiếng bot
         if np.median(mic) < _ECHO_MIN_DB:
-            return 0.0, 0.0
+            return _EchoEvidence(0.0, 0.0)  # có gì cũng quá nhỏ để thành chữ
         played = int((stopped - self._bot_audio_at) / _LEVEL_HOP_S)
         bot = np.array(self._bot_levels[: max(played, 1)])
         bot_active = set(np.flatnonzero(bot >= bot.max() - _BOT_ACTIVE_RANGE_DB).tolist())
@@ -435,18 +447,19 @@ class InterruptionController:
             if score > best:
                 best, best_index, best_lag = score, index[inside], float(lag)
         if best_index is None or not bot_active:
-            return best, 0.0
+            return _EchoEvidence(best, 0.0)
         # Chỉ tính frame bot mà tiếng vọng (trễ `best_lag`) đã kịp tới mic: lúc bot vừa dứt lời,
         # phần cuối câu chưa vọng về, tính cả vào mẫu số thì echo trễ >= 0,6 s không bao giờ đạt
         # ngưỡng độ phủ (đo 08/10: chỉ 4-6/12 câu chỉ có tiếng vọng được nhận ra).
         due_until = int(np.floor((last_mic_at - best_lag - self._bot_audio_at) / _LEVEL_HOP_S))
         due = {i for i in bot_active if i <= due_until}
         if len(due) < _ECHO_MIN_DUE_FRAMES:
-            return best, 0.0
+            return _EchoEvidence(best, 0.0, measured=False)
         flags = [sp for t, _, sp in caller if sp is not None and t >= start + best_lag]
         if flags and sum(flags) / len(flags) < _ECHO_MIN_SPEECH_FRACTION:
-            return best, 0.0  # tương quan với tiếng bot nhưng VAD không nghe thấy: không thành chữ
-        return best, len(due.intersection(best_index.tolist())) / len(due)
+            # Tương quan với tiếng bot nhưng VAD không nghe thấy: không thành chữ.
+            return _EchoEvidence(best, 0.0)
+        return _EchoEvidence(best, len(due.intersection(best_index.tolist())) / len(due))
 
     async def on_speech_started(self, event: VadEvent) -> None:
         self._vad_in_speech = True
@@ -479,11 +492,11 @@ class InterruptionController:
         return await self._evaluate(self._last_event, again=True)
 
     async def _evaluate(self, event: TranscriptEvent, *, again: bool = False) -> bool:
-        self._echo_heard_now = None
+        self._echo_now = None
         try:
             reason, self._recheck = self._gate(event)
         finally:
-            self._echo_heard_now = None
+            self._echo_now = None
         if reason is None:
             if not again:
                 # DEBUG: text có thể chứa PII, nhưng cần để chẩn đoán barge-in giả.
@@ -509,7 +522,19 @@ class InterruptionController:
 
     async def _confirm(self) -> None:
         self._state = InterruptionState.INTERRUPTED
-        await self._tts.cancel()
+        # Gọi từ task VAD (`on_speech_frame`) hoặc ASR: đóng request TTS (WebSocket/HTTP) có thể
+        # chậm, chờ nó thì VAD — với Gemini Live cả `_fanout` — đứng đúng lúc người gọi đang nói.
+        # Chạy trong task riêng; nhường một nhịp để phần tắt tiếng (trước lần await đầu tiên của
+        # `cancel`) chạy ngay.
+        task = asyncio.create_task(self._tts.cancel())
+        self._cancel_tasks.add(task)
+        task.add_done_callback(self._on_cancel_done)
+        await asyncio.sleep(0)
+
+    def _on_cancel_done(self, task: "asyncio.Task[None]") -> None:
+        self._cancel_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("interruption: huỷ TTS lỗi (%s)", type(task.exception()).__name__)
 
     def on_evidence_updated(
         self,
@@ -568,16 +593,10 @@ class InterruptionController:
         if self._validator is None:
             return "text", False
         words = spoken_words(text).split()
-        stability = self._stability
-        if stability == StabilityVerdict.OSCILLATING and len(words) > _OSCILLATION_MAX_WORDS:
-            # Các partial ngắn trước đó trong ứng viên lật qua lại vì GipFormer decode lại phần
-            # đầu câu ("HAI TỶ" -> "HAI THẾ" -> "HAI TỶ"); cửa sổ độ ổn định còn giữ chúng thì
-            # "CÓ AI THẤY KHÔNG" vẫn bị DROP (09/10). Mẫu ảo giác chỉ gồm chữ ngắn.
-            stability = StabilityVerdict.UNKNOWN
         decision = self._validator.evaluate(
             text,
             noise_evidence=self._noise_evidence,
-            stability=stability,
+            stability=self._stability,
             confidence=event.confidence,
         )
         logger.debug(
@@ -585,7 +604,7 @@ class InterruptionController:
             decision,
             text,
             snr_db,
-            stability,
+            self._stability,
         )
         if decision == ValidationDecision.DROP:
             return None, False
@@ -595,15 +614,21 @@ class InterruptionController:
                 return "short_reply", False
             recheck = True
         content = sum(is_meaningful_text(word) for word in words)
-        if content < _WORDS_MIN_COUNT:
-            # Một chữ không phải câu trả lời rõ ràng ("ĐÂY", "MÌNH"): GipFormer nghe nhầm "OK"/"Ừ"
-            # thành một chữ bất kỳ, kể cả hai partial hội tụ ("ĐẤY" -> "ĐÂY"). Người gọi nói tiếp
-            # thì partial sau có thêm chữ.
+        # Tới đây mà không có chữ có nghĩa thì là "ừ/dạ" trả lời câu hỏi cuối (kiểm ở đầu gate).
+        answer = is_short_answer(text) or not is_meaningful_text(text)
+        if content < _WORDS_MIN_COUNT and not answer:
+            # Một chữ không phải câu trả lời ("ĐÂY", "MÌNH"): GipFormer nghe nhầm "OK"/"Ừ" thành
+            # một chữ bất kỳ, kể cả hai partial hội tụ ("ĐẤY" -> "ĐÂY"). Người gọi nói tiếp thì
+            # partial sau có thêm chữ.
             return None, recheck
         if decision == ValidationDecision.ACCEPT:
             return "converging", False
         if event.is_final:
             return "final", False
+        if content < _WORDS_MIN_COUNT:
+            # Câu trả lời một chữ dưới ngưỡng câu trả lời rõ ràng: chỉ qua hội tụ / final như
+            # trước PR #110 (review: "KHÔNG", "Ừ" SNR 6-10 dB không còn ngắt được bot).
+            return None, recheck
         if self._echo_line():
             # Chữ có thể là tiếng bot ASR chép sai (lọt so khớp vọng): giữ đòi partial hội tụ.
             return None, recheck
@@ -647,12 +672,16 @@ class InterruptionController:
             and (event.confidence is None or event.confidence >= _SHORT_REPLY_MIN_CONFIDENCE)
         )
 
+    def _echo_in_mic_now(self) -> _EchoEvidence:
+        """Bằng chứng vọng lúc này; tính một lần cho mỗi lần xét gate — chỉ gọi trong `_gate`
+        (`_evaluate` xoá kết quả trước và sau mỗi lần xét)."""
+        if self._echo_now is None:
+            self._echo_now = self._echo_evidence()
+        return self._echo_now
+
     def _echo_in_mic(self) -> bool:
-        """Mic lúc này có bản sao tiếng bot; tính một lần cho mỗi lần xét gate — chỉ gọi trong
-        `_gate` (`_evaluate` xoá kết quả trước và sau mỗi lần xét)."""
-        if self._echo_heard_now is None:
-            self._echo_heard_now = self._echo_heard(*self._echo_evidence())
-        return self._echo_heard_now
+        """Mic lúc này có bản sao tiếng bot."""
+        return self._echo_in_mic_now().heard
 
     def _echo_line(self) -> bool:
         """Đường truyền có tiếng bot vọng lại: đã thấy trong cuộc gọi, hoặc thấy ngay ở câu này."""
@@ -668,7 +697,15 @@ class InterruptionController:
         clear = self.echo_path == "no_echo" or (
             self._echo_policy == "acoustic" and self._echo_clear
         )
-        return clear and not self._echo_in_mic()
+        if not clear:
+            return False
+        evidence = self._echo_in_mic_now()
+        if evidence.heard:
+            return False
+        # Đầu câu bot, mic có tiếng mà chưa đủ tiếng bot để đo: đường truyền có thể vừa đổi
+        # (người gọi bật loa ngoài) — chưa tin bằng chứng của câu trước, vẫn so chữ. Ứng viên
+        # mở trước khi bot bắt đầu câu này (`_rearmed`) không thể là vọng của câu này.
+        return evidence.measured or self._rearmed
 
     def _is_echo_of_bot(self, candidate_text: str) -> bool:
         """ASR thường chỉ nghe được một đoạn của câu bot đang đọc dở, nên so với từng cửa sổ

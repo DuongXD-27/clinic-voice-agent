@@ -227,6 +227,8 @@ hết hạn — không còn event nào khác sẽ tới) thì WAIT tự động 
 
 File: `src/speech/turn/interruption.py`.
 
+> Cập nhật 12/10: gate đã viết lại thành `_gate()` (10/10) — điều kiện hiện tại ở docstring `speech/turn/interruption.py` và `docs/reference/stt-flow.md` §2.6. Phần dưới mô tả code lúc viết.
+
 State machine: `IDLE → BOT_SPEAKING → INTERRUPTION_CANDIDATE → INTERRUPTED`.
 
 - `on_bot_started_speaking(bot_text)`: gọi khi `CallBridge._speak()` bắt đầu phát TTS,

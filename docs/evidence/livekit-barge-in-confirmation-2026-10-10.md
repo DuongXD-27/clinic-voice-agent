@@ -96,6 +96,9 @@ thông tin lịch) nên thay bằng `CONFIRM_CONFLICT` (cùng loại câu hỏi 
 
 ## Kết quả đo
 
+Số đo dưới đây chạy khi tăng âm giọng nhỏ (`quiet_speech_gain_enabled`) còn tắt mặc định. Từ
+khi bật cho web, `barge_in_eval` / `barge_noise_eval` (profile `production`) chạy có tăng âm.
+
 `barge_in_eval --bot-audio static --set speaker_gate_mode=off`, code trước (HEAD e8a6de9) → sau. Bộ
 `caller` có 39 lần chen lời, trong đó 10 lần chỉ nói "Ừ" (đúng thiết kế là không ngắt lời bot);
 `repeat` = người gọi lặp lại chữ bot vừa nói (giọng TTS), `repeat_real` = giọng thật nói lại cụm

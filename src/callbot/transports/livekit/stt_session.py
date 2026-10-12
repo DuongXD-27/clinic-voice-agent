@@ -15,7 +15,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, AsyncIterator, Callable, Optional
 
-from callbot.transports.livekit.audio_adapter import livekit_frame_to_segment
+from callbot.transports.livekit.caller_audio import accept_caller_track, pump_caller_track
 from speech.asr.pipeline import STTPipeline
 from speech.asr.vad.base import VadEvent
 from speech.turn.controller import TurnController
@@ -33,11 +33,13 @@ _DONE = object()
 
 
 class ObservedTurnController(TurnController):
-    """TurnController báo chữ của lượt đang hình thành (`on_live`) và lượt bị bỏ (`on_dropped`).
+    """TurnController báo chữ của lượt đang hình thành (`on_live`) và lượt bị bỏ (`on_dropped`),
+    và đếm số lượt đã chốt (`committed`).
 
     Đọc `_candidate` của lớp cha: lượt bị bỏ = lượt hiện tại bị thay bằng lượt mới mà chưa chốt
-    (`_reset_candidate` khi từ đệm / Validator DROP). Việc bỏ có thể xảy ra trong hẹn giờ của lớp
-    cha nên chỉ phát hiện được ở event kế tiếp hoặc khi gọi `flush_dropped()`."""
+    (`_reset_candidate` khi từ đệm / Validator DROP); lượt đã chốt = `finalized`. Cả hai có thể
+    xảy ra trong hẹn giờ của lớp cha nên chỉ phát hiện được ở event kế tiếp hoặc khi gọi
+    `flush_dropped()` — luôn trước khi báo chữ của lượt sau."""
 
     def __init__(
         self,
@@ -50,9 +52,14 @@ class ObservedTurnController(TurnController):
         self._on_live = on_live
         self._on_dropped = on_dropped
         self._watched = self._candidate
+        self._counted = None
+        self.committed = 0
 
     def flush_dropped(self) -> None:
         old = self._watched
+        if old.finalized and old is not self._counted:
+            self._counted = old
+            self.committed += 1
         if self._candidate is old:
             return
         self._watched = self._candidate
@@ -85,9 +92,11 @@ class SttSession:
         sample_rate: int,
         frame_ms: int,
         input_queue_ms: int,
+        krisp_enabled: bool = False,
         caller_identity: Optional[str] = None,
     ) -> None:
         self._room = room
+        self._krisp_enabled = krisp_enabled
         self._pipeline = stt_pipeline
         self._sample_rate = sample_rate
         self._frame_ms = frame_ms
@@ -96,10 +105,14 @@ class SttSession:
         self._outbox: asyncio.Queue[object] = asyncio.Queue()
         self._caller_identity = caller_identity
         self._pump_task: Optional[asyncio.Task] = None
+        # Lượt đã có kết cục (yield thành `final`, hoặc cổng giọng bỏ). Lượt TurnController chốt
+        # theo thứ tự và cổng giọng xét theo đúng thứ tự đó, nên kết cục thứ k là của lượt chốt
+        # thứ k; chữ tạm thời mang số `committed + 1` (cổng giọng còn đang chấm lượt trước thì
+        # partial của lượt sau không đè lên dòng của nó).
         self._turn = 0
         self._controller = ObservedTurnController(
-            on_live=lambda text: self._send("partial", self._turn + 1, text),
-            on_dropped=lambda text: self._send("dropped", self._turn + 1, text),
+            on_live=lambda text: self._send("partial", self._controller.committed + 1, text),
+            on_dropped=lambda text: self._send("dropped", self._controller.committed + 1, text),
             **turn_controller_options,
         )
 
@@ -114,7 +127,7 @@ class SttSession:
         sender = asyncio.create_task(self._send_loop())
         try:
             async for turn in self._pipeline.stream(
-                self._frames(), turn_controller=self._controller
+                self._frames(), turn_controller=self._controller, on_turn_blocked=self._blocked
             ):
                 self._controller.flush_dropped()
                 self._turn += 1
@@ -126,6 +139,12 @@ class SttSession:
             self._outbox.put_nowait(_DONE)
             await sender
             logger.info("stt_session: end room=%s turns=%d", self._room.name, self._turn)
+
+    def _blocked(self, turn: UserTurnCompleted) -> None:
+        """Cổng giọng bỏ lượt (giọng khác người gọi: TV, người bên cạnh)."""
+        self._controller.flush_dropped()
+        self._turn += 1
+        self._send("dropped", self._turn, turn.text)
 
     def _send(self, kind: str, turn: int, text: str, **extra: object) -> None:
         self._outbox.put_nowait({"type": "stt", "kind": kind, "turn": turn, "text": text, **extra})
@@ -158,39 +177,24 @@ class SttSession:
     def _on_track_subscribed(
         self, track: "rtc.Track", publication: object, participant: object
     ) -> None:
-        from livekit import rtc
-
-        if track.kind != rtc.TrackKind.KIND_AUDIO:
-            return
-        identity = getattr(participant, "identity", None)
-        source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
-        if source not in (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_UNKNOWN):
-            return
-        if self._caller_identity is None:
-            self._caller_identity = identity
-        elif identity != self._caller_identity:
+        accepted, self._caller_identity = accept_caller_track(
+            track, publication, participant, self._caller_identity
+        )
+        if not accepted:
             return
         if self._pump_task is not None and not self._pump_task.done():
             self._pump_task.cancel()
-        self._pump_task = asyncio.ensure_future(self._pump_track(track))
-
-    async def _pump_track(self, track: "rtc.Track") -> None:
-        from livekit import rtc
-
-        stream = rtc.AudioStream.from_track(
-            track=track,
-            sample_rate=self._sample_rate,
-            num_channels=1,
-            frame_size_ms=self._frame_ms,
-            capacity=self._input_queue_frames,
+        self._pump_task = asyncio.ensure_future(
+            pump_caller_track(
+                track,
+                room_name=self._room.name,
+                sample_rate=self._sample_rate,
+                frame_ms=self._frame_ms,
+                capacity_frames=self._input_queue_frames,
+                krisp_enabled=self._krisp_enabled,
+                put=self._frames_queue.put,
+            )
         )
-        try:
-            async for event in stream:
-                segment = livekit_frame_to_segment(event.frame, target_rate=self._sample_rate)
-                if segment.pcm:
-                    await self._frames_queue.put(segment.pcm)
-        finally:
-            await stream.aclose()
 
     def _on_disconnected(self, *_args: object) -> None:
         # Hàng đợi có thể đầy: bỏ một frame cũ để chắc chắn tín hiệu kết thúc vào được.

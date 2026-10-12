@@ -19,8 +19,10 @@ dài qua mốc), không phải ảo giác.
 Chỉ số: `wer_turn_drift` (lượt so với decode câu sạch), `wer_turn` (so với nhãn, chỉ golden, câu
 không chữ số), `no_turn` (câu thật không thành lượt nào), `false_turns`, `hallucinated_turns`.
 
-Chạy (từ gốc repo):
-    PYTHONPATH=src python eval/noise-bench/level_eval.py --label off --dataset golden
+Chạy (từ gốc repo). Profile `production` theo config/speech.yaml, nơi tăng âm mặc định BẬT cho
+web: luôn ghi rõ `quiet_speech_gain_enabled` cho cả hai lần chạy.
+    PYTHONPATH=src python eval/noise-bench/level_eval.py --label off --dataset golden \\
+        --set quiet_speech_gain_enabled=false
     PYTHONPATH=src python eval/noise-bench/level_eval.py --label gain --dataset golden \\
         --set quiet_speech_gain_enabled=true
 Kết quả: temp/noise-bench/results/level_<label>.json

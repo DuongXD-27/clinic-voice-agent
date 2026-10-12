@@ -14,7 +14,7 @@ from tests.speech.pipeline_factory import make_stt_pipeline
 
 from speech.asr.vad.base import VadEvent
 from speech.turn.controller import TurnController
-from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.turn.interruption import InterruptionController, InterruptionState, _EchoEvidence
 from speech.types import AsrSegmentEnd, Transcript, TranscriptEvent
 
 
@@ -160,8 +160,8 @@ async def test_confirmed_barge_in_keeps_asr_segment() -> None:
 class _EchoInMic(InterruptionController):
     """Mic có tiếng bot vọng lại (AEC không khử hết) — phần đo âm thanh có test riêng."""
 
-    def _echo_evidence(self) -> tuple[float, float]:
-        return 1.0, 1.0
+    def _echo_evidence(self) -> _EchoEvidence:
+        return _EchoEvidence(1.0, 1.0)
 
 
 class _FinalASR(_RecordingASR):
@@ -729,3 +729,63 @@ async def test_discarded_asr_segment_does_not_leak_into_the_next_segment_stabili
     )
 
     assert resets  # đoạn của ứng viên bị bỏ -> cửa sổ độ ổn định bắt đầu lại
+
+
+async def test_stability_resets_when_the_asr_reaches_the_discard_not_when_it_is_queued() -> None:
+    """Review PR #110: reset lúc đưa DISCARD vào hàng đợi là quá sớm — ASR chậm hơn thời gian thực
+    (ZipFormer decode lại cả câu) còn tồn frame cũ, partial của chúng tới SAU lần reset và lại vào
+    cửa sổ độ ổn định của đoạn sau (đúng mẫu "ĐÚNG" -> "Ừ" -> "ĐÚNG" 08/10)."""
+    from speech.asr.evidence import TranscriptEvidenceTracker
+    from speech.turn.evidence import TurnEvidence
+    from speech.types import AsrSegmentEnd
+
+    class _NoSpeech:
+        def is_speech(self, frame: bytes) -> bool:
+            return False
+
+    log: list[str] = []
+
+    class _SpyTracker(TranscriptEvidenceTracker):
+        def observe(self, event):
+            log.append(event.text)
+            return super().observe(event)
+
+        def reset(self) -> None:
+            log.append("<reset>")
+            super().reset()
+
+    class _SlowASR(_RecordingASR):
+        """Mỗi frame decode mất 3 nhịp frame; partial của đoạn cũ là "CŨ", đoạn sau là "MỚI"."""
+
+        async def stream(self, frames: AsyncIterator) -> AsyncIterator[TranscriptEvent]:
+            discarded = False
+            async for item in frames:
+                if item is AsrSegmentEnd.DISCARD:
+                    discarded = True
+                    continue
+                await asyncio.sleep(0.03)
+                yield TranscriptEvent(text="MỚI" if discarded else "CŨ", is_final=False)
+
+    controller = TurnController(min_speech_ms=0)
+    evidence = TurnEvidence(_NoSpeech(), frame_ms=30, transcript=_SpyTracker())
+    pipeline = make_stt_pipeline(asr=_SlowASR(), vad=_FakeAsyncVAD([]), evidence=evidence)
+
+    def _bot_speaks_for_frames_4_to_6(index: int) -> None:
+        if index == 4:
+            controller.on_bot_speaking_changed(True)  # bỏ đoạn đang mở
+        if index == 7:
+            controller.on_bot_speaking_changed(False)
+
+    frames = [_make_frame(i) for i in range(1, 12)]
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames, _bot_speaks_for_frames_4_to_6), turn_controller=controller
+            )
+        ),
+        timeout=3.0,
+    )
+
+    assert "<reset>" in log
+    after_reset = log[log.index("<reset>") + 1 :]
+    assert "CŨ" not in after_reset

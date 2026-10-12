@@ -245,3 +245,80 @@ async def test_pipeline_feeds_vad_and_asr_the_boosted_frames() -> None:
     early, late = asr.levels[:40], asr.levels[-90:-50]  # câu đầu, câu cuối
     assert max(early) < -40.0  # câu đầu: chưa biết mức giọng, giữ nguyên
     assert min(late) > -31.0  # các câu sau: đã tăng về gần -26 dBFS
+
+
+async def test_snr_evidence_does_not_jump_when_the_gain_changes() -> None:
+    """Review PR #110: nền nhiễu của bằng chứng SNR là trung vị ~3 s frame im lặng. Đo trên frame
+    đã tăng thì hệ số nhảy +19 dB làm câu sau "rõ hơn nền" thêm ~18 dB (cùng một câu: 24 -> 42 dB,
+    đo 12/10) — nhiễu/TV vượt các ngưỡng SNR của Validator và của ngắt lời."""
+    import asyncio
+
+    from tests.speech.pipeline_factory import make_stt_pipeline
+
+    from speech.asr.vad.async_stream import AsyncStreamingVAD
+    from speech.asr.vad.energy import EnergyFrameClassifier
+    from speech.asr.vad.shared import SharedSpeechDetector
+    from speech.turn.controller import TurnController
+    from speech.turn.evidence import TurnEvidence
+
+    class _SilentASR:
+        name = "fake"
+        input_sample_rate = 8000
+
+        def transcribe(self, segment):
+            raise NotImplementedError
+
+        async def stream(self, frames, **_kwargs):
+            async for _item in frames:
+                pass
+            return
+            yield
+
+    class _Recorded(TurnEvidence):
+        snrs: list[float] = []
+
+        def observe_frame(self, frame: bytes, **kwargs) -> None:
+            super().observe_frame(frame, **kwargs)
+            assert self.utterance_noise is not None
+            self.snrs.append(self.utterance_noise.snr_db)
+
+    detector = SharedSpeechDetector(EnergyFrameClassifier(50.0), capacity=2000)
+    evidence = _Recorded(detector.view(), frame_ms=30)
+    _Recorded.snrs = []
+    pipeline = make_stt_pipeline(
+        asr=_SilentASR(),
+        vad=AsyncStreamingVAD(detector.view(), end_silence_ms=600, frame_ms=30),
+        detector=detector,
+        evidence=evidence,
+        quiet_gain=QuietSpeechGain(frame_ms=30),
+    )
+    plan = [(-70.0, 70), (-45.0, 40), (-70.0, 50), (-45.0, 40)]  # nền, câu 1, nghỉ, câu 2 y hệt
+
+    async def frames():
+        seed = 0
+        for dbfs, count in plan:
+            for _ in range(count):
+                seed += 1
+                yield _frame(dbfs, seed)[: 240 * 2]
+            await asyncio.sleep(0)
+
+    async for _turn in pipeline.stream(frames(), turn_controller=TurnController()):
+        pass
+
+    first, second = _Recorded.snrs[70 + 40 - 1], _Recorded.snrs[-1]
+    assert pipeline.quiet_gain is not None and pipeline.quiet_gain.gain_db > 15.0
+    assert abs(second - first) < 2.0
+
+
+def test_a_long_silence_does_not_creep_the_gain_up_for_a_normal_voice() -> None:
+    """Review PR #110: mức giọng giữ lại giảm theo thời gian kể cả lúc im lặng; sau ~5 phút người
+    gọi im (nghe bot, chờ máy) mức tụt dưới -35 dBFS, hệ số tăng lên trong lúc im, và giọng -20 dBFS
+    khi người gọi nói lại bị cộng thêm vài dB — trái cam kết "giọng đủ to giữ nguyên từng byte"."""
+    gain = QuietSpeechGain(frame_ms=30)
+    _feed(gain, -75.0, 40, speech=False)
+    _feed(gain, -20.0, 40, speech=True)
+    _feed(gain, -75.0, round(6 * 60 / 0.03), speech=False)  # 6 phút im lặng
+
+    frame = _frame(-20.0, seed=7)
+    assert gain.gain_db == 0.0
+    assert gain.apply(frame) is frame

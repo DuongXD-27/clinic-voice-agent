@@ -163,7 +163,7 @@ async def test_validator_drops_hallucination_pattern_during_barge_in() -> None:
     """Tái hiện đúng bug thật đã gặp qua LiveKit demo: WebRTC VAD nhận nhầm noise phòng
     thành speech_start GIỮA LÚC bot đang nói -> ASR hallucinate ra "ĐÂY" (SNR thấp, text
     ngắn) -> KHÔNG được confirm barge-in nếu có TurnValidator cấu hình (trước khi sửa,
-    _passes_gate() không có SNR check nên vẫn confirm bất kể noise)."""
+    gate cũ `_passes_gate()` không có SNR check nên vẫn confirm bất kể noise)."""
     from speech.asr.evidence import StabilityVerdict
     from speech.audio.noise_tracker import NoiseEvidence
     from speech.turn.validator import TurnValidator
@@ -219,7 +219,7 @@ async def test_validator_wait_does_not_confirm_barge_in() -> None:
     """Tái hiện đúng log thật qua LiveKit (LIVEKIT_DEBUG_DUMP_AUDIO): SNR vừa phải
     (~14dB, không đủ thấp để TurnValidator DROP ở min_snr_db mặc định) + text ngắn
     hallucinate ("ĐÚNG") + stability=UNKNOWN -> validator.evaluate() trả WAIT, không
-    DROP. Trước khi sửa, `_passes_gate()` coi WAIT như ACCEPT nên vẫn xác nhận barge-in
+    DROP. Trước khi sửa, gate cũ `_passes_gate()` coi WAIT như ACCEPT nên vẫn xác nhận barge-in
     giả dù user hoàn toàn im lặng — WAIT giờ phải reject như DROP."""
     from speech.asr.evidence import StabilityVerdict
     from speech.audio.noise_tracker import NoiseEvidence
@@ -590,7 +590,7 @@ async def test_first_sentence_remembers_echo_before_the_caller_drowns_it_out(ech
     controller.on_bot_stopped_speaking()
 
     # The final mixed envelope alone no longer shows echo; the earlier evidence must survive.
-    assert not controller._echo_heard(*controller._echo_evidence())
+    assert not controller._echo_evidence().heard
     assert controller.echo_text(lookback_s=0.5) == (_BOT if echo else "")
 
 

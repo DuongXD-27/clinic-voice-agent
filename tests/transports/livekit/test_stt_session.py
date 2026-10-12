@@ -3,6 +3,8 @@
 import asyncio
 import json
 
+import pytest
+
 from callbot.transports.livekit.stt_session import STT_TOPIC, ObservedTurnController, SttSession
 from speech.asr.vad.base import VadEvent
 from speech.turn.events import UserTurnCompleted
@@ -70,7 +72,7 @@ class _Pipeline:
     def __init__(self, room: _Room) -> None:
         self._room = room
 
-    async def stream(self, frames, turn_controller):
+    async def stream(self, frames, turn_controller, **_kwargs):
         await turn_controller.on_vad_event(VadEvent("speech_start"))
         await turn_controller.on_transcript_event(TranscriptEvent(text="xin", is_final=False))
         await turn_controller.on_transcript_event(TranscriptEvent(text="xin chào", is_final=False))
@@ -102,3 +104,86 @@ async def test_session_sends_partials_then_the_committed_turn_and_ends_with_the_
     ]
     final = room.local_participant.sent[-1]
     assert final["confidence"] == 0.9 and final["final_ms"] == 900.0
+
+
+class _GatingPipeline:
+    """Lượt 1 (tiếng TV) bị cổng giọng chặn; trong lúc cổng còn chấm, người gọi đã nói lượt 2."""
+
+    def __init__(self, room: _Room) -> None:
+        self._room = room
+
+    async def stream(self, frames, turn_controller, on_turn_blocked=None):
+        controller = turn_controller
+        await controller.on_vad_event(VadEvent("speech_start"))
+        await controller.on_transcript_event(TranscriptEvent(text="tivi nói", is_final=False))
+        await controller.on_transcript_event(TranscriptEvent(text="tivi nói", is_final=True))
+        blocked = await asyncio.wait_for(controller.get_turn(), timeout=1.0)
+        await controller.on_vad_event(VadEvent("speech_start"))
+        await controller.on_transcript_event(TranscriptEvent(text="tôi muốn", is_final=False))
+        if on_turn_blocked is not None:
+            on_turn_blocked(blocked)
+        await controller.on_transcript_event(
+            TranscriptEvent(text="tôi muốn đặt lịch", is_final=True)
+        )
+        yield await asyncio.wait_for(controller.get_turn(), timeout=1.0)
+        self._room.handlers["disconnected"]()
+        async for _frame in frames:
+            pass
+
+
+async def test_turn_blocked_by_the_speaker_gate_is_shown_and_keeps_its_own_number() -> None:
+    """Review PR #110: cổng giọng (enforce, mặc định) bỏ lượt mà không có `final`; partial của
+    lượt sau mang cùng số và đè lên dòng của lượt bị chặn."""
+    room = _Room()
+    session = SttSession(
+        room,  # type: ignore[arg-type]
+        _GatingPipeline(room),  # type: ignore[arg-type]
+        turn_controller_options={"min_speech_ms": 0},
+        sample_rate=16_000,
+        frame_ms=30,
+        input_queue_ms=600,
+    )
+
+    await asyncio.wait_for(session.run(), timeout=2.0)
+
+    assert [(m["kind"], m["turn"], m["text"]) for m in room.local_participant.sent] == [
+        ("partial", 1, "tivi nói"),
+        ("partial", 2, "tôi muốn"),
+        ("dropped", 1, "tivi nói"),
+        ("final", 2, "tôi muốn đặt lịch"),
+    ]
+
+
+async def test_stt_page_uses_the_call_audio_path_including_krisp(monkeypatch) -> None:
+    """Review PR #110: trang thử STT chép phần nhận mic của CallBridge nhưng thiếu Krisp và audio
+    dump — bật Krisp thì trang không còn chạy đúng pipeline cuộc gọi. Giờ dùng chung
+    `caller_audio.pump_caller_track`."""
+    from types import SimpleNamespace
+
+    rtc = pytest.importorskip("livekit.rtc")
+    from callbot.transports.livekit import stt_session
+
+    pumped: list[dict] = []
+
+    async def fake_pump(track, **kwargs):
+        pumped.append(kwargs)
+
+    monkeypatch.setattr(stt_session, "pump_caller_track", fake_pump)
+    room = _Room()
+    session = SttSession(
+        room,  # type: ignore[arg-type]
+        _Pipeline(room),  # type: ignore[arg-type]
+        turn_controller_options={"min_speech_ms": 0},
+        sample_rate=16_000,
+        frame_ms=30,
+        input_queue_ms=600,
+        krisp_enabled=True,
+    )
+    mic = SimpleNamespace(kind=rtc.TrackKind.KIND_AUDIO)
+    publication = SimpleNamespace(source=rtc.TrackSource.SOURCE_MICROPHONE)
+
+    session._on_track_subscribed(mic, publication, SimpleNamespace(identity="caller"))
+    await asyncio.sleep(0)
+
+    assert pumped and pumped[0]["krisp_enabled"] is True
+    assert pumped[0]["room_name"] == room.name

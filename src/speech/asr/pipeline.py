@@ -17,7 +17,7 @@ import logging
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 from speech.asr.recognizer import Recognizer
 from speech.asr.stream_context import ASRStreamContext, StreamingFrame
@@ -125,10 +125,13 @@ class STTPipeline:
         frames: AsyncIterator[bytes],
         turn_controller: TurnController,
         interruption: Optional[InterruptionController] = None,
+        on_turn_blocked: Optional[Callable[[UserTurnCompleted], None]] = None,
     ) -> AsyncIterator[UserTurnCompleted]:
         """`frames`: PCM ở `sample_rate`, liên tục suốt cuộc gọi. `interruption` nhận cùng
-        event VAD/ASR với TurnController để xác nhận barge-in."""
-        call = _CallStream(self, turn_controller, interruption)
+        event VAD/ASR với TurnController để xác nhận barge-in. `on_turn_blocked`: lượt
+        TurnController đã chốt nhưng cổng giọng bỏ (không được yield) — trang thử STT cần biết để
+        đánh số các lượt sau cho đúng."""
+        call = _CallStream(self, turn_controller, interruption, on_turn_blocked)
         async for turn in call.turns(frames):
             yield turn
 
@@ -141,10 +144,12 @@ class _CallStream:
         pipeline: STTPipeline,
         controller: TurnController,
         interruption: Optional[InterruptionController],
+        on_turn_blocked: Optional[Callable[[UserTurnCompleted], None]] = None,
     ) -> None:
         self._pipeline = pipeline
         self._controller = controller
         self._interruption = interruption
+        self._on_turn_blocked = on_turn_blocked
         self._vad_queue: "asyncio.Queue[object]" = asyncio.Queue(maxsize=pipeline.queue_max_frames)
         self._asr_queue: "asyncio.Queue[object]" = asyncio.Queue(
             maxsize=pipeline.asr_queue_max_frames
@@ -235,10 +240,12 @@ class _CallStream:
                 )
                 raise_worker_errors()
                 if next_turn in done:
-                    turn = next_turn.result()
-                    turn = await self._apply_speaker_gate(turn)
+                    committed = next_turn.result()
+                    turn = await self._apply_speaker_gate(committed)
                     if turn is not None:
                         yield turn
+                    elif self._on_turn_blocked is not None:
+                        self._on_turn_blocked(committed)
                     continue
                 # Một worker vừa xong (hết audio): bỏ lượt chờ dở, vòng sau kiểm tra kết thúc.
                 next_turn.cancel()
@@ -269,8 +276,10 @@ class _CallStream:
         gain = pipeline.quiet_gain
         try:
             async for frame in frames:
+                raw = frame
                 if gain is not None:
-                    # Mọi bước sau (VAD, ASR, bằng chứng, tiếng vọng) thấy cùng một frame đã tăng.
+                    # Mọi bước sau (VAD, ASR, tiếng vọng) thấy cùng một frame đã tăng; riêng bằng
+                    # chứng SNR đo mức trên frame gốc (`raw`, xem TurnEvidence.observe_frame).
                     frame = gain.apply(frame)
                 is_speech = None
                 if pipeline.detector is not None:
@@ -285,7 +294,7 @@ class _CallStream:
                     # Assign the VAD segment before stamping frames sent to remote ASR.
                     await processed.wait()
                 if pipeline.evidence is not None:
-                    pipeline.evidence.observe_frame(frame)
+                    pipeline.evidence.observe_frame(frame, level_frame=raw)
                 if self._interruption is not None:
                     self._interruption.on_caller_audio(frame, is_speech=is_speech)
                 if self._turn_audio_open and self._controller.is_bot_speaking:
@@ -553,11 +562,6 @@ class _CallStream:
                 self._context.invalidate()
             await self._asr_queue.put(AsrSegmentEnd.DISCARD)
             self._asr_segment_open = False
-            if self._pipeline.evidence is not None:
-                # Partial của đoạn bỏ đi không được tính vào độ ổn định của đoạn sau: chuỗi chữ
-                # ngắn cũ còn trong cửa sổ thì partial thật của lần chen lời sau bị DROP vì
-                # "dao động" ("ĐÚNG" -> "Ừ" -> "ĐÚNG", 08/10).
-                self._pipeline.evidence.reset_transcript()
 
     async def _finalize_asr_segment(self) -> None:
         """Chốt câu dở thành final (provider hỗ trợ), không thì bỏ như `_discard_asr_segment`."""
@@ -585,6 +589,13 @@ class _CallStream:
             self._asr_idle = False
             if item is _QUEUE_DONE:
                 return
+            if item is AsrSegmentEnd.DISCARD and self._pipeline.evidence is not None:
+                # Partial của đoạn bỏ đi không được tính vào độ ổn định của đoạn sau: chuỗi chữ
+                # ngắn cũ còn trong cửa sổ thì partial thật của lần chen lời sau bị DROP vì
+                # "dao động" ("ĐÚNG" -> "Ừ" -> "ĐÚNG", 08/10). Reset lúc ASR tới dấu này, không
+                # phải lúc đưa vào hàng đợi: ASR chậm hơn thời gian thực còn tồn frame cũ, partial
+                # của chúng tới sau (review PR #110).
+                self._pipeline.evidence.reset_transcript()
             yield item
 
     # --- Bước 2: hai worker tiêu thụ song song ----------------------------------------

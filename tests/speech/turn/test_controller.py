@@ -605,3 +605,36 @@ async def test_final_that_is_only_bot_echo_does_not_leave_the_turn_hanging() -> 
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+async def test_long_turn_after_short_flipping_partials_is_not_dropped_as_oscillating() -> None:
+    """Review PR #110: GipFormer decode lại phần đầu câu nên partial ngắn lật qua lại ("HAI TỶ" ->
+    "HAI THẾ" -> "HAI TỶ") trước khi nghe ra cả câu. Cửa sổ độ ổn định còn giữ các partial đó thì
+    verdict của câu dài vẫn là OSCILLATING và Validator DROP lượt thật — sau khi ngắt lời đã được
+    xác nhận (bot đã dừng), người gọi bị bỏ lời. Thứ tự gọi như `STTPipeline._drain_asr`."""
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.evidence import TurnEvidence
+    from speech.turn.validator import TurnValidator
+
+    class _Never:
+        def is_speech(self, frame: bytes) -> bool:
+            return False
+
+    evidence = TurnEvidence(_Never(), frame_ms=30)
+    controller = TurnController(min_speech_ms=0, validator=TurnValidator())
+    loud = NoiseEvidence(rms=3000.0, noise_floor=30.0, snr_db=30.0)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    for text, final in [
+        ("HAI TỶ", False),
+        ("HAI THẾ", False),
+        ("HAI TỶ", False),
+        ("CÓ AI THẤY KHÔNG", False),
+        ("CÓ AI THẤY KHÔNG", True),
+    ]:
+        event = TranscriptEvent(text=text, is_final=final, confidence=0.9)
+        stability = evidence.observe_transcript(event)
+        controller.on_evidence_updated(noise_evidence=loud, stability=stability)
+        await controller.on_transcript_event(event)
+
+    turn = await _next_turn(controller)
+    assert turn.text == "CÓ AI THẤY KHÔNG"

@@ -60,6 +60,20 @@ describe("sttReducer", () => {
     expect(new Set(state.turns.map((turn) => turn.id)).size).toBe(2);
   });
 
+  it("kết cục của lượt trước tới sau khi lượt sau đã có chữ: đóng đúng dòng của nó", () => {
+    const state = run(
+      message("partial", 1, "tivi nói"),
+      message("partial", 2, "tôi muốn"),
+      message("dropped", 1, "tivi nói"),
+      message("final", 2, "tôi muốn đặt lịch"),
+    );
+
+    expect(view(state)).toEqual([
+      ["dropped", 1, "tivi nói"],
+      ["final", 2, "tôi muốn đặt lịch"],
+    ]);
+  });
+
   it("bỏ partial tới muộn của lượt đã chốt", () => {
     const state = run(message("final", 1, "xin chào"), message("partial", 1, "xin"));
 

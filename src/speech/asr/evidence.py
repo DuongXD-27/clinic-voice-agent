@@ -40,7 +40,11 @@ class TranscriptEvidenceTracker:
             return StabilityVerdict.UNKNOWN
         previous = self._window[-1] if self._window else None
         self._window.append(text)
-        if self._is_oscillating():
+        # Mẫu ảo giác chỉ nói về chính chữ ngắn đang xét. Câu dài tới sau các partial ngắn lật qua
+        # lại là ASR đã nghe ra thêm (GipFormer decode lại phần đầu câu: "HAI TỶ" -> "HAI THẾ" ->
+        # "HAI TỶ" -> "CÓ AI THẤY KHÔNG", 09/10): cửa sổ còn giữ các partial đó thì Validator
+        # DROP lượt thật — kể cả sau khi ngắt lời đã được xác nhận (review PR #110).
+        if len(text.split()) <= _MAX_OSCILLATION_WORDS and self._is_oscillating():
             return StabilityVerdict.OSCILLATING
         if previous is not None and self._is_converging(previous, text):
             return StabilityVerdict.CONVERGING

@@ -83,7 +83,7 @@ ASR, bằng chứng SNR, tiếng vọng) trong `STTPipeline._fanout`. Cùng ngư
   vọng càng to thì càng ít tăng — tăng âm không cải thiện SNR, nền đã to thì tăng chỉ thêm báo nhầm.
   Phân vị 90 vì nhiễu thật đến từng cụm và đỉnh cụm mới làm Silero báo nhầm (mục kế tiếp); không
   dùng RMS vì một tiếng gõ / va chạm máy ngắn đủ kéo RMS lên và hệ số tụt giữa cuộc gọi.
-- **Mức giọng = đoạn nói to nhất gần đây, giảm 3 dB/phút**: chỉ tăng khi mọi giọng nghe được đều
+- **Mức giọng = đoạn nói to nhất gần đây, giảm 3 dB mỗi phút người gọi nói** (im lặng không làm giảm): chỉ tăng khi mọi giọng nghe được đều
   nhỏ. Người gọi nói bình thường rồi im, TV nói nhỏ phía sau → không tăng. Không tính lúc bot nói và
   0,5 s ngay sau đó (tiếng vọng, dư âm — mục "Cuộc gọi web thật"), không tính đoạn ngắn hơn 0,3 s
   (tiếng gõ, ho).

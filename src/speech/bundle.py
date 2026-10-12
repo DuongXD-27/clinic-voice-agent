@@ -193,7 +193,8 @@ class StreamingSpeechBundle:
 
     stt_pipeline: STTPipeline
     turn_controller: TurnController
-    tts: SpeechSynthesizer
+    # None khi dựng `with_tts=False` (trang thử STT: không phát gì).
+    tts: Optional[SpeechSynthesizer]
     # None khi turn_validator_enabled=False. CallBridge dùng lại cho InterruptionController.
     validator: Optional[TurnValidator] = None
 
@@ -238,6 +239,7 @@ def build_streaming_bundle(
     asr_queue_ms: int,
     barge_in_preroll_ms: int,
     asr: Optional[Recognizer] = None,
+    with_tts: bool = True,
 ) -> StreamingSpeechBundle:
     """Đường LiveKit (transports/livekit/worker.py). Đường HTTP dùng `build_speech_bundle`.
 
@@ -290,8 +292,13 @@ def build_streaming_bundle(
         speaker_gate=speaker_gate,
     )
     turn_controller = TurnController(validator=validator, **turn_controller_options(settings))
-    tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
-    tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
+    tts = None
+    if with_tts:
+        # Trang thử STT không dựng TTS: provider TTS thiếu key không được làm hỏng nó.
+        tts_gateway = create_tts_gateway(
+            settings.tts_provider, fallback=settings.tts_fallback_provider
+        )
+        tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     return StreamingSpeechBundle(
         stt_pipeline=stt_pipeline, turn_controller=turn_controller, tts=tts, validator=validator
     )

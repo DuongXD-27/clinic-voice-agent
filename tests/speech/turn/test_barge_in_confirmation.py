@@ -13,7 +13,7 @@ import pytest
 from speech.asr.evidence import StabilityVerdict
 from speech.asr.vad.base import VadEvent
 from speech.audio.noise_tracker import NoiseEvidence
-from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.turn.interruption import InterruptionController, InterruptionState, _EchoEvidence
 from speech.turn.validator import TurnValidator
 from speech.types import TranscriptEvent
 
@@ -43,8 +43,8 @@ class _Clock:
 class _EchoInMic(InterruptionController):
     """Mic có tiếng bot vọng lại (AEC không khử hết) — phần đo âm thanh có test riêng."""
 
-    def _echo_evidence(self) -> tuple[float, float]:
-        return 1.0, 1.0
+    def _echo_evidence(self) -> _EchoEvidence:
+        return _EchoEvidence(1.0, 1.0)
 
 
 def _controller(
@@ -196,15 +196,25 @@ async def test_words_without_noise_evidence_need_converging_partials() -> None:
 
 
 async def test_long_partial_is_not_dropped_for_short_partials_that_flipped_before_it() -> None:
-    """Log 09/10: "HAI TỶ" -> "HAI THẾ" -> "HAI TỶ" (GipFormer decode lại phần đầu câu) rồi
-    "CÓ AI THẤY KHÔNG" vẫn bị DROP vì cửa sổ độ ổn định còn giữ các chữ ngắn kia."""
+    """Log 09/10: chữ ngắn lật qua lại (GipFormer decode lại phần đầu câu) rồi "CÓ AI THẤY KHÔNG"
+    vẫn bị DROP vì cửa sổ độ ổn định còn giữ các chữ ngắn kia."""
+    from speech.asr.evidence import TranscriptEvidenceTracker
+
     controller, tts, clock = _controller()
+    tracker = TranscriptEvidenceTracker()  # như pipeline: verdict của từng partial
     await controller.on_speech_started(VadEvent("speech_start"))
     clock.now = 1.0
-    controller.on_evidence_updated(stability=StabilityVerdict.OSCILLATING)
 
-    assert not await _partial(controller, "HAI TỶ")  # chữ ngắn lật qua lại: mẫu ảo giác
-    assert await _partial(controller, "CÓ AI THẤY KHÔNG")
+    async def heard(text: str, confidence: float) -> bool:
+        event = TranscriptEvent(text=text, is_final=False, confidence=confidence)
+        controller.on_evidence_updated(stability=tracker.observe(event))
+        return await controller.on_partial_transcript(event)
+
+    # Phần đầu câu GipFormer decode lại, một chữ lật qua lại: một chữ không tự ngắt lời.
+    assert not await heard("ĐÂY", 0.9)
+    assert not await heard("TẠI", 0.9)
+    assert not await heard("ĐÂY", 0.9)  # chữ ngắn quay lại: mẫu ảo giác (OSCILLATING)
+    assert await heard("CÓ AI THẤY KHÔNG", 0.9)
 
 
 async def test_a_new_candidate_does_not_inherit_the_previous_candidate_stability() -> None:
@@ -321,3 +331,93 @@ async def test_caller_still_talking_as_the_next_sentence_starts_interrupts_witho
     controller._clock.now += 0.5
 
     assert await _partial(controller, "KHUNG GIỜ NÀY KHÔNG")
+
+
+async def test_echo_after_switching_to_speakerphone_does_not_interrupt_before_it_can_be_measured() -> (
+    None
+):
+    """Review PR #110: lúc bot chào người gọi áp máy (mic im, `_echo_clear` chốt), sau đó bật loa
+    ngoài. Tiếng vọng câu mới thành chữ ngay ~0,5 s, khi phép đo vọng (`_echo_evidence`) chưa đủ
+    frame tiếng bot để kết luận: không được tin cờ cũ mà bỏ so chữ, nếu không bot tự ngắt lời
+    mình ở mọi câu (câu bị ngắt sớm thì probe vọng cũng không kịp chạy)."""
+    _, controller = await _answer_after(2.5, text="KHUNG GIỜ NÀY")  # câu 1: mic im -> chốt
+    assert controller._echo_clear
+    await controller.on_speech_ended_without_confirmation()  # VAD: người gọi nói xong
+    controller.on_bot_stopped_speaking()
+    clock = controller._clock
+    clock.now += 1.0
+    bot = "Dạ, em xin phép đặt lịch theo khung giờ đó ạ."
+    voice = _voice(3.0, seed=5)
+    controller.on_bot_started_speaking(bot)
+    controller.on_bot_audio(voice.tobytes(), _RATE, complete=True)
+    hop = int(_FRAME_S * _RATE)
+    echo = np.concatenate(
+        [np.zeros(int(0.1 * _RATE), dtype=np.int16), (voice * 0.8).astype(np.int16)]
+    )
+    for i in range(round(0.6 / _FRAME_S)):
+        clock.now += _FRAME_S
+        controller.on_caller_audio(echo[i * hop : (i + 1) * hop].tobytes(), is_speech=i >= 4)
+        if i == 4:
+            await controller.on_speech_started(VadEvent("speech_start"))
+
+    assert not await _partial(controller, "DẠ EM XIN PHÉP")
+
+
+async def test_confirming_does_not_wait_for_the_tts_request_to_close() -> None:
+    """Review PR #110: xác nhận ngắt lời giờ chạy trên task VAD (`on_speech_frame`). Đóng request
+    TTS (WebSocket/HTTP) có thể chậm; chờ nó thì VAD — và với Gemini Live cả `_fanout` — đứng
+    đúng lúc người gọi đang nói. Phần tắt tiếng vẫn phải chạy ngay."""
+    import asyncio
+
+    closing = asyncio.Event()
+
+    class _SlowTTS(_FakeTTS):
+        async def cancel(self) -> None:
+            self.cancel_calls += 1  # tắt tiếng: chạy ngay
+            await closing.wait()  # đóng kết nối: lâu
+
+    clock = _Clock()
+    tts = _SlowTTS()
+    controller = InterruptionController(tts, clock=clock, validator=TurnValidator(), min_snr_db=0.0)
+    controller.on_bot_started_speaking(_BOT)
+    controller.on_evidence_updated(
+        noise_evidence=NoiseEvidence(rms=3000.0, noise_floor=30.0, snr_db=25.0)
+    )
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.now = 0.3
+    assert not await _partial(controller, "TỪ XƯA ĐẾN GIỜ")
+    clock.now = 0.45
+
+    confirmed = await asyncio.wait_for(controller.on_speech_frame(), timeout=0.5)
+
+    assert confirmed
+    assert tts.cancel_calls == 1
+    closing.set()
+
+
+@pytest.mark.parametrize("text", ["KHÔNG", "ĐƯỢC", "OK"])
+async def test_a_one_word_answer_still_interrupts_once_two_partials_converge(text: str) -> None:
+    """Review PR #110: luật "một chữ không tự ngắt lời" chỉ dành cho chữ không phải câu trả lời
+    ("ĐÂY", "MÌNH"). Câu trả lời một chữ ở SNR dưới ngưỡng câu trả lời rõ ràng (10 dB) vẫn ngắt
+    được qua hai partial hội tụ hoặc final, như trước PR."""
+    controller, tts, clock = _controller(snr_db=8.0)
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.now = 0.4
+    assert not await _partial(controller, text)
+
+    clock.now = 0.7
+    controller.on_evidence_updated(stability=StabilityVerdict.CONVERGING)
+    assert await _partial(controller, text)
+    assert tts.cancel_calls == 1
+
+
+async def test_an_answer_filler_during_the_final_question_interrupts_on_its_final() -> None:
+    controller, tts, clock = _controller(bot=_QUESTION, snr_db=8.0)
+    controller.on_bot_audio(_voice(3.0).tobytes(), _RATE, complete=True)
+    clock.now = 2.6  # đang đọc câu hỏi cuối
+    await controller.on_speech_started(VadEvent("speech_start"))
+    clock.now = 3.1
+
+    assert await controller.on_partial_transcript(
+        TranscriptEvent(text="Ừ", is_final=True, confidence=0.95)
+    )

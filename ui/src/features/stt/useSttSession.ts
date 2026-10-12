@@ -48,7 +48,9 @@ export function useSttSession() {
         joined,
         dispatch,
         (message) => {
-          // Worker không chạy được ASR đã chọn (thiếu key, thiếu thư viện…): nó dừng, mình rời room.
+          // Phiên không thể tiếp tục (worker không chạy được ASR đã chọn, worker rời phòng, mất
+          // micro): rời room và gỡ listener — room cũ còn kết nối thì sự kiện của nó (chữ,
+          // Disconnected) lẫn vào phiên bấm Nói lại sau đó.
           attemptRef.current += 1;
           if (roomRef.current === joined) roomRef.current = null;
           joined.removeAllListeners();
@@ -108,7 +110,7 @@ export function useSttSession() {
 function subscribe(
   room: Room,
   dispatch: Dispatch<SttAction>,
-  onWorkerError: (message: string) => void,
+  onFatal: (message: string) => void,
   isCurrent: () => boolean,
 ) {
   let goneTimer: ReturnType<typeof setTimeout> | undefined;
@@ -128,7 +130,7 @@ function subscribe(
           room.remoteParticipants.size === 0 &&
           room.state === ConnectionState.Connected
         ) {
-          onWorkerError(WORKER_GONE);
+          onFatal(WORKER_GONE);
         }
       }, WORKER_GONE_GRACE_MS);
     })
@@ -141,7 +143,7 @@ function subscribe(
     .on(RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
       if (topic === STATUS_TOPIC) {
         const message = parseStatus(payload);
-        if (message) onWorkerError(message);
+        if (message) onFatal(message);
         return;
       }
       if (topic !== STT_TOPIC) return;
@@ -153,6 +155,6 @@ function subscribe(
       dispatch({ type: "disconnected" });
     })
     .on(RoomEvent.MediaDevicesError, (error) => {
-      dispatch({ type: "failed", message: `Không truy cập được microphone: ${error.message}` });
+      onFatal(`Không truy cập được microphone: ${error.message}`);
     });
 }

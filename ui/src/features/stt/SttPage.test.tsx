@@ -223,6 +223,55 @@ describe("SttPage", () => {
     expect(status().getByText("Đang nghe")).toBeInTheDocument();
   });
 
+  it("micro lỗi giữa phiên: rời room cũ, phiên mới không bị room cũ làm hỏng", async () => {
+    tokenEndpoint();
+    render(<SttPage />);
+    await speak();
+    const old = room();
+
+    act(() => {
+      old.emit("mediaDevicesError", new Error("Requested device not found"));
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Requested device not found");
+    expect(old.disconnect).toHaveBeenCalled();
+
+    await speak();
+    act(() => {
+      old.emit("disconnected");
+      old.emit(
+        "dataReceived",
+        encoder.encode(
+          JSON.stringify({ type: "stt", kind: "final", turn: 1, text: "chữ của phiên cũ" }),
+        ),
+        undefined,
+        undefined,
+        "callbot.stt",
+      );
+    });
+
+    expect(status().getByText("Đang nghe")).toBeInTheDocument();
+    expect(screen.queryByText("chữ của phiên cũ")).not.toBeInTheDocument();
+  });
+
+  it("đổi model sau khi phiên đã kết thúc: không cảnh báo khác lựa chọn", async () => {
+    tokenEndpoint();
+    render(<SttPage />);
+    await speak();
+    act(() => {
+      room().emit(
+        "participantAttributesChanged",
+        { asr_provider: "gemini_live" },
+        { identity: "agent" },
+      );
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Kết thúc" }));
+
+    await userEvent.click(screen.getByRole("radio", { name: "ZipFormer" }));
+
+    expect(screen.queryByText(/KHÁC lựa chọn/)).not.toBeInTheDocument();
+  });
+
   it("Kết thúc: ngắt room, giữ các lượt đã có", async () => {
     tokenEndpoint();
     render(<SttPage />);

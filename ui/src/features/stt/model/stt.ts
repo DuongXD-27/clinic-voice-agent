@@ -99,11 +99,14 @@ export function sttReducer(state: SttSession, action: SttAction): SttSession {
       return { ...state, turns: applyMessage(state.turns, action.message) };
     case "disconnected":
       if (state.phase === "idle") return state;
+      // ASR worker báo chỉ đúng cho phiên vừa xong: giữ lại thì đổi model sau đó bị cảnh báo
+      // "khác lựa chọn" sai.
       return {
         ...state,
         phase: "idle",
         step: null,
         workerPresent: false,
+        workerAsr: null,
         turns: closeLive(state.turns),
       };
     case "failed":
@@ -112,6 +115,7 @@ export function sttReducer(state: SttSession, action: SttAction): SttSession {
         phase: "idle",
         step: null,
         workerPresent: false,
+        workerAsr: null,
         turns: closeLive(state.turns),
         error: action.message,
       };
@@ -119,17 +123,22 @@ export function sttReducer(state: SttSession, action: SttAction): SttSession {
 }
 
 function applyMessage(turns: SttTurn[], message: SttMessage): SttTurn[] {
-  const last = turns.at(-1);
-  const isOpen = last?.status === "live" && last.turn === message.turn;
+  // Dòng đang nghe của lượt này — không nhất thiết là dòng cuối: cổng giọng còn chấm lượt k thì
+  // lượt k+1 đã có chữ tạm thời, kết cục của lượt k tới sau.
+  let open = -1;
+  turns.forEach((turn, index) => {
+    if (turn.status === "live" && turn.turn === message.turn) open = index;
+  });
+  const replaceOpen = (update: (turn: SttTurn) => SttTurn) =>
+    turns.map((turn, index) => (index === open ? update(turn) : turn));
   if (message.kind === "partial") {
     // Partial tới muộn của lượt đã chốt: bỏ (worker đã lọc, đây là lưới an toàn).
     if (turns.some((turn) => turn.status === "final" && turn.turn === message.turn)) return turns;
-    if (isOpen) return [...turns.slice(0, -1), { ...last, text: message.text }];
+    if (open >= 0) return replaceOpen((turn) => ({ ...turn, text: message.text }));
     return [...turns, newTurn(turns, message, "live")];
   }
-  const status = message.kind === "final" ? "final" : "dropped";
-  const closed = { ...newTurn(turns, message, status), id: isOpen ? last.id : nextId(turns) };
-  return isOpen ? [...turns.slice(0, -1), closed] : [...turns, closed];
+  const closed = newTurn(turns, message, message.kind === "final" ? "final" : "dropped");
+  return open >= 0 ? replaceOpen((turn) => ({ ...closed, id: turn.id })) : [...turns, closed];
 }
 
 function newTurn(turns: SttTurn[], message: SttMessage, status: SttTurn["status"]): SttTurn {

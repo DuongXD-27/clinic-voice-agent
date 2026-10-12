@@ -8,7 +8,7 @@ Nhiễu văn phòng thuần thì Silero không báo nhầm frame nào tới -45 
 Cùng ngưỡng với `normalize_gain` của đường HTTP (giọng dưới -35 dBFS mới tăng, đưa về -26 dBFS, tối
 đa +20 dB), nhưng streaming không thấy trước cả câu nên:
 - Mức giọng: giữ mức (RMS, đo TRƯỚC khi tăng) của đoạn nói to nhất gần đây, giảm rất chậm
-  (`_HOLD_DECAY_DB_PER_S`). Đoạn nói = các frame Silero gắn cờ tiếng nói, không tính lúc bot đang nói
+  (`_HOLD_DECAY_DB_PER_S`, chỉ trong lúc người gọi nói). Đoạn nói = các frame Silero gắn cờ tiếng nói, không tính lúc bot đang nói
   và `_AFTER_BOT_GUARD_S` ngay sau đó (tiếng bot vọng lại, dư âm phòng — dump cuộc gọi web thật: đoạn
   Silero gắn cờ ở -40..-60 dBFS lúc bot chào, tính vào thì câu đầu của người gọi bị tăng 15-20 dB).
   Chỉ tăng khi MỌI giọng nghe được đều nhỏ: cuộc gọi thật có TV /
@@ -57,8 +57,8 @@ _MAX_FLOOR_DBFS = -50.0
 # chờn), tính mức khi đã dài >= `_MIN_RUN_FRAMES` frame (0,3 s — không tính tiếng gõ, ho ngắn).
 _RUN_MAX_GAP_FRAMES = 5
 _MIN_RUN_FRAMES = 10
-# Mức đoạn nói to nhất giảm 3 dB mỗi phút: người gọi đổi tư thế (cầm máy xa ra) thì vài phút sau mới
-# được tăng, đổi lại tiếng nhỏ hơn phía sau không kéo được hệ số lên.
+# Mức đoạn nói to nhất giảm 3 dB mỗi phút người gọi NÓI: người gọi đổi tư thế (cầm máy xa ra) thì nói
+# vài phút sau mới được tăng, đổi lại tiếng nhỏ hơn phía sau không kéo được hệ số lên.
 _HOLD_DECAY_DB_PER_S = 0.05
 # Nền nhiễu: phân vị 90 mức các frame không có tiếng nói trong ~10 s (333 frame 30 ms) gần nhất.
 _FLOOR_PERCENTILE = 90
@@ -148,7 +148,10 @@ class QuietSpeechGain:
             )
 
     def _track_run(self, caller_speech: bool) -> None:
-        if self._held_dbfs is not None:
+        if self._held_dbfs is not None and caller_speech:
+            # Chỉ giảm khi người gọi đang nói: im lặng (nghe bot, chờ máy) không cho biết gì về
+            # mức giọng; giảm theo đồng hồ thì sau ~5 phút im hệ số tự leo lên và giọng bình
+            # thường bị cộng thêm vài dB (review PR #110).
             self._held_dbfs -= _HOLD_DECAY_DB_PER_S * self._frame_s
         if caller_speech:
             self._run_power += 10 ** (self._last_dbfs / 10)
