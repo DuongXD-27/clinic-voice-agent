@@ -469,6 +469,7 @@ Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh g
 | Đang hỏi ngày sinh, `dob == NONE` hoặc `INVALID` | Có |
 | `agreement == UNCLEAR` lần đầu | Không |
 | `agreement == UNCLEAR` lần thứ hai liên tiếp | Có |
+| Cả lượt chỉ là ậm ừ / từ đệm ("Ờ cái... ừ thì... à") — `is_hesitation_only` | Có, ngay lần đầu |
 | `slot_choice == AMBIGUOUS` | Không |
 | `slot_choice == NO_MATCH` | Có |
 | `intent == REPEAT_REQUEST` | Không (lặp lại câu hỏi trước) |

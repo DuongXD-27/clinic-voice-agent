@@ -363,6 +363,17 @@ def test_two_failed_understandings_transfer() -> None:
     assert action.transfer_reason == "NOT_UNDERSTOOD"
 
 
+def test_two_hesitations_at_readback_transfer() -> None:
+    """Ậm ừ suông ở câu đọc lịch không phải câu trả lời chưa rõ — tính ngay lần đầu."""
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_hesitant"))
+    lines = ["Nguyễn Văn A", "14/03/1978", "Ờ cái... ừ thì... à", "Cái đó... ờ, như kiểu..."]
+    action = _run(bot, "c_hesitant", lines)
+    assert action.transfer_reason == "NOT_UNDERSTOOD"
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
+
+
 def test_extraction_with_provenance_is_stored_on_turn_record() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     bot.start_call(_outbound("c_trace"))

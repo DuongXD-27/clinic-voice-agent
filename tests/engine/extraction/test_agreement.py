@@ -10,6 +10,7 @@ from callbot.engine.extraction.agreement import (
     gives_up_if_unavailable,
     gives_up_slot_change,
     is_bare_da,
+    is_hesitation_only,
     without_fallback_lead,
 )
 from callbot.engine.extraction.schema import Agreement, Provenance, QuestionId
@@ -472,6 +473,20 @@ def test_hesitation_sounds_are_not_a_confirmation(question: QuestionId, text: st
 @pytest.mark.parametrize("text", ["ờ", "ừ", "ờ.", "ừ ừ", "ờ... vâng"])
 def test_a_short_o_or_u_still_agrees(question: QuestionId, text: str) -> None:
     assert extract_agreement(text, question).value is Agreement.AGREE
+
+
+@pytest.mark.parametrize(
+    "text", ["Ờ cái... ừ thì... à", "Cái đó... ờ, như kiểu...", "ờ.... ừ ..... à", "ừ thì"]
+)
+def test_hesitation_only_has_no_answer(text: str) -> None:
+    assert is_hesitation_only(text)
+
+
+@pytest.mark.parametrize(
+    "text", ["ờ", "ừ", "ừ ừ", "ờ... vâng", "chắc là được", "ờ để xem", "cái đầu tiên", ""]
+)
+def test_hesitation_only_keeps_answers(text: str) -> None:
+    assert not is_hesitation_only(text)
 
 
 @pytest.mark.parametrize(
