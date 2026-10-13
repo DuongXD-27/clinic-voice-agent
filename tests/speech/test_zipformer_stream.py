@@ -298,6 +298,7 @@ async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> No
             end_silence_ms=60,
             min_emit_interval_ms=10_000,
             min_decode_ms=60,
+            pre_speech_ms=300,  # cơ chế, không phụ thuộc giá trị cấu hình
         )
     ]
 
@@ -397,7 +398,9 @@ async def test_replayed_prefix_ages_out_after_long_silence() -> None:
             return pcm == _UTTERANCE_B
 
     items += [_SILENT] * 40 + [_UTTERANCE_B] * 14
-    assert await _finals(_LabellingASR(), items, silence_classifier=OnlyB()) == ["B"]
+    # Im lặng phải dài hơn pre-roll; ghim pre-roll để test không phụ thuộc cấu hình.
+    finals = await _finals(_LabellingASR(), items, silence_classifier=OnlyB(), pre_speech_ms=300)
+    assert finals == ["B"]
 
 
 class _ScoredFakeRecognizer:

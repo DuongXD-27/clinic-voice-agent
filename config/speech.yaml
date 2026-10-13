@@ -80,15 +80,16 @@ turn_post_bot_guard_ms: 500
 turn_merge_window_ms: 700
 
 # Audio giữ trước lúc VAD của ASR nhận ra tiếng nói, đưa kèm vào ASR streaming (Silero bật cờ
-# trễ 250-700 ms). null = theo pre_speech_ms của provider trong asr.yaml (300 ms).
+# trễ 0,25–1 s). null = theo pre_speech_ms của provider trong asr.yaml (ZipFormer 1000 ms từ
+# 12/10, Gemini Live 300 ms).
 asr_pre_speech_ms: null
 
 # Cuộc gọi điện thoại (participant SIP của LiveKit) ghi đè các khoá trên. Chỉ ghi khoá đã đo.
 #   asr_pre_speech_ms 1000: đo 07/10 trên kênh điện thoại mô phỏng (noise-bench --channel phone,
 #   8 kHz G.711): WER lượt bộ golden sạch 0,147 -> 0,087, office@8 0,413 -> 0,263; sửa "KHÔNG
 #   ĐƯỢC" -> "CŨNG ĐƯỢC" ở bộ câu ngắn. Đổi lại thêm lượt "ĐÂY" (1 ở office@3, 2 từ clip "Ừ").
-#   Trên web (16 kHz) kết quả trái chiều nên web giữ 300.
-#   docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+#   Web dùng cùng 1000 ms qua asr.yaml từ 12/10 (đo trên nhãn người); giữ khoá này để điện thoại
+#   không đổi theo khi ai đó đổi lại web. docs/evidence/stt-phone-echo-speaker-2026-10-07.md
 #   quiet_speech_gain_enabled false: đo 11/10 trên kênh điện thoại mô phỏng, nhiễu nhỏ qua G.711 bị
 #   lượng tử thô thành tiếng lạo xạo mà Silero báo nhầm, tăng âm kéo nó lên: thêm lượt ảo giác "ĐÂY",
 #   "VÂNG" (3/36 đoạn chỉ có nhiễu, tắt: 1/36). Đường sạch thì cải thiện mạnh (giọng nhỏ 25 dB: WER

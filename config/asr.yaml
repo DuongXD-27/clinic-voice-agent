@@ -55,12 +55,17 @@ zipformer:
   # Chỉ bật sau khi đo CPU trên máy production.
   partial_interval_ratio: 0.0 # ZIPFORMER_PARTIAL_INTERVAL_RATIO
   # Audio giữ lại trước frame đầu tiên được báo là tiếng nói (bù độ trễ nhận ra đầu câu của
-  # Silero, mặc định 0,25 s).
-  # Đo 06/10 (eval/noise-bench): 1000 ms giảm WER có nhãn của bộ golden (8 kHz điện thoại) ở
-  # mọi mức nhiễu văn phòng (vd. office@8 0,193 -> 0,130) nhưng trên bộ web (LiveKit 16 kHz,
-  # đường production hiện tại) trái chiều — sửa 5 câu, hỏng 5 câu ("ĐÚNG KHÔNG" -> "ĐÚNG"),
-  # 600 ms cũng vậy. Giữ 300 cho web; ứng viên cho profile điện thoại khi có SIP.
-  pre_speech_ms: 300 # ZIPFORMER_PRE_SPEECH_MS
+  # Silero). Câu mở đầu bằng một chữ ngắn rồi ngừng ("Không, tôi chưa xác nhận", "Khoan, …",
+  # "Dạ, …"): chữ đó chưa đủ 0,25 s tiếng nói liên tục nên Silero bật cờ trễ 0,8–1,0 s, 300 ms
+  # cắt mất đúng chữ quyết định nghĩa.
+  # Đo 12/10 trên nhãn người (golden + PM 16 kHz qua pipeline worker, trộn nhiễu văn phòng/phố/
+  # TV): 300 -> 1000 ms, câu sai từ quan trọng khi có ồn 106 -> 76 (39 câu hết sai, 7 câu mới sai
+  # — chủ yếu TV kéo thêm chữ nền), sạch 8 -> 3; lượt giả trên đoạn chỉ có nhiễu không đổi (văn
+  # phòng 3, phố 0, TV 17 trên 30 mỗi loại). Lần ngược theo năng lượng (onset_lookback_ms 700)
+  # không giúp: khoảng ngừng sau chữ đầu cắt mạch năng lượng. Lần đo 06/10 thấy "trái chiều" trên
+  # bộ web lấy chữ ASR của bản sạch làm nhãn — bộ đó không thấy được chữ đầu bị mất.
+  # Chi phí: mỗi lần decode thêm tối đa 0,7 s audio (khoảng +12 ms cho final ở 2 luồng).
+  pre_speech_ms: 1000 # ZIPFORMER_PRE_SPEECH_MS
   # Final chỉ decode tới frame cuối còn là giọng (Silero gắn cờ, hoặc to trong vòng 25 dB đỉnh câu)
   # + chừng này ms; null = cả ~1,1 s im lặng đuôi như trước 08/10. Đuôi im lặng dài làm câu ngắn
   # đổi chữ ("BÂY GIỜ" -> "ĐƯỢC", "OK" -> "Ừ/ĐÂY"). 150 ms làm thêm chữ thừa sau tiếng động cuối.
