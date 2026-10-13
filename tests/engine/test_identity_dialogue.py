@@ -127,6 +127,41 @@ def test_inbound_name_and_dob_in_one_answer() -> None:
     assert clinic.writes == []
 
 
+@pytest.mark.parametrize(
+    "line, offered",
+    [
+        # QC qc-ib-10 (data overload): tên, ngày sinh và nhu cầu kèm ngày khám trong một câu. Ngày khám
+        # không phải ngày sinh thứ hai; xác minh xong mời ngay khung theo buổi đã nói, không hỏi nhu cầu
+        (
+            "Tôi là Nguyễn Văn A, sinh 14/3/1978, muốn đặt khám tổng quát chiều 14 tháng 10",
+            "2 giờ 30 chiều",
+        ),
+        (
+            "Dạ, Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978, cho tôi đặt lịch sáng 14 tháng 10",
+            "10 giờ",
+        ),
+    ],
+)
+def test_inbound_identity_with_a_booking_date_verifies_and_offers_in_one_turn(
+    line: str, offered: str
+) -> None:
+    actions, clinic = _call(_inbound("c_in_overload"), [line])
+    assert actions[-1].state == "AWAITING_CONFIRMATION"
+    assert offered in actions[-1].utterance and "14 tháng 10" in actions[-1].utterance
+    assert clinic.writes == [] and sum(call.operation == "get_slots" for call in clinic.calls) == 1
+
+
+def test_inbound_booking_request_during_identity_can_be_withdrawn() -> None:
+    """R-44: đổi ý ở lượt sau của bước danh tính thì bỏ yêu cầu đã giữ, xác minh xong hỏi nhu cầu."""
+    actions, clinic = _call(
+        _inbound("c_in_withdraw"),
+        ["Tôi muốn đặt lịch khám", NAME, "14/03/1978, thôi để tôi nghĩ lại đã"],
+    )
+    assert actions[-1].state == "AWAITING_INTENT"
+    assert actions[-1].utterance in t.static_choices(t.ASK_INTENT_INBOUND)
+    assert clinic.writes == [] and all(call.operation != "get_slots" for call in clinic.calls)
+
+
 def test_dob_before_name_is_kept_and_only_name_is_asked() -> None:
     actions, _ = _call(_outbound("c_dob_first"), [DOB, NAME])
     assert actions[1].utterance == t.ASK_NAME_AFTER_DOB
@@ -594,10 +629,13 @@ def test_inbound_cannot_provide_twice_transfers_without_write() -> None:
 def test_request_before_identity_asks_to_verify_first() -> None:
     actions, clinic = _call(_inbound("c_book_first"), ["Alô, tôi muốn đặt lịch khám ạ.", NAME, DOB])
     assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
-    assert actions[3].state == "AWAITING_INTENT"
     _assert_no_disclosure(actions)
-    # Nhu cầu nói trước xác minh không được dùng: chưa đọc slot nào
-    assert clinic.writes == [] and all(call.operation != "get_slots" for call in clinic.calls)
+    # Nhu cầu nói trước xác minh chỉ được dùng SAU khi xác minh xong (R-43 cho đặt lịch inbound): tới
+    # lúc đó không đọc slot nào; xác minh xong thì mời khung ngay, không hỏi lại "cần hỗ trợ gì"
+    assert all(action.state == "AWAITING_IDENTITY" for action in actions[:3])
+    assert actions[3].state == "OFFERING_SLOTS"
+    assert sum(call.operation == "get_slots" for call in clinic.calls) == 1
+    assert clinic.writes == []
 
 
 def test_request_before_identity_repeated_exhausts_one_retry() -> None:

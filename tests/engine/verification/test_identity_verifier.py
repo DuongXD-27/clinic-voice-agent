@@ -60,9 +60,14 @@ def test_prepare_inbound_without_usable_phone_does_not_call_mock(phone) -> None:
     assert fake.patient_lookups == [] and fake.calls == []
 
 
-def test_prepare_inbound_normalizes_e164_before_lookup() -> None:
+@pytest.mark.parametrize(
+    "caller_number",
+    ["+84 912 345 600", "84912345600", "84 912 345 600", "840912345600", "0084912345600"],
+)
+def test_prepare_inbound_normalizes_country_code_before_lookup(caller_number: str) -> None:
+    """Harness gửi "+84…", "84…" trần hay "840…": tra cứu cùng một số nội địa 0xxxxxxxxx."""
     fake = FakeClinicAPI()
-    ctx = _inbound("+84 912 345 600")
+    ctx = _inbound(caller_number)
     result = _verifier(fake).prepare(ctx)
 
     assert fake.patient_lookups == ["0912345600"]

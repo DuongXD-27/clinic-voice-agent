@@ -10,6 +10,10 @@ Vì vậy mọi chỗ mơ hồ ở đây đều trả `INVALID` — đừng "s�
 - người gọi tự báo là không chắc ("hình như", "thì phải") -> `INVALID`, hỏi lại,
 - hai ngày cùng được nêu mà không có lời sửa ("14 hay 15 tháng 3") -> `INVALID`.
 
+Ngoại lệ duy nhất cho "hai ngày": câu gộp ngày sinh với ngày muốn khám ("sinh 12/4/1985, muốn đặt
+khám chiều 14 tháng 10", QC qc-ib-10). Ngày đứng ngay sau mốc "sinh" là ngày sinh, ngày kia thuộc
+vế nhu cầu — chỉ khi đúng một ngày có mốc và hai ngày không nối nhau bằng "hay / hoặc / or".
+
 Phủ định khác tự sửa: "không phải A" bỏ A mà không có gì thay thế -> `INVALID`; chỉ
 "không phải A mà là B" và "A, à nhầm B" mới lấy B, và chỉ khi B đủ ngày/tháng/năm.
 
@@ -158,6 +162,10 @@ _EN_ZERO = frozenset({"zero", "oh"})
 _EN_CENTURIES = frozenset({19, 20})
 _EN_YEAR_MAX_WORDS = 6  # "one thousand nine hundred seventy eight"
 _LUNAR = compile_phrases(["âm lịch", "âm", "lịch âm"])
+# Mốc ngày sinh đứng ngay trước một ngày: "sinh 12/4/1985", "born March 14", "date of birth 14/3/1978"
+_BIRTH_CUES = frozenset({"sinh", "born", "birth", "birthday"})
+# Từ được phép đứng giữa mốc và ngày: "sinh vào ngày 14 tháng 3", "born on the 14th of March"
+_CUE_BRIDGE = frozenset({"ngày", "mùng", "mồng", "vào", "là", "hôm", "on", "the", "of", "is", "in"})
 _AGE = compile_phrases(["tuổi"])
 _DATE_WORDS = frozenset({"ngày", "tháng", "năm", "mùng", "mồng"})
 _FILLERS = frozenset(
@@ -245,6 +253,10 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     if start is None:
         return invalid(Reason.NEGATED)
     segment = tokens[start:]
+    birth = _birth_anchored_date(segment)
+    if birth is not None:
+        # Ngày sinh đi cùng ngày muốn khám: chỉ đọc vùng sau mốc "sinh"; vùng kia không phải ngày sinh
+        start, segment = start + birth[0], segment[birth[0] : birth[1]]
 
     parsed = _parse_tokens(segment, today)
     if parsed is None:
@@ -605,6 +617,41 @@ def _affirmed_start(tokens: list[str]) -> Optional[int]:
     if affirmation is None:
         return None
     return after + token_index(tail, affirmation.end() - 1) + 1
+
+
+def _birth_anchored_date(tokens: list[str]) -> Optional[tuple[int, int]]:
+    """Câu có nhiều ngày: vùng (đầu, sau cuối) của ngày đứng ngay sau mốc "sinh", nếu đúng một vùng như
+    vậy và các ngày không nối nhau bằng "hay / hoặc / or". `None`: một ngày, hoặc không phân biệt được
+    (giữ hướng `INVALID` của module)."""
+    anchors = [i for i, t in enumerate(tokens) if t == "tháng"]
+    if len(anchors) < 2:
+        return None
+    regions = [_date_region(tokens, at) for at in anchors]
+    anchored = [region for region in regions if _after_birth_cue(tokens, region[0])]
+    if len(anchored) != 1:
+        return None
+    lo, hi = anchored[0]
+    for other_lo, other_hi in regions:
+        if (other_lo, other_hi) == (lo, hi):
+            continue
+        gap = tokens[hi:other_lo] if other_lo >= hi else tokens[other_hi:lo]
+        if find_phrase(" ".join(gap), ALTERNATIVES, mixed=True) is not None:
+            return None  # "sinh 14 tháng 3 hay 15 tháng 3": vẫn là hai cách đọc một ngày sinh
+    return lo, hi
+
+
+def _date_region(tokens: list[str], at: int) -> tuple[int, int]:
+    """Vùng ngày quanh một "tháng": dãy số trước (ngày) và dãy số sau (tháng, "năm" + năm)."""
+    lo = at - len(_number_run_before(tokens, at))
+    hi = at + 1 + len(_number_run_after(tokens, at + 1))
+    return lo, hi
+
+
+def _after_birth_cue(tokens: list[str], lo: int) -> bool:
+    at = lo - 1
+    while at >= 0 and tokens[at] in _CUE_BRIDGE:
+        at -= 1
+    return at >= 0 and tokens[at] in _BIRTH_CUES
 
 
 def _ambiguous(tokens: list[str]) -> bool:

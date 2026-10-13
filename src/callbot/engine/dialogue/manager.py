@@ -405,6 +405,11 @@ class DialogueManager:
         yêu cầu hủy đã giữ; đổi ý ("không hủy nữa", "vẫn đi khám") bỏ yêu cầu đã giữ."""
         if not ex.deferred_intent.found:
             return
+        if ex.deferred_intent.value is Intent.BOOK:
+            # Inbound (QC qc-ib-10): giữ yêu cầu đặt lịch và tiêu chí thời gian cho `_early_book`
+            ctx.early_book = ex.deferred_request or ""
+            return
+        ctx.early_book = None
         if ex.deferred_intent.value is not Intent.CANCEL:
             ctx.early_cancel = ctx.early_cancel_reason = None
             rescheduling = ex.deferred_intent.value is Intent.RESCHEDULE
@@ -472,6 +477,8 @@ class DialogueManager:
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
+            if ctx.early_book is not None:
+                return self._early_book(ctx, now)
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
         if ctx.early_reschedule is not None:
             return self._early_reschedule(ctx, now)
@@ -494,6 +501,14 @@ class DialogueManager:
                 action="CONFIRM",
             )
         )
+
+    def _early_book(self, ctx: CallContext, now: datetime) -> Reply:
+        """Inbound, QC qc-ib-10: đã nói muốn đặt lịch (kèm ngày / buổi) cùng lượt khai danh tính — xác
+        minh xong mời khung theo lời đó ngay, như `_start` cho BOOK, không hỏi "cần hỗ trợ gì"."""
+        request = ctx.early_book or ""
+        ctx.early_book = None
+        ctx.set_pending("BOOK")
+        return self._new_request(ctx, now, request)
 
     def _early_reschedule(self, ctx: CallContext, now: datetime) -> Reply:
         """R-43: xác minh xong thì đi thẳng vào luồng đổi lịch đã xin, không hỏi lại nhu cầu.

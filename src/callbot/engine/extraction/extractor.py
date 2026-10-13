@@ -509,8 +509,8 @@ class InformationExtractor:
             route_reason = RouteReason.IDENTITY_TURN
         name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
         deferred = _Deferred(skipped, skipped, None)
-        if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
-            deferred = _deferred_request(transcript, full_name, dob_reading)
+        if question in IDENTITY_QUESTIONS:
+            deferred = _deferred_request(transcript, full_name, dob_reading, ctx.direction)
         result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
@@ -808,7 +808,10 @@ class _Deferred(NamedTuple):
 
 
 def _deferred_request(
-    transcript: str, full_name: Field[str], dob_reading: Optional[Reading[DobValue]]
+    transcript: str,
+    full_name: Field[str],
+    dob_reading: Optional[Reading[DobValue]],
+    direction: str = "outbound",
 ) -> _Deferred:
     """Nhu cầu nói cùng lượt định danh (QC qc-cn-08, PRD R-43), xét trên phần ngoài tên và vùng ngày
     sinh: "Trần Văn Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent: "không đi được, đổi
@@ -817,6 +820,8 @@ def _deferred_request(
     - CANCEL: yêu cầu hủy rõ ràng — không phải câu hỏi, không có "nhưng", không ngập ngừng.
     - RESCHEDULE: yêu cầu đổi lịch đã quyết (câu hỏi lịch sự "đổi sang chiều được không?" vẫn là yêu
       cầu), kèm lời yêu cầu để lọc khung sau khi xác minh.
+    - BOOK (chỉ inbound, QC qc-ib-10): "tôi là ..., sinh ..., muốn đặt khám chiều 14 tháng 10" — giữ lời
+      yêu cầu (đã bỏ tên, ngày sinh) để sau xác minh mời khung ngay, không hỏi lại nhu cầu.
     - NONE có span: lượt này còn nội dung khác (đổi ý, hỏi han, chưa quyết...). Dialogue bỏ yêu cầu
       đã giữ; sau xác minh bot đọc lịch và hỏi có đến được không, tức là hỏi lại nhu cầu.
     - skipped: chỉ có tên / ngày sinh / từ đệm, giữ nguyên những gì đã giữ.
@@ -828,10 +833,22 @@ def _deferred_request(
         if part:
             text = re.sub(rf"(?<!\w){re.escape(clean(part))}(?!\w)", " ", text, count=1)
     text = _mask_unclear_huy(text)
-    intent = extract_intent(text, "outbound", PRIORITY)
-    if intent.value is Intent.CANCEL and "?" not in transcript and not asks_or_hesitates(text):
+    intent = extract_intent(text, direction, PRIORITY)
+    if intent.value is Intent.BOOK:
+        return _Deferred(intent, Field.skipped(), _without_identity(transcript, names, dob_reading))
+    # Inbound chỉ có đặt lịch mới (§1): hủy / đổi nói ở bước danh tính không được giữ làm yêu cầu
+    if (
+        direction == "outbound"
+        and intent.value is Intent.CANCEL
+        and "?" not in transcript
+        and not asks_or_hesitates(text)
+    ):
         return _Deferred(intent, extract_cancel_reason(text), None)
-    if intent.value is Intent.RESCHEDULE and not undecided_request(text, intent.span):
+    if (
+        direction == "outbound"
+        and intent.value is Intent.RESCHEDULE
+        and not undecided_request(text, intent.span)
+    ):
         return _Deferred(intent, Field.skipped(), _without_identity(transcript, names, dob_reading))
     unaccented = is_unaccented(text)
     filler = _IDENTITY_FILLER_UNACCENTED if unaccented else _IDENTITY_FILLER

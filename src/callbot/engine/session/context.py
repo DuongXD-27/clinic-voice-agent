@@ -113,6 +113,10 @@ class CallContext:
     # chỉ dùng sau khi xác minh xong, để mời khung theo lời đó. Hai yêu cầu loại trừ nhau: lượt sau thay
     # lượt trước (R-44).
     early_reschedule: Optional[str] = None
+    # Inbound (QC qc-ib-10): lời yêu cầu đặt lịch nói ở bước danh tính (đã bỏ tên, ngày sinh). Sau xác
+    # minh mời khung theo lời đó ngay, không hỏi lại nhu cầu. Chuỗi rỗng = có yêu cầu nhưng không có
+    # tiêu chí thời gian.
+    early_book: Optional[str] = None
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
@@ -265,6 +269,7 @@ class CallContext:
             "early_cancel": _evidence_to_dict(self.early_cancel) if self.early_cancel else None,
             "early_cancel_reason": self.early_cancel_reason,
             "early_reschedule": self.early_reschedule,
+            "early_book": self.early_book,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
@@ -319,6 +324,7 @@ class CallContext:
             early_cancel_reason=data.get("early_cancel_reason"),
             # Khóa thêm ở R-43: phiên lưu trước đó chưa có
             early_reschedule=data.get("early_reschedule"),
+            early_book=data.get("early_book"),
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có
