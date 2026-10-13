@@ -20,9 +20,13 @@ from callbot.engine.types import (
 
 SCHEMA_VERSION = 1
 
-IdentityStep = Literal["ASK_NAME", "ASK_DOB", "VERIFIED"]
-# Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu
-IdentityLookup = Literal["PENDING", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"]
+IdentityStep = Literal["ASK_NAME", "ASK_DOB", "ASK_PHONE", "VERIFIED"]
+# Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu.
+# AWAITING_PHONE: inbound không có caller_number — chưa tra cứu; sau tên + ngày sinh, Dialogue hỏi số
+# điện thoại đã đăng ký rồi Verifier tra theo số đó (`lookup_spoken_phone`).
+IdentityLookup = Literal[
+    "PENDING", "AWAITING_PHONE", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"
+]
 # REQUEST: người gọi yêu cầu hành động (chỉ dùng cho hủy lịch, SF-05)
 # CONFIRMATION: người gọi đồng ý câu hỏi xác nhận của hành động đang chờ
 EvidenceKind = Literal["REQUEST", "CONFIRMATION"]

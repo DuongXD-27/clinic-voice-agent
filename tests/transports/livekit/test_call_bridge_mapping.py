@@ -44,9 +44,9 @@ def test_call_start_from_room_uses_room_name_as_call_id() -> None:
 
 def test_call_start_from_room_passes_through_caller_number() -> None:
     """caller_number giả lập (từ participant attribute, xem worker.py) phải đi thẳng
-    vào CallStart — nếu None thì engine đi nhánh NO_PHONE và transfer ngay lượt đầu
-    (đúng chính sách), đây chính là bug thật đã gặp: demo luôn None nên luôn transfer
-    ngay dù user chưa kịp nói gì."""
+    vào CallStart — nếu None thì engine hỏi tên, ngày sinh rồi số điện thoại đã đăng ký
+    (ASK_PHONE) thay vì tra theo số gọi đến; trước đây None là transfer ngay lượt đầu, và
+    bug thật đã gặp là demo luôn None nên luôn transfer dù user chưa kịp nói gì."""
     call_start = call_start_from_room("web-abc123", "web-participant-1", caller_number="0912345600")
 
     assert call_start == CallStart(

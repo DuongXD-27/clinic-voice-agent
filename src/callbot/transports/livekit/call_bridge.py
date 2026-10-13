@@ -77,9 +77,9 @@ def call_start_from_room(
     Demo web không có caller ID/PBX dial-out thật (khác PSTN) — worker.py đọc
     direction/caller_number/appointment_id từ participant attribute (gắn lúc sinh token,
     xem transports/http/livekit_token.py) do người test tự khai để giả lập 2 kịch bản:
-    - inbound: cần caller_number khớp hồ sơ, không có appointment_id — thiếu số thì đi
-      nhánh NO_PHONE của policy engine (chuyển máy ngay lượt đầu, hành vi ĐÚNG thiết kế
-      cho caller không xác định được, không phải bug).
+    - inbound: cần caller_number khớp hồ sơ, không có appointment_id — thiếu số thì bot
+      hỏi tên, ngày sinh rồi số điện thoại đã đăng ký để tra hồ sơ (ASK_PHONE); số có
+      mà không khớp hồ sơ nào thì chuyển máy ngay lượt đầu (đúng thiết kế, không phải bug).
     - outbound: cần appointment_id có sẵn trong clinic-mock, không có caller_number —
       bot chủ động gọi ra để xác nhận/nhắc lịch hẹn đã có."""
     return CallStart(

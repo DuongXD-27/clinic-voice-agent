@@ -33,6 +33,9 @@ class QuestionId(str, Enum):
 
     ASK_NAME = "ASK_NAME"
     ASK_DOB = "ASK_DOB"
+    # Inbound không có caller_number: sau tên + ngày sinh, hỏi số điện thoại đã đăng ký để tra hồ sơ
+    # (§1.1.9). Chỉ inbound; outbound đã có hồ sơ từ lịch hẹn.
+    ASK_PHONE = "ASK_PHONE"
     ASK_INTENT = "ASK_INTENT"
     # Outbound: "Anh chị có đến khám được theo lịch này không?" — câu trả lời có/không
     # chỉ dẫn tới CONFIRM_READBACK, không mở khóa lệnh ghi nào.
@@ -280,6 +283,9 @@ class ExtractionResult:
     # yêu cầu đã giữ.
     deferred_intent: Field[Intent] = field(default_factory=Field.skipped)
     deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
+    # Chỉ ở ASK_PHONE: dãy chữ số người gọi đọc, Verifier chuẩn hóa rồi tra cứu. Chỉ để tìm ứng viên,
+    # không phải bằng chứng danh tính (§1.1.9); không đưa vào trace (`to_trace`).
+    phone: Field[str] = field(default_factory=Field.skipped)
     # Đổi lịch: lời yêu cầu đã bỏ tên và ngày sinh (tiêu chí thời gian), giữ dấu câu ("20/10", "15:30")
     deferred_request: Optional[str] = None
     # Câu hỏi chọn khung: đoạn câu là câu trả lời về thời gian (vế sau lời bỏ, bỏ vế điều kiện ở đầu), giữ

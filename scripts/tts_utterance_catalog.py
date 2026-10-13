@@ -61,7 +61,7 @@ def text_hash(text: str) -> str:
 def scenario(template_id: str) -> str:
     if template_id.startswith("GREETING_HANDOFF") or template_id == "IDENTITY_FAILED_TRANSFER":
         return "Identity/Transfer"
-    if template_id.startswith(("GREETING", "ASK_NAME", "ASK_DOB", "INTRODUCE")):
+    if template_id.startswith(("GREETING", "ASK_NAME", "ASK_DOB", "ASK_PHONE", "INTRODUCE")):
         return "Identity"
     if template_id.startswith(("SILENCE", "GOODBYE")):
         return "No-answer"

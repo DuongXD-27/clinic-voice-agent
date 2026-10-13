@@ -76,6 +76,7 @@ from callbot.engine.extraction.model_budget import (
     model_used,
     report_model_status,
 )
+from callbot.engine.extraction.phone import extract_phone
 from callbot.engine.extraction.schema import (
     CONFIRMATION_QUESTIONS,
     IDENTITY_QUESTIONS,
@@ -435,8 +436,17 @@ class InformationExtractor:
                 name_reading = self._full_name(zone, transcript, ctx)
             full_name = name_reading.field
 
+        # ASK_PHONE (inbound không có caller_number): chỉ đọc dãy chữ số; tên / ngày sinh đã khai xong.
+        phone: Field[str] = (
+            extract_phone(transcript) if question is QuestionId.ASK_PHONE else skipped
+        )
+
         if (
-            question in IDENTITY_QUESTIONS
+            (
+                question in IDENTITY_QUESTIONS
+                # Đọc được số thì câu là câu trả lời; "tôi muốn đặt lịch" không có số mới xét nhu cầu
+                or (question is QuestionId.ASK_PHONE and not phone.found)
+            )
             and intent.value is Intent.NONE
             and not full_name.found
             # Không có vùng ngày nào được nhận ra: "bảo hiểm có chi trả 80% không" có chữ số nên
@@ -526,6 +536,7 @@ class InformationExtractor:
             deferred_intent=deferred.intent,
             deferred_cancel_reason=deferred.cancel_reason,
             deferred_request=deferred.request,
+            phone=phone,
             slot_request=slot_request,
             name_identity=name_identity,
             dob_identity=(
@@ -599,7 +610,11 @@ class InformationExtractor:
         clinical: Field[ClinicalLevel],
         reason: Optional[Field[CancelReason]],
     ) -> Field[Intent]:
-        identity_step = ctx.question_id in IDENTITY_QUESTIONS
+        # ASK_PHONE cũng là bước trước xác minh: "không chín một hai..." không được thành REFUSE / nhu
+        # cầu, và không hỏi model (chỉ luật)
+        identity_step = (
+            ctx.question_id in IDENTITY_QUESTIONS or ctx.question_id is QuestionId.ASK_PHONE
+        )
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
         tail = corrected_tail(transcript) if not identity_step else None

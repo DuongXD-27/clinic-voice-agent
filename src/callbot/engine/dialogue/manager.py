@@ -90,6 +90,7 @@ from callbot.engine.types import (
 )
 from callbot.engine.verification.identity import (
     IdentityVerifier,
+    LookupStatus,
     MatchDetail,
     VerificationStatus,
 )
@@ -107,6 +108,12 @@ MAX_SLOT_ROUNDS = 2
 MAX_IDENTITY_QUESTIONS = 2
 # Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
 _REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
+# Lời hỏi lại mỗi câu hỏi danh tính: (chưa nghe rõ, người gọi nêu nhu cầu thay vì trả lời)
+_IDENTITY_RETRY_TEXTS: dict[QuestionId, tuple[str, str]] = {
+    QuestionId.ASK_NAME: (t.ASK_NAME_AGAIN, t.ASK_NAME_FOR_REQUEST),
+    QuestionId.ASK_DOB: (t.ASK_DOB_AGAIN, t.ASK_DOB_FOR_REQUEST),
+    QuestionId.ASK_PHONE: (t.ASK_PHONE_AGAIN, t.ASK_PHONE_FOR_REQUEST),
+}
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -249,6 +256,8 @@ class DialogueManager:
             return self._slot_by_model(ctx, extraction, now)
         if question in (QuestionId.ASK_NAME, QuestionId.ASK_DOB):
             return self._identity(ctx, extraction, now)
+        if question is QuestionId.ASK_PHONE:
+            return self._phone(ctx, extraction, now)
         if question is QuestionId.CONFIRM_READBACK:
             return self._attendance(ctx, extraction, now, proposal)
         if question is QuestionId.ASK_INTENT:
@@ -282,10 +291,7 @@ class DialogueManager:
 
     def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
         question = ctx.question
-        if question is not None and question.question_id in (
-            QuestionId.ASK_NAME,
-            QuestionId.ASK_DOB,
-        ):
+        if question is not None and question.question_id in _IDENTITY_RETRY_TEXTS:
             return self._retry_identity(ctx, question.question_id)
         if question is not None and question.action is not None:
             text = (
@@ -338,6 +344,9 @@ class DialogueManager:
             ctx.claimed_dob = dob.value
             progressed = True
         if ctx.claimed_name is not None and ctx.claimed_dob is not None:
+            if ctx.identity_lookup == "AWAITING_PHONE":
+                # Inbound không có caller_number: chưa có hồ sơ để đối chiếu — xin số đã đăng ký trước
+                return self._ask_phone(ctx)
             return self._verify(ctx, now)
         question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
         ctx.identity_step = question.value
@@ -446,13 +455,43 @@ class DialogueManager:
         if ctx.identity_retries.get(key, 0) >= 1:
             return Reply(self.transfer(ctx, "NOT_UNDERSTOOD"))
         ctx.identity_retries[key] = 1
-        if request:
-            text = (
-                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
-            )
-        else:
-            text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
+        again, for_request = _IDENTITY_RETRY_TEXTS[question]
+        text = for_request if request else again
         return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
+
+    # --- Inbound không có caller_number: số điện thoại đã đăng ký ----------------------------
+
+    def _ask_phone(self, ctx: CallContext) -> Reply:
+        """Tên + ngày sinh đã khai nhưng chưa có hồ sơ nào (không có số gọi đến): xin số đã đăng ký
+        để tra hồ sơ rồi mới đối chiếu (§1.1.9). Chưa đối chiếu nên không nói gì về hai giá trị đã khai."""
+        ctx.identity_step = "ASK_PHONE"
+        return Reply(ask(ctx, QuestionId.ASK_PHONE, t.ASK_PHONE, "AWAITING_IDENTITY"))
+
+    def _phone(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
+        """Số người gọi đọc chỉ để tìm ứng viên; đối chiếu vẫn là `_verify` trên tên + ngày sinh đã khai.
+
+        Không có hồ sơ theo số đó: PATIENT_NOT_FOUND, không nói yếu tố nào sai (§1.1.2, §1.1.9). Mock
+        lỗi: SYSTEM_ERROR. Không đọc được số / số không đúng dạng: hỏi lại một lần (R-40), lần hai
+        chuyển máy NOT_UNDERSTOOD (§1.1.5) — cùng cách với tên và ngày sinh.
+        """
+        if ex.phone.found and ex.phone.value:
+            result = self._verifier.lookup_spoken_phone(ctx, ex.phone.value)
+            if result.status is LookupStatus.LOADED:
+                return self._verify(ctx, now)
+            if result.status is LookupStatus.UNAVAILABLE:
+                return Reply(self.transfer(ctx, "SYSTEM_ERROR"))
+            if result.transfer_reason is not None and result.status is not LookupStatus.NO_PHONE:
+                ctx.identity_result = MatchDetail.NO_REFERENCE.value
+                return Reply(self.transfer(ctx, result.transfer_reason, t.IDENTITY_FAILED_TRANSFER))
+        if is_identity_question(ex.transcript) and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
+            ctx.identity_questions += 1
+            return Reply(
+                ask(ctx, QuestionId.ASK_PHONE, t.INTRODUCE_AGAIN_ASK_PHONE, "AWAITING_IDENTITY"),
+                "NEUTRAL",
+            )
+        return self._retry_identity(
+            ctx, QuestionId.ASK_PHONE, request=ex.intent.value in _REQUEST_INTENTS
+        )
 
     def _verify(self, ctx: CallContext, now: datetime) -> Reply:
         result = self._verifier.verify(ctx)
