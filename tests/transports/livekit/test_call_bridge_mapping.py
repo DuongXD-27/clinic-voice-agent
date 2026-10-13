@@ -16,6 +16,7 @@ from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     TRANSCRIPT_TOPIC,
     CallBridge,
+    TTSPlaybackError,
     call_start_from_room,
     caller_input_from_turn,
 )
@@ -108,6 +109,8 @@ class _FakeOrchestrator:
         self._extractions = extractions or []
         self.started_calls: list[CallStart] = []
         self.handled_turns: list[tuple[str, CallerInput]] = []
+        self.close_requests: list[str] = []
+        self.closed_calls: list[str] = []
 
     def start_call(self, call: CallStart) -> BotAction:
         self.started_calls.append(call)
@@ -118,6 +121,13 @@ class _FakeOrchestrator:
         index = len(self.handled_turns) - 1
         extraction = self._extractions[index] if index < len(self._extractions) else None
         return TurnRun(self._turn_actions[index], replayed=False, extraction=extraction)
+
+    def request_call_close(self, call_id: str) -> None:
+        self.close_requests.append(call_id)
+
+    def close_call(self, call_id: str) -> bool:
+        self.closed_calls.append(call_id)
+        return True
 
 
 class _FakeSTTPipeline:
@@ -207,10 +217,10 @@ def test_caller_disconnect_stops_input_but_observer_disconnect_does_not():
     )
     bridge._on_participant_disconnected(SimpleNamespace(identity="observer"))
     assert not bridge._input_done
-    assert not bridge._caller_gone
+    assert bridge._hangup is None
     bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
     assert bridge._input_done
-    assert bridge._caller_gone
+    assert bridge._hangup == "PARTICIPANT_DISCONNECTED"
 
 
 async def test_sip_call_id_does_not_contain_phone_from_room_name(monkeypatch, caplog):
@@ -270,7 +280,7 @@ async def test_caller_hangup_before_queued_booking_confirmation_prevents_write(m
     await asyncio.wait_for(bridge.run(), timeout=2)
 
     assert orchestrator.handled_turns == []
-    assert bridge._caller_gone
+    assert bridge._hangup == "PARTICIPANT_DISCONNECTED"
     assert bridge._tts.spoken == ["Xin chào"]
 
 
@@ -782,8 +792,11 @@ async def test_sentence_cut_by_provider_error_is_traced_as_truncated_error(
         lambda *args: priced.append("tts") or 0.01,
     )
 
-    await bridge._speak("một câu bị rớt giữa chừng")
+    # R-39: câu bị cắt là lỗi TTS — run() chuyển sang phát câu chuyển máy ghi sẵn
+    with pytest.raises(TTSPlaybackError) as raised:
+        await bridge._speak("một câu bị rớt giữa chừng")
 
+    assert raised.value.code == code
     (span,) = tracer.spans
     assert span.attributes["result"] == "ERROR"
     assert span.attributes["truncated"] is True

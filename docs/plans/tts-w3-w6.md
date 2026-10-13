@@ -456,7 +456,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 
 | Việc | Lý do |
 |---|---|
-| Phát câu "xin lỗi" từ cache khi TTS lỗi | Audio khác `utterance`, vi phạm §4.1.3 |
+| Phát câu "xin lỗi" (hay bất kỳ câu nào khác) từ cache khi TTS lỗi | Audio khác `utterance`, vi phạm §4.1.3. **Sửa 12/10 theo R-39 (PRD v2.3):** TTS lỗi thì chỉ phát đúng câu `TRANSFER` cố định ghi sẵn (Engine trả `TTSRecovery.utterance = TRANSFER`, audio trùng nguyên văn, kiểm checksum) rồi chuyển máy SYSTEM_ERROR — xem `docs/plans/call-lifecycle-recovery-plan-2026-10-11.md` §2.2, §5 |
 | Cache toàn bộ câu kịch bản demo, hoặc cache câu có phần động | Dễ phát audio lệch `utterance`. Chỉ dựng sẵn audio cho câu cố định, tra theo đúng nguyên văn text (task 05/10) |
 | Đặt ngưỡng ms tự nghĩ ra cho TTFA / barge-in | Contract không đặt; chỉ đo và báo số, ngưỡng do team chốt với PM |
 

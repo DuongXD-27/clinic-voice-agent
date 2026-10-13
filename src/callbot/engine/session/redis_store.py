@@ -144,7 +144,50 @@ class RedisSessionStore:
         state = self._load(call_id)
         if state is None:
             return None
-        return SessionRecord(**state["session"])
+        record = SessionRecord(**state["session"])
+        if not record.close_requested and self.is_close_requested(call_id):
+            record = replace(record, close_requested=True)
+        return record
+
+    def request_transport_close(self, call_id: str) -> None:
+        """Khách rời cuộc gọi (R-36). Key riêng, không cần khóa phiên: lượt đang chạy ghi lại JSON
+        phiên cũng không xoá được, và cổng ghi Clinic đọc được ngay giữa lượt."""
+        try:
+            self._client.set(self._close_key(call_id), "1", ex=self._tombstone_ttl_s)
+        except RedisError as exc:
+            raise SessionStoreUnavailable("Không ghi được yêu cầu đóng phiên") from exc
+
+    def is_close_requested(self, call_id: str) -> bool:
+        try:
+            return self._client.get(self._close_key(call_id)) is not None
+        except RedisError as exc:
+            raise SessionStoreUnavailable("Không đọc được yêu cầu đóng phiên") from exc
+
+    def close_session(self, call_id: str) -> bool:
+        """Đóng phiên phía transport, gọi dưới khóa phiên. Không bao giờ đặt outcome nghiệp vụ.
+
+        Thứ tự ưu tiên: phiên đã purge (ENDED, CLINIC_COMMITTED, RECONCILIATION_REQUIRED, EXPIRED)
+        giữ nguyên lý do — kết quả đã ghi không bị đổi thành HANGUP; còn lệnh PENDING/UNKNOWN thì
+        chặn đối soát; còn lại purge HANGUP. Trả False nếu phiên đã đóng từ trước.
+        """
+        state = self._required(call_id)
+        session = state["session"]
+        if session.get("transport_closed"):
+            return False
+        if not session.get("purged_reason"):
+            unsettled = [
+                command
+                for command in state["commands"].values()
+                if command["status"] in ("PENDING", "UNKNOWN")
+            ]
+            for command in unsettled:
+                turn = state["turns"].get(str(command["turn"]))
+                if turn is not None and turn["status"] != "COMPLETED":
+                    turn["status"] = "RECONCILIATION_REQUIRED"
+            self._purge_state(state, "RECONCILIATION_REQUIRED" if unsettled else "HANGUP")
+        session["transport_closed"] = True
+        self._save(call_id, state, retired=True)
+        return True
 
     def create_session(self, record: SessionRecord) -> None:
         now = self._clock()
@@ -457,6 +500,9 @@ class RedisSessionStore:
 
     def _lock_key(self, call_id: str) -> str:
         return f"{self._prefix}:lock:{call_id}"
+
+    def _close_key(self, call_id: str) -> str:
+        return f"{self._prefix}:close:{call_id}"
 
     def _lock_tokens(self) -> dict[str, str]:
         tokens = getattr(self._held_locks, "tokens", None)
