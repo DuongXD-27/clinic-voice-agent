@@ -1,6 +1,7 @@
 # LLM providers — inference.llm.config. Dùng cho name slot filling fallback (chọn provider ở
-# engine.yaml: name_fallback_provider) và tầng ngữ nghĩa (luôn openai, model/timeout/max tokens
-# lấy từ engine.yaml: semantic_fallback_*).
+# engine.yaml: name_fallback_provider) và tầng ngữ nghĩa / chọn khung (provider chọn ở engine.yaml:
+# semantic_provider, semantic_backup_provider, slot_semantic_backup_provider; model/timeout/max tokens
+# lấy từ engine.yaml: semantic_llm_*, model trống = model của provider ở file này).
 #
 # Ghi đè chung cho provider đang chọn: NAME_FALLBACK_MODEL, NAME_FALLBACK_TIMEOUT_S,
 # NAME_FALLBACK_MAX_TOKENS. API key chỉ đặt qua env (OPENAI_API_KEY, GEMINI_API_KEY, ...).
@@ -38,6 +39,15 @@ openrouter: # OPENROUTER_API_KEY
   model: openai/gpt-6-luna
   timeout_s: 3.0
   connect_timeout_s: 1.0
+  max_completion_tokens: 200
+
+deepseek: # DEEPSEEK_API_KEY
+  endpoint: https://api.deepseek.com/chat/completions
+  # deepseek-flash: tên khuyến nghị (DeepSeek-V4.1-Flash); deepseek-v4-pro cho bản Pro
+  model: deepseek-flash
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  # Tắt thinking nên budget chỉ cho JSON; API chỉ có JSON Output (json_object), không strict schema
   max_completion_tokens: 200
 
 # TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_PROVIDER=jev (engine.yaml).

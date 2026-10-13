@@ -1,0 +1,161 @@
+{
+  "test": "Real Linphone UDP booking and repeat connection",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "sip_user_agent": "Linphone-Desktop/5.3.4, LinphoneSDK/5.4.102",
+  "transport": "UDP",
+  "registration": false,
+  "network": "Existing iPhone 4G hotspot",
+  "worker_id": "AW_inv8gvgGLV8Y",
+  "same_worker_client_mock_config": true,
+  "first_call": {
+    "job_id": "AJ_jtxqzrN34zgH",
+    "dispatch_id": "AD_Jo2pSHqJJ7WB",
+    "room_id": "RM_SDmtCVLJ55Ay",
+    "outcome": "BOOKED",
+    "trace": [
+      {
+        "operation": "clinic.find_patient_by_phone",
+        "turn": 0,
+        "outcome": "ok",
+        "http_method": "GET",
+        "endpoint_template": "/patients",
+        "http_status": 200,
+        "attempt_count": 1,
+        "retry_count": 0,
+        "idempotency_used": false
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 1,
+        "state_before": "AWAITING_IDENTITY",
+        "state_after": "AWAITING_IDENTITY"
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 2,
+        "state_before": "AWAITING_IDENTITY",
+        "state_after": "AWAITING_INTENT"
+      },
+      {
+        "operation": "clinic.get_slots",
+        "turn": 3,
+        "outcome": "ok",
+        "http_method": "GET",
+        "endpoint_template": "/slots",
+        "http_status": 200,
+        "attempt_count": 1,
+        "retry_count": 0,
+        "idempotency_used": false
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 3,
+        "state_before": "AWAITING_INTENT",
+        "state_after": "OFFERING_SLOTS"
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 4,
+        "state_before": "OFFERING_SLOTS",
+        "state_after": "OFFERING_SLOTS"
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 5,
+        "state_before": "OFFERING_SLOTS",
+        "state_after": "AWAITING_CONFIRMATION"
+      },
+      {
+        "operation": "clinic.create_appointment",
+        "turn": 6,
+        "outcome": "ok",
+        "http_method": "POST",
+        "endpoint_template": "/appointments",
+        "http_status": 201,
+        "attempt_count": 1,
+        "retry_count": 0,
+        "idempotency_used": true
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 6,
+        "state_before": "AWAITING_CONFIRMATION",
+        "state_after": "ENDED",
+        "outcome": "BOOKED"
+      }
+    ],
+    "new_records": [
+      {
+        "appointment_id": "apt_28f4ff555c0f",
+        "status": "BOOKED",
+        "starts_at": "2026-10-08T15:00:00+07:00",
+        "ends_at": "2026-10-08T15:30:00+07:00"
+      }
+    ],
+    "sip_relative_s": {
+      "invite": 33.760631,
+      "invite_200": 44.791379,
+      "server_bye": 134.179193,
+      "client_bye_200": 135.45567
+    }
+  },
+  "second_call": {
+    "job_id": "AJ_7zxtcA8r63Ba",
+    "dispatch_id": "AD_dXStagNzVkrc",
+    "room_id": "RM_HrCZNLTaMJ9U",
+    "outcome": "TRANSFERRED",
+    "reason": "NOT_UNDERSTOOD during identity verification",
+    "trace": [
+      {
+        "operation": "clinic.find_patient_by_phone",
+        "turn": 0,
+        "outcome": "ok",
+        "http_method": "GET",
+        "endpoint_template": "/patients",
+        "http_status": 200,
+        "attempt_count": 1,
+        "retry_count": 0,
+        "idempotency_used": false
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 1,
+        "state_before": "AWAITING_IDENTITY",
+        "state_after": "AWAITING_IDENTITY"
+      },
+      {
+        "operation": "clinic.transfer_appointment",
+        "turn": 2,
+        "http_method": "POST",
+        "endpoint_template": "/appointments/{id}/transfer",
+        "attempt_count": 0,
+        "retry_count": 0,
+        "idempotency_used": false
+      },
+      {
+        "operation": "livekit.call_turn",
+        "turn": 2,
+        "state_before": "AWAITING_IDENTITY",
+        "state_after": "ENDED",
+        "outcome": "TRANSFERRED"
+      }
+    ],
+    "booking_write": false,
+    "sip_relative_s": {
+      "invite": 173.090908,
+      "invite_200": 182.342675,
+      "server_bye": 206.148305,
+      "client_bye_200": 206.599781
+    },
+    "user_report": "Bot asked name; caller answered the synthetic fixture name; bot announced transfer to staff. User asked to defer investigation; noise suggested but unconfirmed.",
+    "transfer_limit": "Dialogue outcome only; no real staff/telephone transfer path was proven."
+  },
+  "appointments_before": 6,
+  "appointments_after": 7,
+  "booked_before": 5,
+  "booked_after": 6,
+  "capture_sha256": "bd276cf7cc6e4bdf37ea81a8ae3bddfe4f573ee10ec79901e5376ac587f43adf",
+  "capture_dropped_packets": 0,
+  "acceptance": "Single complete UDP inbound booking and automatic SIP hangup PASS. Repeat SIP connection and hangup observed on two calls. Three consecutive BOOKED calls NOT demonstrated. No PSTN/real phone line acceptance."
+}

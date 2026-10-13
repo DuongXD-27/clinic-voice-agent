@@ -40,6 +40,11 @@ from callbot.engine.extraction.agreement import (
     slot_answer,
     undecided_request,
 )
+from callbot.engine.extraction.booking import (
+    agrees_to_offered,
+    booking_answer,
+    refuses_other_times,
+)
 from callbot.engine.extraction.cancel_promotion import promotion_rejection
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
@@ -503,14 +508,23 @@ class InformationExtractor:
             cancel_promotion=self._cancel_semantic_confirm and self._semantic is not None,
             exact_time_proposal=proposal is not None and bool(proposal.hours),
         )
-        if route_reason is None and _identity_turn_to_read(
-            question, transcript, intent, full_name, dob_reading
+        # Inbound "tôi muốn đặt lịch" ở bước danh tính: luật đã biết là nhu cầu đặt lịch (Hình 0), Dialogue
+        # hỏi lại tên — không cần model đọc xem người gọi có đang hỏi gì không
+        booking_need = ctx.direction == "inbound" and intent.value is Intent.BOOK
+        if (
+            route_reason is None
+            and not booking_need
+            and _identity_turn_to_read(question, transcript, intent, full_name, dob_reading)
         ):
             route_reason = RouteReason.IDENTITY_TURN
+        # Inbound kể triệu chứng: Policy chuyển máy bằng luật (plan t11, D-11), không tốn request model
+        inbound_mention = ctx.direction == "inbound" and clinical.value is ClinicalLevel.MENTION
+        if inbound_mention:
+            route_reason = None
         name_identity = identity_value(name_reading, transcript, confidence=ctx.asr_confidence)
         deferred = _Deferred(skipped, skipped, None)
-        if ctx.direction == "outbound" and question in IDENTITY_QUESTIONS:
-            deferred = _deferred_request(transcript, full_name, dob_reading)
+        if question in IDENTITY_QUESTIONS:
+            deferred = _deferred_request(transcript, full_name, dob_reading, ctx.direction)
         result = ExtractionResult(
             turn=ctx.turn,
             question_id=question,
@@ -535,7 +549,7 @@ class InformationExtractor:
             ),
         )
         if route_reason is None:
-            return self._apply_slot_semantic(ctx, result)
+            return result if inbound_mention else self._apply_slot_semantic(ctx, result)
         if self._semantic is None or model_used():
             if route_reason in (RouteReason.CLINICAL_UNRESOLVED, RouteReason.INTENT_HEDGED):
                 # Không có model: vẫn hạ trường đang nghi ngờ như khi model lỗi
@@ -552,6 +566,12 @@ class InformationExtractor:
         """4 câu hỏi chọn khung: model chỉ đọc câu luật không có đường đi chắc (plan §4.1). Một request
         mỗi lượt; lượt đã gọi model (vd. lâm sàng) thì không gọi nữa (C4)."""
         if self._slot_semantic is None or model_used():
+            return result
+        if ctx.pending_action == "BOOK" and (
+            agrees_to_offered(result.transcript) or refuses_other_times(result.transcript)
+        ):
+            # Đặt lịch: "giờ em vừa nói cũng được" (qc-ib-07), "giờ khác không được" (qc-ib-06) đã có
+            # đường đi chắc của luật (G15 / G7) — model không được xen vào, như các câu chốt qc-rs-*
             return result
         route = route_slot_semantic(question_id=ctx.question_id, result=result)
         if route is None:
@@ -602,6 +622,14 @@ class InformationExtractor:
         identity_step = ctx.question_id in IDENTITY_QUESTIONS
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
+        if _booking_reply(ctx, transcript, result):
+            # Inbound chỉ có đặt lịch mới (Bảng 1): "Khám tổng quát", "Chiều thứ tư ngày 14 được không?",
+            # "Còn lịch nào gần nhất không em?" trả lời câu hỏi nhu cầu (Hình 0) là đặt lịch. Luật quyết,
+            # không để model đọc thành ngoài phạm vi (qc-ib-01/02/06/07)
+            provenance = (
+                Provenance.NORMALIZED if is_unaccented(clean(transcript)) else Provenance.EXACT
+            )
+            return Field(Intent.BOOK, provenance, span=clean(transcript))
         tail = corrected_tail(transcript) if not identity_step else None
         if (
             tail is not None
@@ -808,7 +836,10 @@ class _Deferred(NamedTuple):
 
 
 def _deferred_request(
-    transcript: str, full_name: Field[str], dob_reading: Optional[Reading[DobValue]]
+    transcript: str,
+    full_name: Field[str],
+    dob_reading: Optional[Reading[DobValue]],
+    direction: str = "outbound",
 ) -> _Deferred:
     """Nhu cầu nói cùng lượt định danh (QC qc-cn-08, PRD R-43), xét trên phần ngoài tên và vùng ngày
     sinh: "Trần Văn Hủy" không phải yêu cầu hủy. Xét đủ thứ tự ưu tiên intent: "không đi được, đổi
@@ -817,6 +848,9 @@ def _deferred_request(
     - CANCEL: yêu cầu hủy rõ ràng — không phải câu hỏi, không có "nhưng", không ngập ngừng.
     - RESCHEDULE: yêu cầu đổi lịch đã quyết (câu hỏi lịch sự "đổi sang chiều được không?" vẫn là yêu
       cầu), kèm lời yêu cầu để lọc khung sau khi xác minh.
+    - BOOK (chỉ inbound, QC qc-ib-10): "tôi là ..., sinh ..., muốn đặt khám chiều 14 tháng 10" — giữ lời
+      yêu cầu (đã bỏ tên, ngày sinh) để sau xác minh mời khung ngay, không hỏi lại nhu cầu. Inbound xét cụm
+      đặt lịch trước mọi nhãn khác: "đặt lịch, hôm khác cũng được" không phải đổi lịch.
     - NONE có span: lượt này còn nội dung khác (đổi ý, hỏi han, chưa quyết...). Dialogue bỏ yêu cầu
       đã giữ; sau xác minh bot đọc lịch và hỏi có đến được không, tức là hỏi lại nhu cầu.
     - skipped: chỉ có tên / ngày sinh / từ đệm, giữ nguyên những gì đã giữ.
@@ -828,10 +862,26 @@ def _deferred_request(
         if part:
             text = re.sub(rf"(?<!\w){re.escape(clean(part))}(?!\w)", " ", text, count=1)
     text = _mask_unclear_huy(text)
-    intent = extract_intent(text, "outbound", PRIORITY)
-    if intent.value is Intent.CANCEL and "?" not in transcript and not asks_or_hesitates(text):
+    if direction == "inbound":
+        book = extract_intent(text, direction, (Intent.BOOK,))
+        if book.found:
+            return _Deferred(
+                book, Field.skipped(), _without_identity(transcript, names, dob_reading)
+            )
+    intent = extract_intent(text, direction, PRIORITY)
+    # Inbound chỉ có đặt lịch mới (§1): hủy / đổi nói ở bước danh tính không được giữ làm yêu cầu
+    if (
+        direction == "outbound"
+        and intent.value is Intent.CANCEL
+        and "?" not in transcript
+        and not asks_or_hesitates(text)
+    ):
         return _Deferred(intent, extract_cancel_reason(text), None)
-    if intent.value is Intent.RESCHEDULE and not undecided_request(text, intent.span):
+    if (
+        direction == "outbound"
+        and intent.value is Intent.RESCHEDULE
+        and not undecided_request(text, intent.span)
+    ):
         return _Deferred(intent, Field.skipped(), _without_identity(transcript, names, dob_reading))
     unaccented = is_unaccented(text)
     filler = _IDENTITY_FILLER_UNACCENTED if unaccented else _IDENTITY_FILLER
@@ -842,6 +892,30 @@ def _deferred_request(
             Field(Intent.NONE, provenance, span=" ".join(leftover)), Field.skipped(), None
         )
     return _Deferred(Field.skipped(), Field.skipped(), None)
+
+
+# RESCHEDULE của luật chỉ vì cụm "giờ khác / ngày khác": ở câu hỏi nhu cầu inbound không có lịch nào để đổi
+_GENERIC_OTHER_TIME = frozenset(
+    clean(w) for w in ["giờ khác", "ngày khác", "hôm khác", "lịch khác", "khung khác"]
+)
+
+
+def _booking_reply(ctx: TurnContext, transcript: str, intent: Field[Intent]) -> bool:
+    """Câu hỏi nhu cầu inbound: câu nêu giờ, khoa hoặc nhờ chọn khung sớm nhất là nhu cầu đặt lịch."""
+    if ctx.direction != "inbound" or ctx.question_id is not QuestionId.ASK_INTENT:
+        return False
+    generic_other = (
+        intent.value is Intent.RESCHEDULE
+        and intent.span is not None
+        and (
+            clean(intent.span) in _GENERIC_OTHER_TIME
+            or strip_diacritics(clean(intent.span))
+            in {strip_diacritics(w) for w in _GENERIC_OTHER_TIME}
+        )
+    )
+    if intent.found and not generic_other:
+        return False
+    return booking_answer(transcript, ctx.now)
 
 
 def _spoken_names(transcript: str, full_name: Field[str], dob_zone: Optional[str]) -> list[str]:

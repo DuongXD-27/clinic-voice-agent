@@ -1,0 +1,6 @@
+{
+  "scope": "OpenAI TTS component smoke, no SIP",
+  "error_type": "PermissionDeniedError",
+  "http_status": 403,
+  "provider_message": "Project `proj_rHeCFzUOpneMHvX9j5lUGzuf` does not have access to model `tts-1`"
+}

@@ -239,3 +239,35 @@ async def test_room_disconnect_is_a_fallback_hangup_signal() -> None:
 
     assert orchestrator.handled_turns == []
     assert orchestrator.closed_calls == [ROOM]
+
+
+async def test_sip_hangup_closes_the_session_under_the_opaque_sip_call_id(caplog) -> None:
+    """PR 103 + 114: cuộc gọi SIP mở phiên Core bằng call_id ẩn (tên phòng chứa số điện thoại), nên
+    yêu cầu đóng và đóng phiên phải dùng đúng call_id đó; log không được lộ tên phòng."""
+    orchestrator = _FakeOrchestrator(OPENING, turn_actions=[])
+    room = _FakeRoom("sip-booking-_+84912345600_random")
+    bridge = make_call_bridge(
+        room,
+        orchestrator,
+        _ListeningPipeline(),
+        _FakeTTS(),
+        caller_identity="caller-1",
+        is_sip=True,
+    )
+
+    async def publish() -> None:
+        bridge._audio_source = _FakeAudioSource()
+
+    bridge._publish_tts_track = publish
+    run = asyncio.ensure_future(bridge.run())
+    await asyncio.sleep(0.05)
+
+    with caplog.at_level("INFO", logger="callbot.transports.livekit.call_bridge"):
+        _leave(bridge)
+        await asyncio.wait_for(run, timeout=1.0)
+
+    (call_id,) = [call.call_id for call in orchestrator.started_calls]
+    assert call_id.startswith("sip-")
+    assert orchestrator.close_requests == [call_id]
+    assert orchestrator.closed_calls == [call_id]
+    assert "+84912345600" not in caplog.text

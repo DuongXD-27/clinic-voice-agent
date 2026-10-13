@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
-ProviderName = Literal["openai", "gemini", "groq", "openrouter"]
+ProviderName = Literal["openai", "gemini", "groq", "openrouter", "deepseek"]
 ReplyStatus = Literal[
     "completed",
     "refusal",

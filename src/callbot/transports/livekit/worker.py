@@ -18,6 +18,7 @@ from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
 from callbot.transports.livekit.call_bridge import STATUS_TOPIC, CallBridge
+from callbot.transports.livekit.participant import hangup_sip_caller, participant_call
 from callbot.transports.livekit.settings import LiveKitSettings
 from inference.asr import create_asr_gateway
 from speech.asr.recognizer import SpeechRecognizer
@@ -73,15 +74,12 @@ def speech_settings_for(
 
 async def entrypoint(ctx: JobContext) -> None:
     await ctx.connect()
-    # Chờ browser join trước khi đọc direction/caller_number/appointment_id giả lập
-    # (gắn qua token attribute, xem transports/http/livekit_token.py) — participant
-    # chưa chắc đã có mặt ngay sau connect() vì đây là job của Agent, không phải browser.
+    # Participant có thể là browser hoặc SIP caller; không đọc called DID làm caller ID.
     participant = await ctx.wait_for_participant()
-    attrs = participant.attributes
-    direction = attrs.get("direction") or "inbound"
-    caller_number = attrs.get("caller_number") or None
-    appointment_id = attrs.get("appointment_id") or None
-    requested_asr = attrs.get(ASR_ATTRIBUTE) or None
+    call = participant_call(participant)
+    # ASR chọn trên trang gọi thử (attribute gắn lúc xin token của browser).
+    requested_asr = participant.attributes.get(ASR_ATTRIBUTE) or None
+    logger.info("call participant kind=%s is_sip=%s", participant.kind, call.is_sip)
 
     livekit_settings = LiveKitSettings()
     speech_settings = speech_settings_for(participant.kind, livekit_settings, requested_asr)
@@ -96,6 +94,9 @@ async def entrypoint(ctx: JobContext) -> None:
             f"Worker không tạo được ASR {speech_settings.asr_provider} (thiếu key hoặc model). "
             "Cuộc gọi dừng, không chuyển sang ASR khác.",
         )
+        if call.is_sip:
+            # Bot rời phòng không gửi BYE cho máy SIP: phải gỡ người gọi, không để họ chờ trong im lặng
+            await hangup_sip_caller(ctx, participant.identity)
         ctx.shutdown(reason="asr unavailable")
         return
     logger.info(
@@ -131,9 +132,9 @@ async def entrypoint(ctx: JobContext) -> None:
         orchestrator,
         bundle.stt_pipeline,
         bundle.tts,
-        direction=direction,
-        caller_number=caller_number,
-        appointment_id=appointment_id,
+        direction=call.direction,
+        caller_number=call.caller_number,
+        appointment_id=call.appointment_id,
         turn_controller=bundle.turn_controller,
         interruption_validator=bundle.validator,
         interruption_min_snr_db=speech_settings.interruption_min_snr_db,
@@ -143,24 +144,34 @@ async def entrypoint(ctx: JobContext) -> None:
         input_queue_ms=livekit_settings.input_queue_ms,
         output_queue_ms=livekit_settings.output_queue_ms,
         caller_identity=participant.identity,
+        is_sip=call.is_sip,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
+        on_close=(
+            lambda: hangup_sip_caller(
+                ctx, participant.identity, playout_grace_ms=livekit_settings.sip_hangup_grace_ms
+            )
+        )
+        if call.is_sip
+        else None,
         demo_debug=livekit_settings.demo_debug,
     )
     try:
         await bridge.run()
     finally:
-        await asyncio.to_thread(tracer.close, 2.0)
         try:
-            # Mỗi cuộc gọi một bundle: đóng kết nối TTS giữ sẵn (cả client stream), không để rò theo job
-            await bundle.tts.aclose()
+            await asyncio.to_thread(tracer.close, 2.0)
+            try:
+                # Mỗi cuộc gọi một bundle: đóng kết nối TTS giữ sẵn (cả client stream).
+                await bundle.tts.aclose()
+            finally:
+                close = getattr(clinic, "close", None)
+                if close is not None:
+                    close()
         finally:
-            close = getattr(clinic, "close", None)
-            if close is not None:
-                close()
             # Trả về từ entrypoint không kết thúc job: bot vẫn ở trong phòng tới khi LiveKit đóng
             # phòng (~25-30 s sau khi khách rời, đo 12/10). Cuộc gọi đã xong thì rời phòng ngay.
-            ctx.shutdown(reason="call ended")
+            ctx.shutdown(reason="call finished")
 
 
 async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
@@ -207,7 +218,7 @@ def main() -> None:
             api_key=livekit_settings.livekit_api_key,
             api_secret=livekit_settings.livekit_api_secret,
             num_idle_processes=livekit_settings.worker_num_idle_processes,
-            # Rỗng giữ automatic dispatch; có tên thì chỉ nhận job token browser gọi đúng tên.
+            # Có tên thì browser/SIP dispatch phải chỉ định đúng agent này.
             agent_name=livekit_settings.agent_name,
         )
     )

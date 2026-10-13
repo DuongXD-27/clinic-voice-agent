@@ -1,0 +1,93 @@
+{
+  "test": "Real Linphone booking followed by repeat-call SIP failure on TCP",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "verified_sip_user_agent": "Linphone-Desktop/5.3.4, LinphoneSDK/5.4.102",
+  "transport": "TCP",
+  "registration": false,
+  "network": "Existing iPhone 4G hotspot",
+  "worker_id": "AW_FcxZM3XwKptz",
+  "job_id": "AJ_WzVaVs6rHSYT",
+  "dispatch_id": "AD_ttqU3azp7P6X",
+  "room": "sip-booking-_+84912345600_27uXsVvjXz9F",
+  "room_id": "RM_StFCwVkRjqLk",
+  "new_records": [
+    {
+      "appointment_id": "apt_a6f9d2442e53",
+      "status": "BOOKED",
+      "starts_at": "2026-10-08T14:00:00+07:00",
+      "ends_at": "2026-10-08T14:30:00+07:00"
+    }
+  ],
+  "post_appointments": [
+    {
+      "operation": "clinic.create_appointment",
+      "http_method": "POST",
+      "endpoint_template": "/appointments",
+      "http_status": 201,
+      "attempt_count": 1,
+      "retry_count": 0,
+      "idempotency_used": true
+    }
+  ],
+  "appointments_before": 5,
+  "appointments_after": 6,
+  "booked_before": 4,
+  "booked_after": 5,
+  "turns": [
+    {
+      "turn": 1,
+      "state_after": "AWAITING_IDENTITY",
+      "outcome": null
+    },
+    {
+      "turn": 2,
+      "state_after": "AWAITING_INTENT",
+      "outcome": null
+    },
+    {
+      "turn": 3,
+      "state_after": "OFFERING_SLOTS",
+      "outcome": null
+    },
+    {
+      "turn": 4,
+      "state_after": "AWAITING_CONFIRMATION",
+      "outcome": null
+    },
+    {
+      "turn": 5,
+      "state_after": "ENDED",
+      "outcome": "BOOKED"
+    }
+  ],
+  "first_call_sip_relative_s": {
+    "invite": 0.18815,
+    "invite_200": 13.004166,
+    "ack": 14.190358,
+    "server_bye": 74.842304,
+    "client_bye_200": 76.10558
+  },
+  "first_call_user_report": {
+    "automatic_hangup": true,
+    "voice": "clear"
+  },
+  "first_call_incoming_rtp": {
+    "received_packets": 3127,
+    "missing_packets": 16,
+    "loss_percent": 0.509,
+    "mean_jitter_ms": 7.246,
+    "max_jitter_ms": 24.826
+  },
+  "second_call": {
+    "invite_relative_s": 86.18533,
+    "server_tcp_ack_relative_s": 86.299929,
+    "reused_tcp_stream": true,
+    "sip_response_received": false,
+    "worker_job_received": false,
+    "booking_write": false
+  },
+  "capture_sha256": "10249b953ec33d00d215ddc25825644dd441b4c89e872cb5d2c6460c1ae79593",
+  "capture_dropped_packets": 0,
+  "acceptance": "Single real booking and hangup PASS; repeatability FAIL for this TCP configuration; no PSTN acceptance."
+}

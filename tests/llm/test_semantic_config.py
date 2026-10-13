@@ -37,9 +37,10 @@ def test_semantic_factory_uses_its_own_settings(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("NAME_FALLBACK_MODEL", "gemini-2.5-flash")
     settings = EngineSettings(
         semantic_fallback_enabled=True,
-        semantic_openai_model="gpt-4o-mini",
+        semantic_provider="openai",
+        semantic_llm_model="gpt-4o-mini",
         semantic_fallback_timeout_s=2.0,
-        semantic_openai_max_tokens=400,
+        semantic_llm_max_tokens=400,
     )
     extractor = _semantic_extractor(settings)
     assert isinstance(extractor, LLMSemanticExtractor)
@@ -109,3 +110,100 @@ def test_the_turn_budget_is_four_seconds_and_jev_gets_two(monkeypatch: pytest.Mo
     monkeypatch.setenv("TYPESAFE_API_KEY", "ts-test-not-a-real-key")
     jev = _jev_semantic(EngineSettings(semantic_jev_timeout_s=2.0, semantic_fallback_timeout_s=3.0))
     assert jev is not None and jev._gateway._config.timeout_s == 2.0
+
+
+def _llm_settings(**changes) -> EngineSettings:
+    base = dict(
+        semantic_fallback_enabled=True,
+        semantic_provider="deepseek",
+        semantic_backup_provider="none",
+        semantic_llm_model=None,
+        semantic_llm_prompt_version=None,
+    )
+    return EngineSettings(**{**base, **changes})
+
+
+def test_any_gateway_provider_can_read_semantics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Đổi provider chỉ bằng config; model trống lấy model của provider ở llm.yaml."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-not-a-real-key")
+    monkeypatch.setenv("NAME_FALLBACK_MODEL", "gemini-2.5-flash")
+    extractor = _semantic_extractor(_llm_settings())
+    assert isinstance(extractor, LLMSemanticExtractor)
+    assert extractor._gateway.provider_name == "deepseek"
+    assert (
+        extractor._gateway.model
+        == yaml.safe_load((CONFIG_DIR / "llm.yaml").read_text(encoding="utf-8"))["deepseek"][
+            "model"
+        ]
+    )
+
+
+def test_an_llm_provider_can_be_the_backup(monkeypatch: pytest.MonkeyPatch) -> None:
+    from callbot.engine.extraction.semantic_failover import FailoverSemanticExtractor
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-test-not-a-real-key")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-not-a-real-key")
+    extractor = _semantic_extractor(
+        _llm_settings(semantic_provider="jev", semantic_backup_provider="deepseek")
+    )
+    assert isinstance(extractor, FailoverSemanticExtractor)
+    assert extractor.secondary._gateway.provider_name == "deepseek"
+
+
+def test_missing_key_of_the_selected_llm_provider_runs_rules_only() -> None:
+    assert _semantic_extractor(_llm_settings()) is None
+
+
+def test_prompt_version_can_be_pinned_for_any_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Model khác Luna mặc định dùng semantic_v6; đặt tường minh để giữ đúng prompt của Luna."""
+    from inference.llm.prompt.semantic import PROMPT_VERSION_CANCEL_CONFIRM, PROMPT_VERSION_LUNA
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-not-a-real-key")
+    auto = _semantic_extractor(_llm_settings(cancel_semantic_confirm_enabled=True))
+    pinned = _semantic_extractor(
+        _llm_settings(
+            cancel_semantic_confirm_enabled=True, semantic_llm_prompt_version=PROMPT_VERSION_LUNA
+        )
+    )
+    assert auto.prompt_version == PROMPT_VERSION_CANCEL_CONFIRM
+    assert pinned.prompt_version == PROMPT_VERSION_LUNA
+    with pytest.raises(ValueError, match="prompt version"):
+        _semantic_extractor(_llm_settings(semantic_llm_prompt_version="semantic_v99"))
+
+
+@pytest.mark.parametrize("provider", ["openai", "deepseek"])
+def test_slot_route_backup_provider_comes_from_config(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    from callbot.engine import _slot_semantic_reader
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-a-real-key")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-not-a-real-key")
+    settings = _llm_settings(
+        slot_semantic_enabled=True,
+        slot_semantic_backup_provider=provider,
+        slot_semantic_llm_timeout_s=2.5,
+    )
+    reader = _slot_semantic_reader(settings)
+    assert reader is not None and reader.primary is None
+    assert reader.backup._gateway.provider_name == provider
+    assert reader.backup._gateway._provider._config.timeout_s == 2.5
+
+
+def test_slot_route_backup_can_be_turned_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    from callbot.engine import _slot_semantic_reader
+
+    settings = _llm_settings(slot_semantic_enabled=True, slot_semantic_backup_provider="none")
+    assert _slot_semantic_reader(settings) is None  # không Jev (thiếu khóa), không dự phòng
+
+
+def test_engine_yaml_uses_deepseek_with_the_luna_prompt() -> None:
+    """Owner 13-10-2026: DeepSeek thay Luna ở mọi chỗ dùng LLM, prompt giữ nguyên của Luna."""
+    from inference.llm.prompt.semantic import PROMPT_VERSION_LUNA
+
+    engine = _engine_yaml()
+    assert engine["name_fallback_provider"] == "deepseek"
+    assert engine["semantic_backup_provider"] == "deepseek"
+    assert engine["slot_semantic_backup_provider"] == "deepseek"
+    assert engine["semantic_llm_model"] is None  # model của deepseek trong llm.yaml
+    assert engine["semantic_llm_prompt_version"] == PROMPT_VERSION_LUNA

@@ -1,0 +1,19 @@
+{
+  "scope": "LiveKit Cloud PCAP for 2026-10-07 14:49:50-14:50:43 Asia/Ho_Chi_Minh tone diagnostic call",
+  "job_id": "AJ_3ZpBMZaM6xtB",
+  "sip_call_id": "SCL_gXsp2Rbsi5Kz",
+  "verified_sip_user_agent": "MicroSIP/3.22.18",
+  "client_label_correction": "The requested client was Linphone, but INVITE in this PCAP proves the actual client was MicroSIP.",
+  "file_sha256": "cd835ae4095d2aa7d8f30df737733f17670c60bdfe0db65d0d2305e2da3729a3",
+  "capture_duration_s": 52.537537,
+  "packets_total": 45,
+  "sip_packets": 39,
+  "rtp_packets": 6,
+  "rtp_observed_duration_s": 0.100175,
+  "codec_negotiated": "PCMU/8000",
+  "rtp_payload_type_observed": 0,
+  "rtp_sample_packet_loss_percent": 0.0,
+  "rtp_sample_mean_jitter_ms": 0.033,
+  "sip_end": "BYE followed by 200 OK",
+  "interpretation": "The six RTP packets only cover the first 0.12 seconds of media. This file cannot measure loss or jitter during the later distorted portion of the 20-second tone. Codec payload matches SDP in the captured sample."
+}
