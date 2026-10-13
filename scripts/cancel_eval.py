@@ -115,6 +115,12 @@ class RecordingGateway:
         self.last_status = reply.status
         return reply
 
+    def evaluate(self, *args: Any, **kwargs: Any) -> Any:
+        """Adapter Jev (TypeSafe System One) gọi `evaluate` thay cho `generate_structured`."""
+        reply = self._inner.evaluate(*args, **kwargs)
+        self.last_status = reply.status
+        return reply
+
 
 class MissingFakeOutcome(Exception):
     """Ca được chấm không có outcome trong fixture fake."""
@@ -186,6 +192,8 @@ class Counting:
     statuses: Counter = field(default_factory=Counter)
     latencies_ms: list[float] = field(default_factory=list)
     last: Optional[tuple[str, float]] = None
+    # Jev: xác suất từng câu hỏi của lượt được chấm (JSON), để vẽ calibration; rỗng với adapter khác
+    last_probabilities: str = ""
     # Chỉ ghi số liệu cho lượt được chấm; các lượt dựng hội thoại vẫn đi qua model nhưng không tính
     active: bool = False
     route_reason: Optional[str] = None
@@ -214,6 +222,8 @@ class Counting:
         self.statuses[status] += 1
         self.latencies_ms.append(elapsed)
         self.last = (status, elapsed)
+        probabilities = getattr(self.inner, "last_probabilities", None)
+        self.last_probabilities = json.dumps(probabilities) if probabilities else ""
         return outcome
 
 
@@ -267,6 +277,8 @@ def _setup(call_id: str, question_id: str, semantic, cancel_semantic_confirm: bo
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=_store())
     bot._extractor._semantic = semantic
+    # Tầng model chọn khung không thuộc phạm vi eval này: tắt kể cả khi .env bật SLOT_SEMANTIC_ENABLED
+    bot._extractor._slot_semantic = None
     # Gán thẳng thuộc tính: chạy được cả trên mã mốc chưa có flag (sinh snapshot, bước 6)
     bot._extractor._cancel_semantic_confirm = cancel_semantic_confirm
     bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
@@ -351,6 +363,7 @@ def _run_case(
         ),
         "route_reason": (semantic.route_reason or "") if semantic is not None else "",
         "cancel_semantic_confirm": cancel_semantic_confirm,
+        "semantic_probabilities": semantic.last_probabilities if semantic and semantic.last else "",
     }
 
 
@@ -504,7 +517,7 @@ def main() -> int:
         "--timeout-s",
         type=float,
         default=None,
-        help="per-phase httpx timeout of the semantic layer (default: EngineSettings / .env)",
+        help="request timeout of the semantic layer, both providers (default: EngineSettings / .env)",
     )
     parser.add_argument(
         "--fake-outcomes", type=Path, default=FAKE_OUTCOMES, help="fixture for --fake"
@@ -523,7 +536,9 @@ def main() -> int:
         "semantic_fallback_enabled": mode == "semantic",
     }
     if args.timeout_s is not None:
+        # Áp cho cả hai provider: openai (semantic_fallback_timeout_s) và jev (semantic_jev_timeout_s)
         overrides["semantic_fallback_timeout_s"] = args.timeout_s
+        overrides["semantic_jev_timeout_s"] = args.timeout_s
     settings = EngineSettings(**overrides)
     confirm = settings.cancel_semantic_confirm_enabled
 
@@ -545,7 +560,8 @@ def main() -> int:
         gateway = RecordingGateway(extractor._gateway)
         extractor._gateway = gateway
         # Giá trị thật mà provider dùng (httpx.Timeout theo pha), không phải giá trị mong muốn
-        http_timeout = gateway._inner._provider._timeout
+        inner = gateway._inner
+        http_timeout = (inner._provider if hasattr(inner, "_provider") else inner)._timeout
         timeout_s = {
             "connect": http_timeout.connect,
             "read": http_timeout.read,

@@ -28,6 +28,7 @@ from callbot.engine.errors import CallStartBlocked, OutboundStartFailed
 from callbot.engine.session.manager import TurnRun
 from callbot.tracing import Tracer, current_span, null_tracer
 from callbot.tracing.pricing import stt_cost, tts_cost
+from callbot.transports.extraction_view import extraction_view
 from callbot.transports.http.call_mode import CallModeStore
 from callbot.transports.http.schemas import (
     ExtractionDebug,
@@ -423,8 +424,9 @@ def _debug_headers(
     """Demo-only diagnostics, never in the JSON contract. Values are allow-listed by the engine.
 
     `X-Demo-Transfer-Reason` is the transfer that was requested, not proof that Clinic recorded it.
-    `X-Demo-Extraction-Fields` is the one exception to the allow-list: it carries the transcript and
-    the extracted values / spans so the demo can show what was read from the sentence. It is only
+    `X-Demo-Extraction-Fields` is the one exception to the allow-list: it carries the transcript, the
+    extracted values / spans and the model that read the turn so the demo can show what was read from
+    the sentence (`extraction_view`). It is only
     sent to a client that asked for `X-Demo-Debug: 1`, never logged and never stored.
     """
     headers = {
@@ -445,25 +447,23 @@ def _debug_headers(
 
 
 def _extraction_fields(extraction: Optional[dict[str, Any]]) -> Optional[str]:
-    """Transcript + fields actually extracted, as percent-encoded JSON (headers are latin-1 only)."""
-    if not extraction:
+    """`extraction_view` as percent-encoded JSON (headers are latin-1 only)."""
+    view = extraction_view(extraction)
+    if view is None:
         return None
-    fields = [
-        {
-            "field": name,
-            "value": field.get("value"),
-            "span": field.get("span"),
-            "provenance": field.get("provenance"),
-        }
-        for name, field in extraction.items()
-        if isinstance(field, dict) and field.get("provenance") not in (None, "NONE")
-    ]
-    payload = {
-        "transcript": extraction.get("transcript") or "",
-        "silent": bool(extraction.get("silent")),
-        "fields": fields,
-    }
-    return quote(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), safe="")
+    return quote(json.dumps(view, ensure_ascii=False, separators=(",", ":")), safe="")
+
+
+def _static_audio_url(speech: SpeechBundle, segment: Any) -> Optional[str]:
+    """Câu tĩnh trúng cache: trỏ thẳng audio đã duyệt trong RAM, không chép WAV mỗi lượt.
+
+    Cùng câu và cấu hình luôn cùng URL, nên retry cùng lượt vẫn nhận đúng audio của utterance.
+    """
+    key = getattr(segment, "cache_key", None)
+    cache = getattr(speech.tts, "static_cache", None)
+    if not getattr(segment, "cache_hit", False) or key is None or cache is None:
+        return None
+    return speech.audio_store.static_url(key) if cache.wav(key) is not None else None
 
 
 def _synthesize(
@@ -502,14 +502,27 @@ def _synthesize(
             voice=getattr(segment, "voice", None),
             ttfa_ms=getattr(segment, "ttfa_ms", None),
             fallback_used=getattr(segment, "fallback_used", False),
+            cache_hit=getattr(segment, "cache_hit", False),
+            cache_key=getattr(segment, "cache_key", None),
+            catalog_version=getattr(segment, "catalog_version", None),
+            billed_characters=getattr(segment, "billed_characters", None),
             audio_format="pcm16",
             result="OK",
         )
-        cost = tts_cost(
-            getattr(segment, "provider_actual", None), getattr(segment, "voice", None), len(text)
+        cost = (
+            0.0
+            if getattr(segment, "cache_hit", False)
+            else tts_cost(
+                getattr(segment, "provider_actual", None),
+                getattr(segment, "voice", None),
+                len(text),
+            )
         )
         if cost is not None:
             span.enrich(cost_usd=cost)
+        static_url = _static_audio_url(speech, segment)
+        if static_url is not None:
+            return static_url
         try:
             url = speech.audio_store.save(call_id, turn, segment)
             speech.audio_store.remember_utterance(call_id, turn, text)

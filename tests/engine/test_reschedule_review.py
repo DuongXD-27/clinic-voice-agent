@@ -28,11 +28,11 @@ SLOT_READBACK = [*IDENTITY, "Đổi sang 15h ngày 14/10"]
     ("line", "said"),
     [
         # Không khớp khung nào: tra theo giờ khách vừa nêu
-        ("vâng, 9 giờ sáng ngày 20", "em chưa thấy khung giờ đó"),
-        ("vâng thì 5 giờ", "em chưa thấy khung giờ đó"),
+        ("vâng, 9 giờ sáng ngày 20", "Em chưa thấy khung giờ đó"),
+        ("vâng thì 5 giờ", "Em chưa thấy khung giờ đó"),
         # Khớp các khung chưa đọc
-        ("vâng, ngày 20", "8 giờ sáng thứ Ba ngày 20 tháng 10"),
-        ("vâng, 8 giờ sáng ngày 20", "sáng thứ Ba ngày 20 tháng 10 còn khung 8 giờ sáng"),
+        ("vâng, ngày 20", "8 giờ sáng, thứ Ba ngày 20 tháng 10"),
+        ("vâng, 8 giờ sáng ngày 20", "Em còn khung 8 giờ sáng, thứ Ba ngày 20 tháng 10"),
     ],
 )
 def test_agreeing_with_another_time_does_not_write_the_slot_read_back(
@@ -62,7 +62,7 @@ def test_a_slot_from_the_previous_page_is_read_back_then_written(mode: str) -> N
     lines = [*IDENTITY, "Tôi muốn đổi lịch", "khung khác", "3 giờ chiều ngày 14"]
     action = _run(bot, f"r2-{mode}", lines)
     assert action.state == "AWAITING_CONFIRMATION" and not action.ended
-    assert "3 giờ chiều thứ Tư ngày 14 tháng 10" in action.utterance
+    assert "3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
     assert _rescheduled(clinic) == []
 
     action = _run(bot, f"r2-{mode}", ["đồng ý"], start=len(lines) + 1)
@@ -196,11 +196,11 @@ def test_a_slot_named_as_a_question_is_not_written(mode: str, line: str) -> None
     [
         (
             "Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978, muốn đổi lịch sang 14:00 ngày 16",
-            "chiều thứ Sáu ngày 16 tháng 10 còn khung 2 giờ chiều",
+            "Em còn khung 2 giờ chiều, thứ Sáu ngày 16 tháng 10",
         ),
         (
             "Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978, muốn đổi lịch sang 15:30 ngày 15",
-            "chiều thứ Năm ngày 15 tháng 10 còn khung 3 giờ 30 chiều",
+            "Em còn khung 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10",
         ),
     ],
 )
@@ -262,12 +262,12 @@ def test_a_reschedule_turn_reads_the_appointment_once(mode: str, lines: list[str
     ("line", "said"),
     [
         # "trước 12 giờ" (khoảng giờ, main) và "sớm hơn" (mốc lịch đang đổi, nhánh): hai tiêu chí khác nhau
-        ("ngày 15 trước 12 giờ", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
-        ("ngày 14 sớm hơn", "ngày 14 tháng 10 còn khung 3 giờ chiều"),
+        ("ngày 15 trước 12 giờ", "10 giờ 30 sáng, thứ Năm ngày 15 tháng 10"),
+        ("ngày 14 sớm hơn", "3 giờ chiều, thứ Tư ngày 14 tháng 10"),
         # R-44: "à không phải" là lời tự sửa, không phải loại trừ giờ nói sau; buổi "chiều" của giờ cũ
         # không áp vào 10 giờ 30
-        ("3 giờ chiều à không phải 10 giờ 30", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
-        ("3 giờ chiều, à không phải, 10 giờ 30", "10 giờ 30 sáng thứ Năm ngày 15 tháng 10"),
+        ("3 giờ chiều à không phải 10 giờ 30", "10 giờ 30 sáng, thứ Năm ngày 15 tháng 10"),
+        ("3 giờ chiều, à không phải, 10 giờ 30", "10 giờ 30 sáng, thứ Năm ngày 15 tháng 10"),
         # "không phải X mà là Y" giữ "15/10", cả khi Dialogue đọc lại câu làm yêu cầu mới
         ("không phải 14/10 mà là 15/10", "ngày 15 tháng 10"),
         ("ngày 15/10 chứ không phải 14/10", "ngày 15 tháng 10"),
@@ -292,7 +292,7 @@ def test_corrected_date_keeps_the_reschedule_intent(mode: str) -> None:
     action = _run(
         bot, call_id, [*IDENTITY, "Đổi sang ngày 15... à không, vẫn ngày 14 nhưng sớm hơn"]
     )
-    assert "ngày 14 tháng 10 còn khung 3 giờ chiều" in action.utterance and clinic.writes == []
+    assert "3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance and clinic.writes == []
 
 
 # --- Review lần 2 (07/10, evidence §12) -----------------------------------------------------------

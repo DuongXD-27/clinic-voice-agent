@@ -11,7 +11,7 @@ import pytest
 
 from callbot.engine.extraction import InformationExtractor, Intent, Provenance, QuestionId
 from callbot.engine.extraction.cancel_reason import extract_cancel_reason
-from callbot.engine.extraction.implied_cancel import implied_cancel
+from callbot.engine.extraction.implied_cancel import implied_cancel, implied_cancel_from_model
 from callbot.engine.extraction.schema import VN_TZ, TurnContext
 from callbot.engine.extraction.text import normalize
 
@@ -292,3 +292,47 @@ def test_identity_only_turn_keeps_what_was_kept(text: str, question: QuestionId)
 )
 def test_the_need_after_a_self_correction_wins(text: str, intent: Intent) -> None:
     assert (_extract(text, QuestionId.CONFIRM_READBACK).intent.value or Intent.NONE) is intent
+
+
+# --- Lý do do model đọc ra ở câu đọc lịch / "đổi hay hủy" --------------------------------------------
+
+MODEL_IMPLIED = [
+    ("Tôi khám ở viện khác rồi", "WENT_ELSEWHERE", "tôi khám ở viện khác rồi"),
+    ("khám bên viện khác rồi", "WENT_ELSEWHERE", "khám bên viện khác rồi"),
+    (
+        "bác sĩ ở viện tỉnh khám cho tôi rồi",
+        "WENT_ELSEWHERE",
+        "bác sĩ ở viện tỉnh khám cho tôi rồi",
+    ),
+    ("vâng, tôi khỏi bệnh rồi", "NO_LONGER_NEEDED", "tôi khỏi bệnh rồi"),
+    ("tôi đã khám ở phòng khám gần nhà", "WENT_ELSEWHERE", "đã khám ở phòng khám gần nhà"),
+]
+MODEL_NOT_IMPLIED = [
+    # chưa xảy ra / nói về đúng hôm hẹn: còn lịch để đổi
+    ("tuần sau tôi khám chỗ khác rồi", "WENT_ELSEWHERE", "tuần sau tôi khám chỗ khác rồi"),
+    ("tôi định khám chỗ khác rồi", "WENT_ELSEWHERE", "tôi định khám chỗ khác rồi"),
+    ("Tôi đã đặt hẹn ở bệnh viện khác", "WENT_ELSEWHERE", "đã đặt hẹn ở bệnh viện khác"),
+    ("tối đó tôi đến viện khác rồi", "WENT_ELSEWHERE", "tối đó tôi đến viện khác rồi"),
+    ("giờ đó tôi có lịch khám ở bệnh viện khác", "WENT_ELSEWHERE", "có lịch khám ở bệnh viện khác"),
+    # không chắc, câu hỏi, không dấu, chưa có dấu hiệu đã xảy ra, mã khác
+    ("tôi hết đau rồi, chắc không cần nữa đâu", "NO_LONGER_NEEDED", "tôi hết đau rồi"),
+    ("tôi khám chỗ khác rồi?", "WENT_ELSEWHERE", "tôi khám chỗ khác rồi"),
+    ("toi kham cho khac roi", "WENT_ELSEWHERE", "toi kham cho khac roi"),
+    ("tôi khám ở viện khác", "WENT_ELSEWHERE", "tôi khám ở viện khác"),
+    ("hôm đó tôi bận rồi", "PATIENT_UNAVAILABLE", "hôm đó tôi bận rồi"),
+    ("tôi khám ở viện khác rồi", "WENT_ELSEWHERE", None),
+]
+
+
+@pytest.mark.parametrize("transcript, reason, span", MODEL_IMPLIED)
+def test_a_completed_visit_elsewhere_read_by_the_model_implies_cancel(
+    transcript: str, reason: str, span: str
+) -> None:
+    assert implied_cancel_from_model(transcript, reason, span)
+
+
+@pytest.mark.parametrize("transcript, reason, span", MODEL_NOT_IMPLIED)
+def test_planned_hedged_or_unaccented_reasons_do_not_imply_cancel(
+    transcript: str, reason: str, span: Optional[str]
+) -> None:
+    assert not implied_cancel_from_model(transcript, reason, span)

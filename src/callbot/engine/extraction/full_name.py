@@ -135,7 +135,7 @@ _SELF_OUTRO_PHRASES = [
 # Không bỏ riêng "em" / "anh", hay cả "em nhé": đó có thể là tên Nguyễn Văn Em.
 _POLITE_ADDRESSES = [
     f"{particle} {addressee}"
-    for particle in ("nhé", "nha", "ạ", "đây", "đó", "cảm ơn", "cám ơn")
+    for particle in ("nhé", "nhá", "nha", "ạ", "đây", "đó", "cảm ơn", "cám ơn")
     for addressee in ("em", "anh", "chị", "bạn", "cô", "chú", "bác", "ông", "bà", "con", "cháu")
 ]
 _SUFFIXES = compile_phrases(
@@ -144,6 +144,7 @@ _SUFFIXES = compile_phrases(
         "đây",
         "đây ạ",
         "nhé",
+        "nhá",
         "nha",
         "ấy ạ",
         "mà",
@@ -254,6 +255,7 @@ _SPEECH_RESIDUE = compile_phrases(
     [
         "ạ",
         "nhé",
+        "nhá",
         "ơi",
         "vâng",
         "chứ",
@@ -272,6 +274,7 @@ _SPEECH_RESIDUE = compile_phrases(
     unaccented_exclude=[
         "ạ",
         "nhé",
+        "nhá",  # "nha" mất dấu có thể là tên (Nguyễn Thị Nha)
         "ơi",
         "vâng",
         "chứ",
@@ -424,7 +427,7 @@ def read_full_name(
     removed_suffix = unstripped[len(name) :].strip() if unstripped.startswith(name) else ""
     name = strip_honorific(name, MIN_WORDS_AFTER_HONORIFIC)
     words = name.split()
-    if not preserve_final_nha and _ambiguous_ending(segment, name, removed_suffix):
+    if not preserve_final_nha and _ambiguous_ending(name, removed_suffix):
         return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
     if find_phrase(name, _SPEECH_RESIDUE, mixed=True) is not None:
         return Reading(Field.nothing(), Reason.UNRESOLVED_BOUNDARY, segment)
@@ -465,7 +468,10 @@ def _anchored(words: list[str]) -> bool:
     return len(words) >= 3 and words[0] in _SURNAMES and words[1] in _MIDDLE_NAMES
 
 
-def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool:
+_BARE_PARTICLES = frozenset({"nhé", "nhe", "nhá", "ạ"})
+
+
+def _ambiguous_ending(candidate: str, removed_suffix: str) -> bool:
     """A terminal particle may instead be the last syllable of someone's name."""
     explicit_address = any(
         removed_suffix == phrase or removed_suffix.startswith(phrase + " ")
@@ -476,12 +482,13 @@ def _ambiguous_ending(segment: str, candidate: str, removed_suffix: str) -> bool
         return True
     # "Nguyễn Văn A em nhé" and "Nguyễn Văn Em nhé" have the same surface
     # boundary problem. Only an explicit "nhé em" puts the addressee outside the name.
-    for speaker in (*_SPEAKERS, "bạn"):
-        if candidate.endswith(" " + speaker) and any(
-            segment.endswith(f" {speaker} {particle}") for particle in ("nhé", "nhe", "ạ")
-        ):
-            return True
-    return False
+    # Judge by the stripped suffix, not the sentence end: "em nhé ạ" stacks particles.
+    trailing = removed_suffix.split()
+    return (
+        bool(trailing)
+        and set(trailing) <= _BARE_PARTICLES
+        and any(candidate.endswith(" " + speaker) for speaker in (*_SPEAKERS, "bạn"))
+    )
 
 
 def _strip_dob_aside(clause: str) -> str:
@@ -683,6 +690,11 @@ def _without_trailing_links(name: list[str]) -> Optional[str]:
                 stripped = True
                 break
     return " ".join(name) or None
+
+
+def introduces_oneself(transcript: str) -> bool:
+    """Câu có lời tự giới thiệu ("tôi là", "tên tôi là"...), so như `name_after_dob`."""
+    return find_phrase(clean(transcript), _SELF_INTRODUCTIONS, mixed=True) is not None
 
 
 def name_after_dob(transcript: str, dob_zone: Optional[str] = None) -> Optional[str]:

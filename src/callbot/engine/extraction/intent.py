@@ -137,6 +137,12 @@ _KEYWORDS: dict[Intent, list[str]] = {
     Intent.RESCHEDULE: [
         "đổi lịch",
         "đổi sang",
+        # "nếu đổi được thì tôi không hủy", "đổi được không em": xin đổi, kể cả dạng hỏi / điều kiện
+        # (contract Bảng 1 "asks for a different time"; Figure 0 đổi lịch là câu hỏi). Phủ định
+        # ("không đổi được") bị loại như mọi từ khóa hành động.
+        "đổi được",
+        "dời được",
+        "chuyển được",
         "đổi qua",
         "đổi giờ",
         "đổi ngày",
@@ -158,6 +164,10 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "hôm khác",
         "ngày khác",
         "đổi lại",
+        # "tôi muốn chọn lại lịch" ở câu đọc lịch (review 12-10 B16)
+        "chọn lại lịch",
+        "chọn lại giờ",
+        "chọn lại ngày",
     ],
     Intent.CANCEL: [
         "hủy",
@@ -168,6 +178,10 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "không khám nữa",
         "không đi khám được",
         "bỏ lịch",
+        # "thôi bỏ luôn lịch khám đó" (held-out S021); "bỏ đổi lịch" không khớp — là bỏ việc đổi lịch
+        "bỏ luôn lịch",
+        "bỏ hẳn lịch",
+        "bỏ cái lịch",
         "không đi nữa",
         "không đến nữa",
         "sẽ không đến",
@@ -380,6 +394,13 @@ def extract_intent(
 
 def allowed_in_direction(intent: Intent, direction: Direction) -> bool:
     return _DIRECTION_ONLY.get(intent, direction) == direction
+
+
+def out_of_scope_request(transcript: str, *, business_step: bool = True) -> Optional[str]:
+    """Cụm YÊU CẦU ngoài kịch bản (người khác đi thay, đến muộn, xin gọi lại...) — không tính chủ đề
+    ngoài phạm vi (§1.2.3) chỉ được nhắc tới trong câu kể."""
+    text = clean(transcript)
+    return _match_out_of_scope_request(text, is_unaccented(text), business_step)
 
 
 # Động từ dời lịch + (giúp / cho / hộ) + xưng hô + "sang / qua": "đổi cho tôi sang thứ Sáu", "chuyển

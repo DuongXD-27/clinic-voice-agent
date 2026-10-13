@@ -36,8 +36,8 @@ def _case(path, predicate):
 def test_confirm_labels_every_selected_static_variant(transcript, label, monkeypatch):
     selected = set()
 
-    def capture_variant(ctx, group):
-        variant = choose_variant(ctx, group)
+    def capture_variant(ctx, group, *, variants=VARIANT_IDS):
+        variant = choose_variant(ctx, group, variants=variants)
         if group == label:
             selected.add(variant)
         return variant
@@ -54,9 +54,9 @@ def test_confirm_labels_every_selected_static_variant(transcript, label, monkeyp
         results.append(result)
         assert result["observed_behaviour"] == label
         assert result["passed"]
-        if selected == set(VARIANT_IDS):
+        if selected == set(VARIANT_IDS[:3]):
             break
-    assert selected == set(VARIANT_IDS)
+    assert selected == set(VARIANT_IDS[:3])
     assert confirm_exit_code([summarise_confirm(results, None)]) == 0
 
 

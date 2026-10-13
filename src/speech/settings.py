@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import field_validator
 
@@ -50,6 +50,41 @@ class SpeechSettings(YamlSettings):
     turn_max_wait_for_asr_ms: int
     # Lời bắt đầu quá sát lúc bot dứt lời phải dài thêm phần còn thiếu — chống tiếng vọng.
     turn_post_bot_guard_ms: int
+    # Lượt đủ điều kiện chốt vẫn chờ thêm chừng này để gộp phần người gọi nói tiếp. 0 = tắt.
+    turn_merge_window_ms: int
+
+    # Audio giữ trước lúc nhận ra tiếng nói, đưa kèm vào ASR streaming. None = theo asr.yaml.
+    asr_pre_speech_ms: Optional[int]
+    # Cuộc gọi điện thoại (participant SIP) ghi đè các khoá này — xem `for_phone`.
+    phone_overrides: dict[str, Any]
+
+    @field_validator("phone_overrides")
+    @classmethod
+    def _known_phone_keys(cls, value: dict[str, Any]) -> dict[str, Any]:
+        unknown = set(value) - set(cls.model_fields) - {"phone_overrides"}
+        if unknown or "phone_overrides" in value:
+            raise ValueError(f"phone_overrides có khoá không hợp lệ: {sorted(unknown)}")
+        return value
+
+    def for_phone(self) -> "SpeechSettings":
+        """Cấu hình cho cuộc gọi điện thoại: `phone_overrides` ghi đè lên chính cấu hình này."""
+        return type(self).model_validate({**self.model_dump(), **self.phone_overrides})
+
+    # Câu chỉ có từ đệm ("ừ", "à", "dạ"…): False = gửi engine (engine hiểu "ừ/ờ" là đồng ý, "dạ"
+    # là hỏi lại); True = bỏ.
+    turn_drop_filler_words: bool
+    # Bỏ chữ bot vọng lại khỏi lượt người gọi: text | acoustic | three_state
+    # (speech.turn.interruption.EchoPolicy).
+    turn_echo_policy: Literal["text", "acoustic", "three_state"]
+    # Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời: giữ riêng, decode khi bot
+    # dứt lời, thành lượt nếu còn chữ sau khi bỏ tiếng vọng. False = bỏ (trước 08/10).
+    turn_keep_unconfirmed_barge_in: bool
+
+    # THỬ NGHIỆM cổng giọng người gọi (speech/audio/speaker_gate.py): off | log | enforce.
+    speaker_gate_mode: Literal["off", "log", "enforce"]
+    speaker_gate_model_path: str
+    speaker_gate_threshold: float
+    speaker_gate_min_speech_ms: int
 
     # --- Turn Validator: lọc lượt ảo giác theo SNR + độ ổn định transcript ---
     turn_validator_enabled: bool

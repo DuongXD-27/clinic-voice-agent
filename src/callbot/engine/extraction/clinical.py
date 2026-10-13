@@ -131,6 +131,29 @@ _ADVICE_PHRASES = compile_phrases(
     unaccented_exclude=["liều", "có lây không", "có gấp không"],
 )
 
+# Xin tư vấn / hỏi bác sĩ tường minh (review 12-10 B14, eval R112 / R118): §1.2.1 chuyển máy mọi lúc, nên
+# không được chờ tầng ngữ nghĩa (model lỗi, 4 câu chọn khung, inbound trước xác minh đều chỉ có luật).
+# Câu còn nói về lịch mà không có từ bệnh / thuốc ("hỏi bác sĩ khám giờ nào") là hỏi lịch: chỉ MENTION.
+_CONSULT_PHRASES = compile_phrases(
+    [
+        "tư vấn bác sĩ",
+        "bác sĩ tư vấn",
+        "tư vấn sức khỏe",
+        "tư vấn sức khoẻ",
+        "tư vấn bệnh",
+        "tư vấn về bệnh",
+        "tư vấn thuốc",
+        "tư vấn về thuốc",
+        "hỏi bác sĩ",
+        "câu hỏi về bệnh",
+        "hỏi về bệnh",
+        "hỏi về thuốc",
+        "hỏi về triệu chứng",
+        "hỏi về sức khỏe",
+        "hỏi về sức khoẻ",
+    ]
+)
+
 _SYMPTOMS = compile_phrases(
     [
         "đau",
@@ -214,6 +237,18 @@ def extract_clinical(transcript: str) -> Field[ClinicalLevel]:
             # MENTION — tầng ngữ nghĩa đọc lại (CLINICAL_UNRESOLVED), không chuyển máy chỉ vì cụm này.
             return Field(ClinicalLevel.MENTION, exact, span=advice.group(0))
         return Field(ClinicalLevel.ADVICE_REQUEST, exact, span=advice.group(0))
+
+    consult = find_phrase(text, _CONSULT_PHRASES, unaccented=unaccented)
+    if consult is not None:
+        rest = remove_phrases(
+            remove_phrases(text, _CONSULT_PHRASES, unaccented), _NOT_SYMPTOM, unaccented
+        )
+        about_booking = (
+            find_phrase(rest, _SCHEDULING, unaccented=unaccented) is not None
+            and find_phrase(rest, _SYMPTOMS, unaccented=unaccented) is None
+        )
+        level = ClinicalLevel.MENTION if about_booking else ClinicalLevel.ADVICE_REQUEST
+        return Field(level, exact, span=consult.group(0))
 
     # Câu hỏi điều chỉnh thuốc vẫn là tư vấn lâm sàng khi có chữ "khám"/"lịch".
     # Luật câu hỏi triệu chứng phía dưới cố ý bỏ qua ngữ cảnh lịch hẹn, nên xét riêng thuốc.

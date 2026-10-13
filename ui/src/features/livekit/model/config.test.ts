@@ -31,3 +31,17 @@ describe("LiveKit config", () => {
     expect(validateConfig({ ...DEFAULT_LIVEKIT_CONFIG, callerNumber: "" })).toBeNull();
   });
 });
+
+describe("ASR choice", () => {
+  it("omits asr_provider when following the server config", () => {
+    expect(toTokenRequest(DEFAULT_LIVEKIT_CONFIG)).not.toHaveProperty("asr_provider");
+  });
+
+  it("sends the chosen ASR for this call", () => {
+    expect(toTokenRequest({ ...DEFAULT_LIVEKIT_CONFIG, asrProvider: "gemini_live" })).toEqual({
+      direction: "inbound",
+      caller_number: "0912345600",
+      asr_provider: "gemini_live",
+    });
+  });
+});

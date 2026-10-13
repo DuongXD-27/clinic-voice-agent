@@ -182,6 +182,7 @@ async def test_worker_maps_caller_and_hangs_up_after_bridge_playout(monkeypatch,
     monkeypatch.setattr(worker, "build_clinic", lambda *a: clinic)
     monkeypatch.setattr(worker, "create_orchestrator", lambda *a, **kw: object())
     monkeypatch.setattr(worker, "create_tracer", lambda: SimpleNamespace(close=lambda *a: None))
+    monkeypatch.setattr(worker, "_recognizer_for", AsyncMock(return_value=object()))
 
     class Bridge:
         def __init__(self, *args, **kwargs):
@@ -203,3 +204,42 @@ async def test_worker_maps_caller_and_hangs_up_after_bridge_playout(monkeypatch,
         else ["final_audio_drained", "clinic_closed", "job_shutdown"]
     )
     bundle.tts.aclose.assert_awaited_once()
+
+
+@pytest.mark.parametrize("kind", [rtc.ParticipantKind.PARTICIPANT_KIND_SIP, 0])
+async def test_worker_without_asr_hangs_up_the_sip_caller(monkeypatch, kind):
+    """ASR không tạo được thì job dừng; bot rời phòng không gửi BYE nên người gọi SIP phải được gỡ
+    khỏi phòng, không bị bỏ lại trong im lặng. Trang gọi thử (web) thì chỉ báo lỗi."""
+    from callbot.transports.livekit import worker
+
+    events = []
+    caller = SimpleNamespace(
+        kind=kind, identity="caller", attributes={"sip.phoneNumber": "+84912345600"}
+    )
+
+    async def publish_data(*args, **kwargs):
+        events.append("status")
+
+    async def remove(request):
+        assert request.identity == "caller"
+        events.append("hangup")
+
+    ctx = SimpleNamespace(
+        connect=AsyncMock(),
+        wait_for_participant=AsyncMock(return_value=caller),
+        proc=SimpleNamespace(userdata={}),
+        room=SimpleNamespace(
+            name="sip-booking",
+            remote_participants={"caller": caller},
+            local_participant=SimpleNamespace(publish_data=publish_data),
+        ),
+        api=SimpleNamespace(room=SimpleNamespace(remove_participant=AsyncMock(side_effect=remove))),
+        shutdown=lambda **kw: events.append("job_shutdown"),
+    )
+    monkeypatch.setattr(worker, "_recognizer_for", AsyncMock(return_value=None))
+
+    await worker.entrypoint(ctx)
+
+    assert events == (
+        ["status", "hangup", "job_shutdown"] if kind == 3 else ["status", "job_shutdown"]
+    )

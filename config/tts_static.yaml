@@ -1,0 +1,5 @@
+# Approved catalog shared by HTTP and LiveKit. Relative to the parent of config/.
+# TTS_STATIC_ENABLED=false restores the provider-only path.
+# A changed voice/speed/rate/bitrate or exact utterance automatically misses.
+enabled: true
+directory: assets/tts/static/2026-10-08-v2 # TTS_STATIC_DIRECTORY

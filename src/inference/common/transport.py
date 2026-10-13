@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 HttpClientFactory = Callable[[], httpx.Client]
-MODEL_CALL_HARD_LIMIT_S = 3.0
+MODEL_CALL_HARD_LIMIT_S = 4.0
 
 
 def build_http_timeout(timeout_s: float, connect_timeout_s: float) -> httpx.Timeout:

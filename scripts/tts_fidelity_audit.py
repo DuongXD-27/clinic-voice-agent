@@ -46,14 +46,13 @@ SCENARIOS: dict[str, tuple[str, ...]] = {
     "Identity": (
         "GREETING_OUTBOUND",
         "GREETING_INBOUND",
-        "GREETING_BACK_OUTBOUND",
-        "GREETING_BACK_INBOUND",
+        "GREETING_BACK_SHARED",
         "ASK_NAME_AGAIN",
         "ASK_NAME_AFTER_DOB",
-        "ASK_NAME_FOR_REQUEST",
+        "ASK_NAME_VERIFY_SHARED",
         "ASK_NAME_DECLINED",
         "ASK_DOB",
-        "ASK_DOB_FOR_REQUEST",
+        "ASK_DOB_VERIFY_SHARED",
         "INTRODUCE_AGAIN_ASK_DOB",
         "ASK_DOB_AGAIN",
         "ASK_DOB_INVALID",
@@ -91,6 +90,7 @@ DEFERRED = frozenset(
         "BOOKING_ABANDONED",
         "OFFER_SLOTS",
         "SLOT_READBACK",
+        "CURRENT_TIME_CHOICE",
         "SLOT_CHOICE",
     }
 )

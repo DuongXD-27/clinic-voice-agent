@@ -42,7 +42,9 @@ OPERATIONS = frozenset(
     }
 )
 EVENT_FIELDS: dict[str, frozenset[str]] = {
-    "ie.model": frozenset({"model", "latency_ms", "model_result"}),
+    "ie.model": frozenset(
+        {"model", "latency_ms", "model_result", "provider_requested", "provider_actual"}
+    ),
     "session.admitted": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.replayed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.committed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
@@ -158,6 +160,10 @@ SPAN_FIELDS = frozenset(
         "fallback_used",
         "fallback_reason",
         "character_count",
+        "cache_hit",
+        "cache_key",
+        "catalog_version",
+        "billed_characters",
         "ttfa_ms",
         "audio_format",
         "interrupted",
@@ -296,6 +302,7 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             "actual_model",
             "provider_requested",
             "provider_actual",
+            "catalog_version",
         } and (
             not isinstance(value, str)
             or _SAFE_LABEL.fullmatch(value) is None
@@ -323,10 +330,17 @@ def _validate(values: Mapping[str, Any], allowlist: frozenset[str]) -> dict[str,
             "cached_input_tokens",
             "reasoning_tokens",
             "character_count",
+            "billed_characters",
             "misunderstanding_count",
             "silence_count",
         } and (not isinstance(value, int) or isinstance(value, bool) or value < 0):
             raise UnsafeTraceData("trace numeric value is invalid")
+        if key == "cache_hit" and not isinstance(value, bool):
+            raise UnsafeTraceData("trace cache hit is invalid")
+        if key == "cache_key" and (
+            not isinstance(value, str) or re.fullmatch(r"[a-f0-9]{64}", value) is None
+        ):
+            raise UnsafeTraceData("trace static cache key is invalid")
         if key == "confidence" and value > 1:
             raise UnsafeTraceData("trace confidence is invalid")
         if key in {

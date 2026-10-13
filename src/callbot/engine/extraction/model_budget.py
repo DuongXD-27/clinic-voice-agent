@@ -8,7 +8,7 @@ from threading import BoundedSemaphore, Thread
 from time import monotonic
 from typing import Any
 
-MODEL_TIMEOUT_S = 3.0
+MODEL_TIMEOUT_S = 4.0
 # Bound abandoned synchronous requests as well as active ones. Workers have no Clinic capability.
 _workers = BoundedSemaphore(16)
 _current: ContextVar["ModelBudget | None"] = ContextVar("ie_model_budget", default=None)
@@ -19,16 +19,29 @@ class ModelBudget:
         self.used = False
         self.status: str | None = None
         self.model = "test-double"
+        # Provider của model trả lời lượt; `backup_for` = provider chính đã lỗi khi dự phòng trả lời
+        self.provider: str | None = None
+        self.backup_for: str | None = None
         self.latency_ms = 0.0
+        # Lượt đã chốt kết quả (trả lời / hết giờ): worker chạy muộn không được sửa trạng thái nữa
+        self.closed = False
 
-    def run(self, adapter: Any, operation: Callable[[], Any]) -> Any:
+    def run(
+        self, adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+    ) -> Any:
+        """`timeout_s`: trần riêng của route (route chọn khung, plan Jev §4.11); mặc định trần lượt chung
+        `MODEL_TIMEOUT_S`, hoặc timeout của gateway nếu ngắn hơn."""
         if self.used:
             return None
         self.used = True
         gateway = getattr(adapter, "_gateway", None)
         self.model = getattr(gateway, "model", "test-double")
-        config = getattr(getattr(gateway, "_provider", None), "_config", None)
-        timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
+        self.provider = getattr(gateway, "provider_name", None)
+        if timeout_s is not None:
+            timeout = timeout_s
+        else:
+            config = getattr(getattr(gateway, "_provider", None), "_config", None)
+            timeout = min(MODEL_TIMEOUT_S, getattr(config, "timeout_s", MODEL_TIMEOUT_S))
         started = monotonic()
         result: Queue[tuple[Any, str | None]] = Queue(maxsize=1)
         if not _workers.acquire(blocking=False):
@@ -55,6 +68,7 @@ class ModelBudget:
             self.status = "TIMEOUT"
             return None
         finally:
+            self.closed = True
             self.latency_ms = (monotonic() - started) * 1000
 
 
@@ -68,14 +82,40 @@ def model_turn() -> Iterator[ModelBudget]:
         _current.reset(token)
 
 
-def invoke_model(adapter: Any, operation: Callable[[], Any]) -> Any:
+def invoke_model(
+    adapter: Any, operation: Callable[[], Any], *, timeout_s: float | None = None
+) -> Any:
     budget = _current.get()
-    return operation() if budget is None else budget.run(adapter, operation)
+    return operation() if budget is None else budget.run(adapter, operation, timeout_s=timeout_s)
 
 
 def model_used() -> bool:
     budget = _current.get()
     return budget is not None and budget.used
+
+
+def record_model(model: str, provider: str) -> None:
+    """Adapter tự chọn provider khác provider mặc định của nó (route chọn khung: câu không dấu đi thẳng
+    Luna): ghi đúng model / provider trả lời lượt. Không phải dự phòng nên không ghi `backup_for`."""
+    budget = _current.get()
+    if budget is not None and not budget.closed:
+        budget.model = model
+        budget.provider = provider
+
+
+def hand_over_model(model: str, provider: str) -> None:
+    """Provider chính lỗi, provider dự phòng chạy tiếp trong CÙNG ngân sách lượt: bỏ trạng thái lỗi
+    đã báo (TIMEOUT / ERROR không bị ghi đè) để kết quả của provider dự phòng được dùng, và ghi đúng
+    tên model / provider trả lời. Thời gian vẫn tính từ đầu lượt, không cộng thêm.
+
+    Chạy trong thread của model: lượt đã hết giờ (`closed`) thì không đụng tới — không xoá TIMEOUT
+    và không ghi provider dự phòng chưa kịp trả lời."""
+    budget = _current.get()
+    if budget is not None and not budget.closed:
+        budget.status = None
+        budget.backup_for = budget.provider
+        budget.provider = provider
+        budget.model = model
 
 
 def report_model_status(status: str) -> None:

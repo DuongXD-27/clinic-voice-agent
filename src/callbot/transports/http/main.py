@@ -1,12 +1,13 @@
 import asyncio
 import logging
+import re
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 from typing import Optional
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis import Redis
@@ -36,11 +37,13 @@ from callbot.transports.http.ui import add_legacy_redirects, mount_ui
 from callbot.transports.livekit.settings import LiveKitSettings
 from speech.asr.offline import VadFactory
 from speech.asr.vad import FrameClassifier
+from speech.audio.storage import STATIC_AUDIO_PATH
 from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
 logger = logging.getLogger(__name__)
 _TRACE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+_CACHE_KEY = re.compile(r"[a-f0-9]{64}")
 
 
 def _default_clinic() -> ClinicAPI:
@@ -254,6 +257,23 @@ def create_app(
     _configure_observability(app, observability_settings)
     add_legacy_redirects(app)
     mount_ui(app, settings.ui_dist_dir if ui_dist_dir is None else ui_dist_dir)
+
+    # Công khai như /audio: bên gọi tải audio_url không kèm key. Chỉ trả WAV đã duyệt theo cache key
+    # (khoá theo nguyên văn + cấu hình nên nội dung bất biến), không lộ manifest hay file khác.
+    @app.get(f"{STATIC_AUDIO_PATH}/{{cache_key}}.wav", include_in_schema=False)
+    def static_audio(cache_key: str, request: Request) -> Response:
+        speech = getattr(request.app.state, "speech", None)
+        cache = getattr(getattr(speech, "tts", None), "static_cache", None)
+        wav = (
+            cache.wav(cache_key) if cache is not None and _CACHE_KEY.fullmatch(cache_key) else None
+        )
+        if wav is None:
+            return Response(status_code=404)
+        return Response(
+            wav,
+            media_type="audio/wav",
+            headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:

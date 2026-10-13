@@ -195,11 +195,14 @@ def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
     bot.start_call(_outbound("c_ambiguous"))
     _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
 
+    # "buổi chiều" khớp 14:30 (trên trang) và 16:00 (ngoài trang): chọn khung chiều duy nhất trên trang
+    # vừa đọc, không phải khung đầu trang (10:00). Chỉ nêu buổi nên đọc câu chốt, không ghi (review 12-10 B7)
     action = _run(bot, "c_ambiguous", ["buổi chiều"], start=4)
-    assert action.state == "OFFERING_SLOTS"
+    assert action.state == "AWAITING_CONFIRMATION"
     ctx = _context(bot, "c_ambiguous")
-    assert ctx.presented_slot_ids == ["slot_91d2", "slot_cc03"]
-    assert ctx.selected_slot_id is None and ctx.failed_understandings == 0
+    assert ctx.presented_slot_ids == ["slot_aa01", "slot_91d2"]
+    assert ctx.selected_slot_id == "slot_91d2" and ctx.failed_understandings == 0
+    assert clinic.writes == []
 
 
 def test_refusing_slots_drops_pending_action_without_writing() -> None:
@@ -363,6 +366,17 @@ def test_two_failed_understandings_transfer() -> None:
     assert action.transfer_reason == "NOT_UNDERSTOOD"
 
 
+def test_two_hesitations_at_readback_transfer() -> None:
+    """Ậm ừ suông ở câu đọc lịch không phải câu trả lời chưa rõ — tính ngay lần đầu."""
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_hesitant"))
+    lines = ["Nguyễn Văn A", "14/03/1978", "Ờ cái... ừ thì... à", "Cái đó... ờ, như kiểu..."]
+    action = _run(bot, "c_hesitant", lines)
+    assert action.transfer_reason == "NOT_UNDERSTOOD"
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
+
+
 def test_extraction_with_provenance_is_stored_on_turn_record() -> None:
     bot = create_orchestrator(FakeClinicAPI())
     bot.start_call(_outbound("c_trace"))
@@ -393,8 +407,8 @@ def test_extractor_never_sees_patient_identity() -> None:
     spy = _SpyExtractor()
     bot._extractor = spy
     bot.start_call(_outbound("c_private"))
-    # Người gọi nói sai tên: không được "sửa" theo hồ sơ
-    _run(bot, "c_private", ["Nguyễn Văn Bê"])
+    # Người gọi nói sai tên: không được "sửa" theo hồ sơ; đủ tên + ngày sinh mới đối chiếu
+    _run(bot, "c_private", ["Nguyễn Văn Bê", "14/03/1978"])
 
     # Danh sách này là chốt chặn: thêm trường vào TurnContext phải cân nhắc nguyên tắc 2 rồi mới
     # sửa test. `pending_action` và `question_turn` là trạng thái hội thoại (T-05 §8.3.2),
@@ -420,6 +434,7 @@ def test_extractor_never_sees_patient_identity() -> None:
     # Câu mở đầu outbound tới IE; bước ngày sinh không mang nội dung câu hỏi
     assert [(c.question_id, c.question_text) for c in spy.contexts] == [
         (QuestionId.ASK_NAME, t.GREETING_OUTBOUND),
+        (QuestionId.ASK_DOB, None),
     ]
     session = bot.sessions.store.get_session("c_private")
     assert session.context == {} and session.ended

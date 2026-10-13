@@ -13,6 +13,8 @@ from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import InformationExtractor, model_budget
 from callbot.engine.extraction.agreement import confirmation_veto, extract_agreement
 from callbot.engine.extraction.fallback import SlotFillingResult, SlotFillingStatus
+from callbot.engine.extraction.full_name import introduces_oneself
+from callbot.engine.extraction.identity import corrects_itself
 from callbot.engine.extraction.schema import (
     VN_TZ,
     Agreement,
@@ -28,6 +30,7 @@ from callbot.engine.policy.sources import SourceRegistry
 from callbot.engine.policy.utterances import RENDERERS, bind_ledger, renderer
 from callbot.engine.session.context import CallContext
 from callbot.engine.types import BotAction
+from callbot.engine.verification.identity import IdentityVerifier, MatchDetail
 from callbot.engine.verification.names import NameMatch, compare_names
 from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_confirm_dialogue import _at_readback, _context
@@ -129,13 +132,18 @@ def test_name_retry_is_open_persisted_and_limited(second, reason):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(CallStart("retry", "outbound", appointment_id="apt_00417"))
-    first = bot.handle_turn("retry", CallerInput(1, text="Nguyển Văn A"))
+    first = bot.handle_turn("retry", CallerInput(1, text="hình như Nguyễn Văn A"))
     assert first.state == "AWAITING_IDENTITY"
     assert "nguy" not in first.utterance.lower()
     stored = _context(bot, "retry")
     assert stored.identity_retries == {"ASK_NAME": 1}
     assert stored.failed_understandings == 1
     second_action = bot.handle_turn("retry", CallerInput(2, text=second))
+    if reason == "IDENTITY_FAILED":
+        # Tên nghe rõ (lệch dấu hay sai hẳn): hỏi ngày sinh rồi mới đối chiếu (§1.1.2)
+        assert not second_action.ended and second_action.state == "AWAITING_IDENTITY"
+        second_action = bot.handle_turn("retry", CallerInput(3, text="14/03/1978"))
+        assert second_action.utterance == t.IDENTITY_FAILED_TRANSFER
     assert second_action.ended and second_action.transfer_reason == reason
     assert all(write[1] == "TRANSFERRED" for write in clinic.writes)
 
@@ -154,23 +162,79 @@ def test_dob_before_name_counts_as_understood_and_keeps_the_name_retry():
     assert verified.state == "AWAITING_INTENT"
 
 
-def test_retry_with_exact_name_and_dob_authenticates_without_disclosing_beforehand():
+@pytest.mark.parametrize(
+    "text,correction,introduction",
+    [
+        ("à nhầm, 14/3/1978", True, False),
+        ("sửa lại là 14/3/1978", True, False),
+        ("tôi là Nguyễn Văn A", False, True),
+        ("toi la Nguyen Van A", False, True),  # ASR mất dấu
+        ("nhắm mắt cũng nhớ, 14/3/1978", False, False),
+        ("tối là tôi rảnh", False, False),
+        ("Nhâm Văn A", False, False),
+        ("a khong, 14/3/1978", False, False),  # "à" không có dạng không dấu: "A" là tên thật
+    ],
+)
+def test_self_correction_cues_compare_with_diacritics(text, correction, introduction):
+    assert corrects_itself(text) is correction
+    assert introduces_oneself(text) is introduction
+
+
+def test_trace_reason_prefers_the_closest_inbound_record():
+    """Nhiều hồ sơ cùng số: lý do đại diện là hồ sơ gần khớp nhất, lệch dấu gần hơn sai hẳn tên."""
+    details = [(MatchDetail.BOTH_MISMATCH, {}), (MatchDetail.NAME_SUSPICIOUS, {})]
+    assert IdentityVerifier._representative(details) is MatchDetail.NAME_SUSPICIOUS
+    details.append((MatchDetail.DOB_MISMATCH, {}))
+    assert IdentityVerifier._representative(details) is MatchDetail.DOB_MISMATCH
+
+
+def test_tone_mismatch_is_not_compared_before_dob_and_never_authenticates(monkeypatch):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
-    bot.start_call(CallStart("recover", "outbound", appointment_id="apt_00417"))
-    bot.handle_turn("recover", CallerInput(1, text="Nguyển Văn A"))
-    action = bot.handle_turn("recover", CallerInput(2, text="Nguyễn Văn A, sinh 14/3/1978"))
-    assert action.state == "AWAITING_INTENT" and "Nội tổng quát" in action.utterance
-    assert clinic.writes == []
+    bot.start_call(CallStart("tone", "outbound", appointment_id="apt_00417"))
+    results: list = []
+    apply = bot._apply
+
+    def spy(ctx: CallContext, action: BotAction) -> None:
+        results.append(ctx.identity_result)
+        apply(ctx, action)
+
+    monkeypatch.setattr(bot, "_apply", spy)
+    # Lệch dấu thanh không được hỏi lại ngay: hỏi lại sẽ cho biết tên gần đúng (§1.1.2)
+    asked = bot.handle_turn("tone", CallerInput(1, text="Nguyển Văn A"))
+    assert not asked.ended and "nguy" not in asked.utterance.lower()
+    assert asked.utterance in t.static_choices(t.ASK_DOB)
+    assert _context(bot, "tone").identity_retries == {}
+    # R-22: ngày sinh đúng cũng không xác thực tên lệch dấu
+    action = bot.handle_turn("tone", CallerInput(2, text="14/3/1978"))
+    assert action.transfer_reason == "IDENTITY_FAILED"
+    assert action.utterance == t.IDENTITY_FAILED_TRANSFER
+    assert results == [None, "NAME_SUSPICIOUS"]
+    assert all(write[1] == "TRANSFERRED" for write in clinic.writes)
 
 
-def test_wrong_name_transfers_immediately_without_waiting_for_dob():
+def test_wrong_name_waits_for_dob_before_transferring_with_a_reason(monkeypatch):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic)
     bot.start_call(CallStart("wrong", "outbound", appointment_id="apt_00417"))
-    action = bot.handle_turn("wrong", CallerInput(1, text="Nguyễn Văn B"))
+    results: list = []
+    apply = bot._apply
+
+    def spy(ctx: CallContext, action: BotAction) -> None:
+        # Phiên kết thúc bị purge sau commit: đọc lý do trên ctx ngay trước `_apply`
+        results.append(ctx.identity_result)
+        apply(ctx, action)
+
+    monkeypatch.setattr(bot, "_apply", spy)
+    asked = bot.handle_turn("wrong", CallerInput(1, text="Nguyễn Văn B"))
+    assert not asked.ended and asked.state == "AWAITING_IDENTITY"
+    assert _context(bot, "wrong").identity_retries == {}
+    assert clinic.writes == []
+    action = bot.handle_turn("wrong", CallerInput(2, text="14/03/1978"))
     assert action.transfer_reason == "IDENTITY_FAILED"
+    assert action.utterance == t.IDENTITY_FAILED_TRANSFER
     assert "14 tháng 10" not in action.utterance
+    assert results == [None, "NAME_MISMATCH"]
 
 
 @pytest.mark.parametrize(
@@ -205,13 +269,15 @@ class FailedSemantic:
 @pytest.mark.parametrize("raises,status", [(False, "INVALID"), (True, "ERROR")])
 def test_model_failure_cannot_fall_back_to_rule_cancel_confirmation(raises, status):
     model = FailedSemantic(raises)
-    extraction = InformationExtractor(semantic=model).extract(context(), "tôi đồng ý hủy lịch")
+    extraction = InformationExtractor(semantic=model).extract(
+        context(), "tôi đồng ý hủy lịch, cảm ơn em"
+    )
     assert model.calls == 1 and extraction.model_status == status
     assert extraction.agreement.value is not Agreement.AGREE
     bot, clinic, _ = _at_readback("model_error")
     bot.handle_turn("model_error", CallerInput(3, text="tôi muốn hủy lịch"))
     bot._extractor = InformationExtractor(semantic=model)
-    action = bot.handle_turn("model_error", CallerInput(4, text="tôi đồng ý hủy lịch"))
+    action = bot.handle_turn("model_error", CallerInput(4, text="tôi đồng ý hủy lịch, cảm ơn em"))
     assert not action.ended and action.utterance == t.CANCEL_CONFLICT
     assert clinic.writes == []
     assert _context(bot, "model_error").failed_understandings == 1
@@ -240,7 +306,9 @@ def test_model_deadline_discards_late_agreement(monkeypatch):
             return object()
 
     started = monotonic()
-    result = InformationExtractor(semantic=SlowModel()).extract(context(), "tôi đồng ý hủy lịch")
+    result = InformationExtractor(semantic=SlowModel()).extract(
+        context(), "tôi đồng ý hủy lịch, cảm ơn em"
+    )
     assert monotonic() - started < 0.2
     assert result.model_status == "TIMEOUT" and result.agreement.value is not Agreement.AGREE
     release.set()
@@ -309,7 +377,9 @@ def test_ie_model_trace_contains_metadata_only():
     sink = _MemorySink()
     tracer = _tracer(sink)
     with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
-        InformationExtractor(semantic=FailedSemantic()).extract(context(), "tôi đồng ý hủy lịch")
+        InformationExtractor(semantic=FailedSemantic()).extract(
+            context(), "tôi đồng ý hủy lịch, cảm ơn em"
+        )
     event = next(
         event
         for span in sink.spans
@@ -320,6 +390,42 @@ def test_ie_model_trace_contains_metadata_only():
     assert set(event["attributes"]) == {"model", "latency_ms", "model_result"}
     assert "tôi đồng ý" not in json.dumps(
         [span.to_dict() for span in sink.spans], ensure_ascii=False
+    )
+
+
+class _HandedOverSemantic:
+    """Provider chính lỗi, dự phòng nhận lượt (như FailoverSemanticExtractor) rồi không đọc ra gì."""
+
+    def __init__(self):
+        self._gateway = type(
+            "Gateway", (), {"model": "typesafe-model", "provider_name": "typesafe"}
+        )
+
+    def analyze(self, ctx):
+        model_budget.hand_over_model("openai-model", "openai")
+        return None
+
+
+def test_ie_model_trace_names_the_provider_that_answered():
+    """Dự phòng trả lời thay provider chính: trace lưu cả hai nhãn provider (không PII)."""
+    sink = _MemorySink()
+    tracer = _tracer(sink)
+    with tracer.start_trace(call_id="trace", turn=4, component="TURN", operation="http.call_turn"):
+        # "cảm ơn em" ngoài ngữ pháp đóng của xác nhận hủy nên model vẫn được gọi (settled_cancel_confirmation)
+        InformationExtractor(semantic=_HandedOverSemantic()).extract(
+            context(), "tôi đồng ý hủy lịch, cảm ơn em"
+        )
+    event = next(
+        event
+        for span in sink.spans
+        for event in span.to_dict()["events"]
+        if event["name"] == "ie.model"
+    )
+    attributes = event["attributes"]
+    assert attributes["model"] == "openai-model"
+    assert (attributes["provider_requested"], attributes["provider_actual"]) == (
+        "typesafe",
+        "openai",
     )
 
 

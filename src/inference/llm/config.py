@@ -60,3 +60,26 @@ class OpenRouterConfig(ProviderConfig):
     model_config = yaml_config("llm.yaml", "openrouter", env_prefix="OPENROUTER_")
     key_env = "OPENROUTER_API_KEY"
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENROUTER_API_KEY")
+
+
+class TypeSafeConfig(YamlSettings):
+    """TypeSafe System One (Jev). Không kế thừa `ProviderConfig`: không có max tokens, không đọc
+    `NAME_FALLBACK_*` — Jev chỉ dùng cho tầng ngữ nghĩa."""
+
+    model_config = yaml_config(
+        "llm.yaml", "typesafe", env_prefix="TYPESAFE_", hide_input_in_errors=True
+    )
+    key_env: ClassVar[str] = "TYPESAFE_API_KEY"
+
+    # Secret: chỉ từ env, rỗng = chưa cấu hình (require_api_key báo lỗi)
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="TYPESAFE_API_KEY")
+    endpoint: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    timeout_s: float = Field(gt=0, allow_inf_nan=False)
+    connect_timeout_s: float = Field(gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def require_api_key(self) -> Self:
+        if not self.api_key.get_secret_value().strip():
+            raise ValueError(f"TypeSafe requires {self.key_env}")
+        return self

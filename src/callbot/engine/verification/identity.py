@@ -84,9 +84,10 @@ class MatchDetail(str, Enum):
 # Sai một yếu tố "gần" hơn sai cả hai — chỉ để chọn detail đại diện khi 0 khớp
 _MISMATCH_RANK = {
     MatchDetail.DOB_MISMATCH: 0,
-    MatchDetail.NAME_MISMATCH: 1,
-    MatchDetail.BOTH_MISMATCH: 2,
-    MatchDetail.RECORD_UNVERIFIABLE: 3,
+    MatchDetail.NAME_SUSPICIOUS: 1,
+    MatchDetail.NAME_MISMATCH: 2,
+    MatchDetail.BOTH_MISMATCH: 3,
+    MatchDetail.RECORD_UNVERIFIABLE: 4,
 }
 
 
@@ -177,31 +178,6 @@ def _reference_from_appointment(appointment: dict[str, Any]) -> dict[str, Any]:
 class IdentityVerifier:
     def __init__(self, gateway: ClinicGateway) -> None:
         self._gateway = gateway
-
-    def compare_name(self, ctx: CallContext, value: str) -> NameMatch:
-        candidates = [
-            match_name(value, ref["full_name"])
-            for ref in ctx.identity_reference
-            if ref.get("verifiable") and ref.get("full_name")
-        ]
-        if NameMatch.MATCH in candidates:
-            return NameMatch.MATCH
-        if NameMatch.SUSPICIOUS in candidates:
-            return NameMatch.SUSPICIOUS
-        return NameMatch.MISMATCH
-
-    def compare_dob(self, ctx: CallContext, value: date) -> bool:
-        candidates = ctx.identity_reference
-        if ctx.claimed_name is not None:
-            candidates = [
-                ref
-                for ref in candidates
-                if ref.get("full_name")
-                and match_name(ctx.claimed_name, ref["full_name"]) is NameMatch.MATCH
-            ]
-        return any(
-            ref.get("verifiable") and parse_iso_date(ref.get("dob")) == value for ref in candidates
-        )
 
     # --- Pha 1: lượt 0 ---------------------------------------------------------------------
 

@@ -98,7 +98,17 @@ _REFUSE_COMMON = [
     "thôi khỏi",
 ]
 # Từ chối hủy / đổi: REFUSE ở câu hỏi hủy / chọn slot; ở câu hỏi đến khám xem _KEEP và _NOT_CANCEL
-_KEEP_WORDS = ["giữ lịch", "giữ nguyên", "giữ nguyên lịch", "vẫn giữ lịch"]
+_KEEP_WORDS = [
+    "giữ lịch",
+    "giữ nguyên",
+    "giữ nguyên lịch",
+    "vẫn giữ lịch",
+    # "em cứ để lịch vậy / như cũ": giữ lịch nói bằng "để" (eval confirm 10-10)
+    "để lịch vậy",
+    "để lịch như vậy",
+    "để lịch như cũ",
+    "để nguyên lịch",
+]
 _NOT_CANCEL_WORDS = ["không hủy", "không hủy nữa", "đừng hủy"]
 _REFUSE_UNACCENTED_EXCLUDE = ["đừng", "không đúng"]  # "dung" mơ hồ -> luật riêng bên dưới
 _REFUSE = compile_phrases(
@@ -180,6 +190,11 @@ _AFFIRM = compile_phrases(
         "oke",
         "okay",
         "ô kê",
+        # Trộn tiếng Anh ("Yes, tôi sẽ đến"): không trùng từ tiếng Việt mất dấu
+        "yes",
+        "yeah",
+        "yep",
+        "sure",
         "chuẩn",
         "phải",
         "chắc chắn",
@@ -206,6 +221,8 @@ _STRONG_AFFIRM = compile_phrases(
         "oke",
         "okay",
         "ô kê",
+        "yes",
+        "sure",
         "tất nhiên",
         "đương nhiên",
     ]
@@ -466,6 +483,112 @@ class UnclearCause(str, Enum):
     LEFTOVER = "LEFTOVER"
 
 
+# Người gọi nói tiếng Anh (QC qc-w6-01, 12/10/2026): "Yes, I'll be there", "No, I can't make it". Chỉ đọc
+# khi CẢ CÂU là tiếng Anh — mọi từ thuộc các bảng dưới. Câu không dấu còn từ ngoài bảng có thể là tiếng
+# Việt mất dấu ("no" = nó, "not" = nốt, "can" = cần, "the" = thế) và đi theo luật tiếng Việt như trước.
+# Cùng ngưỡng với tiếng Việt: còn từ ngoài bảng ("on the 15th") là chưa rõ, hỏi lại. Câu xác nhận hủy
+# (SF-05) không có đường tiếng Anh: vẫn cần động từ "hủy". Thêm một từ vào bảng là nới cửa ghi: mỗi từ
+# mới cần một ca âm tính trong test.
+_EN_AFFIRM_WORDS = [
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "correct", "right", "of course", "certainly",
+    "definitely", "absolutely", "confirmed", "i confirm", "that works", "that s fine", "sounds good",
+    "all right", "alright",
+]  # fmt: skip
+# Chỉ ở câu hỏi đến khám / đọc lại lịch: lời khẳng định sẽ đến (contract Bảng 1)
+_EN_ATTEND_WORDS = [
+    "i ll be there", "i will be there", "we ll be there", "we will be there", "i ll come",
+    "i will come", "i can come", "i can make it", "i ll make it", "i will make it", "i ll attend",
+    "i will attend", "i m coming", "i am coming", "see you then", "see you there", "count me in",
+]  # fmt: skip
+_EN_REFUSE_WORDS = [
+    "no", "nope", "nah", "not", "cannot", "can t", "can not", "won t", "will not", "don t", "do not",
+    "never", "i m not", "i am not",
+]  # fmt: skip
+_EN_HEDGE_WORDS = [
+    "maybe", "perhaps", "probably", "possibly", "might", "hopefully", "i think", "i guess",
+    "i believe", "i suppose", "not sure", "i ll try", "let me check", "let me see", "let me think",
+    "we ll see", "if i can", "depends",
+]  # fmt: skip
+_EN_CONTRAST_WORDS = [
+    "but",
+    "however",
+    "although",
+    "though",
+    "unless",
+    "except",
+    "actually",
+    "wait",
+]
+# Từ đệm, xưng hô, lễ phép được phép còn lại trong câu tiếng Anh
+_EN_FILLER_WORDS = [
+    "i", "we", "me", "us", "my", "our", "you", "it", "that", "this", "the", "a", "an", "ll", "will",
+    "be", "there", "then", "on", "at", "for", "to", "and", "so", "time", "appointment", "thank",
+    "thanks", "please", "much", "fine", "good", "great", "oh", "um", "uh", "hmm", "well", "s", "m",
+    "am", "is", "do", "go", "going", "come", "coming", "attend", "make", "see", "all", "sorry",
+    "madam", "sir", "miss",
+]  # fmt: skip
+_EN_AFFIRM = compile_phrases(_EN_AFFIRM_WORDS)
+_EN_ATTEND = compile_phrases(_EN_ATTEND_WORDS)
+_EN_REFUSE = compile_phrases(_EN_REFUSE_WORDS)
+_EN_HEDGE = compile_phrases(_EN_HEDGE_WORDS)
+_EN_CONTRAST = compile_phrases(_EN_CONTRAST_WORDS)
+_EN_WORDS = frozenset(
+    word
+    for phrases in (
+        _EN_AFFIRM_WORDS,
+        _EN_ATTEND_WORDS,
+        _EN_REFUSE_WORDS,
+        _EN_HEDGE_WORDS,
+        _EN_CONTRAST_WORDS,
+        _EN_FILLER_WORDS,
+    )
+    for phrase in phrases
+    for word in clean(phrase).split()
+)
+# Phủ định tiếng Anh không trùng từ tiếng Việt mất dấu: phủ quyết ở mọi câu (R-41). "no" / "not" chỉ
+# khi cả câu là tiếng Anh (xem `_is_english`).
+_EN_UNAMBIGUOUS_NEGATION = re.compile(
+    r"(?<!\w)(?:cannot|can t|won t|don t|doesn t|didn t|isn t|couldn t|wouldn t|nope|nah|never)(?!\w)"
+)
+
+
+def _is_english(text: str) -> bool:
+    """`text` đã `clean`: không dấu và mọi từ thuộc bảng tiếng Anh ở trên."""
+    return is_unaccented(text) and all(word in _EN_WORDS for word in text.split())
+
+
+def _english_answer(
+    transcript: str, text: str, question_id: QuestionId
+) -> Optional[tuple[Field[Agreement], Optional[UnclearCause]]]:
+    """Câu trả lời tiếng Anh ở câu hỏi đến khám / đọc lại lịch / chốt khung; `None` khi không phải."""
+    if question_id is QuestionId.CANCEL_RECONFIRM or not _is_english(text):
+        return None
+    matched = Provenance.NORMALIZED
+    if "?" in transcript:
+        return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.QUESTION
+    hedge = find_phrase(text, _EN_HEDGE, unaccented=True)
+    if hedge is not None:
+        return Field(Agreement.UNCLEAR, matched, span=hedge.group(0)), UnclearCause.HEDGE
+    contrast = find_phrase(text, _EN_CONTRAST, unaccented=True)
+    if contrast is not None:
+        return Field(Agreement.UNCLEAR, matched, span=contrast.group(0)), UnclearCause.CONTRAST
+    refuse = find_phrase(text, _EN_REFUSE, unaccented=True)
+    affirm = find_phrase(text, _EN_AFFIRM, unaccented=True)
+    attend = (
+        find_phrase(text, _EN_ATTEND, unaccented=True)
+        if question_id in _ATTENDANCE_QUESTIONS
+        else None
+    )
+    positive = affirm or attend
+    if refuse is not None and positive is not None:
+        return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.REFUSE_MIXED
+    if refuse is not None:
+        return Field(Agreement.REFUSE, matched, span=refuse.group(0)), None
+    if positive is not None:
+        return Field(Agreement.AGREE, matched, span=positive.group(0)), None
+    return Field.nothing(Agreement.UNCLEAR), UnclearCause.NO_SIGNAL
+
+
 def extract_agreement(
     transcript: str, question_id: QuestionId, *, attendance: Optional[str] = None
 ) -> Field[Agreement]:
@@ -490,6 +613,8 @@ def confirmation_veto(transcript: str) -> bool:
     return is_bare_da(transcript) or bool(
         re.search(r"(?<!\w)(?:không|khong|chưa|chua|đừng|đổi ý|doi y)(?!\w)", text)
         or (is_unaccented(text) and _has_ambiguous_dung(text))
+        or _EN_UNAMBIGUOUS_NEGATION.search(text)
+        or (_is_english(text) and find_phrase(text, _EN_REFUSE, unaccented=True) is not None)
     )
 
 
@@ -582,6 +707,9 @@ def _read_agreement(
     if _is_hesitation(transcript, text):
         # "ờ.... ừ ..... à": người gọi đang nghĩ, chưa trả lời. "ờ", "ừ" nói gọn vẫn là đồng ý.
         return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.HEDGE
+    english = _english_answer(transcript, text, question_id)
+    if english is not None:
+        return english
     if _is_tag_question(text, _UNACCENTED_WORDS if unaccented else _ACCENTED_WORDS):
         # "... được không?" là hỏi lại, không phải từ chối
         return Field(Agreement.UNCLEAR, matched, span=text), UnclearCause.TAG_QUESTION
@@ -764,6 +892,20 @@ def without_fallback_lead(transcript: str) -> str:
     return drop_leading_words(transcript, len(lead.group(0).split()))
 
 
+# "không, 5 giờ chiều", "chưa, thứ Sáu đi": mở câu bằng lời từ chối rồi nêu giờ khác — không nhận các khung
+# vừa đọc. Không tính vế điều kiện "không có 5 giờ thì ..." (`without_fallback_lead`), lời tự sửa "không
+# phải ...", "không biết", "không sao", "không có / còn ... à" (hỏi lại)
+_LEADING_REFUSAL = re.compile(
+    r"^(?:(?:dạ|ừ|ờ|vâng)\s+)?(?:không|khong|chưa|chua)(?!\w)"
+    r"(?!\s+(?:phải|phai|biết|biet|sao|có|co|còn|con)(?!\w))"
+)
+
+
+def leads_with_refusal(transcript: str) -> bool:
+    """Câu chọn khung mở bằng lời từ chối (review 12-10 B10). IE không đọc có / không khi câu đã có giờ."""
+    return _LEADING_REFUSAL.match(clean(without_fallback_lead(transcript))) is not None
+
+
 def slot_answer(transcript: str) -> str:
     """Phần câu trả lời lời mời / câu chốt khung mà IE và Dialogue cùng đọc tiêu chí thời gian.
 
@@ -816,10 +958,29 @@ _DRAWN_OUT = re.compile(r"\.\.|…")
 
 
 def _is_hesitation(transcript: str, text: str) -> bool:
+    return _only_words(transcript, text, _HESITATION_SOUNDS)
+
+
+def _only_words(transcript: str, text: str, allowed: frozenset[str]) -> bool:
     words = text.split()
-    if not words or any(w not in _HESITATION_SOUNDS for w in words):
+    if not words or any(w not in allowed for w in words):
         return False
     return _DRAWN_OUT.search(transcript) is not None or len(set(words)) > 1
+
+
+# Từ đệm khi đang tìm lời ("cái đó... ờ, như kiểu..."): đi cùng âm ậm ừ vẫn chưa có nội dung nào.
+_DISCOURSE_FILLERS = _HESITATION_SOUNDS | frozenset(
+    clean(w) for w in ["cái", "thì", "đó", "đấy", "ấy", "này", "kiểu", "như", "là"]
+)
+
+
+def is_hesitation_only(transcript: str) -> bool:
+    """Cả lượt chỉ là ậm ừ / từ đệm ("Ờ cái... ừ thì... à"): người gọi chưa nói gì để hiểu.
+
+    Khác ngập ngừng có nội dung ("chắc là được"): không có câu trả lời nào để đọc lại cho rõ, nên
+    §1.1.5 tính là không hiểu ngay lần đầu. "ờ", "ừ ừ" nói gọn vẫn là đồng ý.
+    """
+    return _only_words(transcript, clean(transcript), _DISCOURSE_FILLERS)
 
 
 def is_bare_da(transcript: str) -> bool:
@@ -1016,6 +1177,27 @@ def _reopened(after: str, unaccented: bool, filler: frozenset[str]) -> Optional[
 def gives_up_slot_change(transcript: str) -> bool:
     """ "thôi không đổi nữa", "giữ lịch cũ": bỏ việc đổi / đặt; "không" trần thì không (T-10 Q-4)."""
     return find_phrase(clean(transcript), _GIVE_UP_SLOT) is not None
+
+
+# Đổi ý định giữa luồng chọn khung ("tôi đổi ý"): khách bỏ việc đang làm nhưng chưa nói muốn gì thay.
+_CHANGE_OF_MIND = compile_phrases(["đổi ý", "đổi ý định", "thay đổi ý định"])
+
+
+def changes_mind(transcript: str) -> bool:
+    """ "tôi đổi ý", "thôi tôi đổi ý rồi": đổi ý định, không phải yêu cầu đổi lịch (owner 12-10, B15).
+
+    Chỉ là có cụm; câu còn nêu khung / giờ / ý định khác thì Dialogue đi theo phần đó.
+    """
+    return find_phrase(clean(transcript), _CHANGE_OF_MIND) is not None
+
+
+# "tôi muốn chọn lại lịch", "để tôi chọn lại": khách chưa chốt, muốn quay lại chọn khung (review 12-10 B16)
+_RECHOOSE = compile_phrases(["chọn lại", "lựa lại"])
+
+
+def rechooses(transcript: str) -> bool:
+    """Có cụm "chọn lại"; câu còn nêu khung / giờ ("chọn lại khung 1") thì Dialogue đi theo phần đó."""
+    return find_phrase(clean(transcript), _RECHOOSE) is not None
 
 
 def asks_to_keep(transcript: str) -> bool:

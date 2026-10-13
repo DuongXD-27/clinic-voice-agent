@@ -477,13 +477,48 @@ def test_turn_with_text_in_audio_mode_rejected(
     "overrides",
     [
         {"direction": "outbound", "appointment_id": None},
-        {"direction": "inbound", "appointment_id": None, "caller_number": None},
         {"direction": "inbound", "appointment_id": "apt_00417", "caller_number": "0912345600"},
         {"max_turns": 0},
     ],
 )
 def test_start_call_rejects_invalid_input(client: TestClient, overrides: dict[str, Any]) -> None:
     assert _start(client, "c_invalid", **overrides).status_code == 422
+
+
+@pytest.mark.parametrize("caller_number", [None, "", "+840000000001"])
+def test_inbound_without_usable_caller_number_starts_and_transfers_without_write(
+    client: TestClient, clinic: FakeClinicAPI, caller_number: Optional[str]
+) -> None:
+    """Eval mentor 13-10 (qc-ib-*): harness gửi inbound với `caller_number: null` (Listing 1 cho phép).
+
+    Trước đây validator trả 422 nên cả bộ case lỗi trước lượt 1. Không có số dùng được thì chưa tra được
+    hồ sơ: mở phiên bình thường, lượt 1 chuyển máy, không tra mock, không ghi gì (§1.1.9, §2.1).
+    """
+    started = client.post(
+        "/v1/calls",
+        json={
+            "call_id": "qc-ib-01-clean-booking-29d5a7e6",
+            "direction": "inbound",
+            "appointment_id": None,
+            "caller_number": caller_number,
+            "locale": "vi-VN",
+            "mode": "text",
+            "max_turns": 20,
+        },
+    )
+    assert started.status_code == 200
+    body = started.json()
+    assert (body["call_id"], body["state"], body["turn"]) == (
+        "qc-ib-01-clean-booking-29d5a7e6",
+        "AWAITING_IDENTITY",
+        0,
+    )
+    assert body["audio_url"] is None
+
+    ended = _turn(client, "qc-ib-01-clean-booking-29d5a7e6", 1, "Alô, tôi muốn đặt lịch khám ạ.")
+    assert ended.status_code == 200
+    assert (ended.json()["ended"], ended.json()["outcome"]) == (True, "TRANSFERRED")
+    assert clinic.writes == [] and clinic.patient_lookups == []
 
 
 @pytest.mark.parametrize(

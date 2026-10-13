@@ -1,14 +1,18 @@
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import Field, field_validator
 
 from appconfig import YamlSettings, yaml_config
+from inference.asr.base import ProviderName
 
 
 class LiveKitSettings(YamlSettings):
     """Giá trị mặc định: config/livekit.yaml. Env: LIVEKIT_<TÊN FIELD> (vd. LIVEKIT_FRAME_MS)."""
 
     model_config = yaml_config("livekit.yaml", env_prefix="LIVEKIT_", populate_by_name=True)
+
+    # null = dùng ASR_PROVIDER. Tách streaming-only khỏi ASR HTTP/batch.
+    asr_provider: Optional[ProviderName]
 
     # Theo deploy / secret: chỉ từ env, rỗng = chưa cấu hình (/livekit/token trả 503)
     livekit_url: str = Field(default="", validation_alias="LIVEKIT_URL")
@@ -55,11 +59,19 @@ class LiveKitSettings(YamlSettings):
     # phải khuyến nghị bật cho production. Cần cài `livekit-plugins-krisp` (không có sẵn trong
     # pyproject.toml — xem cảnh báo về nâng cấp livekit-agents/openai ngoài ý muốn trong evidence).
     krisp_noise_suppression_enabled: bool = False
+    # Gửi trích xuất từng lượt (có PII) kèm câu bot cho trang /ui/livekit. Chỉ cho demo: cuộc gọi
+    # thật (SIP, production) phải tắt. Cùng vai trò header `X-Demo-Debug: 1` của HTTP.
+    demo_debug: bool = False
 
     @field_validator("agent_name", mode="before")
     @classmethod
     def _strip_agent_name(cls, value: object) -> object:
         return value.strip() if isinstance(value, str) else value
+
+    @field_validator("asr_provider", mode="before")
+    @classmethod
+    def _blank_asr_provider(cls, value: object) -> object:
+        return value.strip() or None if isinstance(value, str) else value
 
     @field_validator("input_sample_rate", "frame_ms", mode="before")
     @classmethod

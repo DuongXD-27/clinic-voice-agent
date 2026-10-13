@@ -21,11 +21,11 @@ pytest_plugins = ["clinic_mock_sim.pytest_plugin"]
 
 @pytest.fixture(autouse=True)
 def fixed_dialogue_variant(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Business tests giữ cách nói v0; test_dialogue_variants chạy cả bốn và selector thật.
+    """Business tests ưu tiên v0; test_dialogue_variants kiểm tập ba/bốn và selector thật.
 
     Cố định selector, không bỏ qua render/guard hay thay đổi phản hồi sau khi engine tạo ra.
     """
-    monkeypatch.setattr(templates, "choose_variant", lambda ctx, group: "v0")
+    monkeypatch.setattr(templates, "choose_variant", lambda ctx, group, **kwargs: "v0")
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +38,7 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     # T-05 §8: tests that need the layer inject a fake extractor; nothing here calls OpenAI.
     monkeypatch.setenv("SEMANTIC_FALLBACK_ENABLED", "false")
     monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("TYPESAFE_API_KEY", "")
     # .env dev bật trace + Langfuse thì mỗi app test gửi trace thật và chờ flush khi tắt (~0.8s/test).
     # Test cần trace tự bật TRACE_ENABLED với JSONL dir riêng; Langfuse luôn tắt.
     monkeypatch.setenv("TRACE_ENABLED", "false")

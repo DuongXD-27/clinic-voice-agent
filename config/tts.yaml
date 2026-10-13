@@ -9,7 +9,7 @@ openai: # OPENAI_API_KEY
 vbee:
   endpoint: https://api.vbee.vn/v1/tts # VBEE_ENDPOINT
   voice_code: hn_female_ngochuyen_full_48k-fhg # VBEE_VOICE_CODE
-  speed: 1.0 # VBEE_SPEED
+  speed: 1.15 # VBEE_SPEED
   bitrate: 128 # VBEE_BITRATE
   # PCM 8 kHz khớp băng hẹp, không phải resample
   sample_rate: 8000 # VBEE_SAMPLE_RATE

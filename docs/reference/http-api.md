@@ -25,6 +25,9 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 Console mô phỏng outbound bằng `appointment_id`, chưa thực hiện quay số điện thoại.
 Tra cứu Clinic là điều kiện trước khi mở phiên outbound; lỗi này hiển thị cho người vận hành.
 Inbound đã có người gọi đến nên lỗi tra cứu vẫn theo luồng chuyển nhân viên.
+Inbound nhận `caller_number: null` (Listing 1; harness của mentor gửi null ở mọi case inbound): phiên mở
+bình thường, chưa có số để tra hồ sơ thì câu mở đầu báo chuyển máy và lượt 1 kết thúc `TRANSFERRED`,
+không tra Clinic, không ghi gì. Inbound có `appointment_id` vẫn bị từ chối `422`.
 
 Luồng xử lý trong code: [`calls.py`](../../src/callbot/transports/http/calls.py)
 → `CallOrchestrator.start_call` → `SessionManager.open` →
@@ -73,7 +76,7 @@ Mọi câu bot nói, qua HTTP hay LiveKit, đều qua cùng Output Guard trong `
 | `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
 | `/demo-api/*` | Có |
 | `/v1/stt/*` (API thử STT, xem [stt-eval-api.md](stt-eval-api.md)) | Có. Chỉ mount khi `STT_EVAL_ENABLED=true`, và khi đó bắt buộc phải có `BOT_API_KEYS` |
-| `/health`, `/ready`, `/audio/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/ui/*` là file tĩnh của giao diện web |
+| `/health`, `/ready`, `/audio/*`, `/audio-static/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/audio-static/*` là audio câu tĩnh đã duyệt dùng chung giữa các cuộc gọi; `/ui/*` là file tĩnh của giao diện web |
 
 Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/ui/call` (link cũ `/demo/` chuyển hướng tới đây) có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
 

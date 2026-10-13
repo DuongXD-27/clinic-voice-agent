@@ -39,6 +39,52 @@ turn_max_wait_after_vad_end_ms: 300
 turn_max_wait_for_asr_ms: 3000
 # Lời bắt đầu quá sát lúc bot vừa dứt lời phải dài thêm — chống dư âm/tiếng vọng phòng.
 turn_post_bot_guard_ms: 500
+# Lượt đã đủ điều kiện chốt (có final) vẫn chờ thêm chừng này; người gọi nói tiếp trong lúc đó
+# ("14 tháng 3" … ừm … "năm 1978") thì nối vào cùng lượt thay vì thành hai lượt. Cộng thẳng vào
+# độ trễ MỌI lượt. 0 = tắt. Bật 08/10 theo yêu cầu owner để thử trực tiếp — chưa đo trên GipFormer.
+turn_merge_window_ms: 700
+
+# Audio giữ trước lúc VAD của ASR nhận ra tiếng nói, đưa kèm vào ASR streaming (Silero bật cờ
+# trễ 250-700 ms). null = theo pre_speech_ms của provider trong asr.yaml (300 ms).
+asr_pre_speech_ms: null
+
+# Cuộc gọi điện thoại (participant SIP của LiveKit) ghi đè các khoá trên. Chỉ ghi khoá đã đo.
+#   asr_pre_speech_ms 1000: đo 07/10 trên kênh điện thoại mô phỏng (noise-bench --channel phone,
+#   8 kHz G.711): WER lượt bộ golden sạch 0,147 -> 0,087, office@8 0,413 -> 0,263; sửa "KHÔNG
+#   ĐƯỢC" -> "CŨNG ĐƯỢC" ở bộ câu ngắn. Đổi lại thêm lượt "ĐÂY" (1 ở office@3, 2 từ clip "Ừ").
+#   Trên web (16 kHz) kết quả trái chiều nên web giữ 300.
+#   docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+phone_overrides:
+  asr_pre_speech_ms: 1000
+
+# --- Câu chỉ có từ đệm ("ừ", "à", "ờ", "dạ"…) ---
+# false = gửi engine; true = bỏ từ đệm đứng riêng, vẫn giữ câu trả lời "có/không".
+# Từ đệm nói lúc bot đang nói luôn bỏ (tiếng đệm "tôi đang nghe").
+# 08/10: khôi phục bộ lọc như main sau khi cuộc gọi thật có lượt giả "Ừ/À" khi không bật Krisp.
+# Chỉ mở lại khi có tập câu ngắn có nhãn và đánh giá cả nhiễu thuần.
+turn_drop_filler_words: true
+
+# --- ĐANG ĐÁNH GIÁ (08/10, review): tiếng bot vọng lại và lời chen chưa xác nhận ---
+# text: luôn bỏ phần đầu lượt trùng câu bot (trước 08/10; xoá cả lời người gọi nhắc lại câu bot)
+# acoustic: chỉ bỏ khi mic có tiếng vọng | three_state: chưa biết/có vọng thì như text, chỉ
+# không bỏ khi đã chắc đường truyền không vọng. Số đo: docs/evidence/stt-phone-echo-speaker-2026-10-07.md
+turn_echo_policy: "acoustic"
+# true: lời chen lúc bot nói chưa được xác nhận ngắt lời được giữ riêng, decode khi bot dứt lời.
+turn_keep_unconfirmed_barge_in: true
+
+# --- THỬ NGHIỆM: cổng giọng người gọi (speaker embedding theo đoạn con 1,5 s, speech/audio/speaker_gate.py) ---
+# off | log (chỉ ghi quyết định + similarity) | enforce (bỏ lượt giọng khác, cắt đầu/cuối giọng khác).
+# Giọng mẫu = lượt dài (>= speaker_gate_min_speech_ms) đầu tiên mà mọi đoạn con là một giọng — lượt
+# lẫn TV/điện thoại thì chờ lượt sau (08/10: lấy cả lượt làm mẫu đã chặn đúng giọng người gọi).
+# Đo 08/10 (đoạn 1,5 s, giọng mẫu cùng người): CAM++ tách tốt hơn TitaNet-small rõ (đoạn người gọi
+# p5 0,26 vs 0,10; người khác p95 0,21 vs 0,22). Cuộc gọi thật (log): đoạn người gọi 0,54-0,74,
+# điện thoại phát cạnh mic 0,12-0,16. ENFORCE theo yêu cầu owner 08/10; tắt nhanh:
+# SPEAKER_GATE_MODE=log (chỉ ghi) hoặc off. Giọng nói chồng cùng lúc thì không tách được.
+# Model không có trong image Docker: thiếu file thì chạy không có cổng (cảnh báo).
+speaker_gate_mode: "enforce"
+speaker_gate_model_path: temp/models/speaker/3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx
+speaker_gate_threshold: 0.35
+speaker_gate_min_speech_ms: 2000
 
 # --- Turn Validator: lọc lượt ảo giác theo SNR + độ ổn định transcript ---
 # Bật 28/09/2026 cùng lúc đổi sang Silero (quyết định owner) — chưa có số đo tách riêng.

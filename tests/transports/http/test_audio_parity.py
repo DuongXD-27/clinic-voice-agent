@@ -44,9 +44,10 @@ SCENARIOS = [
         [None, None, None],
         "TRANSFERRED",
     ),
-    ("wrong_identity", {}, ["Nguyễn Văn B"], "TRANSFERRED"),
+    ("wrong_identity", {}, ["Nguyễn Văn B", "14/03/1978"], "TRANSFERRED"),
     ("not_understood", {}, ["xyz", "xyz"], "TRANSFERRED"),
-    ("spoken_busy", {}, ["đường dây bận"], "TRANSFERRED"),
+    # Nói "bận" không phải tín hiệu đường dây; câu bị nhận như tên nên vẫn hỏi ngày sinh rồi mới so
+    ("spoken_busy", {}, ["đường dây bận", "14/03/1978"], "TRANSFERRED"),
 ]
 
 

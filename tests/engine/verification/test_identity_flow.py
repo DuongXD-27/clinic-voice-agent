@@ -88,7 +88,7 @@ def test_inbound_known_phone_wrong_name_is_patient_not_found_without_write() -> 
     bot = create_orchestrator(clinic)
 
     bot.start_call(_inbound("c_wrong", "0912345600"))
-    action = _identity_turns(bot, "c_wrong", name="Trần Văn B", dob=None)
+    action = _identity_turns(bot, "c_wrong", name="Trần Văn B")
 
     assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.writes == [] and clinic.requests == []

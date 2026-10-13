@@ -16,7 +16,13 @@ from callbot.engine.extraction.fallback import (
 )
 from callbot.engine.extraction.full_name import valid_name_span
 from callbot.engine.extraction.model_budget import report_model_status
-from callbot.engine.extraction.schema import Field, Intent, Provenance, QuestionId
+from callbot.engine.extraction.schema import (
+    Field,
+    Intent,
+    Provenance,
+    QuestionId,
+    compact_json_schema,
+)
 from callbot.engine.extraction.text import clean
 from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
 from inference.common.telemetry import InferenceTimer
@@ -28,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class NameExtraction(BaseModel):
-    model_config = ConfigDict(strict=True, extra="forbid")
+    model_config = ConfigDict(strict=True, extra="forbid", json_schema_extra=compact_json_schema)
 
     full_name: str | None
     span: str | None

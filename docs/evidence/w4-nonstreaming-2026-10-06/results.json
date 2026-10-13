@@ -1,0 +1,2704 @@
+{
+  "scope": "HTTP in-process, real GipFormer1.5 local ASR, real Vbee sync TTS, real upload/download WAV; simulated Clinic/fakeredis",
+  "started_at": "2026-10-06T14:02:59.827325+07:00",
+  "asr_model": "g-group-ai-lab/gipformer1.5-68M-rnnt",
+  "tts_voice": "hn_female_ngochuyen_full_48k-fhg",
+  "budget_chars": 5000,
+  "output_directory": "outputs/",
+  "clock": "2026-10-06T10:00:00+07:00",
+  "trim": {
+    "source": "inputs/QA_BOOKING_REQUEST.wav",
+    "output": "inputs/QA_BOOKING_REQUEST_clean.wav",
+    "start_seconds": 1.78
+  },
+  "clips": {
+    "name": {
+      "text": "NGUYỄN VĂN A",
+      "confidence": 0.9596022525795345,
+      "path": "inputs/STT_ID_02.wav"
+    },
+    "dob": {
+      "text": "NGÀY MƯỜI BỐN THÁNG BA NĂM MỘT CHÍN BẢY TÁM",
+      "confidence": 0.9118509138120838,
+      "path": "inputs/STT_DOB_01.wav"
+    },
+    "confirm": {
+      "text": "CÓ TÔI ĐẾN ĐƯỢC",
+      "confidence": 0.9938099833168248,
+      "path": "inputs/STT_CF_01.wav"
+    },
+    "cancel": {
+      "text": "TÔI MUỐN HỦY LỊCH",
+      "confidence": 0.8455928685968671,
+      "path": "inputs/QA_CANCEL_EXPLICIT.wav"
+    },
+    "transfer": {
+      "text": "CHO TÔI GẶP NHÂN VIÊN",
+      "confidence": 0.9937465557630124,
+      "path": "inputs/QA_TRANSFER_HUMAN.wav"
+    },
+    "reschedule": {
+      "text": "TÔI MUỐN ĐỔI LỊCH KHÁM",
+      "confidence": 0.9588192969744579,
+      "path": "inputs/QA_RESCHEDULE_REQUEST.wav"
+    },
+    "slot": {
+      "text": "TÔI CHỌN KHUNG ĐẦU TIÊN",
+      "confidence": 0.7827300073669919,
+      "path": "inputs/QA_SLOT_FIRST.wav"
+    },
+    "agree": {
+      "text": "ĐỒNG Ý",
+      "confidence": 0.9671155938536024,
+      "path": "inputs/QA_SLOT_CONFIRM_EXPLICIT.wav"
+    },
+    "book": {
+      "text": "TÔI MUỐN ĐẶT LỊCH KHÁM",
+      "confidence": 0.9721240203711214,
+      "path": "inputs/QA_BOOKING_REQUEST_clean.wav"
+    }
+  },
+  "flows": [
+    {
+      "flow": "identity",
+      "passed": true,
+      "outcome": null,
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 14.37
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 13.4
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 18.51,
+          "tts": [],
+          "writes": [],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              }
+            ],
+            "writes": [],
+            "records": {
+              "apt_00417": {
+                "status": "SCHEDULED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 3
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 600.13
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 1391.2
+            }
+          ],
+          "audio_count": 3,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_identity_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_identity_audio/1.wav",
+              "pcm_bytes": 43292,
+              "sample_rate": 8000,
+              "duration_seconds": 2.70575,
+              "peak": 20200
+            },
+            {
+              "url": "http://testserver/audio/w4_identity_audio/2.wav",
+              "pcm_bytes": 142452,
+              "sample_rate": 8000,
+              "duration_seconds": 8.90325,
+              "peak": 21293
+            }
+          ],
+          "opening_elapsed_ms": 1222.86,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 1110.16,
+              "ttfa_ms": 879.8996999976225,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 45,
+              "elapsed_ms": 347.58,
+              "ttfa_ms": 283.3587999921292,
+              "pcm_bytes": 43292,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 162,
+              "elapsed_ms": 952.06,
+              "ttfa_ms": 300.58560002362356,
+              "pcm_bytes": 142452,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              }
+            ],
+            "writes": [],
+            "records": {
+              "apt_00417": {
+                "status": "SCHEDULED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 3
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "confirm",
+      "passed": true,
+      "outcome": "CONFIRMED",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 12.81
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 20.32
+            },
+            {
+              "turn": 3,
+              "clip": "confirm",
+              "state": "ENDED",
+              "outcome": "CONFIRMED",
+              "elapsed_ms": 16.6
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 14.93,
+          "tts": [],
+          "writes": [
+            [
+              "apt_00417",
+              "CONFIRMED",
+              {}
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã xác nhận lịch khám 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City cho anh chị. Hẹn gặp anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "CONFIRMED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "CONFIRMED",
+                {}
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "CONFIRMED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "confirmed_via": "callbot"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "confirm_appointment",
+                "POST",
+                "/appointments/apt_00417/confirm",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 635.6
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 1366.15
+            },
+            {
+              "turn": 3,
+              "clip": "confirm",
+              "state": "ENDED",
+              "outcome": "CONFIRMED",
+              "elapsed_ms": 1191.21
+            }
+          ],
+          "audio_count": 4,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_confirm_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_confirm_audio/1.wav",
+              "pcm_bytes": 43292,
+              "sample_rate": 8000,
+              "duration_seconds": 2.70575,
+              "peak": 20200
+            },
+            {
+              "url": "http://testserver/audio/w4_confirm_audio/2.wav",
+              "pcm_bytes": 142452,
+              "sample_rate": 8000,
+              "duration_seconds": 8.90325,
+              "peak": 21293
+            },
+            {
+              "url": "http://testserver/audio/w4_confirm_audio/3.wav",
+              "pcm_bytes": 114872,
+              "sample_rate": 8000,
+              "duration_seconds": 7.1795,
+              "peak": 18885
+            }
+          ],
+          "opening_elapsed_ms": 1087.86,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 971.98,
+              "ttfa_ms": 719.5131000189576,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 45,
+              "elapsed_ms": 326.27,
+              "ttfa_ms": 263.86059998185374,
+              "pcm_bytes": 43292,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 162,
+              "elapsed_ms": 902.4,
+              "ttfa_ms": 293.1508000183385,
+              "pcm_bytes": 142452,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 117,
+              "elapsed_ms": 896.09,
+              "ttfa_ms": 500.50829999963753,
+              "pcm_bytes": 114872,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_00417",
+              "CONFIRMED",
+              {}
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã xác nhận lịch khám 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City cho anh chị. Hẹn gặp anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "CONFIRMED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "CONFIRMED",
+                {}
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "CONFIRMED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "confirmed_via": "callbot"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "confirm_appointment",
+                "POST",
+                "/appointments/apt_00417/confirm",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "cancel",
+      "passed": true,
+      "outcome": "CANCELLED",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 13.18
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 13.6
+            },
+            {
+              "turn": 3,
+              "clip": "cancel",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 12.53
+            },
+            {
+              "turn": 4,
+              "clip": "cancel",
+              "state": "ENDED",
+              "outcome": "CANCELLED",
+              "elapsed_ms": 16.7
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 15.93,
+          "tts": [],
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "CANCELLED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "CANCEL",
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "CANCELLED",
+                {
+                  "cancel_reason": "UNSPECIFIED"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "CANCELLED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "cancel_reason": "UNSPECIFIED"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "cancel_appointment",
+                "POST",
+                "/appointments/apt_00417/cancel",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 536.81
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 1325.14
+            },
+            {
+              "turn": 3,
+              "clip": "cancel",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 583.19
+            },
+            {
+              "turn": 4,
+              "clip": "cancel",
+              "state": "ENDED",
+              "outcome": "CANCELLED",
+              "elapsed_ms": 827.3
+            }
+          ],
+          "audio_count": 5,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_cancel_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_cancel_audio/1.wav",
+              "pcm_bytes": 43292,
+              "sample_rate": 8000,
+              "duration_seconds": 2.70575,
+              "peak": 20200
+            },
+            {
+              "url": "http://testserver/audio/w4_cancel_audio/2.wav",
+              "pcm_bytes": 142452,
+              "sample_rate": 8000,
+              "duration_seconds": 8.90325,
+              "peak": 21293
+            },
+            {
+              "url": "http://testserver/audio/w4_cancel_audio/3.wav",
+              "pcm_bytes": 43558,
+              "sample_rate": 8000,
+              "duration_seconds": 2.722375,
+              "peak": 18356
+            },
+            {
+              "url": "http://testserver/audio/w4_cancel_audio/4.wav",
+              "pcm_bytes": 41416,
+              "sample_rate": 8000,
+              "duration_seconds": 2.5885,
+              "peak": 17229
+            }
+          ],
+          "opening_elapsed_ms": 1063.52,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 975.15,
+              "ttfa_ms": 699.87250000122,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 45,
+              "elapsed_ms": 299.39,
+              "ttfa_ms": 242.16269998578355,
+              "pcm_bytes": 43292,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 162,
+              "elapsed_ms": 901.41,
+              "ttfa_ms": 234.8049999854993,
+              "pcm_bytes": 142452,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 54,
+              "elapsed_ms": 289.27,
+              "ttfa_ms": 231.01420002058148,
+              "pcm_bytes": 43558,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 38,
+              "elapsed_ms": 490.37,
+              "ttfa_ms": 416.0310000006575,
+              "pcm_bytes": 41416,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_00417",
+              "CANCELLED",
+              {
+                "cancel_reason": "UNSPECIFIED"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Anh chị chắc chắn muốn hủy lịch khám này đúng không ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã hủy lịch khám cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "CANCELLED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "CANCEL",
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "CANCELLED",
+                {
+                  "cancel_reason": "UNSPECIFIED"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "CANCELLED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "cancel_reason": "UNSPECIFIED"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "cancel_appointment",
+                "POST",
+                "/appointments/apt_00417/cancel",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "transfer",
+      "passed": true,
+      "outcome": "TRANSFERRED",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "transfer",
+              "state": "ENDED",
+              "outcome": "TRANSFERRED",
+              "elapsed_ms": 15.02
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 15.91,
+          "tts": [],
+          "writes": [
+            [
+              "apt_00417",
+              "TRANSFERRED",
+              {
+                "transfer_reason": "PATIENT_REQUEST"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ anh chị thêm ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "TRANSFERRED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "TRANSFERRED",
+                {
+                  "transfer_reason": "PATIENT_REQUEST"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "TRANSFERRED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "transfer_reason": "PATIENT_REQUEST"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "transfer_appointment",
+                "POST",
+                "/appointments/apt_00417/transfer",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "transfer",
+              "state": "ENDED",
+              "outcome": "TRANSFERRED",
+              "elapsed_ms": 582.16
+            }
+          ],
+          "audio_count": 2,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_transfer_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_transfer_audio/1.wav",
+              "pcm_bytes": 60228,
+              "sample_rate": 8000,
+              "duration_seconds": 3.76425,
+              "peak": 18958
+            }
+          ],
+          "opening_elapsed_ms": 1101.12,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 1072.18,
+              "ttfa_ms": 777.322500012815,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 66,
+              "elapsed_ms": 330.94,
+              "ttfa_ms": 273.4653000079561,
+              "pcm_bytes": 60228,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_00417",
+              "TRANSFERRED",
+              {
+                "transfer_reason": "PATIENT_REQUEST"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, em xin phép chuyển máy cho nhân viên để hỗ trợ anh chị thêm ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "TRANSFERRED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "TRANSFERRED",
+                {
+                  "transfer_reason": "PATIENT_REQUEST"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "TRANSFERRED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "transfer_reason": "PATIENT_REQUEST"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "transfer_appointment",
+                "POST",
+                "/appointments/apt_00417/transfer",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "reschedule",
+      "passed": true,
+      "outcome": "RESCHEDULED",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 10.85
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 11.38
+            },
+            {
+              "turn": 3,
+              "clip": "reschedule",
+              "state": "OFFERING_SLOTS",
+              "outcome": null,
+              "elapsed_ms": 12.7
+            },
+            {
+              "turn": 4,
+              "clip": "slot",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 11.66
+            },
+            {
+              "turn": 5,
+              "clip": "agree",
+              "state": "ENDED",
+              "outcome": "RESCHEDULED",
+              "elapsed_ms": 13.05
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 13.09,
+          "tts": [],
+          "writes": [
+            [
+              "apt_00417",
+              "RESCHEDULED",
+              {
+                "new_slot_id": "slot_aa01"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đổi sang ngày khác ạ?",
+                "state": "OFFERING_SLOTS",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xác nhận đổi lịch sang 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã đổi lịch khám sang 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "RESCHEDULED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "OFFERING_SLOTS",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "RESCHEDULE",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 4,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": "slot_aa01",
+                "pending_action": "RESCHEDULE",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "RESCHEDULED",
+                {
+                  "new_slot_id": "slot_aa01"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "RESCHEDULED",
+                "starts_at": "2026-10-14T10:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "new_slot_id": "slot_aa01"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_slots",
+                "GET",
+                "/slots",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "reschedule_appointment",
+                "POST",
+                "/appointments/apt_00417/reschedule",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 419.73
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 1224.84
+            },
+            {
+              "turn": 3,
+              "clip": "reschedule",
+              "state": "OFFERING_SLOTS",
+              "outcome": null,
+              "elapsed_ms": 1182.23
+            },
+            {
+              "turn": 4,
+              "clip": "slot",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 1284.2
+            },
+            {
+              "turn": 5,
+              "clip": "agree",
+              "state": "ENDED",
+              "outcome": "RESCHEDULED",
+              "elapsed_ms": 1059.81
+            }
+          ],
+          "audio_count": 6,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/1.wav",
+              "pcm_bytes": 43292,
+              "sample_rate": 8000,
+              "duration_seconds": 2.70575,
+              "peak": 20200
+            },
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/2.wav",
+              "pcm_bytes": 142452,
+              "sample_rate": 8000,
+              "duration_seconds": 8.90325,
+              "peak": 21293
+            },
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/3.wav",
+              "pcm_bytes": 170546,
+              "sample_rate": 8000,
+              "duration_seconds": 10.659125,
+              "peak": 23254
+            },
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/4.wav",
+              "pcm_bytes": 106998,
+              "sample_rate": 8000,
+              "duration_seconds": 6.687375,
+              "peak": 19730
+            },
+            {
+              "url": "http://testserver/audio/w4_reschedule_audio/5.wav",
+              "pcm_bytes": 73854,
+              "sample_rate": 8000,
+              "duration_seconds": 4.615875,
+              "peak": 18665
+            }
+          ],
+          "opening_elapsed_ms": 947.97,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 923.45,
+              "ttfa_ms": 662.2367999807466,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 45,
+              "elapsed_ms": 234.92,
+              "ttfa_ms": 233.17359999055043,
+              "pcm_bytes": 43292,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 162,
+              "elapsed_ms": 893.1,
+              "ttfa_ms": 326.58619998255745,
+              "pcm_bytes": 142452,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 181,
+              "elapsed_ms": 914.69,
+              "ttfa_ms": 585.715799999889,
+              "pcm_bytes": 170546,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 110,
+              "elapsed_ms": 1046.74,
+              "ttfa_ms": 443.4060000057798,
+              "pcm_bytes": 106998,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 79,
+              "elapsed_ms": 829.51,
+              "ttfa_ms": 569.7213999810629,
+              "pcm_bytes": 73854,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_00417",
+              "RESCHEDULED",
+              {
+                "new_slot_id": "slot_aa01"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đổi sang ngày khác ạ?",
+                "state": "OFFERING_SLOTS",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xác nhận đổi lịch sang 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã đổi lịch khám sang 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "RESCHEDULED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "OFFERING_SLOTS",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "RESCHEDULE",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 4,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": "slot_aa01",
+                "pending_action": "RESCHEDULE",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "RESCHEDULED",
+                {
+                  "new_slot_id": "slot_aa01"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "RESCHEDULED",
+                "starts_at": "2026-10-14T10:00:00+07:00",
+                "attempt_count": 0,
+                "version": 4,
+                "new_slot_id": "slot_aa01"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_slots",
+                "GET",
+                "/slots",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "reschedule_appointment",
+                "POST",
+                "/appointments/apt_00417/reschedule",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "no_answer",
+      "passed": true,
+      "outcome": "UNREACHABLE",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": null,
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 11.92
+            },
+            {
+              "turn": 2,
+              "clip": null,
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 13.6
+            },
+            {
+              "turn": 3,
+              "clip": null,
+              "state": "ENDED",
+              "outcome": "UNREACHABLE",
+              "elapsed_ms": 14.85
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 18.0,
+          "tts": [],
+          "writes": [
+            [
+              "apt_00417",
+              "UNREACHABLE",
+              {
+                "unreachable_reason": "SILENCE"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xin phép gọi lại sau ạ. Chào anh chị.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "UNREACHABLE"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 1,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 2,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "UNREACHABLE",
+                {
+                  "unreachable_reason": "SILENCE"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "UNREACHABLE",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 1,
+                "version": 4,
+                "unreachable_reason": "SILENCE"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "mark_unreachable",
+                "POST",
+                "/appointments/apt_00417/unreachable",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": null,
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 986.8
+            },
+            {
+              "turn": 2,
+              "clip": null,
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 978.25
+            },
+            {
+              "turn": 3,
+              "clip": null,
+              "state": "ENDED",
+              "outcome": "UNREACHABLE",
+              "elapsed_ms": 363.92
+            }
+          ],
+          "audio_count": 4,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_no_answer_audio/0.wav",
+              "pcm_bytes": 110882,
+              "sample_rate": 8000,
+              "duration_seconds": 6.930125,
+              "peak": 21262
+            },
+            {
+              "url": "http://testserver/audio/w4_no_answer_audio/1.wav",
+              "pcm_bytes": 150978,
+              "sample_rate": 8000,
+              "duration_seconds": 9.436125,
+              "peak": 23124
+            },
+            {
+              "url": "http://testserver/audio/w4_no_answer_audio/2.wav",
+              "pcm_bytes": 150978,
+              "sample_rate": 8000,
+              "duration_seconds": 9.436125,
+              "peak": 23124
+            },
+            {
+              "url": "http://testserver/audio/w4_no_answer_audio/3.wav",
+              "pcm_bytes": 52096,
+              "sample_rate": 8000,
+              "duration_seconds": 3.256,
+              "peak": 27224
+            }
+          ],
+          "opening_elapsed_ms": 860.25,
+          "tts": [
+            {
+              "chars": 112,
+              "elapsed_ms": 826.05,
+              "ttfa_ms": 651.8851000000723,
+              "pcm_bytes": 110882,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 147,
+              "elapsed_ms": 929.12,
+              "ttfa_ms": 498.15629998920485,
+              "pcm_bytes": 150978,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 147,
+              "elapsed_ms": 925.04,
+              "ttfa_ms": 479.04859998379834,
+              "pcm_bytes": 150978,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 44,
+              "elapsed_ms": 316.97,
+              "ttfa_ms": 239.095199998701,
+              "pcm_bytes": 52096,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_00417",
+              "UNREACHABLE",
+              {
+                "unreachable_reason": "SILENCE"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Alo, anh chị còn nghe máy không ạ? Dạ em xin chào anh chị, em là trợ lý ảo AI của tổng đài Vinmec. Cho em hỏi em đang nói chuyện với anh chị nào ạ?",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xin phép gọi lại sau ạ. Chào anh chị.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "UNREACHABLE"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 1,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 2,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_00417",
+                "UNREACHABLE",
+                {
+                  "unreachable_reason": "SILENCE"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "UNREACHABLE",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 1,
+                "version": 4,
+                "unreachable_reason": "SILENCE"
+              }
+            },
+            "api": [
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "get_appointment",
+                "GET",
+                "/appointments/apt_00417",
+                200,
+                null
+              ],
+              [
+                "mark_unreachable",
+                "POST",
+                "/appointments/apt_00417/unreachable",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "flow": "booking",
+      "passed": true,
+      "outcome": "BOOKED",
+      "evidence": [
+        {
+          "mode": "text",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 12.3
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 13.6
+            },
+            {
+              "turn": 3,
+              "clip": "book",
+              "state": "OFFERING_SLOTS",
+              "outcome": null,
+              "elapsed_ms": 13.51
+            },
+            {
+              "turn": 4,
+              "clip": "slot",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 14.08
+            },
+            {
+              "turn": 5,
+              "clip": "agree",
+              "state": "ENDED",
+              "outcome": "BOOKED",
+              "elapsed_ms": 15.82
+            }
+          ],
+          "audio_count": 0,
+          "audio_checks": [],
+          "opening_elapsed_ms": 15.18,
+          "tts": [],
+          "writes": [
+            [
+              "apt_new_1",
+              "BOOKED",
+              {
+                "slot_id": "slot_aa01"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài. Anh chị vui lòng cho em biết họ tên đầy đủ ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?",
+                "state": "OFFERING_SLOTS",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xác nhận đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "BOOKED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "OFFERING_SLOTS",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "BOOK",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 4,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": "slot_aa01",
+                "pending_action": "BOOK",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_new_1",
+                "BOOKED",
+                {
+                  "slot_id": "slot_aa01"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "SCHEDULED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 3
+              },
+              "apt_new_1": {
+                "status": "BOOKED",
+                "starts_at": "2026-10-14T10:00:00+07:00",
+                "attempt_count": 0,
+                "version": 1
+              }
+            },
+            "api": [
+              [
+                "find_patient_by_phone",
+                "GET",
+                "/patients",
+                200,
+                null
+              ],
+              [
+                "get_slots",
+                "GET",
+                "/slots",
+                200,
+                null
+              ],
+              [
+                "create_appointment",
+                "POST",
+                "/appointments",
+                200,
+                null
+              ]
+            ]
+          }
+        },
+        {
+          "mode": "audio",
+          "turns": [
+            {
+              "turn": 1,
+              "clip": "name",
+              "state": "AWAITING_IDENTITY",
+              "outcome": null,
+              "elapsed_ms": 524.94
+            },
+            {
+              "turn": 2,
+              "clip": "dob",
+              "state": "AWAITING_INTENT",
+              "outcome": null,
+              "elapsed_ms": 682.14
+            },
+            {
+              "turn": 3,
+              "clip": "book",
+              "state": "OFFERING_SLOTS",
+              "outcome": null,
+              "elapsed_ms": 928.84
+            },
+            {
+              "turn": 4,
+              "clip": "slot",
+              "state": "AWAITING_CONFIRMATION",
+              "outcome": null,
+              "elapsed_ms": 1128.44
+            },
+            {
+              "turn": 5,
+              "clip": "agree",
+              "state": "ENDED",
+              "outcome": "BOOKED",
+              "elapsed_ms": 547.38
+            }
+          ],
+          "audio_count": 6,
+          "audio_checks": [
+            {
+              "url": "http://testserver/audio/w4_booking_audio/0.wav",
+              "pcm_bytes": 101638,
+              "sample_rate": 8000,
+              "duration_seconds": 6.352375,
+              "peak": 21017
+            },
+            {
+              "url": "http://testserver/audio/w4_booking_audio/1.wav",
+              "pcm_bytes": 43292,
+              "sample_rate": 8000,
+              "duration_seconds": 2.70575,
+              "peak": 20200
+            },
+            {
+              "url": "http://testserver/audio/w4_booking_audio/2.wav",
+              "pcm_bytes": 45252,
+              "sample_rate": 8000,
+              "duration_seconds": 2.82825,
+              "peak": 25968
+            },
+            {
+              "url": "http://testserver/audio/w4_booking_audio/3.wav",
+              "pcm_bytes": 170150,
+              "sample_rate": 8000,
+              "duration_seconds": 10.634375,
+              "peak": 25813
+            },
+            {
+              "url": "http://testserver/audio/w4_booking_audio/4.wav",
+              "pcm_bytes": 104816,
+              "sample_rate": 8000,
+              "duration_seconds": 6.551,
+              "peak": 20138
+            },
+            {
+              "url": "http://testserver/audio/w4_booking_audio/5.wav",
+              "pcm_bytes": 65848,
+              "sample_rate": 8000,
+              "duration_seconds": 4.1155,
+              "peak": 18715
+            }
+          ],
+          "opening_elapsed_ms": 953.93,
+          "tts": [
+            {
+              "chars": 98,
+              "elapsed_ms": 914.94,
+              "ttfa_ms": 643.9073999936227,
+              "pcm_bytes": 101638,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 45,
+              "elapsed_ms": 295.41,
+              "ttfa_ms": 242.47050000121817,
+              "pcm_bytes": 43292,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 43,
+              "elapsed_ms": 286.53,
+              "ttfa_ms": 227.7409000089392,
+              "pcm_bytes": 45252,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 180,
+              "elapsed_ms": 725.15,
+              "ttfa_ms": 540.0268999801483,
+              "pcm_bytes": 170150,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 105,
+              "elapsed_ms": 873.06,
+              "ttfa_ms": 492.2030000016093,
+              "pcm_bytes": 104816,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            },
+            {
+              "chars": 69,
+              "elapsed_ms": 324.88,
+              "ttfa_ms": 267.2486000228673,
+              "pcm_bytes": 65848,
+              "provider_actual": "vbee",
+              "fallback_used": false,
+              "voice": "hn_female_ngochuyen_full_48k-fhg"
+            }
+          ],
+          "writes": [
+            [
+              "apt_new_1",
+              "BOOKED",
+              {
+                "slot_id": "slot_aa01"
+              }
+            ]
+          ],
+          "comparison": {
+            "bodies": [
+              {
+                "utterance": "Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài. Anh chị vui lòng cho em biết họ tên đầy đủ ạ?",
+                "state": "AWAITING_IDENTITY",
+                "turn": 0
+              },
+              {
+                "utterance": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ.",
+                "state": "AWAITING_IDENTITY",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",
+                "state": "AWAITING_INTENT",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, lịch trống gần nhất có khung 1 là 10 giờ sáng thứ Tư ngày 14 tháng 10; khung 2 là 2 giờ 30 chiều thứ Tư ngày 14 tháng 10. Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?",
+                "state": "OFFERING_SLOTS",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em xác nhận đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City. Anh chị đồng ý chứ ạ?",
+                "state": "AWAITING_CONFIRMATION",
+                "ended": false,
+                "outcome": null
+              },
+              {
+                "utterance": "Dạ, em đã đặt lịch 10 giờ sáng thứ Tư ngày 14 tháng 10 cho anh chị ạ.",
+                "state": "ENDED",
+                "ended": true,
+                "outcome": "BOOKED"
+              }
+            ],
+            "snapshots": [
+              {
+                "state": "AWAITING_IDENTITY",
+                "turn": 1,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "AWAITING_INTENT",
+                "turn": 2,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": []
+              },
+              {
+                "state": "OFFERING_SLOTS",
+                "turn": 3,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": null,
+                "pending_action": "BOOK",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": "AWAITING_CONFIRMATION",
+                "turn": 4,
+                "identity_verified": null,
+                "silent_turns": 0,
+                "failed_understandings": 0,
+                "selected_slot_id": "slot_aa01",
+                "pending_action": "BOOK",
+                "presented_slot_ids": [
+                  "slot_aa01",
+                  "slot_91d2"
+                ]
+              },
+              {
+                "state": null,
+                "turn": null,
+                "identity_verified": null,
+                "silent_turns": null,
+                "failed_understandings": null,
+                "selected_slot_id": null,
+                "pending_action": null,
+                "presented_slot_ids": null
+              }
+            ],
+            "writes": [
+              [
+                "apt_new_1",
+                "BOOKED",
+                {
+                  "slot_id": "slot_aa01"
+                }
+              ]
+            ],
+            "records": {
+              "apt_00417": {
+                "status": "SCHEDULED",
+                "starts_at": "2026-10-14T09:00:00+07:00",
+                "attempt_count": 0,
+                "version": 3
+              },
+              "apt_new_1": {
+                "status": "BOOKED",
+                "starts_at": "2026-10-14T10:00:00+07:00",
+                "attempt_count": 0,
+                "version": 1
+              }
+            },
+            "api": [
+              [
+                "find_patient_by_phone",
+                "GET",
+                "/patients",
+                200,
+                null
+              ],
+              [
+                "get_slots",
+                "GET",
+                "/slots",
+                200,
+                null
+              ],
+              [
+                "create_appointment",
+                "POST",
+                "/appointments",
+                200,
+                null
+              ]
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "passed_flows": 7,
+  "blocked_network_attempts": 0,
+  "submitted_chars": 3023,
+  "provider_requests": 30,
+  "finished_at": "2026-10-06T14:03:30.697014+07:00",
+  "archive": "artifacts/voice-audio.zip",
+  "path_base": "archive root; extract before using paths",
+  "handoff": {
+    "original_results": "provenance/results.original.json",
+    "original_runner": "provenance/replay_vbee_real.py",
+    "note": "Portable copy: path metadata rebased; measured flow results unchanged. Originals preserved in archive."
+  }
+}

@@ -108,6 +108,61 @@ describe("liveKitReducer", () => {
     ]);
   });
 
+  it("ghi ASR bot thực sự dùng cho cuộc gọi", () => {
+    const reported = liveKitReducer(connected, { type: "botAsr", provider: "gemini_live", at: 2 });
+
+    expect(reported.log.at(-1)?.text).toBe("Bot dùng ASR: Gemini Live.");
+  });
+
+  describe("ASR chọn trên trang", () => {
+    const chose = run(
+      { type: "connecting", step: "Đang lấy token…" },
+      { type: "connected", roomName: "web-1", botPresent: false, at: 1, asr: "gemini_live" },
+    );
+    const caller: TranscriptLine = {
+      role: "caller",
+      turn: 1,
+      text: "A LÔ",
+      confidence: 0.88,
+      state: null,
+      ended: false,
+      outcome: null,
+    };
+
+    it("ghi ASR đã chọn khi vào room", () => {
+      expect(chose.log.at(-1)).toMatchObject({ text: "ASR đã chọn: Gemini Live.", tone: "info" });
+    });
+
+    it("báo lỗi khi bot dùng ASR khác lựa chọn", () => {
+      const other = liveKitReducer(chose, { type: "botAsr", provider: "zipformer", at: 2 });
+
+      expect(other.log.at(-1)).toMatchObject({
+        text: "Bot dùng ASR: ZipFormer — KHÁC lựa chọn Gemini Live.",
+        tone: "error",
+      });
+    });
+
+    it("cảnh báo một lần khi người gọi nói mà bot chưa báo ASR (worker cũ)", () => {
+      const once = [caller, { ...caller, turn: 2 }].reduce(
+        (current, line, index) =>
+          liveKitReducer(current, { type: "transcript", line, at: 3 + index }),
+        chose,
+      );
+      const warnings = once.log.filter((entry) => entry.tone === "warning");
+
+      expect(warnings.map((entry) => entry.text)).toEqual([
+        "Bot không báo ASR đang dùng: cuộc gọi có thể vào worker cũ, không theo lựa chọn ASR.",
+      ]);
+    });
+
+    it("không cảnh báo khi bot đã báo ASR", () => {
+      const reported = liveKitReducer(chose, { type: "botAsr", provider: "gemini_live", at: 2 });
+      const spoke = liveKitReducer(reported, { type: "transcript", line: caller, at: 3 });
+
+      expect(spoke.log.some((entry) => entry.tone === "warning")).toBe(false);
+    });
+  });
+
   it.each<[string, LiveKitSession, LiveKitAction]>([
     [
       "connected khi chưa connecting",
@@ -194,6 +249,46 @@ describe("transcript", () => {
     expect(state.phase).toBe("connected");
     expect(state.transcript.map((line) => line.text)).toEqual(["Xin chào"]);
     expect(state.botState).toBe("AWAITING_INTENT");
+  });
+});
+
+describe("extraction", () => {
+  const botLine = (turn: number, extra: Partial<TranscriptLine> = {}): TranscriptLine => ({
+    role: "bot",
+    turn,
+    text: "Dạ",
+    confidence: null,
+    state: "AWAITING_INTENT",
+    ended: false,
+    outcome: null,
+    ...extra,
+  });
+  const say = (state: LiveKitSession, line: TranscriptLine) =>
+    liveKitReducer(state, { type: "transcript", line, at: 1 });
+
+  it("lấy trích xuất từ câu bot; giữ qua khi ngắt, xoá khi bắt đầu cuộc gọi mới", () => {
+    const first = say(connected, botLine(1, { extraction: { turn: 1, fields: null } }));
+    const second = say(first, botLine(2, { extraction: { turn: 2, fields: null } }));
+    const ended = liveKitReducer(second, { type: "disconnected", at: 3 });
+    const next = liveKitReducer(ended, { type: "connecting", step: "x" });
+
+    expect(second.extraction).toEqual({ turn: 2, fields: null });
+    expect(ended.extraction).toEqual({ turn: 2, fields: null });
+    expect(next).toMatchObject({ extraction: null, extractionIssue: null });
+  });
+
+  it("câu chào (lượt 0) không mang trích xuất: không phải lỗi", () => {
+    expect(say(connected, botLine(0))).toMatchObject({ extraction: null, extractionIssue: null });
+  });
+
+  it("câu bot không kèm hoặc kèm sai dạng: báo, không giữ trích xuất của lượt cũ", () => {
+    const first = say(connected, botLine(1, { extraction: { turn: 1, fields: null } }));
+
+    expect(say(first, botLine(2))).toMatchObject({ extraction: null, extractionIssue: "missing" });
+    expect(say(first, botLine(2, { extraction: "invalid" }))).toMatchObject({
+      extraction: null,
+      extractionIssue: "invalid",
+    });
   });
 });
 

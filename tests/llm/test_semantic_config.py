@@ -37,9 +37,9 @@ def test_semantic_factory_uses_its_own_settings(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("NAME_FALLBACK_MODEL", "gemini-2.5-flash")
     settings = EngineSettings(
         semantic_fallback_enabled=True,
-        semantic_fallback_model="gpt-4o-mini",
+        semantic_openai_model="gpt-4o-mini",
         semantic_fallback_timeout_s=2.0,
-        semantic_fallback_max_tokens=400,
+        semantic_openai_max_tokens=400,
     )
     extractor = _semantic_extractor(settings)
     assert isinstance(extractor, LLMSemanticExtractor)
@@ -90,3 +90,22 @@ def test_changing_the_name_slot_filling_provider_does_not_build_a_semantic_layer
 
 def test_the_semantic_timeout_is_three_seconds_by_default() -> None:
     assert _engine_yaml()["semantic_fallback_timeout_s"] == 3.0
+
+
+def test_the_turn_budget_is_four_seconds_and_jev_gets_two(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner 12/10/2026 (QC qc-cn-08): trần lượt 4 s, Jev 2 s để Jev treo vẫn còn thời gian dự phòng."""
+    from callbot.engine import _jev_semantic
+    from callbot.engine.extraction.model_budget import MODEL_TIMEOUT_S
+    from inference.common.transport import MODEL_CALL_HARD_LIMIT_S
+
+    assert MODEL_TIMEOUT_S == 4.0 and MODEL_CALL_HARD_LIMIT_S == 4.0
+    defaults = _engine_yaml()
+    assert defaults["semantic_jev_timeout_s"] == 2.0
+    assert (
+        defaults["semantic_backup_min_remaining_s"]
+        <= MODEL_TIMEOUT_S - defaults["semantic_jev_timeout_s"]
+    )
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "ts-test-not-a-real-key")
+    jev = _jev_semantic(EngineSettings(semantic_jev_timeout_s=2.0, semantic_fallback_timeout_s=3.0))
+    assert jev is not None and jev._gateway._config.timeout_s == 2.0

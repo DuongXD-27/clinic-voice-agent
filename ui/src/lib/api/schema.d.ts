@@ -596,6 +596,8 @@ export interface components {
         LiveKitTokenRequest: {
             /** Appointment Id */
             appointment_id?: string | null;
+            /** Asr Provider */
+            asr_provider?: ("zipformer" | "gemini_live") | null;
             /** Caller Number */
             caller_number?: string | null;
             /**

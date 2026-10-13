@@ -31,9 +31,9 @@ from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
 
 SILENCE = None
-FACTS = "9 giờ sáng thứ Tư ngày 14 tháng 10 tại Vinmec Times City"
+FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City"
 # Câu xác nhận lần hai đọc lại đúng lịch sắp hủy (§1.1.4)
-CANCEL_READBACK = f"Dạ, lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
+CANCEL_READBACK = f"Lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
 
 
 def _run(bot, call_id: str, lines: list[Optional[str]], start: int = 1):
@@ -984,8 +984,8 @@ def test_review_questions_never_cancel_whatever_the_model_says(variant: str, ans
 
 def test_a_clear_confirmation_outside_the_settled_set_still_cancels_with_the_model_on() -> None:
     """Không hạ mọi CANCEL_UNRESOLVED: câu hủy rõ ngoài tập toàn câu vẫn ghi khi model đồng ý."""
-    line = "Dạ hủy luôn em ạ"
-    semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.CONFIRM_ACTION, "hủy luôn")})
+    line = "Hủy đi, cảm ơn em"
+    semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.CONFIRM_ACTION, "hủy đi")})
     bot, clinic = _requesting_with(semantic, "c_sf05_clear")
     action = _run(bot, "c_sf05_clear", [line], start=4)
     assert len(semantic.seen) == 1
@@ -993,7 +993,7 @@ def test_a_clear_confirmation_outside_the_settled_set_still_cancels_with_the_mod
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
 
-@pytest.mark.parametrize("line", ["Dạ hủy luôn em ạ", "Có, hủy đi"])
+@pytest.mark.parametrize("line", ["Hủy đi, cảm ơn em", "Dạ hủy luôn em ạ, cảm ơn em"])
 @pytest.mark.parametrize("semantic", [None, BrokenSemantic()], ids=["off", "exception"])
 def test_a_clear_confirmation_outside_the_settled_set_cancels_without_the_model(
     semantic, line: str
@@ -1004,6 +1004,22 @@ def test_a_clear_confirmation_outside_the_settled_set_cancels_without_the_model(
         assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
         assert _context(bot, "c_sf05_clear_off").failed_understandings == 1
         return
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
+
+
+@pytest.mark.parametrize(
+    "line", ["Vâng, tôi xác nhận hủy", "Dạ hủy luôn em ạ", "Có, hủy đi", "Chắc chắn hủy ạ"]
+)
+def test_a_confirmation_in_the_closed_cancel_grammar_cancels_without_asking_the_model(
+    line: str,
+) -> None:
+    """QC qc-cn-08 (12/10/2026): câu xác nhận hủy chỉ có lời đáp / tiểu từ quanh động từ hủy không gọi
+    model, nên model chậm hay lỗi không làm mất lượt; luật vẫn là ngưỡng duy nhất (SF-05)."""
+    semantic = BrokenSemantic()
+    bot, clinic = _requesting_with(semantic, "c_sf05_settled")
+    action = _run(bot, "c_sf05_settled", [line], start=4)
+    assert semantic.calls == 0
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
@@ -1416,6 +1432,26 @@ def test_qc_cn_08_front_loaded_cancel_is_cancelled_in_two_turns() -> None:
     assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
 
 
+def test_qc_cn_08_is_cancelled_in_two_turns_even_when_the_model_times_out() -> None:
+    """Lần chạy QC 12/10/2026: lượt "Vâng, tôi xác nhận hủy" chạm trần 3 s (Jev), khóa lỗi model xóa
+    AGREE của luật và bot hỏi lại — hết ngân sách 4 lượt. Câu này thuộc ngữ pháp đóng: không gọi model."""
+    gateway = _TimeoutGateway()
+    semantic = LLMSemanticExtractor(gateway, max_input_chars=1500, max_completion_tokens=400)
+    bot, clinic = _outbound_call("c_qc_cn_08_timeout")
+    bot._extractor._semantic = semantic
+    _run(
+        bot,
+        "c_qc_cn_08_timeout",
+        [
+            "Alo, tôi là Nguyễn Văn A, sinh 14/3/1978, gọi để hủy lịch khám vì tuần đó tôi đi công tác"
+        ],
+    )
+    done = _run(bot, "c_qc_cn_08_timeout", ["Vâng, tôi xác nhận hủy"], start=2)
+    assert gateway.calls == 0
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
+
+
 def test_front_loaded_cancel_with_a_wrong_dob_transfers_without_disclosure() -> None:
     bot, clinic = _outbound_call("c_early_wrong_dob")
     action = _run(
@@ -1690,7 +1726,8 @@ def test_insisting_twice_gets_the_privacy_reason_then_confirms() -> None:
         _run(bot, "c_id_insist", [line], start=i) for i, line in enumerate(["Alo", *lines], 1)
     ]
     assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
-    assert actions[2].utterance == t.ASK_NAME_VERIFY_FIRST
+    assert actions[2].utterance in t.static_choices(t.ASK_NAME_VERIFY_FIRST)
+    assert actions[2].utterance != actions[1].utterance
     assert all(a.state == "AWAITING_IDENTITY" and FACTS not in a.utterance for a in actions)
     assert clinic.writes == []
 
@@ -1736,3 +1773,34 @@ def test_model_cancel_intent_gets_a_targeted_reconfirmation_and_no_write(line: s
     semantic._replies["hủy lịch"] = SemanticOutcome(ReplyKind.CONFIRM_ACTION, reply_span="hủy lịch")
     done = _run(bot, "c_model_intent", ["Hủy lịch"], start=5)
     assert done.outcome == "CANCELLED"
+
+
+# --- Chủ đề ngoài phạm vi trong câu kể lý do; xin đổi ở dạng điều kiện (eval contract review) -----
+
+
+def test_an_out_of_scope_topic_inside_a_cancel_reason_is_a_reason_not_a_transfer() -> None:
+    """ "Bên bảo hiểm không chi trả nên tốn kém quá": lý do COST (Phụ lục A), không phải câu hỏi hay yêu
+    cầu về bảo hiểm (§1.2.3). Chuyển máy ở đây bỏ dở kịch bản hủy đang chạy."""
+    bot, clinic = _requesting("c_reason_mentions_insurance")
+    action = _run(
+        bot, "c_reason_mentions_insurance", ["Bên bảo hiểm không chi trả nên tốn kém quá"], start=4
+    )
+    assert action.utterance == t.CANCEL_REASON_NOTED and clinic.writes == []
+    ctx = _context(bot, "c_reason_mentions_insurance")
+    assert (ctx.pending_action, ctx.cancel_reason) == ("CANCEL", "COST")
+
+
+def test_asking_about_insurance_at_the_cancel_question_still_transfers() -> None:
+    bot, clinic = _requesting("c_insurance_question")
+    action = _run(bot, "c_insurance_question", ["Tôi muốn hỏi về bảo hiểm"], start=4)
+    assert (action.outcome, action.transfer_reason) == ("TRANSFERRED", "OUT_OF_SCOPE")
+    assert _cancel_writes(clinic) == []
+
+
+def test_a_conditional_change_request_at_the_cancel_question_starts_a_reschedule() -> None:
+    """ "Nếu đổi được thì tôi không hủy": xin đổi (Bảng 1), như "thay vì hủy thì cho tôi dời sang thứ
+    sáu"; không ghi gì cho tới khi chọn và xác nhận khung giờ."""
+    bot, clinic = _requesting("c_conditional_change")
+    _run(bot, "c_conditional_change", ["Nếu đổi được thì tôi không hủy"], start=4)
+    assert _context(bot, "c_conditional_change").pending_action == "RESCHEDULE"
+    assert clinic.writes == []

@@ -4,7 +4,7 @@
 #
 # Ghi đè chung cho provider đang chọn: NAME_FALLBACK_MODEL, NAME_FALLBACK_TIMEOUT_S,
 # NAME_FALLBACK_MAX_TOKENS. API key chỉ đặt qua env (OPENAI_API_KEY, GEMINI_API_KEY, ...).
-# timeout_s là deadline tổng tới khi nhận đủ HTTP response (trần cứng 3 giây)
+# timeout_s là deadline tổng tới khi nhận đủ HTTP response (trần cứng 4 giây)
 # và timeout theo pha của httpx;
 # connect_timeout_s là giới hạn connect riêng.
 # endpoint / connect_timeout_s ghi đè theo provider: OPENAI_ENDPOINT, GROQ_CONNECT_TIMEOUT_S, ...
@@ -39,3 +39,14 @@ openrouter: # OPENROUTER_API_KEY
   timeout_s: 3.0
   connect_timeout_s: 1.0
   max_completion_tokens: 200
+
+# TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_PROVIDER=jev (engine.yaml).
+# Không phải chat provider: chỉ trả nhãn Choice/Noul có xác suất, không sinh text.
+typesafe: # TYPESAFE_API_KEY
+  endpoint: https://api.typesafe.ai/v1/systemone # TYPESAFE_ENDPOINT
+  # Pin version: ngưỡng ở engine.yaml chỉnh theo xác suất của bản này; alias jev-latest đổi khi có
+  # bản mới (docs Models)
+  model: jev-1.13.0 # TYPESAFE_MODEL
+  # Tầng ngữ nghĩa truyền tường minh semantic_jev_timeout_s (engine.yaml); giá trị này chỉ cho gọi trực tiếp
+  timeout_s: 2.0 # TYPESAFE_TIMEOUT_S
+  connect_timeout_s: 1.0 # TYPESAFE_CONNECT_TIMEOUT_S

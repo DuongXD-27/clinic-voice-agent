@@ -1,0 +1,23 @@
+{
+  "exit_code": 0,
+  "blocked_external_attempts": 0,
+  "network_policy": "Real httpx transports and external sockets blocked; loopback allowed for Windows asyncio; fakeredis and Clinic fake",
+  "test_files": [
+    "tests/transports/http/test_audio_parity.py",
+    "tests/transports/http/test_audio_input.py",
+    "tests/transports/http/test_audio_retry.py",
+    "tests/transports/http/test_audio_request_replay.py",
+    "tests/transports/http/test_audio_real_asr.py",
+    "tests/transports/http/test_calls.py",
+    "tests/engine/test_output_guard_flow.py",
+    "tests/engine/policy/test_output_guard.py",
+    "tests/speech/test_audio_storage.py"
+  ],
+  "junit_counts": {
+    "tests": 215,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "code_revision": "e0c2d47c78faa9e2a60f7208e84c568c63500b45"
+}

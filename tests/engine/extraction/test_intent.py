@@ -1,6 +1,6 @@
 import pytest
 
-from callbot.engine.extraction.intent import extract_intent
+from callbot.engine.extraction.intent import extract_intent, out_of_scope_request
 from callbot.engine.extraction.schema import Intent, Provenance
 
 
@@ -251,3 +251,35 @@ def test_keyword_inside_a_statement_does_not_decide_the_turn(text: str, intent: 
 )
 def test_explicit_requests_are_still_recognised(text: str, intent: Intent) -> None:
     assert extract_intent(text, "outbound").value is intent
+
+
+# --- Xin đổi lịch ở dạng điều kiện / câu hỏi (contract Bảng 1, Figure 0) ---------------------------
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Nếu đổi được thì tôi không hủy", Intent.RESCHEDULE),
+        ("đổi được không em", Intent.RESCHEDULE),
+        ("dời được thì dời giúp tôi", Intent.RESCHEDULE),
+        # Phủ định trước từ khóa đổi: phương án đổi đã bị loại, còn lại là hủy
+        ("không đổi được thì hủy", Intent.CANCEL),
+    ],
+)
+def test_conditional_or_questioned_change_is_a_reschedule(text: str, expected: Intent) -> None:
+    assert extract_intent(text, "outbound").value is expected
+
+
+@pytest.mark.parametrize(
+    "text, is_request",
+    [
+        # Chủ đề ngoài phạm vi chỉ được nhắc trong câu kể lý do: không phải yêu cầu
+        ("Bên bảo hiểm không chi trả nên tốn kém quá", False),
+        ("Tôi muốn hỏi về bảo hiểm", False),
+        # Yêu cầu ngoài kịch bản bot hiểu được
+        ("chồng tôi đi thay được không", True),
+        ("em gọi lại cho tôi lúc khác nhé", True),
+    ],
+)
+def test_out_of_scope_request_only_matches_requests(text: str, is_request: bool) -> None:
+    assert (out_of_scope_request(text) is not None) is is_request

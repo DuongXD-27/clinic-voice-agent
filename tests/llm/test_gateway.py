@@ -81,7 +81,7 @@ def generate(gateway, **kwargs):
 @pytest.mark.parametrize(
     "model,effort", [("gpt-6-luna", "none"), ("gpt-6-sol", "none"), ("gpt-6-astra", None)]
 )
-def test_gpt_6_omits_unsupported_temperature(model, effort):
+def test_gpt_6_keeps_temperature_only_when_reasoning_is_off(model, effort):
     requests = []
 
     def handle(request):
@@ -92,11 +92,11 @@ def test_gpt_6_omits_unsupported_temperature(model, effort):
     assert generate(gateway).status == "completed"
     payload = json.loads(requests[0].content)
     assert payload["model"] == model
-    assert "temperature" not in payload
     if effort is None:
-        assert "reasoning_effort" not in payload
+        # Astra luôn reasoning: temperature bị API từ chối
+        assert "reasoning_effort" not in payload and "temperature" not in payload
     else:
-        assert payload["reasoning_effort"] == effort
+        assert payload["reasoning_effort"] == effort and payload["temperature"] == 0
     assert payload["store"] is False
 
 

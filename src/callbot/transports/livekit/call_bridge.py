@@ -15,13 +15,14 @@ import uuid
 from contextlib import aclosing
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING, AsyncIterator, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
 from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.types import Direction
 from callbot.tracing import Tracer, null_tracer
 from callbot.tracing.pricing import tts_cost
+from callbot.transports.extraction_view import extraction_view
 from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
     livekit_frame_to_segment,
@@ -31,7 +32,7 @@ from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
-from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.turn.interruption import EchoPolicy, InterruptionController, InterruptionState
 from speech.turn.validator import TurnValidator
 from speech.types import AudioSegment
 
@@ -48,8 +49,10 @@ _PLAYOUT_TIMEOUT_S = 20.0
 _PLAYOUT_FRAME_MS = 20
 # Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
 _SILENCE_POLL_S = 0.25
-# Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
+# Topic data channel mang lời thoại cho trang /ui/livekit (câu bot kèm trích xuất khi demo_debug).
 TRANSCRIPT_TOPIC = "callbot.transcript"
+# Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
+STATUS_TOPIC = "callbot.status"
 
 
 @dataclass(frozen=True)
@@ -121,9 +124,11 @@ class CallBridge:
         output_queue_ms: int,
         silence_timeout_ms: int,
         krisp_noise_suppression_enabled: bool,
+        demo_debug: bool,
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
+        interruption_echo_policy: EchoPolicy = "acoustic",
         caller_identity: Optional[str] = None,
         is_sip: bool = False,
         on_close: Optional[Callable[[], Awaitable[None]]] = None,
@@ -172,13 +177,18 @@ class CallBridge:
         # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
         # thật; không phải khuyến nghị bật cho production.
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
+        # config/livekit.yaml `demo_debug`: câu bot kèm trích xuất của lượt (có PII) cho trang demo.
+        self._demo_debug = demo_debug
         # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
         # tạo sẵn theo SpeechSettings).
         self._turn_controller = turn_controller
         # Ngắt lời huỷ cả request TTS lẫn hàng đợi phát qua CallBridge.cancel(). Dùng chung
         # TurnValidator với turn_controller để lọc barge-in giả do nhiễu.
         self._interruption = InterruptionController(
-            self, validator=interruption_validator, min_snr_db=interruption_min_snr_db
+            self,
+            validator=interruption_validator,
+            min_snr_db=interruption_min_snr_db,
+            echo_policy=interruption_echo_policy,
         )
 
     async def run(self) -> None:
@@ -246,7 +256,7 @@ class CallBridge:
                             ensure_ascii=False,
                         ),
                         reliable=True,
-                        topic="callbot.status",
+                        topic=STATUS_TOPIC,
                     )
                 except Exception as publish_error:
                     logger.warning(
@@ -318,9 +328,10 @@ class CallBridge:
                     caller = caller_input_from_turn(self._turn_number, turn)
                     if self._caller_gone:
                         return
-                    action = await asyncio.to_thread(
-                        self._orchestrator.handle_turn, self._call_id, caller
+                    run = await asyncio.to_thread(
+                        self._orchestrator.handle_turn_with_details, self._call_id, caller
                     )
+                    action = run.action
                     if self._caller_gone:
                         return
                     logger.info(
@@ -330,7 +341,9 @@ class CallBridge:
                         action.ended,
                         action.outcome,
                     )
-                    await self._publish_transcript("bot", action.utterance, action=action)
+                    await self._publish_transcript(
+                        "bot", action.utterance, action=action, extraction=run.extraction
+                    )
                     await self._speak(action.utterance)
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
@@ -386,10 +399,15 @@ class CallBridge:
         *,
         action: Optional[BotAction] = None,
         confidence: Optional[float] = None,
+        extraction: Optional[dict[str, Any]] = None,
     ) -> None:
         """Gửi một dòng hội thoại qua data channel tới người trong phòng — chính người đang
         gọi, nên họ chỉ thấy lại lời của mình và của bot. Không log text (PII). Gửi lỗi chỉ
-        mất dòng hiển thị, không được làm hỏng cuộc gọi."""
+        mất dòng hiển thị, không được làm hỏng cuộc gọi.
+
+        Câu bot của lượt người gọi (`extraction` là trace của lượt) kèm `extraction_view` khi bật
+        `demo_debug`: cùng một gói nên trang demo có câu trả lời và trích xuất của lượt cùng lúc,
+        không lệch nhau. `null` = lượt không qua bước trích xuất (vd. lượt replay)."""
         payload: dict[str, object] = {
             "type": "transcript",
             "role": role,
@@ -400,6 +418,8 @@ class CallBridge:
             payload["confidence"] = confidence
         if action is not None:
             payload.update(state=action.state, ended=action.ended, outcome=action.outcome)
+        if self._demo_debug and role == "bot" and self._turn_number > 0:
+            payload["extraction"] = extraction_view(extraction)
         try:
             await self._room.local_participant.publish_data(
                 json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
@@ -600,12 +620,15 @@ class CallBridge:
                     total_bytes += len(chunk)
                     if self._is_interrupted():
                         break
+                    self._interruption.on_bot_audio(chunk, sample_rate)
                     pending.extend(chunk)
                     while len(pending) >= frame_bytes and not self._is_interrupted():
                         await self._capture(bytes(pending[:frame_bytes]), sample_rate)
                         del pending[:frame_bytes]
                     if self._is_interrupted():
                         break
+            if not self._is_interrupted():
+                self._interruption.on_bot_audio(b"", sample_rate, complete=True)
             # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
             tail = len(pending) - len(pending) % 2
             if tail and not self._is_interrupted():
@@ -648,6 +671,10 @@ class CallBridge:
                 provider_actual=actual_provider,
                 voice=voice,
                 fallback_used=getattr(actual, "fallback_used", False),
+                cache_hit=getattr(actual, "cache_hit", False),
+                cache_key=getattr(actual, "cache_key", None),
+                catalog_version=getattr(actual, "catalog_version", None),
+                billed_characters=getattr(actual, "billed_characters", None),
                 ttfa_ms=getattr(actual, "ttfa_ms", None) or first_audio_ms,
                 latency_ms=(perf_counter() - started) * 1000,
                 audio_duration_ms=total_bytes / (2 * sample_rate) * 1000,
@@ -663,7 +690,9 @@ class CallBridge:
                     tts_span.set_error_code("TIMEOUT", "TTS_TIMEOUT")
                 else:
                     tts_span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
-            if not interrupted and not failed:
+            if getattr(actual, "cache_hit", False):
+                tts_span.enrich(cost_usd=0.0)
+            elif not interrupted and not failed:
                 cost = tts_cost(actual_provider, voice, len(text))
                 if cost is not None:
                     tts_span.enrich(cost_usd=cost)

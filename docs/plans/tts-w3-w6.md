@@ -221,6 +221,10 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T2 05/10 · Đường A — Rà soát và chuẩn hoá câu thoại toàn bộ kịch bản
 
+> **Tiến độ 08/10:** Hưng đã sửa template Engine và selector theo [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-12.md); số câu mở bằng “Dạ” giảm 85 → 8. Chào/chuyển máy/readback an toàn giữ cố định, hỏi đáp giữ ba cách nói. Registry còn 3 mẫu dự phòng hoãn thu ngoài danh sách 73 câu. Đã thu đủ 73 audio từ Vbee cho 4.690 ký tự và Hưng xác nhận nghe đạt toàn bộ, không cần phiếu CSV/HTML. Đã đóng gói release `2026-10-08-v1` và nối cache HTTP/LiveKit, bật mặc định trong code; chưa deploy. [Evidence](../evidence/tts-static-cache/tts-static-build-2026-10-08.json) và [plan chi tiết](tts-static-cache-plan-2026-10-07.md) ghi kiểm chứng và phần còn lại. Audit renderer/câu nhắc im lặng và nghe đủ 7 kịch bản vẫn còn; task T2 chưa Done.
+
+> **Điểm cần xử lý:** review renderer đã gộp trong plan chi tiết. Tổ hợp OFFER_SLOTS + SILENCE_REPROMPT từng đạt 320 ký tự đã được rút câu; vẫn cần audit luồng thực tế đủ 7 kịch bản và nghe các nhánh đại diện, cùng chính sách câu cố định theo PRD v2.1 R-42. Review văn bản và kiểm WAV/hash chưa thay thế kết quả nghe; task chưa Done.
+
 **Gửi PM:** Rà soát và chuẩn hoá câu thoại cho toàn bộ kịch bản: kiểm tra audio đọc đúng `utterance` cho toàn bộ kịch bản trước khi kịch bản vào bộ chấm. Câu nào đọc sai, đọc thiếu tự nhiên hoặc quá dài sẽ được sửa ngay trong template câu thoại ở Engine để audio luôn khớp đúng lời bot. Chuẩn hoá và cố định câu chữ của các câu không đổi theo cuộc gọi, làm nền cho việc dựng sẵn audio nhằm giảm độ trễ và chi phí TTS.
 
 **Phạm vi:** cả 7 kịch bản của Bảng 1. 5 kịch bản đã nghe ngày 29/09 (Identity, Confirm, No-answer, Cancel, Transfer) được nghe lại, vì template đã đổi sau đợt sửa eval mentor 05–06/10. Reschedule (vào bộ chấm tuần 4) và Booking (tuần 5) nghe lần đầu.

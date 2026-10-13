@@ -1,4 +1,4 @@
-"""R-22: so từng âm tiết, giữ nguyên dấu; lệch dấu thanh cần hỏi lại khi N chưa chốt.
+"""R-22: so từng âm tiết, giữ nguyên dấu; lệch dấu thanh không bao giờ xác thực khi N chưa chốt.
 
 Ngoại lệ (QC qc-stt-05, qc-w6-01): tên khai không có dấu nào ("nguyen van a" — ASR mất dấu, người
 gõ / nói không dấu) không mang thông tin dấu để so, nên so trên bản bỏ hết dấu. Ngày sinh vẫn so

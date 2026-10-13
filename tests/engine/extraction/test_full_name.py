@@ -15,6 +15,8 @@ from callbot.engine.extraction.schema import Provenance
         ("Nguyễn Văn A.", "nguyễn văn a"),
         ("Nguyễn Văn A mà", "nguyễn văn a"),
         ("Nguyễn Văn A nhé", "nguyễn văn a"),
+        ("Nguyễn Văn A nhá", "nguyễn văn a"),
+        ("Nguyễn Văn A nhá em", "nguyễn văn a"),
         ("NGuyễn văn A nhé em", "nguyễn văn a"),
         ("à thì anh tên là Nguyễn Văn A nhé em", "nguyễn văn a"),
         ("Dạ, Nguyễn Văn A nhé em ạ", "nguyễn văn a"),

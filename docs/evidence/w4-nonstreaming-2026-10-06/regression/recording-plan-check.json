@@ -1,0 +1,160 @@
+[
+  {
+    "flow": "cancel",
+    "expected": "CANCELLED",
+    "outcome": "CANCELLED",
+    "passed": true,
+    "steps": [
+      {
+        "turn": 1,
+        "text": "Nguyễn Văn A",
+        "state": "AWAITING_IDENTITY",
+        "outcome": null
+      },
+      {
+        "turn": 2,
+        "text": "14/03/1978",
+        "state": "AWAITING_INTENT",
+        "outcome": null
+      },
+      {
+        "turn": 3,
+        "text": "Tôi muốn hủy lịch.",
+        "state": "AWAITING_CONFIRMATION",
+        "outcome": null
+      },
+      {
+        "turn": 4,
+        "text": "Tôi muốn hủy lịch.",
+        "state": "ENDED",
+        "outcome": "CANCELLED"
+      }
+    ],
+    "writes": [
+      [
+        "apt_00417",
+        "CANCELLED",
+        {
+          "cancel_reason": "UNSPECIFIED"
+        }
+      ]
+    ]
+  },
+  {
+    "flow": "transfer",
+    "expected": "TRANSFERRED",
+    "outcome": "TRANSFERRED",
+    "passed": true,
+    "steps": [
+      {
+        "turn": 1,
+        "text": "Cho tôi gặp nhân viên.",
+        "state": "ENDED",
+        "outcome": "TRANSFERRED"
+      }
+    ],
+    "writes": [
+      [
+        "apt_00417",
+        "TRANSFERRED",
+        {
+          "transfer_reason": "PATIENT_REQUEST"
+        }
+      ]
+    ]
+  },
+  {
+    "flow": "reschedule",
+    "expected": "RESCHEDULED",
+    "outcome": "RESCHEDULED",
+    "passed": true,
+    "steps": [
+      {
+        "turn": 1,
+        "text": "Nguyễn Văn A",
+        "state": "AWAITING_IDENTITY",
+        "outcome": null
+      },
+      {
+        "turn": 2,
+        "text": "14/03/1978",
+        "state": "AWAITING_INTENT",
+        "outcome": null
+      },
+      {
+        "turn": 3,
+        "text": "Tôi muốn đổi lịch khám.",
+        "state": "OFFERING_SLOTS",
+        "outcome": null
+      },
+      {
+        "turn": 4,
+        "text": "Tôi chọn khung đầu tiên.",
+        "state": "AWAITING_CONFIRMATION",
+        "outcome": null
+      },
+      {
+        "turn": 5,
+        "text": "Đồng ý.",
+        "state": "ENDED",
+        "outcome": "RESCHEDULED"
+      }
+    ],
+    "writes": [
+      [
+        "apt_00417",
+        "RESCHEDULED",
+        {
+          "new_slot_id": "slot_aa01"
+        }
+      ]
+    ]
+  },
+  {
+    "flow": "book",
+    "expected": "BOOKED",
+    "outcome": "BOOKED",
+    "passed": true,
+    "steps": [
+      {
+        "turn": 1,
+        "text": "Nguyễn Văn A",
+        "state": "AWAITING_IDENTITY",
+        "outcome": null
+      },
+      {
+        "turn": 2,
+        "text": "14/03/1978",
+        "state": "AWAITING_INTENT",
+        "outcome": null
+      },
+      {
+        "turn": 3,
+        "text": "Tôi muốn đặt lịch khám.",
+        "state": "OFFERING_SLOTS",
+        "outcome": null
+      },
+      {
+        "turn": 4,
+        "text": "Tôi chọn khung đầu tiên.",
+        "state": "AWAITING_CONFIRMATION",
+        "outcome": null
+      },
+      {
+        "turn": 5,
+        "text": "Đồng ý.",
+        "state": "ENDED",
+        "outcome": "BOOKED"
+      }
+    ],
+    "writes": [
+      [
+        "apt_new_1",
+        "BOOKED",
+        {
+          "slot_id": "slot_aa01"
+        }
+      ]
+    ]
+  }
+]

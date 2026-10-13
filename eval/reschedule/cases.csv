@@ -73,7 +73,7 @@ R071,prompt,keep_old,outbound,OFFER_SLOTS,2,thôi không đổi nữa,TRANSFER:P
 R072,prompt,keep_old,outbound,SLOT_READBACK,1,giữ lịch cũ,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch rõ ràng — giữ lịch cũ + chuyển máy (qc-rs-08)
 R073,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,giữ nguyên lịch,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau câu A/B — giữ lịch cũ + chuyển máy (qc-rs-08)
 R074,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,khỏi đổi,TRANSFER:PATIENT_REQUEST,no,Bỏ đổi lịch sau hết slot — giữ lịch cũ + chuyển máy (qc-rs-08)
-R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,TRANSFER:PATIENT_REQUEST,yes,Không tiếp tục reschedule — giữ lịch cũ + chuyển máy (qc-rs-08)
+R075,holdout,keep_old,outbound,OFFER_SLOTS,2,tôi đổi ý,BACK_TO_APPOINTMENT,no,Owner 12-10 (B15): đổi ý định — bỏ đổi lịch, không ghi, quay lại câu hỏi lịch cũ; ý định mới chưa nói thì không đoán (§1.1.5). Trước 12-10: TRANSFER:PATIENT_REQUEST
 R076,holdout,keep_old,outbound,SLOT_READBACK,1,thôi lấy lịch cũ thôi,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
 R077,holdout,keep_old,outbound,SLOT_REFUSE_CHOICE,2,không đổi nữa đâu em,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
 R078,holdout,keep_old,outbound,ASK_SLOT_PREFERENCE,1,để nguyên lịch này,TRANSFER:PATIENT_REQUEST,no,Giữ lịch cũ — giữ lịch cũ + chuyển máy (qc-rs-08)
@@ -103,7 +103,7 @@ R101,holdout,relative_date,outbound,OFFER_SLOTS,2,tháng sau,ASK_DATE,no,Khoản
 R102,holdout,relative_date,outbound,OFFER_SLOTS,2,đầu tháng sau,ASK_DATE,no,Khoảng quá rộng phải hỏi ngày cụ thể
 R103,holdout,relative_date,outbound,OFFER_SLOTS,2,tuần sau nữa,NEW_TIME:12-18/10,no,Khoảng tuần mới
 R104,holdout,relative_date,outbound,OFFER_SLOTS,2,sau ngày 20,NEW_TIME:20-27/10,no,P2 (bước 10): chưa làm; hiện hiểu thành đúng ngày 20
-R105,holdout,relative_date,outbound,OFFER_SLOTS,2,thứ 5 hoặc thứ 6,NEW_TIME:01/10|02/10,no,P2 (bước 10): thứ trần là tuần này; chưa làm tập nhiều thứ
+R105,holdout,relative_date,outbound,OFFER_SLOTS,2,thứ 5 hoặc thứ 6,PICK:2|NEW_TIME:01-02/10,no,"B7 (owner 12-10): khung thứ Năm trên trang -> câu chốt khung đó, không ghi; hoặc tra thứ 5 / thứ 6 tuần này. Chưa làm tập nhiều thứ"
 R106,holdout,relative_date,outbound,OFFER_SLOTS,2,sáng mai,NEW_TIME:30/09 sáng,no,Ngày và buổi tương đối
 R107,holdout,relative_date,outbound,OFFER_SLOTS,2,chiều thứ 5 tuần sau,NEW_TIME:08/10 chiều,no,Ngày và buổi tương đối
 R108,holdout,relative_date,outbound,ASK_SLOT_PREFERENCE,1,ngày 31 tháng 9,ASK_DATE,no,Ngày không tồn tại sau hết vòng
@@ -170,3 +170,42 @@ R169,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"9 giờ thì thô
 R170,prompt,review2_drop_then_answer,outbound,SLOT_READBACK,1,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3
 R171,prompt,review2_drop_then_answer,outbound,SLOT_REFUSE_CHOICE,2,"10 giờ sáng thì thôi, lấy ngày 20 đi",NEW_TIME:20/10,no,Review lần 2 ý 3: câu A/B
 R172,prompt,review2_drop_then_answer,outbound,ASK_SLOT_PREFERENCE,1,"9 giờ thì thôi, cho tôi ngày 16",NEW_TIME:16/10,no,Review lần 2 ý 3: câu hỏi ngày
+R173,holdout,ambiguous_page,outbound,OFFER_SLOTS,2-mo-ho,3 giờ chiều đi,ASK_WHICH,no,B1: trang mơ hồ không thu hẹp được -> hỏi lại chọn khung nào (owner 12-10); không đọc lại nguyên trang
+R174,holdout,ambiguous_page,outbound,OFFER_SLOTS,2-mo-ho,ba giờ chiều nhé,ASK_WHICH,no,B1: nói lại giờ bằng chữ
+R175,holdout,ambiguous_page,outbound,OFFER_SLOTS,2-mo-ho,ngày 14,PICK:1,no,B1: nêu ngày phân biệt được -> chọn khung trên trang
+R176,holdout,ambiguous_page,outbound,OFFER_SLOTS,2-mo-ho,ngày 21,PICK:2,no,B7: ngày 21 có 9:00 và 15:00; chỉ 15:00 trên trang
+R177,holdout,ambiguous_page,outbound,OFFER_SLOTS,2-mo-ho,khung khác,ASK_DAY|REFUSE_CHOICE,no,B4: hết khung 3 giờ chiều -> hỏi ngày khác, không đọc lại khung đã đọc
+R178,holdout,pick_on_page,outbound,OFFER_SLOTS,2,giờ chiều thứ 4,PICK:1,no,B7 (ca user 12-10): STT rớt số; một khung chiều thứ Tư trên trang -> chọn luôn
+R179,holdout,pick_on_page,outbound,OFFER_SLOTS,2,thứ năm,PICK:2,no,B7: một khung thứ Năm trên trang -> chọn luôn
+R180,holdout,pick_on_page,outbound,OFFER_SLOTS,2,chiều,PICK:1,no,B7: chỉ buổi -> câu chốt khung chiều duy nhất trên trang
+R181,holdout,pick_on_page,outbound,OFFER_SLOTS,2,buổi sáng,PICK:2,no,B7: chỉ buổi -> câu chốt khung sáng duy nhất trên trang
+R182,holdout,pick_on_page,inbound,OFFER_SLOTS,2,giờ chiều thứ 4,PICK:1,no,B7 đặt lịch: luôn đọc câu chốt (§1.1.10)
+R183,holdout,exclusion,outbound,OFFER_SLOTS,2,"không lấy ngày 14, ngày 15 đi",PICK:2,no,B13: loại ngày 14 -> khung ngày 15 trên trang; không đọc lại 14/10
+R184,holdout,exclusion,outbound,OFFER_SLOTS,2-trang2,"không lấy ngày 16, ngày 19 đi",NEW_TIME:19/10,no,B13: yêu cầu mới theo phần khách muốn, không theo nguyên câu
+R185,holdout,keep_old,outbound,SLOT_READBACK,1,thôi tôi đổi ý rồi,BACK_TO_APPOINTMENT,no,B15 ở câu chốt
+R186,holdout,keep_old,inbound,OFFER_SLOTS,2,tôi đổi ý,KEEP_OLD,no,B15 đặt lịch: bỏ đặt lịch, hỏi lại nhu cầu
+R187,holdout,bare_agreement,outbound,OFFER_SLOTS,2,được,PICK:1,no,"B5 (PRD GC-RES-04): đồng ý trần sau câu mời 2 khung -> câu chốt khung 1, không ghi"
+R188,holdout,bare_agreement,outbound,OFFER_SLOTS,2,dạ,PICK:1,no,"B5: dạ trần -> câu chốt khung 1, không ghi"
+R189,holdout,bare_agreement,outbound,OFFER_SLOTS,2,đồng ý đổi,PICK:1,no,"B5: đồng ý kèm động từ đổi, chưa chọn khung"
+R190,holdout,bare_agreement,outbound,OFFER_SLOTS,2,được không em,NOT_UNDERSTOOD,no,B5 đối chứng: câu hỏi không phải đồng ý
+R191,holdout,bare_agreement,inbound,OFFER_SLOTS,2,được,PICK:1,no,"B5 đặt lịch: câu chốt khung 1, không ghi"
+R192,holdout,restate_slot,outbound,SLOT_READBACK,1,3 giờ chiều,WRITE,no,B6 (PRD R-23): nói lại đúng giờ khung đang chốt là khẳng định rõ -> ghi đổi lịch
+R193,holdout,restate_slot,outbound,SLOT_READBACK,1,ba giờ chiều thứ tư,WRITE,no,B6: giờ + thứ của khung đang chốt
+R194,holdout,restate_slot,outbound,SLOT_READBACK,1,3 giờ chiều à,REREAD_YESNO,no,B6 đối chứng: hỏi lại không phải khẳng định
+R195,holdout,restate_slot,inbound,SLOT_READBACK,2,3 giờ chiều,REREAD_YESNO,no,B6 không áp cho đặt lịch: §1.1.10 cần xác nhận rõ
+R196,holdout,cai_thu,outbound,OFFER_SLOTS,2,cái thứ năm,PICK:2,no,B8: không có khung số 5 -> thứ Năm; một khung thứ Năm trên trang
+R197,holdout,cai_thu,outbound,OFFER_SLOTS,2,cái thứ 6,NEW_TIME:02/10,no,B8: thứ Sáu ngoài trang -> tra thứ Sáu tuần này (R-30)
+R198,holdout,cai_thu,outbound,OFFER_SLOTS,2,khung thứ ba,REREAD_PAGE,no,B8 đối chứng: có chữ khung là số khung
+R199,holdout,refuse_page,outbound,OFFER_SLOTS,2,"không, 5 giờ chiều",NEW_TIME:15-16/10,no,"B10: từ chối trang + giờ không có -> báo chưa có, đọc khung khác trang vừa từ chối (không còn 14/10)"
+R200,holdout,refuse_page,outbound,OFFER_SLOTS,2,5 giờ chiều,NEW_TIME:14-15/10,no,"B10 đối chứng: chưa từ chối trang -> báo chưa có, đọc khung gần nhất (trang cũ)"
+R201,holdout,current_time,outbound,SLOT_READBACK,2,8 giờ sáng ngày 15,REFUSE_CHOICE,no,"B11 (contract-oracle R011): nêu lại lịch cũ (15/10 8:00) -> hỏi giữ lịch cũ hay chọn giờ khác, không tính vòng"
+R202,holdout,current_time,outbound,SLOT_READBACK,2,8 giờ sáng thứ năm,REFUSE_CHOICE,no,B11: lịch cũ nói bằng thứ
+R203,holdout,current_time,outbound,SLOT_READBACK,2,8 giờ sáng,NEW_TIME:sáng,no,B11 đối chứng: đang chốt khung ngày khác lịch cũ -> 8 giờ sáng là yêu cầu mới
+R204,holdout,switch_cancel,outbound,OFFER_SLOTS,2,bỏ luôn lịch khám đó cho tôi,SWITCH:CANCEL,no,"S021: bỏ luôn lịch là hủy, vẫn xác nhận lần hai (§1.1.4)"
+R205,holdout,switch_cancel,outbound,OFFER_SLOTS,2,thôi bỏ đổi lịch,TRANSFER:PATIENT_REQUEST,no,S021 đối chứng: bỏ việc đổi lịch giữ lịch cũ (GC-RES-09)
+R206,holdout,rechoose,outbound,SLOT_READBACK,2,tôi muốn chọn lại lịch,REREAD_PAGE,no,"B16 (ca user 12-10): chọn lại ở câu chốt -> đọc lại trang để chọn, không hỏi lại có/không"
+R207,holdout,rechoose,outbound,SLOT_READBACK,2,ừ từ từ tôi muốn chọn lại,REREAD_PAGE,no,B16: ừ đầu câu không phải đồng ý khi vế sau xin chọn lại
+R208,holdout,rechoose,outbound,SLOT_READBACK,2,chọn lại khung 2,PICK:2,no,B16 đối chứng: chọn lại kèm khung -> chọn khung đó
+R209,holdout,rechoose,outbound,SLOT_REFUSE_CHOICE,2,cho tôi chọn lại,REREAD_PAGE,no,B16 ở câu A/B: đọc lại trang để chọn
+R210,holdout,rechoose,outbound,SLOT_READBACK,1,để tôi chọn lại,REFUSE_CHOICE|ASK_DAY|MORE,no,B16 sau lời mời một khung: không có trang để đọc lại -> khung khác hoặc hỏi ngày khác
+R211,holdout,rechoose,outbound,OFFER_SLOTS,2,tôi muốn chọn lại,REREAD_PAGE,no,"B16 ở câu mời: đọc lại đúng trang (UNCLEAR, nói mãi thì chuyển máy)"
