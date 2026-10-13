@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -98,6 +100,38 @@ def test_off_builds_nothing_and_a_missing_model_falls_back_to_plain_vad(caplog) 
     with caplog.at_level(logging.WARNING):
         assert build_vad_frontend("gtcrn", sample_rate=_RATE, model_path="/khong/co.onnx") is None
     assert "không thấy model" in caplog.text
+
+
+@pytest.mark.skipif(not _GTCRN.is_file(), reason="chưa tải gtcrn_simple.onnx (config/speech.yaml)")
+@pytest.mark.parametrize("damage", ["empty", "truncated"])
+def test_unreadable_model_falls_back_to_plain_vad(tmp_path, caplog, damage: str) -> None:
+    """File model hỏng (curl tải dở, đĩa đầy): sherpa-onnx ném RuntimeError — trước đây lọt ra khỏi
+    build_streaming_bundle và cuộc gọi không mở được."""
+    pytest.importorskip("sherpa_onnx")
+    data = _GTCRN.read_bytes()
+    broken = tmp_path / "gtcrn.onnx"
+    broken.write_bytes(b"" if damage == "empty" else data[: len(data) // 2])
+
+    with caplog.at_level(logging.WARNING):
+        assert build_vad_frontend("gtcrn", sample_rate=_RATE, model_path=str(broken)) is None
+    assert "VAD nghe audio gốc" in caplog.text
+
+
+@pytest.mark.skipif(not _GTCRN.is_file(), reason="chưa tải gtcrn_simple.onnx (config/speech.yaml)")
+def test_model_of_another_kind_falls_back_without_killing_the_process() -> None:
+    """Model khác loại (dpdfnet trỏ vào file GTCRN, gtcrn trỏ vào Silero): sherpa-onnx gọi exit(-1)
+    thay vì ném lỗi — cả worker chết, không try/except nào bắt được. Chạy trong process riêng để
+    lỗi đó không giết pytest."""
+    pytest.importorskip("sherpa_onnx")
+    code = (
+        "from speech.audio.vad_frontend import build_vad_frontend\n"
+        f"print(build_vad_frontend('dpdfnet', sample_rate={_RATE}, model_path={str(_GTCRN)!r}))\n"
+    )
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+
+    assert proc.returncode == 0, proc.stderr[-500:]
+    assert proc.stdout.strip() == "None"
+    assert "model_type='gtcrn'" in proc.stderr
 
 
 async def test_pipeline_sends_original_frames_to_asr_while_vad_hears_the_frontend() -> None:

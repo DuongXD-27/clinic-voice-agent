@@ -22,6 +22,7 @@ docs/evidence/livekit-vad-frontend-2026-10-12.md.
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import Literal, Optional, Protocol
 
@@ -147,8 +148,8 @@ def build_vad_frontend(
     auto_gain: bool = False,
     high_pass: bool = False,
 ) -> Optional[VadFrontend]:
-    """None khi `kind="off"`. Thiếu model / thư viện thì cảnh báo và chạy không có front-end (như
-    cổng giọng): VAD trên audio gốc vẫn là cấu hình đã chạy production."""
+    """None khi `kind="off"`. Thiếu / hỏng / sai loại model hay thiếu thư viện thì cảnh báo và chạy
+    không có front-end (như cổng giọng): VAD trên audio gốc vẫn là cấu hình đã chạy production."""
     if kind == "off":
         return None
     try:
@@ -162,8 +163,40 @@ def build_vad_frontend(
             if not Path(model_path).is_file():
                 logger.warning("vad_frontend: không thấy model %s — VAD nghe audio gốc", model_path)
                 return None
+            problem = _model_problem(kind, model_path)
+            if problem is not None:
+                logger.warning(
+                    "vad_frontend: model %s không dùng được cho %s (%s) — VAD nghe audio gốc",
+                    model_path,
+                    kind,
+                    problem,
+                )
+                return None
             denoiser = _SherpaDenoiser(kind, model_path, sample_rate)
     except ImportError as exc:
         logger.warning("vad_frontend: thiếu thư viện cho %s (%s) — VAD nghe audio gốc", kind, exc)
         return None
+    except RuntimeError as exc:
+        logger.warning("vad_frontend: không dựng được %s (%s) — VAD nghe audio gốc", kind, exc)
+        return None
     return VadFrontend(denoiser, gain_db=gain_db, floor_dbfs=floor_dbfs)
+
+
+@functools.lru_cache(maxsize=8)
+def _model_problem(kind: str, model_path: str) -> Optional[str]:
+    """Lý do model không dùng được cho `kind`, None nếu ổn. sherpa-onnx gặp model khác loại thì gọi
+    exit(-1) thay vì ném lỗi (đo 13/10: dpdfnet trỏ vào file GTCRN, gtcrn trỏ vào Silero) — cả worker
+    chết, không try/except nào bắt được — nên đọc `model_type` trong metadata ONNX trước. Mỗi file đọc
+    một lần mỗi process (~30-90 ms): bundle dựng mỗi cuộc gọi, trên event loop."""
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return None  # không đọc được metadata: để sherpa-onnx tự kiểm như trước
+    try:
+        session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+    except Exception as exc:  # onnxruntime ném nhiều loại lỗi riêng cho file hỏng
+        return f"không đọc được: {type(exc).__name__}"
+    model_type = session.get_modelmeta().custom_metadata_map.get("model_type")
+    if model_type != kind:
+        return f"model_type={model_type!r}"
+    return None
