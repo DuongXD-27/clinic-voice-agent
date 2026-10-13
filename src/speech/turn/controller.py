@@ -180,6 +180,12 @@ class _Candidate:
     held_text: str = ""
     # Đã đủ điều kiện chốt, đang chờ hết cửa sổ gộp (merge_window_ms).
     merge_pending: bool = False
+    # Lúc mở cửa sổ gộp: số đoạn đã qua Validator và bằng chứng của chúng. Đoạn nói tiếp trong
+    # cửa sổ mà đứng riêng cũng bị bỏ thì quay về đúng phần này (`_drop_continuation`).
+    accepted_segments: int = 0
+    accepted_confidence: Optional[float] = None
+    accepted_noise_evidence: Optional[NoiseEvidence] = None
+    accepted_stability: StabilityVerdict = StabilityVerdict.UNKNOWN
     # Bằng chứng mới nhất cho TurnValidator (on_evidence_updated).
     noise_evidence: Optional[NoiseEvidence] = None
     stability: StabilityVerdict = StabilityVerdict.UNKNOWN
@@ -554,6 +560,9 @@ class TurnController:
         if not candidate.has_final_transcript:
             if not allow_partial or not candidate.vad_ended:
                 return False
+        if self._drop_continuation(candidate):
+            # Phần còn lại đã qua Validator; cửa sổ gộp đã bị đoạn bỏ đi dùng hết: chốt luôn.
+            return self._try_emit(allow_partial=allow_partial, is_last_chance=True, merge_due=True)
         text = candidate.text.strip()
         if candidate.echo_text:
             text = strip_echo_prefix(text, candidate.echo_text)
@@ -624,6 +633,50 @@ class TurnController:
         )
         return True
 
+    def _drop_continuation(self, candidate: _Candidate) -> bool:
+        """Lượt đã qua Validator, đang chờ cửa sổ gộp thì VAD báo nói tiếp. Đoạn nói tiếp mà giống
+        nhiễu — chỉ có từ đệm kém chắc, hoặc partial lật qua lại (OSCILLATING) — thì bỏ riêng nó,
+        giữ phần đã qua. Không làm vậy thì Validator chấm cả lượt gộp bằng bằng chứng của đoạn nhiễu
+        và mất trọn câu thật: "TÔI LÀ ĐỖ ... DŨNG" + nhiễu "Ừ" OSCILLATING bị DROP cả lượt, còn "Ừ"
+        kém chắc thì bị nối thành "... VĂN A Ừ" (noise-bench 12/10, nhiễu văn phòng 10 dB).
+
+        Chữ thật mà kém chắc ("MƯỜI HAI" 0,35 trong tiếng đường phố, phần đính chính "không phải
+        mười hai") vẫn nối như trước: luật một-hai-chữ-kém-chắc của Validator chỉ dành cho lượt
+        đứng riêng. Trả True nếu đã bỏ đoạn nói tiếp."""
+        accepted = candidate.accepted_segments
+        if not 0 < accepted < len(candidate.segments):
+            return False
+        tail = " ".join(
+            seg.text.strip() for seg in candidate.segments[accepted:] if seg.text.strip()
+        )
+        if tail and not self._continuation_is_noise(tail, candidate):
+            return False
+        evidence = candidate.noise_evidence
+        # Không ghi chữ (có thể là lời người gọi): chỉ số để chỉnh ngưỡng.
+        logger.info(
+            "turn_controller: drop continuation words=%d confidence=%s snr_db=%s stability=%s",
+            len(tail.split()),
+            None if candidate.confidence is None else round(candidate.confidence, 3),
+            None if evidence is None else round(evidence.snr_db, 1),
+            candidate.stability.value,
+        )
+        del candidate.segments[accepted:]
+        candidate.confidence = candidate.accepted_confidence
+        candidate.noise_evidence = candidate.accepted_noise_evidence
+        candidate.stability = candidate.accepted_stability
+        return True
+
+    def _continuation_is_noise(self, text: str, candidate: _Candidate) -> bool:
+        """Partial của đoạn lật qua lại, hoặc đoạn chỉ có từ đệm mà đứng riêng cũng bị bỏ (luật
+        từ đệm của `_try_emit`, với bằng chứng của chính đoạn này)."""
+        if candidate.stability == StabilityVerdict.OSCILLATING:
+            return True
+        keep_filler = not candidate.echo_text and (
+            not self._drop_filler_words
+            or is_confident_answer_filler(text, candidate.confidence, candidate.noise_evidence)
+        )
+        return not is_meaningful_text(text) and not (keep_filler and spoken_words(text))
+
     def _has_min_duration(self, candidate: _Candidate) -> bool:
         if candidate.started_at is None:
             return True  # không có mốc bắt đầu (vd. final tới mà chưa từng có speech_start) — không chặn
@@ -651,6 +704,10 @@ class TurnController:
         if candidate.merge_pending and task is not None and not task.done():
             return
         candidate.merge_pending = True
+        candidate.accepted_segments = len(candidate.segments)
+        candidate.accepted_confidence = candidate.confidence
+        candidate.accepted_noise_evidence = candidate.noise_evidence
+        candidate.accepted_stability = candidate.stability
         self._cancel_timeout()
         self._timeout_task = asyncio.ensure_future(self._merge_commit(candidate))
 

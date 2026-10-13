@@ -28,12 +28,15 @@ import asyncio
 import base64
 from typing import Any, AsyncIterator
 
+from inference.asr.base import AsrAuthError
 from inference.asr.config import ElevenLabsRealtimeConfig
 from speech.asr.vad.base import FrameClassifier
 from speech.types import NARROWBAND_RATE, AsrSegmentEnd, TranscriptEvent
 
 _QUEUE_DONE = object()
 _SUPPORTED_RATES = (8_000, 16_000)
+# message_type server trả khi không nhận key (sai, hết hạn, thiếu quyền speech_to_text).
+_AUTH_ERRORS = frozenset({"auth_error"})
 
 
 class ElevenLabsRealtimeASR:
@@ -121,6 +124,11 @@ class ElevenLabsRealtimeASR:
                 commit_settled.set()
 
         def _on_error(data: dict) -> None:
+            if data.get("message_type") in _AUTH_ERRORS:
+                event_queue.put_nowait(
+                    AsrAuthError("ElevenLabs từ chối ELEVENLABS_API_KEY (auth_error)")
+                )
+                return
             event_queue.put_nowait(RuntimeError(f"ElevenLabs realtime STT error: {data}"))
 
         connection.on(RealtimeEvents.PARTIAL_TRANSCRIPT, _on_partial)

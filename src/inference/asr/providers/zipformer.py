@@ -178,10 +178,14 @@ class ZipFormerASR:
         return self._decode_scored(pcm)
 
     def _decode_scored(self, pcm: bytes) -> _Decoded:
-        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại."""
+        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại.
+
+        Audio ngắn hơn 0,1 s coi như rỗng: encoder ném "Invalid input shape" ở lớp conv đầu (đo
+        13/10: <= 80 ms lỗi, 100 ms chạy). Lời chen giữ lại (STTPipeline._decode_held) có lúc chỉ
+        ~50 ms — lỗi đó từng dừng cả pipeline của cuộc gọi."""
         import numpy as np
 
-        if not pcm:
+        if len(pcm) // 2 < self.input_sample_rate // 10:
             return _Decoded("")
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         recognizer = self._get_recognizer()

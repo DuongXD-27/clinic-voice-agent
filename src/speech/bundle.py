@@ -23,8 +23,10 @@ from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.base import FrameClassifier
 from speech.asr.vad.energy import EnergyFrameClassifier
 from speech.asr.vad.shared import SharedSpeechDetector
+from speech.audio.quiet_gain import QuietSpeechGain
 from speech.audio.speaker_gate import SpeakerGate
 from speech.audio.storage import AudioArtifactStore
+from speech.audio.vad_frontend import VadFrontend, build_vad_frontend
 from speech.settings import SpeechSettings
 from speech.tts.static_cache import StaticAudioCache, create_static_cache, load_release
 from speech.turn.controller import TurnController
@@ -192,7 +194,8 @@ class StreamingSpeechBundle:
 
     stt_pipeline: STTPipeline
     turn_controller: TurnController
-    tts: SpeechSynthesizer
+    # None khi dựng `with_tts=False` (trang thử STT: không phát gì).
+    tts: Optional[SpeechSynthesizer]
     # None khi turn_validator_enabled=False. CallBridge dùng lại cho InterruptionController.
     validator: Optional[TurnValidator] = None
 
@@ -237,6 +240,7 @@ def build_streaming_bundle(
     asr_queue_ms: int,
     barge_in_preroll_ms: int,
     asr: Optional[Recognizer] = None,
+    with_tts: bool = True,
 ) -> StreamingSpeechBundle:
     """Đường LiveKit (transports/livekit/worker.py). Đường HTTP dùng `build_speech_bundle`.
 
@@ -261,13 +265,17 @@ def build_streaming_bundle(
         evidence = TurnEvidence(
             detector.view()
             if settings.vad_provider == "silero"
-            else _build_silero(settings, sample_rate),
+            else build_silero_classifier(settings, sample_rate),
             frame_ms=frame_ms,
         )
     speaker_gate = _build_speaker_gate(settings) if settings.speaker_gate_mode != "off" else None
     stt_pipeline = STTPipeline(
         asr,
         keep_unconfirmed_barge_in=settings.turn_keep_unconfirmed_barge_in,
+        quiet_gain=QuietSpeechGain(frame_ms=frame_ms)
+        if settings.quiet_speech_gain_enabled
+        else None,
+        vad_frontend=_build_vad_frontend(settings, sample_rate),
         vad=AsyncStreamingVAD(
             detector.view(), end_silence_ms=settings.vad_end_silence_ms, frame_ms=frame_ms
         ),
@@ -286,10 +294,32 @@ def build_streaming_bundle(
         speaker_gate=speaker_gate,
     )
     turn_controller = TurnController(validator=validator, **turn_controller_options(settings))
-    tts_gateway = create_tts_gateway(settings.tts_provider, fallback=settings.tts_fallback_provider)
-    tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
+    tts = None
+    if with_tts:
+        # Trang thử STT không dựng TTS: provider TTS thiếu key không được làm hỏng nó.
+        tts_gateway = create_tts_gateway(
+            settings.tts_provider, fallback=settings.tts_fallback_provider
+        )
+        tts = SpeechSynthesizer(tts_gateway, create_static_cache(tts_gateway))
     return StreamingSpeechBundle(
         stt_pipeline=stt_pipeline, turn_controller=turn_controller, tts=tts, validator=validator
+    )
+
+
+def _build_vad_frontend(settings: SpeechSettings, sample_rate: int) -> Optional[VadFrontend]:
+    """Mỗi cuộc gọi một instance (bộ khử nhiễu có trạng thái). Đầu ra có độ dài thay đổi theo bước
+    của bộ khử nhiễu — chỉ Silero (tự gom cửa sổ 512 mẫu) nhận được."""
+    if settings.vad_frontend == "off":
+        return None
+    if settings.vad_provider != "silero":
+        logger.warning("vad_frontend=%s cần vad_provider=silero — bỏ qua", settings.vad_frontend)
+        return None
+    return build_vad_frontend(
+        settings.vad_frontend,
+        sample_rate=sample_rate,
+        model_path=settings.vad_frontend_model_path,
+        gain_db=settings.vad_frontend_gain_db,
+        floor_dbfs=settings.vad_frontend_floor_dbfs,
     )
 
 
@@ -308,7 +338,7 @@ def warm_static_cache(settings: SpeechSettings) -> None:
 
 def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
     if settings.vad_provider == "silero":
-        return _build_silero(settings, sample_rate)
+        return build_silero_classifier(settings, sample_rate)
     if settings.vad_provider == "webrtc":
         from speech.asr.vad.webrtc import WebRtcVadClassifier
 
@@ -318,14 +348,43 @@ def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassi
     return EnergyFrameClassifier(settings.vad_rms_threshold)
 
 
-def _build_silero(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+def build_silero_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+    """Silero theo `silero_vad_version` — một instance mỗi luồng audio (có trạng thái). Dùng cho
+    LiveKit và cho `/v1/stt`, để hai đường cắt câu bằng cùng một model."""
+    if settings.silero_vad_version == "v6":
+        model_path = settings.silero_vad_v6_model_path
+        if Path(model_path).is_file():
+            from speech.asr.vad.silero_onnx import SileroOnnxClassifier
+
+            return SileroOnnxClassifier(
+                model_path,
+                sample_rate=sample_rate,
+                min_silence_ms=settings.silero_min_silence_ms,
+                threshold=settings.silero_threshold,
+            )
+        logger.warning("silero_vad_version=v6: không thấy model %s — dùng Silero v4", model_path)
     from speech.asr.vad.silero import SileroVadClassifier
 
     return SileroVadClassifier(
         settings.silero_vad_model_path,
         sample_rate=sample_rate,
         min_silence_ms=settings.silero_min_silence_ms,
+        threshold=settings.silero_threshold,
     )
+
+
+def warm_up_vad(settings: SpeechSettings) -> None:
+    """Nạp sẵn Silero v6 (onnxruntime, ~0,1 s) khi web hoặc điện thoại dùng nó. Gọi trong prewarm
+    của worker: dựng bundle trong entrypoint chạy trên event loop của cuộc gọi. v4 qua sherpa-onnx
+    nạp đủ nhanh, không cần."""
+    if "v6" not in {settings.silero_vad_version, settings.for_phone().silero_vad_version}:
+        return
+    model_path = settings.silero_vad_v6_model_path
+    if not Path(model_path).is_file():
+        return  # build_silero_classifier cảnh báo và dùng v4
+    from speech.asr.vad.silero_onnx import preload
+
+    preload(model_path)
 
 
 def warm_up(asr: Recognizer) -> None:

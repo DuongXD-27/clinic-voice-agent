@@ -298,6 +298,7 @@ async def test_stream_keeps_audio_before_internal_vad_onset(frame_ms: int) -> No
             end_silence_ms=60,
             min_emit_interval_ms=10_000,
             min_decode_ms=60,
+            pre_speech_ms=300,  # cơ chế, không phụ thuộc giá trị cấu hình
         )
     ]
 
@@ -397,7 +398,9 @@ async def test_replayed_prefix_ages_out_after_long_silence() -> None:
             return pcm == _UTTERANCE_B
 
     items += [_SILENT] * 40 + [_UTTERANCE_B] * 14
-    assert await _finals(_LabellingASR(), items, silence_classifier=OnlyB()) == ["B"]
+    # Im lặng phải dài hơn pre-roll; ghim pre-roll để test không phụ thuộc cấu hình.
+    finals = await _finals(_LabellingASR(), items, silence_classifier=OnlyB(), pre_speech_ms=300)
+    assert finals == ["B"]
 
 
 class _ScoredFakeRecognizer:
@@ -443,7 +446,41 @@ async def test_empty_decode_has_no_confidence() -> None:
         recognizer=_ScoredFakeRecognizer("", []),
     )
 
-    assert asr._decode_scored(b"\x00\x10" * 160) == _Decoded("")
+    assert asr._decode_scored(b"\x00\x10" * 1600) == _Decoded("")
+
+
+class _LengthStream:
+    def __init__(self) -> None:
+        self.samples = 0
+        self.result = None
+
+    def accept_waveform(self, sample_rate: int, samples) -> None:
+        self.samples += len(samples)
+
+
+class _MinLengthRecognizer:
+    """Như encoder ZipFormer thật (đo 13/10): audio dưới 0,1 s -> onnxruntime ném "Invalid input
+    shape" ở lớp conv đầu (<= 80 ms lỗi, 100 ms chạy)."""
+
+    def create_stream(self) -> _LengthStream:
+        return _LengthStream()
+
+    def decode_stream(self, stream: _LengthStream) -> None:
+        if stream.samples < 1600:
+            raise RuntimeError("Invalid input shape: {1,39}")
+        stream.result = type("Result", (), {"text": " VÂNG", "ys_log_probs": []})()
+
+
+def test_audio_shorter_than_the_encoder_minimum_decodes_to_nothing() -> None:
+    """13/10: lời chen giữ lại chỉ ~50 ms (STTPipeline._decode_held) làm decode batch ném lỗi và dừng
+    cả pipeline của cuộc gọi. Audio dưới 0,1 s không có chữ nào để nghe: trả rỗng như audio rỗng."""
+    asr = ZipFormerASR(
+        ZipFormerConfig(encoder_path="e", decoder_path="d", joiner_path="j", tokens_path="t"),
+        recognizer=_MinLengthRecognizer(),
+    )
+
+    assert asr.transcribe(b"\x00\x10" * 800).text == ""  # 50 ms
+    assert asr.transcribe(b"\x00\x10" * 1600).text == "VÂNG"  # 100 ms vẫn decode
 
 
 async def _count_decodes(partial_interval_ratio: float, speech_frames: int = 200) -> int:

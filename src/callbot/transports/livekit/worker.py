@@ -9,7 +9,6 @@ riêng, nhiều job chạy chung 1 worker process không được share state).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -17,12 +16,21 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.tracing import create_tracer
 from callbot.transports.http.clinic_backend import build_clinic
 from callbot.transports.http.config import settings as http_settings
-from callbot.transports.livekit.call_bridge import STATUS_TOPIC, CallBridge
+from callbot.transports.livekit.call_bridge import CallBridge
 from callbot.transports.livekit.participant import hangup_sip_caller, participant_call
 from callbot.transports.livekit.settings import LiveKitSettings
+from callbot.transports.livekit.status import report_status
+from callbot.transports.livekit.stt_session import SttSession
 from inference.asr import create_asr_gateway
+from inference.asr.base import AsrAuthError
 from speech.asr.recognizer import SpeechRecognizer
-from speech.bundle import build_streaming_bundle, warm_static_cache, warm_up
+from speech.bundle import (
+    build_streaming_bundle,
+    turn_controller_options,
+    warm_static_cache,
+    warm_up,
+    warm_up_vad,
+)
 from speech.settings import SpeechSettings
 
 if TYPE_CHECKING:
@@ -32,14 +40,16 @@ logger = logging.getLogger(__name__)
 
 _PREWARMED_ASR = "zipformer_asr"
 # ASR người gọi thử chọn trên trang gọi (participant attribute `asr_provider`, gắn lúc xin token).
-_SELECTABLE_ASR = ("zipformer", "gemini_live")
+_SELECTABLE_ASR = ("zipformer", "gemini_live", "elevenlabs_realtime")
+# Trang thử STT (`/ui/stt`) gắn `mode=stt`: chỉ chạy STTPipeline và gửi chữ, không có bot.
+MODE_ATTRIBUTE = "mode"
 # Worker báo lại ASR thực sự dùng cho cuộc gọi (attribute của bot) để trang gọi hiển thị.
 ASR_ATTRIBUTE = "asr_provider"
 
 
 def prewarm(proc: "JobProcess") -> None:
-    """Load model ASR local (vd. ZipFormer) một lần mỗi LiveKit job process, trước khi
-    process đó nhận call."""
+    """Load model ASR local (vd. ZipFormer) và Silero v6 một lần mỗi LiveKit job process, trước
+    khi process đó nhận call."""
     provider = LiveKitSettings().asr_provider or SpeechSettings().asr_provider
     asr = SpeechRecognizer(create_asr_gateway(provider))
     try:
@@ -47,6 +57,11 @@ def prewarm(proc: "JobProcess") -> None:
     except NotImplementedError:
         logger.info("ASR %s uses streaming only; skipping batch warm-up", asr.name)
     proc.userdata[_PREWARMED_ASR] = asr
+    # Chỉ để cuộc gọi đầu không phải nạp model trên event loop; lỗi thật sẽ lộ khi dựng bundle.
+    try:
+        warm_up_vad(SpeechSettings())
+    except Exception as exc:
+        logger.warning("worker: không nạp sẵn được Silero v6: %s", exc)
     try:
         warm_static_cache(SpeechSettings())
     except Exception as exc:  # job vẫn tự nạp được lúc dựng bundle; chỉ mất phần làm sẵn
@@ -88,8 +103,8 @@ async def entrypoint(ctx: JobContext) -> None:
     if asr is None:
         # Chọn ASR nào thì chỉ dùng ASR đó: không tạo được (vd. thiếu GEMINI_API_KEY) thì báo lên
         # trang gọi thử và dừng, không đổi sang ASR nạp sẵn của worker.
-        await _report_status(
-            ctx,
+        await report_status(
+            ctx.room,
             "ASR_UNAVAILABLE",
             f"Worker không tạo được ASR {speech_settings.asr_provider} (thiếu key hoặc model). "
             "Cuộc gọi dừng, không chuyển sang ASR khác.",
@@ -106,6 +121,7 @@ async def entrypoint(ctx: JobContext) -> None:
         requested_asr,
         speech_settings.asr_pre_speech_ms,
     )
+    stt_only = participant.attributes.get(MODE_ATTRIBUTE) == "stt"
     bundle = build_streaming_bundle(
         speech_settings,
         sample_rate=livekit_settings.input_sample_rate,
@@ -114,6 +130,7 @@ async def entrypoint(ctx: JobContext) -> None:
         asr_queue_ms=livekit_settings.asr_queue_ms,
         barge_in_preroll_ms=livekit_settings.barge_in_preroll_ms,
         asr=asr,
+        with_tts=not stt_only,
     )
     try:
         await ctx.room.local_participant.set_attributes(
@@ -121,6 +138,15 @@ async def entrypoint(ctx: JobContext) -> None:
         )
     except Exception as exc:  # chỉ để hiển thị trên trang gọi thử, không được làm hỏng cuộc gọi
         logger.warning("worker: không gắn được attribute ASR: %s", type(exc).__name__)
+    if stt_only:
+        try:
+            await _run_stt_only(
+                ctx, bundle, speech_settings, livekit_settings, participant.identity
+            )
+        finally:
+            # Như cuộc gọi: return khỏi entrypoint không kết thúc job đã kết nối.
+            ctx.shutdown(reason="stt session finished")
+        return
     # Cùng CLINIC_BACKEND với bot HTTP. sim: mỗi job (mỗi cuộc gọi) một clinic mới seed lại, nên
     # lịch mẫu luôn còn chờ xác nhận; không chung dữ liệu với sim trong process bot.
     clinic = build_clinic(http_settings)
@@ -174,6 +200,47 @@ async def entrypoint(ctx: JobContext) -> None:
             ctx.shutdown(reason="call finished")
 
 
+async def _run_stt_only(
+    ctx: JobContext,
+    bundle: Any,
+    speech_settings: SpeechSettings,
+    livekit_settings: LiveKitSettings,
+    caller_identity: str,
+) -> None:
+    """Trang thử STT: cùng pipeline (VAD, tăng âm, ASR, chốt lượt) với cuộc gọi, không bot/TTS."""
+    session = SttSession(
+        ctx.room,
+        bundle.stt_pipeline,
+        turn_controller_options={
+            "validator": bundle.validator,
+            **turn_controller_options(speech_settings),
+        },
+        sample_rate=livekit_settings.input_sample_rate,
+        frame_ms=livekit_settings.frame_ms,
+        input_queue_ms=livekit_settings.input_queue_ms,
+        krisp_enabled=livekit_settings.krisp_noise_suppression_enabled,
+        caller_identity=caller_identity,
+    )
+    try:
+        await session.run()
+    except Exception as exc:
+        # Model hỏng giữa chừng (vd. thiếu thư viện của provider, key bị từ chối, mất kết nối):
+        # báo lên trang, không để trang chờ mãi một worker đã rời phòng. Message lỗi lạ có thể
+        # chứa dữ liệu cuộc gọi: chỉ gửi tên lỗi, trừ các lỗi tự mô tả ở dưới.
+        if isinstance(exc, ModuleNotFoundError):
+            detail = f"worker thiếu thư viện {exc.name}"
+        elif isinstance(exc, AsrAuthError):
+            detail = str(exc)
+        else:
+            detail = type(exc).__name__
+        await report_status(
+            ctx.room,
+            "STT_FAILED",
+            f"ASR {speech_settings.asr_provider} lỗi khi nhận dạng ({detail}). Phiên thử đã dừng.",
+        )
+        raise
+
+
 async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
     """ASR cho cuộc gọi: dùng lại bản nạp sẵn khi cùng provider; khác thì tạo mới (ZipFormer nạp
     model trong thread). None khi không tạo được (thiếu key, provider lỗi) — không thay bằng
@@ -190,18 +257,6 @@ async def _recognizer_for(provider: str, prewarmed: Any) -> Any:
         )
         return None
     return asr
-
-
-async def _report_status(ctx: JobContext, code: str, message: str) -> None:
-    """Báo lỗi lên trang gọi thử (`STATUS_TOPIC`); gửi không được thì chỉ ghi log."""
-    try:
-        await ctx.room.local_participant.publish_data(
-            json.dumps({"code": code, "message": message}, ensure_ascii=False),
-            reliable=True,
-            topic=STATUS_TOPIC,
-        )
-    except Exception as exc:
-        logger.warning("worker: không gửi được lỗi %s tới browser (%s)", code, type(exc).__name__)
 
 
 def main() -> None:

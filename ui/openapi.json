@@ -614,7 +614,8 @@
               {
                 "enum": [
                   "zipformer",
-                  "gemini_live"
+                  "gemini_live",
+                  "elevenlabs_realtime"
                 ],
                 "type": "string"
               },
@@ -642,6 +643,15 @@
               "outbound"
             ],
             "title": "Direction",
+            "type": "string"
+          },
+          "mode": {
+            "default": "call",
+            "enum": [
+              "call",
+              "stt"
+            ],
+            "title": "Mode",
             "type": "string"
           },
           "room_name": {

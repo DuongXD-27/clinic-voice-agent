@@ -450,6 +450,21 @@ async def run_pipeline(
         **_livekit_queues(),
         asr=recognizer,
     )
+    gate = bundle.stt_pipeline.speaker_gate
+    if gate is not None:
+        # Cổng giọng (enforce) chấm lượt trong thread: `_settle` phải chờ như chờ decode batch,
+        # không thì đồng hồ ảo chạy tiếp và lượt bị chốt muộn sang câu / đoạn sau (độ trễ sai, và
+        # bộ đo nhiều câu như level_eval gán lượt nhầm chỗ).
+        assess = gate.assess
+
+        def assess_counted(*args, **kwargs):
+            recognizer.batch_busy += 1
+            try:
+                return assess(*args, **kwargs)
+            finally:
+                recognizer.batch_busy -= 1
+
+        gate.assess = assess_counted
     # Bundle dựng TurnController theo đồng hồ thật; bộ đo đẩy audio nhanh hơn thời gian thực nên
     # dựng lại cùng cấu hình, chạy theo đồng hồ ảo.
     controller = TurnController(

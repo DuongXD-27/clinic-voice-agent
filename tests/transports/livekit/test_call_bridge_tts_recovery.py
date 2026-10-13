@@ -26,7 +26,8 @@ from tests.transports.livekit.test_call_bridge_mapping import (  # noqa: E402
 from callbot.engine.dialogue import templates as t  # noqa: E402
 from callbot.engine.errors import CallEnded  # noqa: E402
 from callbot.engine.types import BotAction, TTSRecovery  # noqa: E402
-from callbot.transports.livekit.call_bridge import STATUS_TOPIC, TRANSCRIPT_TOPIC  # noqa: E402
+from callbot.transports.livekit.call_bridge import TRANSCRIPT_TOPIC  # noqa: E402
+from callbot.transports.livekit.status import STATUS_TOPIC  # noqa: E402
 from speech.turn.events import UserTurnCompleted  # noqa: E402
 from speech.turn.interruption import InterruptionState  # noqa: E402
 

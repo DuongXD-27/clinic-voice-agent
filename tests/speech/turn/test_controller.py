@@ -605,3 +605,141 @@ async def test_final_that_is_only_bot_echo_does_not_leave_the_turn_hanging() -> 
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+async def test_long_turn_after_short_flipping_partials_is_not_dropped_as_oscillating() -> None:
+    """Review PR #110: GipFormer decode lại phần đầu câu nên partial ngắn lật qua lại ("HAI TỶ" ->
+    "HAI THẾ" -> "HAI TỶ") trước khi nghe ra cả câu. Cửa sổ độ ổn định còn giữ các partial đó thì
+    verdict của câu dài vẫn là OSCILLATING và Validator DROP lượt thật — sau khi ngắt lời đã được
+    xác nhận (bot đã dừng), người gọi bị bỏ lời. Thứ tự gọi như `STTPipeline._drain_asr`."""
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.evidence import TurnEvidence
+    from speech.turn.validator import TurnValidator
+
+    class _Never:
+        def is_speech(self, frame: bytes) -> bool:
+            return False
+
+    evidence = TurnEvidence(_Never(), frame_ms=30)
+    controller = TurnController(min_speech_ms=0, validator=TurnValidator())
+    loud = NoiseEvidence(rms=3000.0, noise_floor=30.0, snr_db=30.0)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    for text, final in [
+        ("HAI TỶ", False),
+        ("HAI THẾ", False),
+        ("HAI TỶ", False),
+        ("CÓ AI THẤY KHÔNG", False),
+        ("CÓ AI THẤY KHÔNG", True),
+    ]:
+        event = TranscriptEvent(text=text, is_final=final, confidence=0.9)
+        stability = evidence.observe_transcript(event)
+        controller.on_evidence_updated(noise_evidence=loud, stability=stability)
+        await controller.on_transcript_event(event)
+
+    turn = await _next_turn(controller)
+    assert turn.text == "CÓ AI THẤY KHÔNG"
+
+
+async def _accepted_sentence_then_noise_segment(
+    controller: TurnController, *, tail: str, tail_confidence: float, tail_stability
+) -> None:
+    """Câu thật đã qua Validator, đang chờ cửa sổ gộp; nhiễu sau câu thành một đoạn ASR ngắn.
+    Thứ tự gọi như `STTPipeline` với ZipFormer (event tới đúng thứ tự, không segment_id)."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.audio.noise_tracker import NoiseEvidence
+
+    evidence = NoiseEvidence(rms=3000.0, noise_floor=730.0, snr_db=12.3)
+    await controller.on_vad_event(VadEvent("speech_start"))
+    controller.on_evidence_updated(noise_evidence=evidence, stability=StabilityVerdict.CONVERGING)
+    await controller.on_transcript_event(
+        TranscriptEvent(text="TÔI LÀ ĐỖ ĐỨC DŨNG", is_final=True, confidence=0.86)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await controller.on_vad_event(VadEvent("speech_start"))  # còn trong cửa sổ gộp
+    controller.on_evidence_updated(noise_evidence=evidence, stability=tail_stability)
+    await controller.on_transcript_event(
+        TranscriptEvent(text="ĐÂY", is_final=False, confidence=0.4)
+    )
+    await controller.on_vad_event(VadEvent("speech_end"))
+    await controller.on_transcript_event(
+        TranscriptEvent(text=tail, is_final=True, confidence=tail_confidence)
+    )
+
+
+async def test_noise_after_accepted_sentence_does_not_drop_the_sentence() -> None:
+    """noise-bench 12/10 (golden STT_ID_09, nhiễu văn phòng 10 dB): câu "TÔI LÀ ĐỖ ... DŨNG" đã
+    qua Validator, đang chờ cửa sổ gộp; nhiễu sau câu thành đoạn "Ừ" mà partial lật qua lại
+    (OSCILLATING). Validator chấm cả lượt gộp bằng bằng chứng của đoạn nhiễu và DROP — người gọi
+    mất trọn câu. Chỉ được bỏ đoạn nhiễu."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.turn.validator import TurnValidator
+
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150, validator=TurnValidator())
+    await _accepted_sentence_then_noise_segment(
+        controller, tail="Ừ", tail_confidence=0.58, tail_stability=StabilityVerdict.OSCILLATING
+    )
+
+    turn = await _next_turn(controller)
+    assert turn.text == "TÔI LÀ ĐỖ ĐỨC DŨNG"
+    assert turn.confidence == 0.86
+
+
+async def test_unsure_filler_after_accepted_sentence_is_not_appended() -> None:
+    """Cùng bộ đo: "TÔI LÀ BÙI VĂN A" + đoạn nhiễu "Ừ" (0,58) thành lượt "TÔI LÀ BÙI VĂN A Ừ".
+    Đứng riêng thì "Ừ" kém chắc này đã bị bỏ như từ đệm; nối vào câu trước cũng không được."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.turn.validator import TurnValidator
+
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150, validator=TurnValidator())
+    await _accepted_sentence_then_noise_segment(
+        controller, tail="Ừ", tail_confidence=0.58, tail_stability=StabilityVerdict.CONVERGING
+    )
+
+    assert (await _next_turn(controller)).text == "TÔI LÀ ĐỖ ĐỨC DŨNG"
+
+
+async def test_real_continuation_after_accepted_sentence_still_merges() -> None:
+    from speech.asr.evidence import StabilityVerdict
+    from speech.turn.validator import TurnValidator
+
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150, validator=TurnValidator())
+    await _accepted_sentence_then_noise_segment(
+        controller,
+        tail="SINH NĂM MỘT CHÍN BẢY TÁM",
+        tail_confidence=0.9,
+        tail_stability=StabilityVerdict.CONVERGING,
+    )
+
+    assert (await _next_turn(controller)).text == "TÔI LÀ ĐỖ ĐỨC DŨNG SINH NĂM MỘT CHÍN BẢY TÁM"
+
+
+async def test_confident_answer_after_accepted_sentence_still_merges() -> None:
+    """Câu trả lời ngắn nói tiếp ("KHÔNG", giọng rõ) vẫn nối — chỉ bỏ đoạn mà đứng riêng cũng
+    bị bỏ."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.turn.validator import TurnValidator
+
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150, validator=TurnValidator())
+    await _accepted_sentence_then_noise_segment(
+        controller, tail="KHÔNG", tail_confidence=0.95, tail_stability=StabilityVerdict.CONVERGING
+    )
+
+    assert (await _next_turn(controller)).text == "TÔI LÀ ĐỖ ĐỨC DŨNG KHÔNG"
+
+
+async def test_unsure_real_words_after_accepted_sentence_still_merge() -> None:
+    """noise-bench 12/10 (PM B-DOB-02, đường phố 10 dB): "... KHÔNG PHẢI" rồi "MƯỜI HAI" kém chắc
+    trong nhiễu. Đứng riêng, hai chữ kém chắc bị Validator bỏ (chống ảo giác một hai chữ), nhưng
+    nối sau câu thật thì phải giữ như trước — bỏ đi là mất đúng phần đính chính."""
+    from speech.asr.evidence import StabilityVerdict
+    from speech.turn.validator import TurnValidator
+
+    controller = TurnController(min_speech_ms=0, merge_window_ms=150, validator=TurnValidator())
+    await _accepted_sentence_then_noise_segment(
+        controller,
+        tail="MƯỜI HAI",
+        tail_confidence=0.35,
+        tail_stability=StabilityVerdict.CONVERGING,
+    )
+
+    assert (await _next_turn(controller)).text == "TÔI LÀ ĐỖ ĐỨC DŨNG MƯỜI HAI"

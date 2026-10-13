@@ -74,7 +74,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
         roomRef.current = null;
         room?.removeAllListeners();
         void room?.disconnect();
-        dispatch({ type: "failed", message: describe(error), at: Date.now() });
+        dispatch({ type: "failed", message: describeError(error), at: Date.now() });
       } finally {
         // Đã rời trang giữa chừng: cleanup có thể đã chạy trước khi room này được tạo.
         if (cancelled() && room) {
@@ -95,7 +95,7 @@ export function useLiveKitCall(audio: RefObject<HTMLAudioElement | null>) {
       if (enabled) reportAudioSettings(room);
       dispatch({ type: "micChanged", enabled, at: Date.now() });
     } catch (error) {
-      dispatch({ type: "notice", notice: { tone: "error", text: describe(error) } });
+      dispatch({ type: "notice", notice: { tone: "error", text: describeError(error) } });
     }
   }, []);
 
@@ -208,7 +208,8 @@ function reportAudioSettings(room: Room) {
   }
 }
 
-function describe(error: unknown): string {
+/** Lỗi kết nối / quyền microphone thành câu cho người dùng (dùng chung với trang thử STT). */
+export function describeError(error: unknown): string {
   // So theo name, không instanceof DOMException (lỗi có thể đến từ realm khác).
   if (error instanceof Error && error.name === "NotAllowedError") {
     return "Trình duyệt không cho dùng microphone. Cho phép quyền microphone rồi thử lại.";
