@@ -1,0 +1,56 @@
+{
+  "test": "Real inbound booking on existing iPhone 4G hotspot",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "verified_sip_user_agent": "MicroSIP/3.22.18",
+  "client_label_correction": "User was asked to use Linphone, but packet capture proves this call used MicroSIP. Do not attribute this result to Linphone.",
+  "job_id": "AJ_2nbCjhUqi9G8",
+  "dispatch_id": "AD_wgBna29X2DXN",
+  "room": "sip-booking-_+84912345600_cSXbVS5syWME",
+  "worker_id": "AW_umASmrPpmBSy",
+  "participant_kind": 3,
+  "turns": 5,
+  "core_outcome": "BOOKED",
+  "appointments_before": 4,
+  "appointments_after": 5,
+  "booked_before": 3,
+  "booked_after": 4,
+  "new_records": [
+    {
+      "appointment_id": "apt_51b18b9c04f1",
+      "status": "BOOKED",
+      "starts_at": "2026-10-08T13:00:00+07:00",
+      "ends_at": "2026-10-08T13:30:00+07:00"
+    }
+  ],
+  "post_appointments": [
+    {
+      "operation": "clinic.create_appointment",
+      "http_method": "POST",
+      "endpoint_template": "/appointments",
+      "http_status": 201,
+      "attempt_count": 1,
+      "retry_count": 0,
+      "idempotency_used": true,
+      "start_time": "2026-10-07T08:49:12.807217Z",
+      "end_time": "2026-10-07T08:49:13.860638Z"
+    }
+  ],
+  "events_local_time": {
+    "bridge_started": "15:48:05",
+    "core_booked": "15:49:13",
+    "final_playout_completed": "15:49:18",
+    "remove_participant_succeeded": "15:49:19"
+  },
+  "tcp_capture": {
+    "ack_relative_s": 9.431271,
+    "client_fin_relative_s": 42.431781,
+    "server_fin_relative_s": 42.582379,
+    "idle_after_ack_s": 33.00051,
+    "bye_received": false
+  },
+  "client_hangup": "FAIL, user confirmed no automatic hangup",
+  "capture_sha256": "b499bccd446d30afcbc288850d2df03be5fbb4e77aa812c638dc1677a4d2d641",
+  "capture_dropped_packets": 0,
+  "acceptance_scope": "Booking record and dispatch PASS; hangup/repeatability/PSTN not accepted. No mock reset."
+}

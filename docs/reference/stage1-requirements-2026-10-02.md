@@ -1,5 +1,11 @@
 # Đợt 1: chốt xác minh và lệnh ghi
 
+> Tài liệu lịch sử 01–02/10, chưa đồng bộ PRD 2.3 ngày 07/10.
+> PRD yêu cầu tên không khớp vẫn hỏi DOB trước khi chuyển; ngoại lệ R-40,
+> luật phần họ R-22 và nhánh thiếu số R-09 cũng đã thay đổi.
+> Không dùng tài liệu này để kết luận implementation đạt PRD 2.3.
+> Xem [review PRD 2.3](../evidence/prd-v2.3-inbound-review-2026-10-08.md).
+
 Phạm vi: R-19, R-22, R-23, R-31, R-40 và R-41 theo bảng yêu cầu ngày 01/10/2026. Các mục dưới đây cập nhật những quy tắc tương ứng trong bản thiết kế IE v1.1 cũ.
 
 ## Định danh

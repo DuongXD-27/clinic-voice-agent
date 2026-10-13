@@ -77,3 +77,58 @@ async def test_bridge_and_text_share_core_actions_and_clinic_state(
         (call.operation, call.path, call.status) for call in baseline_clinic.calls
     ]
     assert source.closed
+
+
+async def test_inbound_sip_context_books_three_calls_in_shared_clinic(redis_store_factory):
+    """Repeated bridge/core booking without resetting clinic; audio remains simulated."""
+    from types import SimpleNamespace
+
+    from livekit import rtc
+
+    from callbot.transports.livekit.participant import participant_call
+
+    clinic = FakeClinicAPI.mentor_mock()
+    bot = create_orchestrator(
+        clinic, EngineSettings(semantic_fallback_enabled=False), store=redis_store_factory()
+    )
+    bot.sessions._clock = lambda: datetime(2026, 10, 7, 10, tzinfo=VN_TZ)
+    caller = SimpleNamespace(
+        kind=rtc.ParticipantKind.PARTICIPANT_KIND_SIP,
+        attributes={"sip.phoneNumber": "+84912345600"},
+    )
+    context = participant_call(caller)
+    lines = ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đặt lịch", "khung 1", "Đồng ý"]
+    created = set()
+    for index in range(3):
+        before_ids = set(clinic.appointments)
+        before_calls = len(clinic.calls)
+        room, tts = _FakeRoom(f"sip-booking-{index}"), _FakeTTS()
+        pipeline = _FakeSTTPipeline([UserTurnCompleted(text=line) for line in lines])
+        bridge = make_call_bridge(
+            room,
+            bot,
+            pipeline,
+            tts,
+            direction=context.direction,
+            caller_number=context.caller_number,
+            appointment_id=context.appointment_id,
+        )
+        source = _FakeAudioSource()
+
+        async def publish(bridge=bridge, source=source):
+            bridge._audio_source = source
+
+        bridge._publish_tts_track = publish
+        await asyncio.wait_for(bridge.run(), timeout=5)
+        new_ids = set(clinic.appointments) - before_ids
+        assert len(new_ids) == 1
+        created.update(new_ids)
+        assert all(clinic.appointments[i]["status"] == "BOOKED" for i in new_ids)
+        calls = clinic.calls[before_calls:]
+        assert sum(c.operation == "create_appointment" for c in calls) == 1
+        assert any(c.operation == "get_slots" for c in calls)
+        assert clinic.patient_lookups[-1] == "0912345600"
+        closing = room.local_participant.data[-1][0]
+        assert closing["outcome"] == "BOOKED" and closing["ended"]
+        assert source.closed and len(tts.spoken) == 6
+    assert len(created) == 3

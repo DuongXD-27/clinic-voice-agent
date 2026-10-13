@@ -1,0 +1,85 @@
+{
+  "date": "2026-10-08",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "session_start_utc": "2026-10-08T04:31:13.259235+00:00",
+  "commit": "69688a9d03b10ea27ef31e39306b025c1c3ef61e",
+  "transport": "TLS",
+  "softphone": "Linphone 5.3.4",
+  "target_calls": 3,
+  "mock_initial_appointments": 1,
+  "mock_initial_booked": 0,
+  "initial_future_slots": 10,
+  "mock_setup": "Dedicated mock initialized before this run; no reset between calls.",
+  "calls": [
+    {
+      "index": 1,
+      "job_id": "AJ_imtvMK3YWpZe",
+      "dispatch_id": "AD_8ajct2oeAzuz",
+      "room_id": "RM_nLShkqRUbVKv",
+      "room": "sip-booking-_+84912345600_ZdStdnoBiQsG",
+      "received_at_utc": "2026-10-08T04:35:54.061849+00:00",
+      "turns": [
+        {
+          "at_utc": "2026-10-08T04:36:10.916974+00:00",
+          "action": "call_bridge: turn 1 action state=AWAITING_IDENTITY ended=False outcome=None"
+        },
+        {
+          "at_utc": "2026-10-08T04:36:19.183186+00:00",
+          "action": "call_bridge: turn 2 action state=ENDED ended=True outcome=TRANSFERRED"
+        }
+      ],
+      "worker_pid": 7524,
+      "sip_participant": true,
+      "outcome": "TRANSFERRED",
+      "hangup_api": "SIP hangup: caller removed",
+      "closed_at_utc": "2026-10-08T04:36:23.359275+00:00",
+      "new_records": [],
+      "existing_records_unchanged": true,
+      "booking_delta_pass": false,
+      "sip_bye_client_confirmation": "PENDING_PCAP_ANALYSIS",
+      "user_report": "Caller said Nguyễn Văn A; bot transferred and disconnected before the transfer sentence finished.",
+      "diagnosis": {
+        "live_turn_1": {
+          "confidence": 0.9047419840942662,
+          "name_present": false,
+          "understanding": "NOT_UNDERSTOOD"
+        },
+        "live_turn_2": {
+          "confidence": 0.9873775960938596,
+          "name_present": true,
+          "outcome": "TRANSFERRED"
+        },
+        "exact_live_transcript": "Not retained in default INFO trace; terminal session content is purged.",
+        "offline_rtp_redecode": {
+          "turn_1": "TÔI TÊN LÀ NGUYỄN ĐĂNG AN",
+          "turn_2": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+          "scope": "Offline windows, not necessarily identical to live VAD/ASR input."
+        },
+        "canonical_text_extraction": "Nguyễn Văn A matches fixture exactly; no fuzzy match or automatic An-to-A substitution introduced.",
+        "final_tts_audio_duration_ms": 3456.125,
+        "final_tts_truncated": false,
+        "final_tts_interrupted": false,
+        "final_tts_local_drain_utc": "2026-10-08T04:36:22.971202Z",
+        "remove_participant_started_utc": "2026-10-08T04:36:22.974299Z",
+        "receiver_playout_acknowledged": false,
+        "follow_up_fix": "Configurable SIP grace after local drain, default 2000 ms; caller is rechecked before removal. Unit/regression verified, live confirmation pending."
+      },
+      "local_media": {
+        "incoming_rtp_packets": 1260,
+        "incoming_sequence_gaps": 0,
+        "codec": "PCMU/8000",
+        "capture_sha256": "dcbdcc832f3308502765b38cb62d5c76d9854f66d8a06c46ee738273e9529dcb"
+      }
+    }
+  ],
+  "status": "STOPPED_AFTER_IDENTITY_TRANSFER",
+  "worker_id": "AW_B4VkyYsyr3n3",
+  "worker_pid": 7524,
+  "scope": "Real booking on TLS before SIP grace fix; no booking completed. Mock preserved.",
+  "acceptance": {
+    "three_consecutive_booked": false,
+    "booked_in_this_run": 0,
+    "calls_2_and_3": "NOT_RUN after first transfer",
+    "real_phone_line": false
+  }
+}
