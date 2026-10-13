@@ -692,6 +692,11 @@ def _without_trailing_links(name: list[str]) -> Optional[str]:
     return " ".join(name) or None
 
 
+def introduces_oneself(transcript: str) -> bool:
+    """Câu có lời tự giới thiệu ("tôi là", "tên tôi là"...), so như `name_after_dob`."""
+    return find_phrase(clean(transcript), _SELF_INTRODUCTIONS, mixed=True) is not None
+
+
 def name_after_dob(transcript: str, dob_zone: Optional[str] = None) -> Optional[str]:
     """Phần tên đứng SAU ngày sinh: "14/3/1978, tôi là Nguyễn Văn A".
 

@@ -47,6 +47,7 @@ from callbot.engine.extraction.semantic import (
     RuleCandidates,
     SemanticContext,
     SemanticOutcome,
+    SemanticReading,
 )
 from callbot.engine.extraction.text import clean, compile_phrases, normalize, strip_diacritics
 from clinic_mock_sim import FakeClinicAPI
@@ -56,6 +57,7 @@ from inference.llm.prompt.semantic import (
     PROMPT_VERSION_LUNA,
     PROMPT_VERSION_LUNA_V7,
     PROMPT_VERSION_LUNA_V8,
+    PROMPT_VERSION_LUNA_V9,
     build_messages,
 )
 from tests.engine.extraction.test_agreement import (
@@ -578,7 +580,43 @@ def test_v9_prompt_extends_v8_without_changing_it() -> None:
 
     context = _prompt_context()
     v8 = build_messages(context, version=PROMPT_VERSION_LUNA_V8)
-    v9 = build_messages(context, version=PROMPT_VERSION_LUNA)
+    v9 = build_messages(context, version=PROMPT_VERSION_LUNA_V9)
     assert LUNA_V9_RULES in v9[0]["content"] and LUNA_V9_RULES not in v8[0]["content"]
     assert v9[1 : len(v8) - 1] == v8[1:-1]  # ví dụ v8 giữ nguyên, v9 chỉ thêm
     assert v9[-1] == v8[-1]
+
+
+def test_v10_prompt_is_two_messages_with_the_examples_inside_the_cached_system() -> None:
+    from inference.llm.prompt.semantic import LUNA_V10_EXAMPLES
+
+    context = _prompt_context()
+    v9 = build_messages(context, version=PROMPT_VERSION_LUNA_V9)
+    v10 = build_messages(context, version=PROMPT_VERSION_LUNA)
+    # Prompt caching GPT-6 chỉ đặt breakpoint ngầm cuối developer message đầu và cuối user message
+    # cuối: ví dụ phải nằm trong system mới được cache khi transcript đổi.
+    assert [m["role"] for m in v10] == ["system", "user"]
+    assert v10[-1] == v9[-1]  # ngữ cảnh lượt hiện tại giữ nguyên contract
+    system = v10[0]["content"]
+    for _, transcript, reading in LUNA_V10_EXAMPLES:
+        compact = json.dumps(json.loads(reading), ensure_ascii=False, separators=(",", ":"))
+        assert transcript in system and compact in system
+        SemanticReading.model_validate_json(reading)  # ví dụ đúng schema runtime
+    assert "title" not in SemanticReading.model_json_schema()
+
+
+def test_v10_examples_do_not_repeat_scored_eval_cases() -> None:
+    """Ví dụ trong prompt không được là câu holdout / new của eval, nếu không eval đo câu đã thấy."""
+    import csv
+    from pathlib import Path
+
+    from inference.llm.prompt.semantic import LUNA_V10_EXAMPLES
+
+    root = Path(__file__).resolve().parents[3]
+    scored: set[str] = set()
+    for name in ("cancel", "confirm"):
+        with (root / "eval" / name / "cases.csv").open(encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                if row["split"] != "prompt":
+                    scored.add(strip_diacritics(clean(row["transcript"])))
+    for _, transcript, _ in LUNA_V10_EXAMPLES:
+        assert strip_diacritics(clean(transcript)) not in scored, transcript

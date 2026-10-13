@@ -4,12 +4,14 @@ import pytest
 
 from callbot.engine.extraction.agreement import (
     answer_after_give_up,
+    confirmation_veto,
     conflicting_confirmation,
     explicit_slot_pick,
     extract_agreement,
     gives_up_if_unavailable,
     gives_up_slot_change,
     is_bare_da,
+    is_hesitation_only,
     without_fallback_lead,
 )
 from callbot.engine.extraction.schema import Agreement, Provenance, QuestionId
@@ -475,6 +477,20 @@ def test_a_short_o_or_u_still_agrees(question: QuestionId, text: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "text", ["Ờ cái... ừ thì... à", "Cái đó... ờ, như kiểu...", "ờ.... ừ ..... à", "ừ thì"]
+)
+def test_hesitation_only_has_no_answer(text: str) -> None:
+    assert is_hesitation_only(text)
+
+
+@pytest.mark.parametrize(
+    "text", ["ờ", "ừ", "ừ ừ", "ờ... vâng", "chắc là được", "ờ để xem", "cái đầu tiên", ""]
+)
+def test_hesitation_only_keeps_answers(text: str) -> None:
+    assert not is_hesitation_only(text)
+
+
+@pytest.mark.parametrize(
     "text",
     [
         "tôi sẽ có mặt",
@@ -622,6 +638,9 @@ def test_fallback_lead_keeps_dates_and_times_of_the_rest(text: str, rest: str) -
         "Vâng, 3 giờ được",
         "Vậy thì 3 giờ",
         "Thế thì khung đó",
+        # Giờ kiểu Anh khi trộn tiếng (QC qc-w6-02)
+        "Ok, 3pm ngày 14 nhé",
+        "Vâng, 3 pm",
     ],
 )
 def test_explicit_slot_pick(text: str) -> None:
@@ -637,6 +656,8 @@ def test_explicit_slot_pick(text: str) -> None:
         "Dạ",
         "Không, 3 giờ",
         "Chắc là 3 giờ",
+        "3pm thì hơi sớm",
+        "3pm được không em?",
     ],
 )
 def test_not_an_explicit_slot_pick(text: str) -> None:
@@ -696,3 +717,80 @@ def test_the_part_after_giving_up_that_is_a_new_answer(text: str, answer: str) -
 )
 def test_keeping_the_old_time_has_no_new_answer(text: str) -> None:
     assert answer_after_give_up(text) is None
+
+
+# --- Người gọi nói tiếng Anh (QC qc-w6-01, 12/10/2026) ---------------------------------------------
+# Model không được nâng lên AGREE (§8.3.4), nên lệnh ghi cho câu tiếng Anh vẫn phải đến từ luật.
+
+
+@pytest.mark.parametrize("question", [CONFIRM, QuestionId.ASK_ATTENDANCE])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Yes, I'll be there",
+        "yes",
+        "Sure, I will be there",
+        "Yeah I can make it",
+        "OK see you then",
+        "I'll be there",
+        "Yes I will come, thank you so much",
+        "Yes, tôi sẽ đến",  # trộn tiếng: "yes" như "vâng"
+    ],
+)
+def test_english_attendance_agreement(question: QuestionId, text: str) -> None:
+    field = extract_agreement(text, question)
+    assert field.value is Agreement.AGREE and field.found
+
+
+@pytest.mark.parametrize("question", [CONFIRM, QuestionId.ASK_ATTENDANCE])
+@pytest.mark.parametrize(
+    "text", ["No, I can't make it", "No", "I'm not coming", "I won't be there"]
+)
+def test_english_refusal(question: QuestionId, text: str) -> None:
+    assert extract_agreement(text, question).value is Agreement.REFUSE
+
+
+@pytest.mark.parametrize("question", [CONFIRM, QuestionId.ASK_ATTENDANCE])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Yes but I can't",  # mâu thuẫn
+        "Yes, I'll be there, no wait",
+        "Maybe I'll be there",  # phân vân
+        "I think so",
+        "I'll be there on the 15th",  # còn từ ngoài bảng: hỏi lại như tiếng Việt
+        "Yes?",
+        "thank you",
+        "toi den no",  # tiếng Việt mất dấu: "no" là "nó", không phải từ chối
+    ],
+)
+def test_unclear_english_answers_never_agree(question: QuestionId, text: str) -> None:
+    assert extract_agreement(text, question).value is Agreement.UNCLEAR
+
+
+def test_english_at_the_slot_readback() -> None:
+    assert extract_agreement("yes", SLOT).value is Agreement.AGREE
+    assert extract_agreement("Yes that works", SLOT).value is Agreement.AGREE
+    assert extract_agreement("No", SLOT).value is Agreement.REFUSE
+    # Lời sẽ đến chỉ có nghĩa ở câu hỏi đến khám
+    assert extract_agreement("I'll be there", SLOT).value is Agreement.UNCLEAR
+    # "nốt" mất dấu không phải "not"
+    assert extract_agreement("nghe not", SLOT).value is Agreement.UNCLEAR
+
+
+@pytest.mark.parametrize("text", ["yes", "Yes, cancel it", "Sure, go ahead"])
+def test_english_never_confirms_a_cancel(text: str) -> None:
+    """SF-05: xác nhận hủy vẫn cần động từ "hủy"; chưa có đường tiếng Anh."""
+    assert extract_agreement(text, CANCEL).value is not Agreement.AGREE
+
+
+@pytest.mark.parametrize(
+    "text", ["No, I can't make it", "I won't be there", "Yes but I can't", "yes, no wait"]
+)
+def test_english_negation_vetoes_a_model_agree(text: str) -> None:
+    assert confirmation_veto(text)
+
+
+@pytest.mark.parametrize("text", ["Yes, I'll be there", "toi den no", "nghe not", "Le Van No"])
+def test_no_english_veto_without_an_english_negation(text: str) -> None:
+    assert not confirmation_veto(text)

@@ -984,8 +984,8 @@ def test_review_questions_never_cancel_whatever_the_model_says(variant: str, ans
 
 def test_a_clear_confirmation_outside_the_settled_set_still_cancels_with_the_model_on() -> None:
     """Không hạ mọi CANCEL_UNRESOLVED: câu hủy rõ ngoài tập toàn câu vẫn ghi khi model đồng ý."""
-    line = "Dạ hủy luôn em ạ"
-    semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.CONFIRM_ACTION, "hủy luôn")})
+    line = "Hủy đi, cảm ơn em"
+    semantic = FakeSemantic({line.lower(): SemanticOutcome(ReplyKind.CONFIRM_ACTION, "hủy đi")})
     bot, clinic = _requesting_with(semantic, "c_sf05_clear")
     action = _run(bot, "c_sf05_clear", [line], start=4)
     assert len(semantic.seen) == 1
@@ -993,7 +993,7 @@ def test_a_clear_confirmation_outside_the_settled_set_still_cancels_with_the_mod
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
 
-@pytest.mark.parametrize("line", ["Dạ hủy luôn em ạ", "Có, hủy đi"])
+@pytest.mark.parametrize("line", ["Hủy đi, cảm ơn em", "Dạ hủy luôn em ạ, cảm ơn em"])
 @pytest.mark.parametrize("semantic", [None, BrokenSemantic()], ids=["off", "exception"])
 def test_a_clear_confirmation_outside_the_settled_set_cancels_without_the_model(
     semantic, line: str
@@ -1004,6 +1004,22 @@ def test_a_clear_confirmation_outside_the_settled_set_cancels_without_the_model(
         assert action.utterance == t.CANCEL_CONFLICT and clinic.writes == []
         assert _context(bot, "c_sf05_clear_off").failed_understandings == 1
         return
+    assert action.outcome == "CANCELLED"
+    assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
+
+
+@pytest.mark.parametrize(
+    "line", ["Vâng, tôi xác nhận hủy", "Dạ hủy luôn em ạ", "Có, hủy đi", "Chắc chắn hủy ạ"]
+)
+def test_a_confirmation_in_the_closed_cancel_grammar_cancels_without_asking_the_model(
+    line: str,
+) -> None:
+    """QC qc-cn-08 (12/10/2026): câu xác nhận hủy chỉ có lời đáp / tiểu từ quanh động từ hủy không gọi
+    model, nên model chậm hay lỗi không làm mất lượt; luật vẫn là ngưỡng duy nhất (SF-05)."""
+    semantic = BrokenSemantic()
+    bot, clinic = _requesting_with(semantic, "c_sf05_settled")
+    action = _run(bot, "c_sf05_settled", [line], start=4)
+    assert semantic.calls == 0
     assert action.outcome == "CANCELLED"
     assert clinic.writes == [_cancelled("apt_00417", "UNSPECIFIED")]
 
@@ -1412,6 +1428,26 @@ def test_qc_cn_08_front_loaded_cancel_is_cancelled_in_two_turns() -> None:
     assert (asked.state, asked.utterance) == ("AWAITING_CONFIRMATION", CANCEL_READBACK)
     assert clinic.writes == []
     done = _run(bot, "c_qc_cn_08", ["Vâng, tôi xác nhận hủy"], start=2)
+    assert done.outcome == "CANCELLED"
+    assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
+
+
+def test_qc_cn_08_is_cancelled_in_two_turns_even_when_the_model_times_out() -> None:
+    """Lần chạy QC 12/10/2026: lượt "Vâng, tôi xác nhận hủy" chạm trần 3 s (Jev), khóa lỗi model xóa
+    AGREE của luật và bot hỏi lại — hết ngân sách 4 lượt. Câu này thuộc ngữ pháp đóng: không gọi model."""
+    gateway = _TimeoutGateway()
+    semantic = LLMSemanticExtractor(gateway, max_input_chars=1500, max_completion_tokens=400)
+    bot, clinic = _outbound_call("c_qc_cn_08_timeout")
+    bot._extractor._semantic = semantic
+    _run(
+        bot,
+        "c_qc_cn_08_timeout",
+        [
+            "Alo, tôi là Nguyễn Văn A, sinh 14/3/1978, gọi để hủy lịch khám vì tuần đó tôi đi công tác"
+        ],
+    )
+    done = _run(bot, "c_qc_cn_08_timeout", ["Vâng, tôi xác nhận hủy"], start=2)
+    assert gateway.calls == 0
     assert done.outcome == "CANCELLED"
     assert _cancel_writes(clinic) == [_cancelled("apt_00417", "PATIENT_UNAVAILABLE")]
 

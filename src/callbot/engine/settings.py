@@ -29,8 +29,12 @@ class EngineSettings(YamlSettings):
     semantic_jev_min_noul: float
     semantic_openai_model: str
     # Deadline tổng từ lúc gửi model request tới khi nhận đủ response; httpx vẫn giới hạn từng pha,
-    # connect riêng 1 giây. Một request, không retry model.
+    # connect riêng 1 giây. Một request, không retry model. Áp cho provider LLM (openai); Jev có
+    # `semantic_jev_timeout_s` riêng.
     semantic_fallback_timeout_s: float
+    # Jev: deadline tổng của một request System One. Thấp hơn trần lượt (`MODEL_TIMEOUT_S`, 4 s) để Jev
+    # treo vẫn còn `semantic_backup_min_remaining_s` cho dự phòng (12/10/2026, QC qc-cn-08).
+    semantic_jev_timeout_s: float
     semantic_openai_max_tokens: int
     # Câu dài hơn mức này thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định).
     semantic_fallback_max_input_chars: int
@@ -38,6 +42,16 @@ class EngineSettings(YamlSettings):
     # Mặc định TẮT: tắt thì prompt (semantic_v5), route và merge y hệt trước đây. Chỉ bật khi đạt
     # điều kiện §7 của plan (test đối kháng, 5 repeat model thật không ghi hủy sai, snapshot).
     cancel_semantic_confirm_enabled: bool
+    # Model đọc câu khó ở 4 câu hỏi chọn khung (plan t10-slot-semantic-jev-2026-10-12.md). Mặc định TẮT:
+    # tắt thì router không chạy, hành vi y hệt chỉ-luật. Jev chính (ngưỡng dùng chung semantic_jev_*),
+    # Luna (semantic_openai_model) khi câu không dấu hoặc Jev lỗi dịch vụ.
+    slot_semantic_enabled: bool
+    # Trần request Jev ở route chọn khung; quá thì sang Luna nếu lượt còn đủ giờ
+    slot_semantic_jev_timeout_s: float
+    # Trần request Luna ở route chọn khung
+    slot_semantic_luna_timeout_s: float
+    # Trần cả lượt của route chọn khung (gồm đường dự phòng); vẫn dưới 8 s / lượt của contract §4.1.2
+    slot_semantic_budget_s: float
 
     clinic_id: str
 

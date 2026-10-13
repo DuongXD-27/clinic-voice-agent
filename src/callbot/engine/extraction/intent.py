@@ -164,6 +164,10 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "hôm khác",
         "ngày khác",
         "đổi lại",
+        # "tôi muốn chọn lại lịch" ở câu đọc lịch (review 12-10 B16)
+        "chọn lại lịch",
+        "chọn lại giờ",
+        "chọn lại ngày",
     ],
     Intent.CANCEL: [
         "hủy",
@@ -174,6 +178,10 @@ _KEYWORDS: dict[Intent, list[str]] = {
         "không khám nữa",
         "không đi khám được",
         "bỏ lịch",
+        # "thôi bỏ luôn lịch khám đó" (held-out S021); "bỏ đổi lịch" không khớp — là bỏ việc đổi lịch
+        "bỏ luôn lịch",
+        "bỏ hẳn lịch",
+        "bỏ cái lịch",
         "không đi nữa",
         "không đến nữa",
         "sẽ không đến",

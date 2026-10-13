@@ -10,7 +10,8 @@ import pytest
 
 from callbot.engine import CallStart
 from callbot.engine.dialogue import templates as t
-from callbot.engine.extraction.schema import VN_TZ, QuestionId
+from callbot.engine.extraction.schema import VN_TZ, Intent, QuestionId
+from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
 from clinic_mock_sim import FakeClinicAPI
 from tests.engine.test_orchestrator import _context, _inbound, _run, create_orchestrator
 
@@ -614,7 +615,11 @@ def test_time_only_choice_matching_several_slots_off_the_page_reads_at_most_two(
     """Trang vừa đọc không có khung khớp: đọc tối đa 2 khung khớp rồi hỏi lại, không tự chọn."""
     _, bot, _ = _call("c_eval_amb2", "Tôi muốn đổi lịch")
     action = _say(bot, "c_eval_amb2", "2 giờ chiều")
-    assert action.utterance.startswith(t.SLOT_AMBIGUOUS)
+    # Nêu đúng chỗ hai khung khác nhau (review 12-10 B9)
+    assert action.utterance.startswith(
+        "2 giờ chiều em còn thứ Sáu ngày 16 và thứ Ba ngày 20 tháng 10."
+    )
+    assert "chọn ngày nào" in action.utterance
     assert _context(bot, "c_eval_amb2").presented_slot_ids == ["slot_b504", "slot_b508"]
 
 
@@ -829,7 +834,11 @@ def test_corrected_day_when_choosing_among_offered_slots() -> None:
     _, bot, _ = _call("c_r44_pick", "Tôi đổi sang buổi chiều được không?")
     action = _say(bot, "c_r44_pick", "ngày 14 à không 15")
     assert "ngày 14" not in action.utterance
-    assert _context(bot, "c_r44_pick").presented_slot_ids == ["slot_b501", "slot_b502"]
+    # Trang buổi chiều vừa đọc có đúng một khung ngày 15 (15:30): chọn khung đó (review 12-10 B7),
+    # không mời lại khung sáng 15/10 trái với "buổi chiều" khách đã xin
+    ctx = _context(bot, "c_r44_pick")
+    assert ctx.selected_slot_id == "slot_b502"
+    assert "3 giờ 30 chiều, thứ Năm ngày 15 tháng 10" in action.utterance
 
 
 def test_correction_at_readback_is_not_a_refusal_and_later_yes_writes() -> None:
@@ -987,3 +996,35 @@ def test_dropping_the_change_while_still_picking_an_offered_slot_reads_it_back()
     action = _say(bot, "c_khoi", "Thôi khỏi, 3 giờ chiều cũng được")
 
     assert action.outcome != "TRANSFERRED"
+
+
+# --- QC qc-w6-02: trộn tiếng Việt – Anh khi đổi lịch -----------------------------------------------
+
+
+class _ModelReadsCodeSwitchedReschedule:
+    """Jev thật (thử 12/10/2026) đọc "anh muốn change lịch" là CHANGE_INTENT / RESCHEDULE; luật intent
+    không có từ tiếng Anh. Lượt chọn khung không gọi model (không thuộc câu hỏi ngữ nghĩa)."""
+
+    def __init__(self) -> None:
+        self.transcripts: list[str] = []
+
+    def analyze(self, context) -> SemanticOutcome:
+        self.transcripts.append(context.transcript)
+        return SemanticOutcome(
+            ReplyKind.CHANGE_INTENT, intent=Intent.RESCHEDULE, intent_span="anh muốn change lịch"
+        )
+
+
+def test_code_switched_request_then_an_english_clock_pick_reschedules_at_once() -> None:
+    """Nguyên văn qc-w6-02: "Ok, 3pm ngày 14 nhé" chọn rõ khung vừa đọc -> ghi ngay (R-29 v2.1)."""
+    request = "Em ơi anh muốn change lịch, có slot nào khác không?"
+    model = _ModelReadsCodeSwitchedReschedule()
+    clinic, bot, action = _call("c_w6_02", request, semantic=model)
+    assert action.state == "OFFERING_SLOTS" and clinic.writes == []
+    assert _context(bot, "c_w6_02").presented_slot_ids == ["slot_91d2", "slot_b501"]
+
+    action = _say(bot, "c_w6_02", "Ok, 3pm ngày 14 nhé")
+
+    assert action.outcome == "RESCHEDULED"
+    assert clinic.writes == [("apt_00418", "RESCHEDULED", {"new_slot_id": "slot_91d2"})]
+    assert model.transcripts == [request]

@@ -1,10 +1,25 @@
-import type { CallSession } from "../model/callMachine";
-import { FIELD_LABELS, formatValue, highlightSpans } from "../model/format";
+import type { ReactNode } from "react";
+
+import { Badge } from "../../../components/ui/Badge";
+import type { ExtractionModel, TurnExtraction } from "../model/callMachine";
+import {
+  FIELD_LABELS,
+  formatValue,
+  highlightSpans,
+  MODEL_STATUS,
+  modelProviderLabel,
+} from "../model/format";
 import styles from "./ExtractionPanel.module.css";
 
-/** Câu người gọi (tô sáng cụm đã trích) và bảng trường trích xuất của lượt gần nhất. */
-export function ExtractionPanel({ extraction }: { extraction: CallSession["extraction"] }) {
-  if (!extraction) return <p className={styles.empty}>Chưa có lượt nào.</p>;
+/** Câu người gọi (tô sáng cụm đã trích), model đã đọc câu và bảng trường trích xuất của lượt gần nhất. */
+export function ExtractionPanel({
+  extraction,
+  empty = "Chưa có lượt nào.",
+}: {
+  extraction: TurnExtraction | null;
+  empty?: ReactNode;
+}) {
+  if (!extraction) return <p className={styles.empty}>{empty}</p>;
 
   const { turn, fields } = extraction;
   if (!fields) {
@@ -23,6 +38,7 @@ export function ExtractionPanel({ extraction }: { extraction: CallSession["extra
           segment.marked ? <mark key={index}>{segment.text}</mark> : segment.text,
         )}
       </p>
+      <ModelLine model={fields.model} />
       {fields.fields.length === 0 ? (
         <p className={styles.empty}>Không trích được trường nào từ câu này.</p>
       ) : (
@@ -48,5 +64,25 @@ export function ExtractionPanel({ extraction }: { extraction: CallSession["extra
         </table>
       )}
     </div>
+  );
+}
+
+/** Model nào đọc câu (Jev, OpenAI dự phòng…) hay chỉ luật — trường FALLBACK là do model này. */
+function ModelLine({ model }: { model: ExtractionModel | null }) {
+  if (!model) {
+    return <p className={styles.model}>Model đọc câu: không gọi — chỉ dùng luật.</p>;
+  }
+  const status = model.status ? MODEL_STATUS[model.status] : undefined;
+  return (
+    <p className={styles.model}>
+      Model đọc câu: <strong>{modelProviderLabel(model.provider)}</strong>{" "}
+      <span className={styles.modelName}>{model.name}</span>
+      {model.status && (
+        <Badge tone={status?.tone ?? "neutral"}>{status?.label ?? model.status}</Badge>
+      )}
+      {model.backupFor && (
+        <Badge tone="warning">dự phòng — {modelProviderLabel(model.backupFor)} lỗi</Badge>
+      )}
+    </p>
   );
 }

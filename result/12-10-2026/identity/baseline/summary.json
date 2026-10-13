@@ -1,0 +1,755 @@
+{
+  "evaluation_scope": "identity_extraction",
+  "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
+  "mode": "rules",
+  "fallback_method": null,
+  "models": [],
+  "prompt_versions": [],
+  "cases": 215,
+  "scored_cases": 201,
+  "passed_cases": 118,
+  "failed_cases": 83,
+  "review_cases": 14,
+  "pass_rate": 0.5871,
+  "by_group": {
+    "ambiguous_bare": {
+      "REVIEW": 11
+    },
+    "boundary_review": {
+      "REVIEW": 3
+    },
+    "combined_dob": {
+      "PASS": 4
+    },
+    "contact": {
+      "PASS": 10
+    },
+    "contact_with_name": {
+      "PASS": 2
+    },
+    "contrast_pairs": {
+      "FAIL": 4,
+      "PASS": 6
+    },
+    "correction": {
+      "PASS": 2
+    },
+    "garbage": {
+      "FAIL": 34,
+      "PASS": 2
+    },
+    "garbage_unaccented": {
+      "FAIL": 39,
+      "PASS": 6
+    },
+    "greeting": {
+      "PASS": 4
+    },
+    "greeting_with_name": {
+      "PASS": 3,
+      "FAIL": 1
+    },
+    "listening": {
+      "PASS": 3
+    },
+    "mixed_question": {
+      "PASS": 1
+    },
+    "name_particle_collision": {
+      "FAIL": 2
+    },
+    "names": {
+      "PASS": 11
+    },
+    "normalization": {
+      "PASS": 2
+    },
+    "other_person": {
+      "PASS": 4
+    },
+    "priority": {
+      "PASS": 5
+    },
+    "punctuation_loss": {
+      "PASS": 1
+    },
+    "reported_sentence": {
+      "PASS": 1
+    },
+    "self_intro": {
+      "PASS": 2
+    },
+    "self_intro_variants": {
+      "PASS": 3
+    },
+    "short_names": {
+      "PASS": 13
+    },
+    "state": {
+      "PASS": 1
+    },
+    "suffix_fixed": {
+      "PASS": 7
+    },
+    "suffix_other": {
+      "PASS": 6,
+      "FAIL": 3
+    },
+    "uncertain": {
+      "PASS": 4
+    },
+    "who": {
+      "PASS": 10
+    },
+    "who_variants": {
+      "PASS": 5
+    }
+  },
+  "mismatch_counts": {
+    "name": 83,
+    "intent": 1
+  },
+  "ner_called_cases": 0,
+  "ner_transport_statuses": {},
+  "name_rate_by_group": {
+    "ambiguous_bare": 1.0,
+    "boundary_review": 0.0,
+    "combined_dob": 1.0,
+    "contact": 0.0,
+    "contact_with_name": 1.0,
+    "contrast_pairs": 0.9,
+    "correction": 1.0,
+    "garbage": 0.9444,
+    "garbage_unaccented": 0.8667,
+    "greeting": 0.0,
+    "greeting_with_name": 0.75,
+    "listening": 0.0,
+    "mixed_question": 1.0,
+    "name_particle_collision": 0.0,
+    "names": 1.0,
+    "normalization": 1.0,
+    "other_person": 0.25,
+    "priority": 0.0,
+    "punctuation_loss": 1.0,
+    "reported_sentence": 1.0,
+    "self_intro": 1.0,
+    "self_intro_variants": 1.0,
+    "short_names": 1.0,
+    "state": 0.0,
+    "suffix_fixed": 1.0,
+    "suffix_other": 0.6667,
+    "uncertain": 0.0,
+    "who": 0.0,
+    "who_variants": 0.0
+  },
+  "slot_filling_statuses": {},
+  "slot_filling_elapsed_ms": {
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null,
+    "max": null
+  },
+  "failures": [
+    {
+      "id": "ID035",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A đúng rồi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID036",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A vâng",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID037",
+      "group": "suffix_other",
+      "transcript": "Nguyễn Văn A chứ",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID049",
+      "group": "name_particle_collision",
+      "transcript": "Nguyễn Thị Nha",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID050",
+      "group": "name_particle_collision",
+      "transcript": "Lê Nha",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID100",
+      "group": "greeting_with_name",
+      "transcript": "hello em Nguyễn Văn A",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID101",
+      "group": "garbage",
+      "transcript": "trần nhà",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID102",
+      "group": "garbage",
+      "transcript": "trần nhà dột",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID103",
+      "group": "garbage",
+      "transcript": "hồ sơ",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID104",
+      "group": "garbage",
+      "transcript": "hồ sơ bệnh án",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID106",
+      "group": "garbage",
+      "transcript": "lưu tin nhắn",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID107",
+      "group": "garbage",
+      "transcript": "dương tính",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID108",
+      "group": "garbage",
+      "transcript": "đồng ý nhé",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID109",
+      "group": "garbage",
+      "transcript": "mai bận lắm",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID110",
+      "group": "garbage",
+      "transcript": "mai anh bận",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID111",
+      "group": "garbage",
+      "transcript": "văn phòng",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID112",
+      "group": "garbage",
+      "transcript": "hà nội",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID113",
+      "group": "garbage",
+      "transcript": "từ hôm qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID115",
+      "group": "garbage",
+      "transcript": "lại nữa à",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID116",
+      "group": "garbage",
+      "transcript": "cao quá",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID117",
+      "group": "garbage",
+      "transcript": "trời hôm nay đẹp quá",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID118",
+      "group": "garbage",
+      "transcript": "hôm qua ăn phở",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID119",
+      "group": "garbage",
+      "transcript": "mạng lag quá",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID120",
+      "group": "garbage",
+      "transcript": "đang lái xe",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID121",
+      "group": "garbage",
+      "transcript": "lê la mãi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID123",
+      "group": "garbage",
+      "transcript": "triệu đồng",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID125",
+      "group": "garbage",
+      "transcript": "hoàng hôn đẹp",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID126",
+      "group": "garbage",
+      "transcript": "võ thuật",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID127",
+      "group": "garbage",
+      "transcript": "đinh ốc",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID128",
+      "group": "garbage",
+      "transcript": "ngô nghê",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID129",
+      "group": "garbage",
+      "transcript": "châu âu",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID130",
+      "group": "garbage",
+      "transcript": "quan trọng lắm",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID131",
+      "group": "garbage",
+      "transcript": "tôn trọng nhau",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID132",
+      "group": "garbage",
+      "transcript": "mùa xuân đẹp",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID133",
+      "group": "garbage",
+      "transcript": "hoa hồng đẹp",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID136",
+      "group": "garbage",
+      "transcript": "cao minh thật",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID137",
+      "group": "garbage",
+      "transcript": "vũ công giỏi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID138",
+      "group": "garbage",
+      "transcript": "trần thế gian",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID139",
+      "group": "garbage",
+      "transcript": "lại thu tiền à",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID140",
+      "group": "garbage",
+      "transcript": "từ thị trấn lên",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID141",
+      "group": "garbage_unaccented",
+      "transcript": "cao minh that",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID142",
+      "group": "garbage_unaccented",
+      "transcript": "cao qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID143",
+      "group": "garbage_unaccented",
+      "transcript": "chau au",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID144",
+      "group": "garbage_unaccented",
+      "transcript": "dang lai xe",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID145",
+      "group": "garbage_unaccented",
+      "transcript": "dinh oc",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID146",
+      "group": "garbage_unaccented",
+      "transcript": "dong y nhe",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID147",
+      "group": "garbage_unaccented",
+      "transcript": "duong tinh",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID148",
+      "group": "garbage_unaccented",
+      "transcript": "ha noi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID149",
+      "group": "garbage_unaccented",
+      "transcript": "ho so",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID150",
+      "group": "garbage_unaccented",
+      "transcript": "ho so benh an",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID151",
+      "group": "garbage_unaccented",
+      "transcript": "hoa hong dep",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID152",
+      "group": "garbage_unaccented",
+      "transcript": "hoang hon dep",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID153",
+      "group": "garbage_unaccented",
+      "transcript": "hom qua an pho",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID154",
+      "group": "garbage_unaccented",
+      "transcript": "huynh quang",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID155",
+      "group": "garbage_unaccented",
+      "transcript": "lai nua a",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID156",
+      "group": "garbage_unaccented",
+      "transcript": "lai thu tien a",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID157",
+      "group": "garbage_unaccented",
+      "transcript": "le la mai",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID159",
+      "group": "garbage_unaccented",
+      "transcript": "luu tin nhan",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID160",
+      "group": "garbage_unaccented",
+      "transcript": "mai anh ban",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID161",
+      "group": "garbage_unaccented",
+      "transcript": "mai ban lam",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID162",
+      "group": "garbage_unaccented",
+      "transcript": "mang lag qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID163",
+      "group": "garbage_unaccented",
+      "transcript": "mua xuan dep",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID164",
+      "group": "garbage_unaccented",
+      "transcript": "ngo nghe",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID166",
+      "group": "garbage_unaccented",
+      "transcript": "quan trong lam",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID167",
+      "group": "garbage_unaccented",
+      "transcript": "ton trong nhau",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID169",
+      "group": "garbage_unaccented",
+      "transcript": "tran nha dot",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID170",
+      "group": "garbage_unaccented",
+      "transcript": "tran the gian",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID171",
+      "group": "garbage_unaccented",
+      "transcript": "trieu dong",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID172",
+      "group": "garbage_unaccented",
+      "transcript": "troi hom nay dep qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID173",
+      "group": "garbage_unaccented",
+      "transcript": "tu hom qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID174",
+      "group": "garbage_unaccented",
+      "transcript": "tu thi tran len",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID176",
+      "group": "garbage_unaccented",
+      "transcript": "van phong",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID177",
+      "group": "garbage_unaccented",
+      "transcript": "vo thuat",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID178",
+      "group": "garbage_unaccented",
+      "transcript": "vu cong gioi",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID181",
+      "group": "garbage_unaccented",
+      "transcript": "tu van giup",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID183",
+      "group": "garbage_unaccented",
+      "transcript": "phan van qua",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID184",
+      "group": "garbage_unaccented",
+      "transcript": "do thi lon",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID185",
+      "group": "garbage_unaccented",
+      "transcript": "ho thi biet",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID188",
+      "group": "garbage_unaccented",
+      "transcript": "phan nay",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID206",
+      "group": "contrast_pairs",
+      "transcript": "trịnh trọng quá",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID208",
+      "group": "contrast_pairs",
+      "transcript": "đồng minh thân thiết",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID210",
+      "group": "contrast_pairs",
+      "transcript": "lại thanh toán à",
+      "mismatches": "name;intent",
+      "ner_transport_status": "not_called"
+    },
+    {
+      "id": "ID214",
+      "group": "contrast_pairs",
+      "transcript": "hồ thu hoạch",
+      "mismatches": "name",
+      "ner_transport_status": "not_called"
+    }
+  ],
+  "review_ids": [
+    "ID038",
+    "ID039",
+    "ID040",
+    "ID114",
+    "ID122",
+    "ID124",
+    "ID134",
+    "ID165",
+    "ID179",
+    "ID180",
+    "ID202",
+    "ID203",
+    "ID204",
+    "ID205"
+  ],
+  "source_results": "E:\\VINUNI\\ai-call-center-team1\\callbot-vinmec\\result\\12-10-2026\\identity\\baseline\\results.csv",
+  "results_modified_at": "2026-10-12T19:50:13+07:00",
+  "generated_at": "2026-10-12T19:50:13+07:00"
+}

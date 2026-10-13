@@ -446,7 +446,9 @@ def run_vbee(args):
                 app = create_app(
                     clinic_factory=lambda clinic=clinic: clinic,
                     engine_settings=EngineSettings(
-                        name_fallback_provider="none", semantic_fallback_enabled=False
+                        name_fallback_provider="none",
+                        semantic_fallback_enabled=False,
+                        slot_semantic_enabled=False,
                     ),
                     session_store_factory=make_store,
                     speech_factory=lambda speech=speech: speech,

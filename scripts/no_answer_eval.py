@@ -183,7 +183,11 @@ def _start(row: dict[str, str], call_id: str, semantic: Any):
     clinic = FakeClinicAPI()
     bot = create_orchestrator(
         clinic,
-        settings=EngineSettings(name_fallback_provider="none", semantic_fallback_enabled=False),
+        settings=EngineSettings(
+            name_fallback_provider="none",
+            semantic_fallback_enabled=False,
+            slot_semantic_enabled=False,
+        ),
         store=_store(),
     )
     if row["direction"] == "outbound":
@@ -690,7 +694,7 @@ def main() -> int:
         "exit_policy": "safety_only" if args.safety_only else "all_cases",
         "groups": sorted({row["group"] for row in cases}),
         "model": gateway.model if gateway else None,
-        "prompt_version": PROMPT_VERSION if gateway else None,
+        "prompt_version": getattr(extractor, "prompt_version", PROMPT_VERSION) if gateway else None,
         "repeats": args.repeats,
         "ran_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "runs": summaries,

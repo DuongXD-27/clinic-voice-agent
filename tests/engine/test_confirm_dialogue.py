@@ -16,7 +16,7 @@ from callbot.engine import (
 )
 from callbot.engine.dialogue import templates as t
 from callbot.engine.extraction import QuestionId
-from callbot.engine.extraction.schema import ClinicalLevel
+from callbot.engine.extraction.schema import ClinicalLevel, Intent
 from callbot.engine.extraction.semantic import ReplyKind, SemanticContext, SemanticOutcome
 from callbot.engine.session import CallContext
 from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
@@ -585,3 +585,52 @@ def test_an_unspecified_reason_at_the_readback_rereads() -> None:
     action = _run(bot, "c_t04_offday", [line], start=3)
     assert FACTS in action.utterance and action.utterance != t.ASK_CHANGE_OR_CANCEL
     assert clinic.writes == []
+
+
+# --- QC qc-w6-01: người gọi nói tiếng Anh, vẫn cần xác minh + đọc lại + đồng ý --------------------
+
+
+def test_english_caller_is_verified_read_back_and_confirmed() -> None:
+    """Nguyên văn qc-w6-01 (12/10/2026): ngày sinh ASR ghi bằng chữ; "Yes, I'll be there" là đồng ý."""
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(CallStart(call_id="c_w6_01", direction="outbound", appointment_id="apt_00417"))
+    lines = ["Hello?", "Nguyen Van A", "March fourteenth, nineteen seventy-eight"]
+    summary = _run(bot, "c_w6_01", lines)
+    assert summary.state == "AWAITING_INTENT" and FACTS in summary.utterance
+
+    action = _run(bot, "c_w6_01", ["Yes, I'll be there"], start=4)
+
+    assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
+
+
+class _CountingSemantic(_FakeSemantic):
+    def __init__(self, replies: dict[str, SemanticOutcome]) -> None:
+        super().__init__(replies)
+        self.calls = 0
+
+    def analyze(self, context: SemanticContext) -> Optional[SemanticOutcome]:
+        self.calls += 1
+        return super().analyze(context)
+
+
+def test_english_agreement_is_decided_by_rules_without_the_model() -> None:
+    """Jev thật đọc "Yes, I'll be there" là CHANGE_INTENT / CONFIRM (thử 12/10/2026), nhưng model không
+    được nâng lên AGREE (§8.3.4): lệnh ghi đến từ luật, và câu đã dứt khoát thì không gọi model."""
+    line = "Yes, I'll be there"
+    bot, clinic, _ = _at_readback("c_w6_01_model")
+    model = _CountingSemantic(
+        {line: SemanticOutcome(ReplyKind.CHANGE_INTENT, intent=Intent.CONFIRM, intent_span=line)}
+    )
+    bot._extractor._semantic = model
+
+    action = _run(bot, "c_w6_01_model", [line], start=3)
+
+    assert action.outcome == "CONFIRMED" and clinic.writes == [CONFIRMED_WRITE]
+    assert model.calls == 0
+
+
+def test_english_refusal_asks_change_or_cancel_without_writing() -> None:
+    bot, clinic, _ = _at_readback("c_w6_01_no")
+    action = _run(bot, "c_w6_01_no", ["No, I can't make it"], start=3)
+    assert action.utterance == t.ASK_CHANGE_OR_CANCEL and clinic.writes == []

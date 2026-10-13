@@ -3,7 +3,7 @@
 from typing import Optional
 
 from callbot.engine.extraction.agreement import confirmation_veto, without_fallback_lead
-from callbot.engine.extraction.schema import Agreement, Intent
+from callbot.engine.extraction.schema import Agreement, Intent, Provenance
 from callbot.engine.session.context import CallContext, PendingAction
 from callbot.engine.session.fsm import confirmation_questions, question_offers_slot
 
@@ -70,6 +70,8 @@ def assert_action_confirmed(
         and question.turn == item.turn - 1
         and question.action == action
         and question_offers_slot(ctx, question, slot_id)
+        # Đổi / đặt lịch: model không bao giờ mở khóa ghi (plan Jev C2) — chỉ bằng chứng luật được nhận
+        and not (action in ("RESCHEDULE", "BOOK") and item.provenance == Provenance.FALLBACK.value)
     ]
     code = "SF-05" if action == "CANCEL" else "CONFIRMATION"
     if ctx.business_write_blocked:

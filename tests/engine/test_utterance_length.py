@@ -60,6 +60,7 @@ def rendered() -> dict[str, list[str]]:
         "ATTENDANCE_REREAD": t.attendance_reread,
         "CANCEL_READBACK": t.cancel_readback,
         "KEEP_APPOINTMENT": t.keep_appointment,
+        "CURRENT_TIME_CHOICE": t.current_time_choice,
         "CONFIRMED_DONE": t.confirmed,
     }
     texts = {

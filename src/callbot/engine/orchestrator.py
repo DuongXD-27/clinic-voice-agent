@@ -354,7 +354,9 @@ class CallOrchestrator:
                 dialogue_action=self._trace_dialogue_action(action, _question(ctx)),
                 misunderstanding_count=ctx.failed_understandings,
                 silence_count=ctx.silent_turns,
-                identity_result="MATCH" if ctx.identity_verified else "UNKNOWN",
+                identity_result="MATCH"
+                if ctx.identity_verified
+                else ctx.identity_result or "UNKNOWN",
             )
             core.enrich_ancestor(
                 "TURN", state_after=ctx.state, ended=action.ended, outcome=action.outcome

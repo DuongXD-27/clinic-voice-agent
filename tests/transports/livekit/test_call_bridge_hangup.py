@@ -142,13 +142,13 @@ async def test_core_turn_finishing_after_the_caller_left_is_not_spoken() -> None
     tts = _FakeTTS()
     pipeline = _ListeningPipeline([UserTurnCompleted(text="Nguyễn Văn A", confidence=0.9)])
     bridge = _bridge(orchestrator, pipeline, tts, _FakeAudioSource())
-    handle_turn = orchestrator.handle_turn
+    handle_turn_with_details = orchestrator.handle_turn_with_details
 
     def leave_while_core_runs(call_id, caller):
         bridge._room._handlers["participant_disconnected"](CALLER)
-        return handle_turn(call_id, caller)
+        return handle_turn_with_details(call_id, caller)
 
-    orchestrator.handle_turn = leave_while_core_runs
+    orchestrator.handle_turn_with_details = leave_while_core_runs
 
     await asyncio.wait_for(bridge.run(), timeout=2.0)
 
@@ -167,7 +167,7 @@ async def test_core_refusing_a_turn_after_the_caller_left_is_not_an_error() -> N
         bridge._room._handlers["participant_disconnected"](CALLER)
         raise CallEnded(call_id)
 
-    orchestrator.handle_turn = blocked_by_hangup
+    orchestrator.handle_turn_with_details = blocked_by_hangup
 
     await asyncio.wait_for(bridge.run(), timeout=2.0)
 
@@ -182,7 +182,7 @@ async def test_call_ended_while_the_caller_is_still_there_still_fails_loudly() -
     def ended(call_id, caller):
         raise CallEnded(call_id)
 
-    orchestrator.handle_turn = ended
+    orchestrator.handle_turn_with_details = ended
 
     with pytest.raises(CallEnded):
         await asyncio.wait_for(bridge.run(), timeout=2.0)
@@ -196,13 +196,13 @@ async def test_another_participant_leaving_does_not_end_the_call() -> None:
     pipeline = _ListeningPipeline([UserTurnCompleted(text="vâng", confidence=0.9)])
     tts = _FakeTTS()
     bridge = _bridge(orchestrator, pipeline, tts, _FakeAudioSource())
-    handle_turn = orchestrator.handle_turn
+    handle_turn_with_details = orchestrator.handle_turn_with_details
 
     def other_leaves(call_id, caller):
         bridge._room._handlers["participant_disconnected"](SimpleNamespace(identity="someone-else"))
-        return handle_turn(call_id, caller)
+        return handle_turn_with_details(call_id, caller)
 
-    orchestrator.handle_turn = other_leaves
+    orchestrator.handle_turn_with_details = other_leaves
 
     await asyncio.wait_for(bridge.run(), timeout=2.0)
 

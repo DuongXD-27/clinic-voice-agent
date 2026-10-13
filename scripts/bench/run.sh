@@ -6,7 +6,7 @@
 #   bash bench/run.sh truoc                      # profile quick, đủ 3 phần
 #   bash bench/run.sh sau --profile full         # thêm cancel, fallback ElevenLabs, nói chen
 #   bash bench/run.sh sau --parts tts,livekit    # chỉ chạy một số phần
-#   bash bench/run.sh truoc --appointment apt_00426   # lịch hẹn khác cho phần HTTP / LiveKit
+#   bash bench/run.sh truoc --appointment apt_00422   # lịch hẹn khác cho phần HTTP / LiveKit
 #   python3 bench/compare.py bench-results/truoc bench-results/sau > bench-results/so-sanh.md
 #
 # Chỉ ghi vào bench-results/ và /tmp trong container; không đụng .env hay file khác ở /opt/callbot.
@@ -17,7 +17,7 @@ shift
 PROFILE=quick
 PARTS=tts,http,livekit
 DRY=""
-APPOINTMENT=apt_00427
+APPOINTMENT=apt_00423
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --profile) PROFILE="$2"; shift 2 ;;

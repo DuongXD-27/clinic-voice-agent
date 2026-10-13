@@ -1,4 +1,5 @@
-"""R-31: the full model response has one monotonic three-second deadline."""
+"""R-31: the full model response has one monotonic deadline — the configured timeout, capped by the
+hard limit `MODEL_CALL_HARD_LIMIT_S` (4 s since 12/10/2026). These cases configure 3 s explicitly."""
 
 import gzip
 import json
@@ -11,7 +12,11 @@ import pytest
 from callbot.tracing.context import Tracer
 from callbot.tracing.generation import finish_generation, normalized_result
 from callbot.tracing.pseudonym import CallKeyFactory
-from inference.common.transport import TotalRequestTimeout, post_with_total_timeout
+from inference.common.transport import (
+    MODEL_CALL_HARD_LIMIT_S,
+    TotalRequestTimeout,
+    post_with_total_timeout,
+)
 from inference.llm.config import OpenAIConfig
 from inference.llm.gateway import create_gateway
 from inference.llm.providers import _chat_completions
@@ -147,11 +152,16 @@ def test_parse_after_full_response_does_not_trigger_model_timeout(monkeypatch):
 
 
 def test_config_override_cannot_raise_r31_hard_limit(monkeypatch):
+    """Trần cứng `MODEL_CALL_HARD_LIMIT_S` (4 s, owner 12/10/2026): cấu hình 9 s vẫn bị cắt ở đó."""
     clock = FakeClock()
-    gateway, calls = _gateway(monkeypatch, clock, 3.01, budget=9.0)
+    gateway, calls = _gateway(monkeypatch, clock, MODEL_CALL_HARD_LIMIT_S + 0.01, budget=9.0)
     reply = gateway.generate_structured(_MESSAGES, schema=_SCHEMA, schema_name="synthetic")
     assert reply.status == "timeout"
     assert len(calls) == 1
+    gateway, calls = _gateway(monkeypatch, clock, MODEL_CALL_HARD_LIMIT_S - 0.01, budget=9.0)
+    assert gateway.generate_structured(
+        _MESSAGES, schema=_SCHEMA, schema_name="synthetic"
+    ).status == ("completed")
 
 
 def test_late_response_cannot_be_accepted_and_has_no_retry(monkeypatch):

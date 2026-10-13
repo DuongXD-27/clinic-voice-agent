@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../../../components/chat/Conversation";
+import { toExtractionFields, type TurnExtraction } from "../../../lib/api/demoDebug";
 
 /** Topic data channel worker gửi lời thoại (TRANSCRIPT_TOPIC trong call_bridge.py). */
 export const TRANSCRIPT_TOPIC = "callbot.transcript";
@@ -16,6 +17,11 @@ export interface TranscriptLine {
   state: string | null;
   ended: boolean;
   outcome: string | null;
+  /**
+   * Chỉ ở câu bot của lượt ≥ 1, khi worker bật `demo_debug` (config/livekit.yaml): trích xuất của
+   * lượt, gửi cùng gói với câu bot. Không có = worker không gửi; "invalid" = gửi sai dạng.
+   */
+  extraction?: TurnExtraction | "invalid";
 }
 
 const decoder = new TextDecoder();
@@ -32,7 +38,7 @@ export function parseTranscript(payload: Uint8Array): TranscriptLine | null {
   ) {
     return null;
   }
-  return {
+  const line: TranscriptLine = {
     role,
     turn,
     text,
@@ -41,6 +47,16 @@ export function parseTranscript(payload: Uint8Array): TranscriptLine | null {
     ended: data.ended === true,
     outcome: typeof data.outcome === "string" ? data.outcome : null,
   };
+  if (role === "bot" && "extraction" in data)
+    line.extraction = readExtraction(turn, data.extraction);
+  return line;
+}
+
+/** `extraction_view` (extraction_view.py); null = lượt không qua bước trích xuất (vd. lượt replay). */
+function readExtraction(turn: number, raw: unknown): TurnExtraction | "invalid" {
+  if (raw === null) return { turn, fields: null };
+  const fields = toExtractionFields(raw);
+  return fields ? { turn, fields } : "invalid";
 }
 
 /** Thông báo lỗi trên STATUS_TOPIC (`{code, message}`); sai dạng thì bỏ qua. */
