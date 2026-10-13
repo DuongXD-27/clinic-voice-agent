@@ -283,3 +283,53 @@ async def test_barge_in_is_not_a_tts_error() -> None:
     await bridge._speak("một câu bị ngắt lời")  # không ném TTSPlaybackError
 
     assert orchestrator.tts_errors == []
+
+
+async def test_tts_failure_is_logged_with_its_location_but_not_the_provider_message(
+    caplog,
+) -> None:
+    """`_speak` bắt mọi lỗi thành TTS lỗi; log phải chỉ được chỗ hỏng (để phân biệt bug code với
+    provider lỗi) nhưng không chép message gốc (token, text câu nói)."""
+    orchestrator = _RecoveringOrchestrator(OPENING, turn_actions=[])
+    bridge, _source = _bridge(orchestrator, _BrokenTTS(fail_before_audio=[OPENING.utterance]))
+
+    with caplog.at_level("ERROR", logger="callbot.transports.livekit.call_bridge"):
+        await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    (failed,) = [r for r in caplog.records if "TTS stream failed" in r.getMessage()]
+    assert "RuntimeError" in failed.getMessage()
+    assert "test_call_bridge_tts_recovery.py" in failed.getMessage()  # vị trí synthesize_stream
+    assert all("secret" not in record.getMessage() for record in caplog.records)
+    assert all(record.exc_info is None for record in caplog.records)
+
+
+async def test_core_failure_is_logged_with_its_location(caplog) -> None:
+    orchestrator = _RecoveringOrchestrator(
+        OPENING, turn_actions=[], error=TimeoutError("lock call=secret")
+    )
+    bridge, _source = _bridge(orchestrator, _BrokenTTS(fail_before_audio=[OPENING.utterance]))
+
+    with caplog.at_level("ERROR", logger="callbot.transports.livekit.call_bridge"):
+        await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    (failed,) = [r for r in caplog.records if "Core không xử lý được lỗi TTS" in r.getMessage()]
+    assert "TimeoutError" in failed.getMessage()
+    assert "test_call_bridge_tts_recovery.py" in failed.getMessage()
+    assert all("secret" not in record.getMessage() for record in caplog.records)
+
+
+async def test_recorded_audio_failing_to_load_still_hands_off(monkeypatch) -> None:
+    """Đọc/resample asset ném lỗi bất ngờ: như thiếu audio, vẫn gửi HANDOFF_REQUESTED."""
+
+    def broken(text, rate):
+        raise OSError("disk")
+
+    monkeypatch.setattr("callbot.transports.livekit.call_bridge.fixed_utterance_pcm", broken)
+    orchestrator = _RecoveringOrchestrator(OPENING, turn_actions=[])
+    bridge, source = _bridge(orchestrator, _BrokenTTS(fail_before_audio=[OPENING.utterance]))
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    assert source.captured_frames == []
+    assert [status["code"] for status in _status(bridge)] == ["HANDOFF_REQUESTED"]
+    assert orchestrator.closed_calls == [ROOM]

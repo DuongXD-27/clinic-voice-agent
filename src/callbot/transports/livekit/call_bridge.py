@@ -42,6 +42,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _error_locations(exc: BaseException) -> str:
+    """Vị trí các frame của lỗi, để log khi không được format traceback: message và source line có
+    thể chứa PII (text câu nói, tên khách) hoặc token của provider."""
+    return " -> ".join(
+        f"{frame.filename}:{frame.lineno}" for frame in traceback.extract_tb(exc.__traceback__)
+    )
+
+
 _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
@@ -476,15 +485,11 @@ class CallBridge:
         except BaseException as exc:
             self._pipeline_error = exc
             # Chỉ log vị trí frame, không format traceback (message/source có thể chứa PII).
-            locations = " -> ".join(
-                f"{frame.filename}:{frame.lineno}"
-                for frame in traceback.extract_tb(exc.__traceback__)
-            )
             logger.error(
                 "call_bridge: voice pipeline failed room=%s error=%s locations=%s",
                 self._room.name,
                 type(exc).__name__,
-                locations,
+                _error_locations(exc),
             )
         finally:
             await self._put_turn_done()
@@ -728,9 +733,17 @@ class CallBridge:
             if not interrupted:
                 raise
         except Exception as exc:
-            # Provider chính lỗi trước chunk đầu và không có / cũng hỏng dự phòng (R-39)
+            # Provider chính lỗi trước chunk đầu và không có / cũng hỏng dự phòng (R-39). Cũng bắt
+            # cả lỗi phía phát (capture_frame...), nên log vị trí lỗi: không có dòng này thì bug
+            # code trên production chỉ hiện ra như "TTS lỗi, chuyển máy".
             if not self._stopped():
                 failure = type(exc).__name__
+                logger.error(
+                    "call_bridge: TTS stream failed room=%s error=%s locations=%s",
+                    self._room.name,
+                    failure,
+                    _error_locations(exc),
+                )
         finally:
             interrupted = interrupted or self._stopped()
             actual = getattr(self._tts, "last_stream_result", None)
@@ -828,9 +841,10 @@ class CallBridge:
             except Exception as exc:
                 # Không biết Clinic đã ghi gì: vẫn chuyển nhân viên, kèm cờ cần đối soát
                 logger.error(
-                    "call_bridge: Core không xử lý được lỗi TTS room=%s: %s",
+                    "call_bridge: Core không xử lý được lỗi TTS room=%s error=%s locations=%s",
                     self._room.name,
                     type(exc).__name__,
+                    _error_locations(exc),
                 )
                 recovery = TTSRecovery(TRANSFER, reconciliation_required=True)
             if self._hangup is not None:
@@ -862,7 +876,17 @@ class CallBridge:
             root.event("tts.fallback_played", played=False, decision_reason="NO_AUDIO_TRACK")
             return
         sample_rate = self._tts.stream_sample_rate
-        pcm = await asyncio.to_thread(fixed_utterance_pcm, text, sample_rate)
+        try:
+            pcm = await asyncio.to_thread(fixed_utterance_pcm, text, sample_rate)
+        except Exception as exc:
+            # Đọc/resample asset lỗi bất ngờ: coi như thiếu audio, không được bỏ bước chuyển máy
+            logger.error(
+                "call_bridge: không đọc được câu ghi sẵn room=%s error=%s locations=%s",
+                self._room.name,
+                type(exc).__name__,
+                _error_locations(exc),
+            )
+            pcm = None
         if pcm is None:
             root.event(
                 "tts.fallback_played", played=False, decision_reason="TTS_FALLBACK_AUDIO_MISSING"

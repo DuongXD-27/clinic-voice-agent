@@ -7,12 +7,15 @@ câu gần giống.
 """
 
 import logging
-from functools import lru_cache
 
 from speech.audio.codec import resample
 from speech.tts.static_cache import StaticCacheSettings, load_release
 
 logger = logging.getLogger(__name__)
+
+# PCM đã resample theo (câu, tần số track). Thực tế chỉ có câu TRANSFER x vài tần số track.
+_MAX_LOADED = 8
+_loaded: dict[tuple[str, int], bytes] = {}
 
 
 def fixed_utterance_pcm(
@@ -25,12 +28,15 @@ def fixed_utterance_pcm(
     """
     if settings is not None:
         return _load(text, track_rate, settings)
-    return _load_default(text, track_rate)
-
-
-@lru_cache(maxsize=8)
-def _load_default(text: str, track_rate: int) -> bytes | None:
-    return _load(text, track_rate, StaticCacheSettings())
+    key = (text, track_rate)
+    pcm = _loaded.get(key)
+    if pcm is None:
+        pcm = _load(text, track_rate, StaticCacheSettings())
+        # Chỉ giữ bản đọc được: lúc thiếu asset (vd. manifest chưa có/chưa mount khi prewarm) thì
+        # lần TTS lỗi sau đọc lại, không để cả process mất câu chuyển máy tới khi khởi động lại.
+        if pcm is not None and len(_loaded) < _MAX_LOADED:
+            _loaded[key] = pcm
+    return pcm
 
 
 def _load(text: str, track_rate: int, settings: StaticCacheSettings) -> bytes | None:
