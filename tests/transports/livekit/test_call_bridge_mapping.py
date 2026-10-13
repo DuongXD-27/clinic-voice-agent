@@ -11,6 +11,7 @@ require_livekit()
 from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
 
 from callbot.engine.errors import OutboundStartFailed  # noqa: E402
+from callbot.engine.session.manager import TurnRun  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     TRANSCRIPT_TOPIC,
@@ -43,9 +44,9 @@ def test_call_start_from_room_uses_room_name_as_call_id() -> None:
 
 def test_call_start_from_room_passes_through_caller_number() -> None:
     """caller_number giả lập (từ participant attribute, xem worker.py) phải đi thẳng
-    vào CallStart — nếu None thì engine đi nhánh NO_PHONE và transfer ngay lượt đầu
-    (đúng chính sách), đây chính là bug thật đã gặp: demo luôn None nên luôn transfer
-    ngay dù user chưa kịp nói gì."""
+    vào CallStart — nếu None thì engine hỏi tên, ngày sinh rồi số điện thoại đã đăng ký
+    (ASK_PHONE) thay vì tra theo số gọi đến; trước đây None là transfer ngay lượt đầu, và
+    bug thật đã gặp là demo luôn None nên luôn transfer dù user chưa kịp nói gì."""
     call_start = call_start_from_room("web-abc123", "web-participant-1", caller_number="0912345600")
 
     assert call_start == CallStart(
@@ -96,9 +97,15 @@ def test_mapping_empty_completed_turn_is_not_silence():
 
 
 class _FakeOrchestrator:
-    def __init__(self, opening: BotAction, turn_actions: list[BotAction]) -> None:
+    def __init__(
+        self,
+        opening: BotAction,
+        turn_actions: list[BotAction],
+        extractions: list[dict | None] | None = None,
+    ) -> None:
         self._opening = opening
         self._turn_actions = turn_actions
+        self._extractions = extractions or []
         self.started_calls: list[CallStart] = []
         self.handled_turns: list[tuple[str, CallerInput]] = []
 
@@ -106,9 +113,11 @@ class _FakeOrchestrator:
         self.started_calls.append(call)
         return self._opening
 
-    def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
+    def handle_turn_with_details(self, call_id: str, caller: CallerInput) -> TurnRun:
         self.handled_turns.append((call_id, caller))
-        return self._turn_actions[len(self.handled_turns) - 1]
+        index = len(self.handled_turns) - 1
+        extraction = self._extractions[index] if index < len(self._extractions) else None
+        return TurnRun(self._turn_actions[index], replayed=False, extraction=extraction)
 
 
 class _FakeSTTPipeline:
@@ -286,10 +295,26 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
     """Trang /ui/livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
-    kèm độ tin cậy ASR, câu bot kèm state/outcome — theo đúng thứ tự, trước khi phát audio."""
+    kèm độ tin cậy ASR, câu bot kèm state/outcome và (demo_debug) trích xuất của lượt trong
+    cùng một gói — theo đúng thứ tự, trước khi phát audio."""
     opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
     closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
-    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
+    extraction = {
+        "turn": 1,
+        "question_id": "ASK_NAME",
+        "transcript": "tôi là An",
+        "silent": False,
+        "full_name": {"value": "An", "provenance": "FALLBACK", "span": "An"},
+        "intent": {"value": "NONE", "provenance": "NONE", "span": None},
+        "name_identity": {"status": "MATCHED", "value": "An", "span": "An"},
+        "model_status": "OK",
+        "model_provider": "openai",
+        "model_name": "gpt-6-luna",
+        "model_backup_for": "typesafe",
+    }
+    orchestrator = _FakeOrchestrator(
+        opening=opening, turn_actions=[closing], extractions=[extraction]
+    )
     stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
     room = _FakeRoom("web-transcript-room")
     bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
@@ -328,8 +353,49 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
             "state": "ENDED",
             "ended": True,
             "outcome": "TRANSFERRED",
+            "extraction": {
+                "transcript": "tôi là An",
+                "silent": False,
+                "fields": [
+                    {"field": "full_name", "value": "An", "span": "An", "provenance": "FALLBACK"}
+                ],
+                "model": {
+                    "provider": "openai",
+                    "name": "gpt-6-luna",
+                    "status": "OK",
+                    "backup_for": "typesafe",
+                },
+            },
         },
     ]
+
+
+async def test_extraction_is_not_published_without_demo_debug(monkeypatch) -> None:
+    """Trích xuất có PII (tên, ngày sinh): cuộc gọi thật (demo_debug tắt) chỉ nhận lời thoại."""
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    extraction = {
+        "transcript": "tôi là An",
+        "silent": False,
+        "full_name": {"value": "An", "provenance": "FALLBACK", "span": "An"},
+    }
+    orchestrator = _FakeOrchestrator(
+        opening=opening, turn_actions=[closing], extractions=[extraction]
+    )
+    stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
+    room = _FakeRoom("sip-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS(), demo_debug=False)
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    payloads = [payload for payload, _, _ in room.local_participant.data]
+    assert [payload["type"] for payload in payloads] == ["transcript"] * 3
+    assert all("extraction" not in payload for payload in payloads)
 
 
 async def test_transcript_publish_failure_does_not_break_call(monkeypatch, caplog) -> None:

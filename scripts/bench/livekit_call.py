@@ -487,7 +487,7 @@ def main() -> int:
     parser.add_argument(
         "--base-url", default="http://localhost:8000", help="nơi xin token /livekit/token"
     )
-    parser.add_argument("--appointment", default="apt_00427")
+    parser.add_argument("--appointment", default="apt_00423")
     source = parser.add_mutually_exclusive_group()
     source.add_argument("--say", action="append", default=None)
     source.add_argument("--wav", action="append", help="WAV người gọi; lặp flag cho mỗi lượt")

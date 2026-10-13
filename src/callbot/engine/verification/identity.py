@@ -1,7 +1,9 @@
 """Identity Verifier — hai pha theo luồng nghiệp vụ (`Luồng nghiệp vụ Callbot.pdf`).
 
 Pha 1 `prepare(ctx)` — lượt 0, lần DUY NHẤT Verifier đi qua Clinic Gateway:
-  inbound  : chuẩn hóa số gọi đến -> GET /patients?phone= (đủ trang) -> giữ MỌI ứng viên
+  inbound  : chuẩn hóa số gọi đến -> GET /patients?phone= (đủ trang) -> giữ MỌI ứng viên.
+             Không có `caller_number` -> chưa tra cứu (`AWAITING_PHONE`): Dialogue hỏi tên, ngày sinh
+             rồi số điện thoại đã đăng ký, gọi `lookup_spoken_phone` — cùng bước tra cứu, khác nguồn số.
   outbound : GET /appointments/{id} -> giữ họ tên chuẩn + ngày sinh chuẩn của bệnh nhân lịch hẹn
   Kết quả ghi vào `ctx.identity_lookup` / `ctx.identity_reference` ("dữ liệu chuẩn nội bộ", §4.2.2).
 Pha 2 `verify(ctx)` — sau khi có `claimed_name` + `claimed_dob`: chỉ đọc `ctx.identity_reference`,
@@ -33,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 class LookupStatus(str, Enum):
     LOADED = "LOADED"  # có dữ liệu chuẩn để đối chiếu
-    NO_PHONE = "NO_PHONE"  # inbound: không có / không chuẩn hóa được caller_number
+    # inbound không có caller_number: chưa tra cứu, chờ người gọi đọc số đã đăng ký (sau tên + ngày sinh)
+    AWAITING_PHONE = "AWAITING_PHONE"
+    NO_PHONE = "NO_PHONE"  # inbound: số gọi đến / số người gọi đọc không chuẩn hóa được
     NO_CANDIDATES = "NO_CANDIDATES"  # inbound: GET /patients rỗng — gồm khách chưa đăng ký
     UNAVAILABLE = "UNAVAILABLE"  # Gateway lỗi (404 appointment, mock lỗi, timeout)
 
@@ -84,9 +88,10 @@ class MatchDetail(str, Enum):
 # Sai một yếu tố "gần" hơn sai cả hai — chỉ để chọn detail đại diện khi 0 khớp
 _MISMATCH_RANK = {
     MatchDetail.DOB_MISMATCH: 0,
-    MatchDetail.NAME_MISMATCH: 1,
-    MatchDetail.BOTH_MISMATCH: 2,
-    MatchDetail.RECORD_UNVERIFIABLE: 3,
+    MatchDetail.NAME_SUSPICIOUS: 1,
+    MatchDetail.NAME_MISMATCH: 2,
+    MatchDetail.BOTH_MISMATCH: 3,
+    MatchDetail.RECORD_UNVERIFIABLE: 4,
 }
 
 
@@ -178,31 +183,6 @@ class IdentityVerifier:
     def __init__(self, gateway: ClinicGateway) -> None:
         self._gateway = gateway
 
-    def compare_name(self, ctx: CallContext, value: str) -> NameMatch:
-        candidates = [
-            match_name(value, ref["full_name"])
-            for ref in ctx.identity_reference
-            if ref.get("verifiable") and ref.get("full_name")
-        ]
-        if NameMatch.MATCH in candidates:
-            return NameMatch.MATCH
-        if NameMatch.SUSPICIOUS in candidates:
-            return NameMatch.SUSPICIOUS
-        return NameMatch.MISMATCH
-
-    def compare_dob(self, ctx: CallContext, value: date) -> bool:
-        candidates = ctx.identity_reference
-        if ctx.claimed_name is not None:
-            candidates = [
-                ref
-                for ref in candidates
-                if ref.get("full_name")
-                and match_name(ctx.claimed_name, ref["full_name"]) is NameMatch.MATCH
-            ]
-        return any(
-            ref.get("verifiable") and parse_iso_date(ref.get("dob")) == value for ref in candidates
-        )
-
     # --- Pha 1: lượt 0 ---------------------------------------------------------------------
 
     def prepare(self, ctx: CallContext) -> PrepareResult:
@@ -222,10 +202,38 @@ class IdentityVerifier:
         logger.info("%s: tra cứu hồ sơ %s", ctx.call_id, result.to_trace())
         return result
 
+    def lookup_spoken_phone(self, ctx: CallContext, spoken: str) -> PrepareResult:
+        """Inbound không có caller_number: tra hồ sơ theo số người gọi đọc ở ASK_PHONE.
+
+        Cùng bước tra cứu với `prepare` (chỉ khác nguồn số): số chỉ để tìm ứng viên, đối chiếu vẫn là
+        `verify()` trên tên + ngày sinh đã khai. Số không chuẩn hóa được: trả NO_PHONE nhưng giữ
+        `ctx.identity_lookup = "AWAITING_PHONE"` để Dialogue hỏi lại; không gọi mock.
+        """
+        if ctx.identity_lookup != "AWAITING_PHONE":
+            raise ValueError("Chỉ tra theo số người gọi đọc khi chưa có caller_number")
+        if normalize_phone(spoken) is None:
+            return PrepareResult(LookupStatus.NO_PHONE)
+        try:
+            result = self._lookup_inbound(ctx, spoken)
+        except ClinicAPIError as exc:
+            ctx.identity_lookup, ctx.identity_reference = "UNAVAILABLE", []
+            result = PrepareResult(LookupStatus.UNAVAILABLE, error_code=exc.code)
+        logger.info("%s: tra cứu hồ sơ theo số người gọi đọc %s", ctx.call_id, result.to_trace())
+        return result
+
     def _prepare_inbound(self, ctx: CallContext) -> PrepareResult:
-        phone = normalize_phone(ctx.call.caller_number)
+        raw = ctx.call.caller_number
+        if raw is None or not raw.strip():
+            # Harness không gửi số gọi đến: chưa có gì để tra. Dialogue hỏi tên, ngày sinh rồi số điện
+            # thoại đã đăng ký; `lookup_spoken_phone` tra sau. Không phải NO_PHONE (không chuyển máy).
+            ctx.identity_lookup, ctx.identity_reference = "AWAITING_PHONE", []
+            return PrepareResult(LookupStatus.AWAITING_PHONE)
+        return self._lookup_inbound(ctx, raw)
+
+    def _lookup_inbound(self, ctx: CallContext, raw: str) -> PrepareResult:
+        phone = normalize_phone(raw)
         if phone is None:
-            # Không có số / số ngoài dạng mock nhận: không có ứng viên, không gọi mock (tránh 400)
+            # Số ngoài dạng mock nhận: không có ứng viên, không gọi mock (tránh 400)
             ctx.identity_lookup, ctx.identity_reference = "NO_PHONE", []
             return PrepareResult(LookupStatus.NO_PHONE)
         candidates = self._gateway.find_patients_by_phone(phone)

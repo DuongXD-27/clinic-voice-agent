@@ -25,6 +25,12 @@ Lỗi validation của Pydantic giữ dạng mặc định của FastAPI (`422`,
 Console mô phỏng outbound bằng `appointment_id`, chưa thực hiện quay số điện thoại.
 Tra cứu Clinic là điều kiện trước khi mở phiên outbound; lỗi này hiển thị cho người vận hành.
 Inbound đã có người gọi đến nên lỗi tra cứu vẫn theo luồng chuyển nhân viên.
+Inbound nhận `caller_number: null` (Listing 1; harness của mentor gửi null ở mọi case inbound): phiên mở
+bình thường và bot hỏi mở họ tên, ngày sinh như khi có số; chưa có số để tra hồ sơ nên sau ngày sinh bot
+xin số điện thoại đã đăng ký (`ASK_PHONE`), tra `GET /patients?phone=` theo số đó rồi mới đối chiếu
+tên + ngày sinh. Đầu số `0`, `+84` và `84` trần đều nhận. Trước khi có số không gọi Clinic, không ghi gì
+(xem `docs/evidence/inbound-ask-phone-2026-10-13.md`). Inbound có `caller_number` nhưng không ra hồ sơ
+vẫn chuyển máy ở lượt 1. Inbound có `appointment_id` vẫn bị từ chối `422`.
 
 Luồng xử lý trong code: [`calls.py`](../../src/callbot/transports/http/calls.py)
 → `CallOrchestrator.start_call` → `SessionManager.open` →

@@ -127,6 +127,37 @@ ASK_DOB_AGAIN = _static_group(
     "Anh chị đọc lại đủ ngày, tháng, năm sinh giúp em ạ.",
     "Em xin nghe lại ngày, tháng và năm sinh của anh chị ạ.",
 )
+# Inbound không có caller_number (§1.1.9): đã có tên + ngày sinh, xin số điện thoại đã đăng ký để tra
+# hồ sơ. Không nhắc lại tên / ngày sinh đã khai, không nói số đó có hồ sơ hay không (SF-03).
+ASK_PHONE = _static_group(
+    "ASK_PHONE",
+    "Anh chị cho em xin số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
+    "Em xin thêm số điện thoại anh chị đã đăng ký khám để tìm hồ sơ ạ.",
+    "Dạ, anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
+)
+ASK_PHONE_AGAIN = _static_group(
+    "ASK_PHONE_AGAIN",
+    "Em chưa nghe rõ số. Anh chị đọc lại số điện thoại đã đăng ký khám, từng số một giúp em ạ.",
+    "Anh chị đọc lại giúp em số điện thoại đã đăng ký khám, từng số một ạ.",
+    "Dạ, anh chị nhắc lại số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
+)
+ASK_PHONE_VERIFY_SHARED = _static_group(
+    "ASK_PHONE_VERIFY_SHARED",
+    "Để hỗ trợ anh chị, em cần tra hồ sơ trước. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
+    "Em cần tìm hồ sơ trước khi trao đổi thông tin lịch khám. "
+    "Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
+    "Dạ, em sẽ hỗ trợ ngay sau khi tra được hồ sơ. "
+    "Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
+)
+ASK_PHONE_FOR_REQUEST = ASK_PHONE_VERIFY_FIRST = ASK_PHONE_VERIFY_SHARED
+INTRODUCE_AGAIN_ASK_PHONE = _static_group(
+    "INTRODUCE_AGAIN_ASK_PHONE",
+    f"Em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
+    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
+    "Em xin số điện thoại đã đăng ký khám để tra hồ sơ ạ.",
+    f"Anh chị đang nói chuyện với {AI_DISCLOSURE} của Vinmec. "
+    "Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
+)
 ASK_INTENT_INBOUND = _static_group(
     "ASK_INTENT_INBOUND",
     "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",
@@ -186,11 +217,24 @@ BOOKING_ABANDONED = _static_group(
 SLOT_TAKEN = "Khung giờ đó vừa có người đặt. "
 SLOT_NO_MATCH = "Em chưa thấy khung giờ đó. "
 SLOT_AMBIGUOUS = "Có nhiều khung giờ phù hợp. "
+# Trang mơ hồ đọc lại y hệt: hỏi khách chọn khung nào, nêu đúng chỗ hai khung khác nhau (review 12-10 §6.1)
+SLOT_AMBIGUOUS_AGAIN = "Dạ, "
 SLOT_NOT_IN_PAGE = "Em vừa đọc hai khung thôi ạ. "
 SLOT_TWO_AT_A_TIME = "Em đọc hai khung để dễ nhớ ạ. "
+# Khách xin chọn lại ở câu chốt: đọc lại trang vừa chọn (review 12-10 B16)
+SLOT_RECHOOSE = "Dạ, em đọc lại để anh chị chọn ạ. "
 # Miền prefix riêng: không nhận câu DONE_SAFE hoặc hằng tĩnh bất kỳ làm tiền tố.
 SLOT_PREFIXES = frozenset(
-    {"", SLOT_TAKEN, SLOT_NO_MATCH, SLOT_AMBIGUOUS, SLOT_NOT_IN_PAGE, SLOT_TWO_AT_A_TIME}
+    {
+        "",
+        SLOT_TAKEN,
+        SLOT_NO_MATCH,
+        SLOT_AMBIGUOUS,
+        SLOT_AMBIGUOUS_AGAIN,
+        SLOT_NOT_IN_PAGE,
+        SLOT_TWO_AT_A_TIME,
+        SLOT_RECHOOSE,
+    }
 )
 SLOT_ACTIONS = frozenset({"RESCHEDULE", "BOOK"})
 SLOT_INVITES = frozenset({None, *SLOT_ACTIONS})
@@ -255,6 +299,13 @@ ASK_SLOT_PREFERENCE: dict[str, str] = {
     ),
 }
 TRANSFER = static("TRANSFER", "Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.")
+# Xác minh không đạt: nói lý do chuyển máy nhưng không nói yếu tố nào sai (§1.1.2), dùng chung cho
+# không khớp, không có hồ sơ và nhiều hồ sơ cùng khớp (inbound).
+IDENTITY_FAILED_TRANSFER = static(
+    "IDENTITY_FAILED_TRANSFER",
+    "Em chưa xác minh được thông tin của anh chị. "
+    "Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ.",
+)
 # Không để lại chi tiết lịch, không hứa gọi lại khi chưa có scheduler.
 GOODBYE_UNREACHABLE = _static_group(
     "GOODBYE_UNREACHABLE",
@@ -450,6 +501,24 @@ def keep_appointment(ctx: CallContext, appointment: dict[str, Any], *, variant: 
 
 
 @renderer(
+    "CURRENT_TIME_CHOICE",
+    discloses=True,
+    sources={"appointment": "APPOINTMENT"},
+    str_args={"variant": ("v0",)},
+)
+def current_time_choice(
+    ctx: CallContext, appointment: dict[str, Any], *, variant: str = "v0"
+) -> str:
+    """Khách nêu lại giờ lịch đang đổi khi chọn khung: nói rõ đó là lịch hiện tại, hỏi giữ lịch hay chọn
+    giờ khác — không đoán (§1.1.5, review 12-10 B11)."""
+    guardrails.assert_can_disclose(ctx)
+    return (
+        f"Dạ, {speak_datetime(appointment['starts_at'])} là giờ lịch hiện tại của anh chị. "
+        "Anh chị muốn giữ lịch cũ hay chọn giờ khác ạ?"
+    )
+
+
+@renderer(
     "OFFER_SLOTS",
     discloses=True,
     sources={"slots": "SLOTS"},
@@ -474,6 +543,13 @@ def offer_slots(
     """
     guardrails.assert_can_disclose(ctx)
     moments = [to_local(datetime.fromisoformat(slot["starts_at"])) for slot in slots]
+    more = f"Còn {remaining} khung khác. " if remaining > 0 and invite is None else ""
+    if prefix in (SLOT_AMBIGUOUS, SLOT_AMBIGUOUS_AGAIN) and len(moments) == 2:
+        contrast = _contrast(moments[0], moments[1])
+        if prefix == SLOT_AMBIGUOUS_AGAIN:
+            return f"{prefix}anh chị chọn {contrast[1]} hay {contrast[2]} ạ?"
+        if contrast[0]:
+            return f"{contrast[0]} em còn {contrast[1]} và {contrast[2]}. {more}{contrast[3]}"
     options = "; ".join(
         f"khung {index + 1}: "
         + (
@@ -502,8 +578,39 @@ def offer_slots(
             "Anh chị chọn giờ này không ạ?" if len(slots) == 1 else "Anh chị chọn khung nào ạ?"
         )
     full = f"{_full(full_date)} " if full_date is not None else ""
-    more = f"Còn {remaining} khung khác. " if remaining > 0 and invite is None else ""
     return f"{prefix}{full}{lead} {options}. {more}{question}"
+
+
+def _contrast(first: datetime, second: datetime) -> tuple[str, str, str, str]:
+    """(phần chung, khung 1, khung 2, câu hỏi) — nêu đúng chỗ hai khung khác nhau (B9, R-42 c).
+
+    "3 giờ chiều thứ Tư" / "ngày 14" / "ngày 21 tháng 10" / "chọn ngày nào". Phần chung rỗng khi hai khung
+    khác cả ngày lẫn giờ: khi đó đọc đủ từng khung.
+    """
+    if first.date() == second.date():
+        common = _speak_date(first)
+        return (
+            common[0].upper() + common[1:],
+            _speak_time(first),
+            _speak_time(second),
+            ("Anh chị chọn giờ nào ạ?"),
+        )
+    if (first.hour, first.minute) == (second.hour, second.minute):
+        same_weekday = first.weekday() == second.weekday()
+        common = _speak_time(first) + (f" {_WEEKDAYS[first.weekday()]}" if same_weekday else "")
+        days = _day_pair(first, second, with_weekday=not same_weekday)
+        return common, days[0], days[1], "Anh chị chọn ngày nào ạ?"
+    return "", speak_datetime(first.isoformat()), speak_datetime(second.isoformat()), ""
+
+
+def _day_pair(first: date, second: date, *, with_weekday: bool) -> tuple[str, str]:
+    """ "ngày 14" / "ngày 21 tháng 10" — tháng chỉ nói một lần khi hai ngày cùng tháng."""
+
+    def day(moment: date, month: bool) -> str:
+        weekday = f"{_WEEKDAYS[moment.weekday()]} " if with_weekday else ""
+        return f"{weekday}ngày {moment.day}" + (f" tháng {moment.month}" if month else "")
+
+    return day(first, first.month != second.month), day(second, True)
 
 
 def _full(day: date) -> str:

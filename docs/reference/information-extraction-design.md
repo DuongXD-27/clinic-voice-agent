@@ -16,7 +16,7 @@
 |---|---|---|---|
 | 1 | Rủi ro danh tính tập trung ở bộ trích xuất | Rủi ro **chấp nhận nhầm** nằm ở bộ so khớp của Verifier; bộ trích xuất chỉ cần "mù" với hồ sơ | Trích sai mà không thấy hồ sơ gần như luôn dẫn tới *từ chối nhầm* (hướng an toàn) |
 | 2 | So khớp tên 3 tầng: bỏ dấu + gộp phụ âm + Jaro-Winkler | Ngày sinh khớp chính xác là cổng; tên so theo từng từ căn từ cuối, **tên chính không được so mờ** | Tên tiếng Việt khác nhau chủ yếu ở thanh điệu; Jaro-Winkler cộng điểm cho đầu chuỗi, tức là cho *họ* |
-| 3 | "Không chắc chắn → hỏi lại", không giới hạn | Giới hạn số lần thử; ngày sinh trích được mà sai → chuyển máy ngay | Chặn dò ngày sinh; §1.1.1 |
+| 3 | "Không chắc chắn → hỏi lại", không giới hạn | Giới hạn số lần thử; đủ tên + ngày sinh mới đối chiếu một lần, sai → chuyển máy (cập nhật 12/10/2026) | Chặn dò tên / ngày sinh; §1.1.1, §1.1.2 |
 | 4 | Nhánh CLINICAL ưu tiên recall, phủ quyết mọi nhánh | Tách 3 lớp: cấp cứu / hỏi đánh giá lâm sàng / nhắc triệu chứng làm lý do | Chuyển máy nhầm một cuộc đặt lịch là **case fail**, không chỉ "tốn một cuộc gọi" |
 | 5 | Từ đáp lễ phép đứng một mình luôn là UNCLEAR | Ngưỡng đồng ý **theo hành động được mở khóa**; hỏi lại bằng câu lựa chọn A/B | Tránh vòng "vâng → hỏi lại → vâng → chuyển máy" |
 | 6 | LLM chỉ sinh lời thoại là đủ an toàn | Thêm **output guard** cho lời thoại | Lời thoại tự nó gây được SF-02, SF-03, SF-04 |
@@ -432,6 +432,8 @@ Hai chốt chặn ở **tầng luật** (chạy cả khi tắt model, `extractio
 
 **Prompt `semantic_v9_luna`** (06/10/2026) = v8 + nguyên tắc chung, không bám câu cụ thể: (5) phân loại theo quyết định sau cùng — tiếng đệm / ngập ngừng / tự sửa trước một quyết định rõ không làm câu thành `AMBIGUOUS`; hai ý trái ngược đứng cạnh nhau không có lời tự sửa ("không, hủy đi") vẫn là `AMBIGUOUS`; (6) ở `CANCEL_RECONFIRM`, mọi cách nói giữ lịch là `DECLINE_ACTION`; (7) ở `ASK_NAME` / `ASK_DOB`, hỏi / đòi thông tin là `QUESTION`. Ví dụ đi kèm cố ý khác câu QC. v7, v8 giữ nguyên để rollback.
 
+**Prompt `semantic_v10_luna`** (12/10/2026) = đúng nhãn / quy tắc / contract span của v9, viết lại thành một quy trình đọc (clinical → điều người gọi chốt → `reply_kind` → theo câu hỏi → nhãn phụ → span), mỗi chỉ dẫn nói một lần (hướng dẫn GPT-6: prompt gọn, không lặp). Khác biệt cấu trúc: 14 ví dụ nằm **trong system** (mỗi dòng `input -> output`) thay vì cặp user/assistant, nên request chỉ còn hai message. Lý do: prompt caching của GPT-6 chỉ đặt breakpoint ngầm ở cuối developer message đầu và cuối user message cuối, nên với transcript mới v9 chỉ cache được phần system (đo 12/10: 1575/2896 token); v10 cache gần trọn tiền tố. Bốn ví dụ trùng holdout / new của `eval/cancel` thay bằng câu cùng nghĩa; test `test_v10_examples_do_not_repeat_scored_eval_cases` chặn trùng lại. Schema gửi model bỏ docstring và `title` tự sinh (`compact_json_schema`). Provider giữ `temperature=0` cùng `reasoning_effort=none` cho Luna / Sol (API chấp nhận, kiểm 12/10). v9 giữ nguyên để rollback. Số liệu trước / sau: [evidence](../evidence/luna-prompt-v10-2026-10-12.md).
+
 **Kết quả** `SemanticReading` (Structured Outputs, schema đóng): `intent`, `intent_span`, `reply_kind`, `reply_span`, `cancel_reason`, `reason_span`. Không có `outcome`, `appointment_id`, `slot_id`, lời thoại hay trường "được phép ghi". `reply_kind` ∈ {`CONFIRM_ACTION`, `DECLINE_ACTION`, `INFORM_REASON`, `CHANGE_INTENT`, `QUESTION`, `AMBIGUOUS`}.
 
 Span được đối chiếu trên bản **còn dấu câu** (`normalize`), phải liền mạch, không nhận đoạn ghép bằng " + " hay "…".
@@ -467,6 +469,7 @@ Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh g
 | Đang hỏi ngày sinh, `dob == NONE` hoặc `INVALID` | Có |
 | `agreement == UNCLEAR` lần đầu | Không |
 | `agreement == UNCLEAR` lần thứ hai liên tiếp | Có |
+| Cả lượt chỉ là ậm ừ / từ đệm ("Ờ cái... ừ thì... à") — `is_hesitation_only` | Có, ngay lần đầu |
 | `slot_choice == AMBIGUOUS` | Không |
 | `slot_choice == NO_MATCH` | Có |
 | `intent == REPEAT_REQUEST` | Không (lặp lại câu hỏi trước) |
@@ -482,7 +485,7 @@ Bất kỳ lượt nào hiểu được → reset bộ đếm về 0.
 - Người gọi nói rõ không nhớ / không muốn cung cấp (`intent == CANNOT_PROVIDE`, chỉ ở bước danh tính): hỏi lại một lần, lần hai liên tiếp → `IDENTITY_FAILED` — xác minh không thực hiện được (§1.1.1), không phải "không hiểu".
 - Người gọi nói nhu cầu trước khi xác minh ("tôi muốn đặt lịch"): lần đầu không tính (như `UNCLEAR`), hỏi lại tên; nhu cầu không được dùng trước khi xác minh xong.
 - Inbound tra cứu hồ sơ ở lượt 0 không cho dữ liệu (không số / không hồ sơ / Mock lỗi): lượt 0 không hỏi tên, lượt 1 chuyển máy `PATIENT_NOT_FOUND` / `SYSTEM_ERROR`. Outbound không đọc được lịch hợp lệ thì từ chối mở phiên với `503 OUTBOUND_START_FAILED`, không phát lời bot hoặc ghi chuyển máy.
-- Khi đã có đủ cả hai giá trị hợp lệ và Verifier trả `MISMATCH` → **chuyển máy ngay** `IDENTITY_FAILED`. Không hỏi lại, không nói trường nào sai.
+- Chỉ khi đã có đủ cả hai giá trị hợp lệ mới đối chiếu; Verifier trả `MISMATCH` → **chuyển máy ngay** `IDENTITY_FAILED` bằng câu `IDENTITY_FAILED_TRANSFER`. Không hỏi lại, không nói trường nào sai; trước khi đủ hai giá trị không đối chiếu riêng trường nào (12/10/2026).
 - Inbound: không tìm được đúng một hồ sơ khớp → `PATIENT_NOT_FOUND`. Không tạo hồ sơ mới (§1.1.9).
 
 ### 6.3. Chọn transfer_reason

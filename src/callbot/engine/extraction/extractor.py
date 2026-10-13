@@ -8,7 +8,8 @@ Thứ tự trong một lượt:
 2. clinical     — mọi lượt, trước intent.
 3. intent       — ở bước danh tính chỉ chạy nhãn an toàn (xem IDENTITY_SAFE_INTENTS).
 4. dob          — ASK_DOB; và ASK_NAME, vì người gọi hay nói gộp "Nguyễn Văn A, sinh 14/3/1978" (T-02).
-5. full_name    — chỉ ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh.
+5. full_name    — ASK_NAME; câu có ngày sinh thì chỉ trích trên phần đứng trước ngày sinh. ASK_DOB chỉ
+   khi người gọi tự sửa / tự giới thiệu ("à nhầm, tôi là ...", R-44), đọc như ở ASK_NAME.
    Outbound: ý định hủy / đổi lịch nói gộp ("tôi là ..., gọi để hủy lịch") vào `deferred_intent`, tìm
    trên phần NGOÀI tên và ngày sinh — Dialogue chỉ dùng sau khi xác minh xong (QC qc-cn-08, R-43).
    Nhãn dự phòng ở bước danh tính (OUT_OF_SCOPE, ý định nghiệp vụ, CANNOT_PROVIDE) — chỉ khi câu
@@ -52,6 +53,7 @@ from callbot.engine.extraction.fallback import (
 )
 from callbot.engine.extraction.full_name import (
     MIN_WORDS_AFTER_HONORIFIC,
+    introduces_oneself,
     name_after_dob,
     name_before_dob,
     read_full_name,
@@ -59,7 +61,7 @@ from callbot.engine.extraction.full_name import (
 )
 from callbot.engine.extraction.greeting import is_greeting
 from callbot.engine.extraction.honorific import strip_honorific
-from callbot.engine.extraction.identity import Reading, Reason, identity_value
+from callbot.engine.extraction.identity import Reading, Reason, corrects_itself, identity_value
 from callbot.engine.extraction.implied_cancel import implied_cancel
 from callbot.engine.extraction.intent import (
     PRIORITY,
@@ -74,6 +76,7 @@ from callbot.engine.extraction.model_budget import (
     model_used,
     report_model_status,
 )
+from callbot.engine.extraction.phone import extract_phone
 from callbot.engine.extraction.schema import (
     CONFIRMATION_QUESTIONS,
     IDENTITY_QUESTIONS,
@@ -101,6 +104,14 @@ from callbot.engine.extraction.slot_choice import (
     extract_slot_choice,
     proposed_time,
     without_corrected_part,
+)
+from callbot.engine.extraction.slot_semantic import (
+    SLOT_QUESTIONS,
+    SLOT_ROUTE_VALUES,
+    SlotSemanticReader,
+    merge_slot_semantic,
+    route_slot_semantic,
+    slot_semantic_context,
 )
 from callbot.engine.extraction.text import (
     clean,
@@ -309,6 +320,7 @@ class InformationExtractor:
         name_fallback: bool = False,
         semantic: Optional[SemanticExtractor] = None,
         cancel_semantic_confirm: bool = False,
+        slot_semantic: Optional[SlotSemanticReader] = None,
     ) -> None:
         self._fallback = fallback
         # Factory bật slot filling họ tên theo NAME_FALLBACK_PROVIDER; mặc định chỉ dùng luật.
@@ -317,6 +329,9 @@ class InformationExtractor:
         self._semantic = semantic
         # CANCEL_SEMANTIC_CONFIRM_ENABLED (mặc định tắt): cho model đề xuất xác nhận hủy có kiểm chứng
         self._cancel_semantic_confirm = cancel_semantic_confirm
+        # SLOT_SEMANTIC_ENABLED (mặc định tắt): model đọc câu khó ở 4 câu hỏi chọn khung — plan
+        # `t10-slot-semantic-jev-2026-10-12.md` (Jev chính, Luna dự phòng)
+        self._slot_semantic = slot_semantic
 
     def extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
@@ -329,13 +344,24 @@ class InformationExtractor:
                     model=budget.model,
                     latency_ms=budget.latency_ms,
                     model_result=budget.status,
+                    # Provider chính và provider đã trả lời: khác nhau khi dự phòng trả lời thay
+                    provider_requested=budget.backup_for or budget.provider,
+                    provider_actual=budget.provider,
                 )
             if budget.status in {"TIMEOUT", "ERROR", "INVALID"}:
-                result = replace(
-                    result,
-                    intent=Field.nothing(Intent.NONE),
-                    agreement=Field.nothing(Agreement.UNCLEAR),
-                )
+                if result.model_route in SLOT_ROUTE_VALUES or ctx.question_id in SLOT_QUESTIONS:
+                    # Route chọn khung (plan §4.7, C5): giữ kết quả luật, chỉ không để AGREE mở khóa ghi
+                    if result.agreement.value is Agreement.AGREE:
+                        result = replace(
+                            result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
+                        )
+                    result = replace(result, slot_act=None)
+                else:
+                    result = replace(
+                        result,
+                        intent=Field.nothing(Intent.NONE),
+                        agreement=Field.nothing(Agreement.UNCLEAR),
+                    )
             conflict = ctx.question_id in CONFIRMATION_QUESTIONS and conflicting_confirmation(
                 transcript, ctx.question_id
             )
@@ -345,7 +371,14 @@ class InformationExtractor:
                 result = replace(
                     result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
                 )
-            return replace(result, model_status=budget.status, confirmation_conflict=conflict)
+            return replace(
+                result,
+                model_status=budget.status,
+                model_provider=budget.provider,
+                model_name=budget.model if budget.used else None,
+                model_backup_for=budget.backup_for,
+                confirmation_conflict=conflict,
+            )
 
     def _extract(
         self, ctx: TurnContext, transcript: str, *, silence_ms: int = 0
@@ -379,11 +412,18 @@ class InformationExtractor:
 
         full_name: Field[str] = skipped
         name_reading = Reading(Field.nothing(), Reason.NO_SIGNAL)
+        # R-44: ở ASK_DOB người gọi có thể sửa tên đã khai ("à nhầm, tôi là Lê Na"). Chỉ đọc khi có
+        # tín hiệu tự sửa / tự giới thiệu, để câu khác không thành tên đè lên tên đúng; khi đọc thì
+        # đọc như ASK_NAME (luật nới + slot filling) để tên không có họ phổ biến vẫn nhận được.
+        corrects_name = question is QuestionId.ASK_DOB and (
+            corrects_itself(transcript) or introduces_oneself(transcript)
+        )
         if (
-            question is QuestionId.ASK_NAME
+            (question is QuestionId.ASK_NAME or corrects_name)
             and intent.value is Intent.NONE
             and clinical.value not in _TRANSFER_CLINICAL
         ):
+            zone: Optional[str] = transcript
             if dob_reading is not None and dob_reading.zone:
                 # Câu gộp: tên chỉ nằm ngoài vùng ngày, và chỉ được lấy khi ranh giới chắc chắn.
                 # Vùng ngày cũng được nhận khi ngày không hợp lệ ("Nguyễn Văn A, sinh ngày
@@ -392,13 +432,21 @@ class InformationExtractor:
                 zone = name_before_dob(transcript, dob_reading.zone) or name_after_dob(
                     transcript, dob_reading.zone
                 )
-                name_reading = self._full_name(zone, transcript, ctx) if zone else name_reading
-            else:
-                name_reading = self._full_name(transcript, transcript, ctx)
+            if zone:
+                name_reading = self._full_name(zone, transcript, ctx)
             full_name = name_reading.field
 
+        # ASK_PHONE (inbound không có caller_number): chỉ đọc dãy chữ số; tên / ngày sinh đã khai xong.
+        phone: Field[str] = (
+            extract_phone(transcript) if question is QuestionId.ASK_PHONE else skipped
+        )
+
         if (
-            question in IDENTITY_QUESTIONS
+            (
+                question in IDENTITY_QUESTIONS
+                # Đọc được số thì câu là câu trả lời; "tôi muốn đặt lịch" không có số mới xét nhu cầu
+                or (question is QuestionId.ASK_PHONE and not phone.found)
+            )
             and intent.value is Intent.NONE
             and not full_name.found
             # Không có vùng ngày nào được nhận ra: "bảo hiểm có chi trả 80% không" có chữ số nên
@@ -425,6 +473,9 @@ class InformationExtractor:
             slot_choice = extract_slot_choice(
                 slot_request, ctx.slots, ctx.presented_slot_ids, ctx.now
             )
+            if slot_choice.value is not None and slot_choice.value.request is not None:
+                # Câu có loại trừ: yêu cầu thời gian là phần khách muốn, không gồm phần bị loại (B13)
+                slot_request = slot_choice.value.request
 
         agreement: Field[Agreement] = skipped
         # R-44: "9 giờ, à không, 10 giờ" — "không" của lời tự sửa không phải lời từ chối khung (R-41).
@@ -485,6 +536,7 @@ class InformationExtractor:
             deferred_intent=deferred.intent,
             deferred_cancel_reason=deferred.cancel_reason,
             deferred_request=deferred.request,
+            phone=phone,
             slot_request=slot_request,
             name_identity=name_identity,
             dob_identity=(
@@ -494,7 +546,7 @@ class InformationExtractor:
             ),
         )
         if route_reason is None:
-            return result
+            return self._apply_slot_semantic(ctx, result)
         if self._semantic is None or model_used():
             if route_reason in (RouteReason.CLINICAL_UNRESOLVED, RouteReason.INTENT_HEDGED):
                 # Không có model: vẫn hạ trường đang nghi ngờ như khi model lỗi
@@ -506,6 +558,25 @@ class InformationExtractor:
         return _keep_cancel_threshold(
             agreement, merged, ctx, outcome, promotion_enabled=self._cancel_semantic_confirm
         )
+
+    def _apply_slot_semantic(self, ctx: TurnContext, result: ExtractionResult) -> ExtractionResult:
+        """4 câu hỏi chọn khung: model chỉ đọc câu luật không có đường đi chắc (plan §4.1). Một request
+        mỗi lượt; lượt đã gọi model (vd. lâm sàng) thì không gọi nữa (C4)."""
+        if self._slot_semantic is None or model_used():
+            return result
+        route = route_slot_semantic(question_id=ctx.question_id, result=result)
+        if route is None:
+            return result
+        reader = self._slot_semantic
+        context = slot_semantic_context(ctx, result, route)
+        try:
+            reading = invoke_model(
+                reader, lambda: reader.analyze(context), timeout_s=reader.budget_s
+            )
+        except Exception:  # noqa: BLE001 — lỗi tuyến sau không được thành lỗi lượt gọi
+            logger.warning("Tầng chọn khung lỗi, giữ kết quả luật", exc_info=False)
+            reading = None
+        return merge_slot_semantic(result, reading, context, ctx)
 
     def _apply_semantic(
         self,
@@ -539,7 +610,11 @@ class InformationExtractor:
         clinical: Field[ClinicalLevel],
         reason: Optional[Field[CancelReason]],
     ) -> Field[Intent]:
-        identity_step = ctx.question_id in IDENTITY_QUESTIONS
+        # ASK_PHONE cũng là bước trước xác minh: "không chín một hai..." không được thành REFUSE / nhu
+        # cầu, và không hỏi model (chỉ luật)
+        identity_step = (
+            ctx.question_id in IDENTITY_QUESTIONS or ctx.question_id is QuestionId.ASK_PHONE
+        )
         allowed = IDENTITY_SAFE_INTENTS if identity_step else frozenset(PRIORITY)
         result = extract_intent(transcript, ctx.direction, allowed)
         tail = corrected_tail(transcript) if not identity_step else None

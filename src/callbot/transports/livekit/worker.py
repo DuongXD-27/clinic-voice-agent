@@ -155,6 +155,7 @@ async def entrypoint(ctx: JobContext) -> None:
         caller_identity=participant.identity,
         silence_timeout_ms=livekit_settings.silence_timeout_ms,
         krisp_noise_suppression_enabled=livekit_settings.krisp_noise_suppression_enabled,
+        demo_debug=livekit_settings.demo_debug,
     )
     try:
         await bridge.run()

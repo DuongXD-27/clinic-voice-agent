@@ -33,6 +33,9 @@ class QuestionId(str, Enum):
 
     ASK_NAME = "ASK_NAME"
     ASK_DOB = "ASK_DOB"
+    # Inbound không có caller_number: sau tên + ngày sinh, hỏi số điện thoại đã đăng ký để tra hồ sơ
+    # (§1.1.9). Chỉ inbound; outbound đã có hồ sơ từ lịch hẹn.
+    ASK_PHONE = "ASK_PHONE"
     ASK_INTENT = "ASK_INTENT"
     # Outbound: "Anh chị có đến khám được theo lịch này không?" — câu trả lời có/không
     # chỉ dẫn tới CONFIRM_READBACK, không mở khóa lệnh ghi nào.
@@ -79,6 +82,24 @@ class ClinicalLevel(str, Enum):
     ADVICE_REQUEST = "ADVICE_REQUEST"
     MENTION = "MENTION"
     NONE = "NONE"
+
+
+class SlotAct(str, Enum):
+    """Model đọc câu trả lời ở 4 câu hỏi chọn khung (plan `t10-slot-semantic-jev-2026-10-12.md` §4.6).
+
+    Chỉ là chỉ dẫn hỏi lại / đọc câu chốt / tra khung — không nhãn nào mở khóa lệnh ghi.
+    """
+
+    PICK = "PICK"  # chọn khung thứ n của trang vừa đọc -> câu chốt, không ghi thẳng
+    TIME = "TIME"  # nêu thời gian muốn (đoạn trong `slot_request`) -> luật tra / chọn
+    MORE = "MORE"  # nghe khung khác
+    ANY = "ANY"  # để bot chọn
+    REFUSE = "REFUSE"  # không nhận khung vừa đọc
+    KEEP_OLD_UNSURE = "KEEP_OLD_UNSURE"  # có thể muốn giữ lịch cũ -> câu A/B, không đoán
+    CONFIRM = "CONFIRM"  # đồng ý ở câu chốt -> chỉ nhắc nói "đồng ý" (model không mở khóa ghi)
+    CANCEL = "CANCEL"  # chuyển sang hủy, vẫn cần xác nhận lần hai
+    OUT_OF_SCOPE = "OUT_OF_SCOPE"  # Policy chuyển máy
+    UNCLEAR = "UNCLEAR"  # câu hỏi / mơ hồ / chưa quyết -> hỏi lại đúng câu đang chờ
 
 
 class Agreement(str, Enum):
@@ -160,6 +181,11 @@ class SlotChoice:
     kind: SlotChoiceKind
     slot_ids: tuple[str, ...] = ()
     criteria: SlotCriteria = field(default_factory=SlotCriteria)
+    # Câu có loại trừ ("không lấy ngày 14, ngày 15 đi"): khung bị loại (id luật dò trên GET /slots) và đoạn
+    # câu nêu phần khách muốn. Dialogue bỏ các khung bị loại (V-9) và tạo yêu cầu mới từ đoạn muốn, không
+    # đọc lại nguyên câu — nếu không thì mời đúng ngày khách vừa loại (review 12-10 B13).
+    excluded_ids: tuple[str, ...] = ()
+    request: Optional[str] = None
 
     @property
     def slot_id(self) -> Optional[str]:
@@ -237,6 +263,11 @@ class ExtractionResult:
     name_identity: Optional[IdentityValue[str]] = None
     dob_identity: Optional[IdentityValue[date]] = None
     model_status: Optional[str] = None
+    # Model đã đọc lượt này (None: chỉ luật). `model_backup_for`: provider chính đã lỗi dịch vụ, provider
+    # dự phòng `model_provider` trả lời thay (semantic_failover).
+    model_provider: Optional[str] = None
+    model_name: Optional[str] = None
+    model_backup_for: Optional[str] = None
     confirmation_conflict: bool = False
     # Câu đọc lịch mâu thuẫn mà model đọc là nhu cầu đổi / hủy (route NEED_CONFLICT): Dialogue đi nhánh
     # nhu cầu thay vì hỏi lại có/không.
@@ -252,12 +283,19 @@ class ExtractionResult:
     # yêu cầu đã giữ.
     deferred_intent: Field[Intent] = field(default_factory=Field.skipped)
     deferred_cancel_reason: Field[CancelReason] = field(default_factory=Field.skipped)
+    # Chỉ ở ASK_PHONE: dãy chữ số người gọi đọc, Verifier chuẩn hóa rồi tra cứu. Chỉ để tìm ứng viên,
+    # không phải bằng chứng danh tính (§1.1.9); không đưa vào trace (`to_trace`).
+    phone: Field[str] = field(default_factory=Field.skipped)
     # Đổi lịch: lời yêu cầu đã bỏ tên và ngày sinh (tiêu chí thời gian), giữ dấu câu ("20/10", "15:30")
     deferred_request: Optional[str] = None
     # Câu hỏi chọn khung: đoạn câu là câu trả lời về thời gian (vế sau lời bỏ, bỏ vế điều kiện ở đầu), giữ
     # dấu câu. IE tìm khung trên đoạn này và Dialogue tạo yêu cầu mới từ chính đoạn này — một nguồn cho cả
     # hai tầng ("9 giờ thì thôi, cho tôi ngày 16" -> "cho tôi ngày 16"). None ở các câu hỏi khác.
     slot_request: Optional[str] = None
+    # Tầng model của câu chọn khung (plan Jev §4): nhãn model đã qua kiểm, và route đã gọi model ở lượt
+    # này (`RouteReason` / `SlotRouteReason`) để `extract()` / `respond()` phân biệt đường lỗi (§4.7).
+    slot_act: Optional[SlotAct] = None
+    model_route: Optional[str] = None
 
     @property
     def model_failed(self) -> bool:
@@ -313,6 +351,11 @@ class ExtractionResult:
             "name_identity": _identity_to_trace(self.name_identity),
             "dob_identity": _identity_to_trace(self.dob_identity),
             "model_status": self.model_status,
+            "model_provider": self.model_provider,
+            "model_name": self.model_name,
+            "model_backup_for": self.model_backup_for,
+            "slot_act": self.slot_act.value if self.slot_act else None,
+            "model_route": self.model_route,
         }
 
 
@@ -338,7 +381,21 @@ def _jsonable(value: Any) -> Any:
         return value.isoformat()
     if isinstance(value, SlotChoice):
         criteria = {k: _jsonable(v) for k, v in vars(value.criteria).items() if v is not None}
-        return {"kind": value.kind, "slot_ids": list(value.slot_ids), "criteria": criteria}
+        traced = {"kind": value.kind, "slot_ids": list(value.slot_ids), "criteria": criteria}
+        if value.excluded_ids:
+            traced["excluded_ids"] = list(value.excluded_ids)
+        return traced
     if isinstance(value, frozenset):
         return sorted(value)
     return value
+
+
+def compact_json_schema(schema: dict[str, Any], model: type) -> None:
+    """`json_schema_extra` cho model gửi Structured Outputs: bỏ docstring và `title` tự sinh.
+
+    Chúng không thêm ràng buộc (strict đã có `additionalProperties` / `required`) nhưng tốn token
+    mỗi request và đưa ghi chú nội bộ của class vào prompt."""
+    schema.pop("description", None)
+    schema.pop("title", None)
+    for prop in schema.get("properties", {}).values():
+        prop.pop("title", None)

@@ -100,7 +100,7 @@ Gateway hoặc cần hành vi sát mock thật. (`with_mock_fixtures()` là tên
 |---|---|
 | `apt_00417` | 15:30–16:00 |
 | Slot trống `cl_vinmec` | `slot_91d2` 15:00 14/10, cộng 10 slot demo `slot_b501`–`slot_b510` (15–21/10) |
-| Bệnh nhân demo | `pt_3401`–`pt_3410` (SĐT `0901234501`–`0901234510`), mỗi người một lịch `apt_00418`–`apt_00427` SCHEDULED 15–20/10 — giống mock deploy từ 24/09 (clinic-mock `aa8b94e`) |
+| Bệnh nhân demo | `pt_3401`–`pt_3406` (Ngô Huy Hoàn, Nguyễn Duy Hưng, Lê Quang Huy, Nguyễn Thị Thanh Hiền, Nguyễn Tuấn Dương, Phạm Tuấn Việt), mỗi người một lịch `apt_00418`–`apt_00423` SCHEDULED 15–16/10 — giống mock deploy từ 12/10 (clinic-mock `deploy/data/demo_patients.json`) |
 | Bộ per-tenant | patient `p_12345` (`0912345678`), `p_67890` (`0987654321`); slot `s_987`, `s_988` (`c_001`), `s_1024` (`c_002`) ngày 15/09/2026 |
 | `/slots` | **có** lọc cửa sổ `from ≤ start < to` |
 

@@ -89,7 +89,8 @@ def test_request_contract_and_private_telemetry(caplog):
     assert payload["messages"] == build_messages(
         TRANSCRIPT, question_id="ASK_NAME", bot_question=QUESTION
     )
-    assert len(payload["messages"]) == 2 * len(FEW_SHOTS) + 2
+    # v4: ví dụ nằm trong system để GPT-6 cache được cả khối; không còn cặp user/assistant
+    assert [m["role"] for m in payload["messages"]] == ["system", "user"]
     assert json.loads(payload["messages"][-1]["content"]) == {
         "question_id": "ASK_NAME",
         "bot_question": QUESTION,
@@ -99,12 +100,13 @@ def test_request_contract_and_private_telemetry(caplog):
     assert schema["strict"] is True and schema["name"] == PROMPT_VERSION
     assert schema["schema"]["additionalProperties"] is False
     assert set(schema["schema"]["required"]) == {"full_name", "span"}
+    assert "title" not in schema["schema"]  # compact_json_schema: không gửi docstring / title
     record = next(r for r in caplog.records if hasattr(r, "slot_filling_status"))
     assert record.slot_filling_status == "accepted"
     assert record.slot_filling_prompt_tokens == 120
     assert record.slot_filling_completion_tokens == 20
     assert record.slot_filling_elapsed_ms >= 0
-    assert record.slot_filling_prompt_version == PROMPT_VERSION == "name_slot_filling_v3"
+    assert record.slot_filling_prompt_version == PROMPT_VERSION == "name_slot_filling_v4"
     assert record.slot_filling_question_id == "ASK_NAME"
     assert record.slot_filling_has_bot_question is True
     assert not any(hasattr(r, "ner_status") for r in caplog.records)
@@ -341,11 +343,14 @@ def test_ner_name_ending_in_nha_still_requires_record_match(monkeypatch):
 
     bot.start_call(CallStart(call_id="slot-nha", direction="inbound", caller_number="0912345600"))
     run = bot.handle_turn_with_details("slot-nha", CallerInput(turn=1, text=name))
+    assert not run.action.ended  # §1.1.2: đủ tên + ngày sinh mới đối chiếu
+    extraction = run.extraction
+    run = bot.handle_turn_with_details("slot-nha", CallerInput(turn=2, text="14/03/1978"))
 
     assert run.action.outcome == "TRANSFERRED"
     assert run.action.transfer_reason == "PATIENT_NOT_FOUND"
-    assert run.extraction["full_name"]["value"] == "nguyễn văn nha"
-    assert run.extraction["full_name"]["provenance"] == "FALLBACK"
+    assert extraction["full_name"]["value"] == "nguyễn văn nha"
+    assert extraction["full_name"]["provenance"] == "FALLBACK"
 
 
 def test_disabled_provider_does_not_construct_adapter():

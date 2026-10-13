@@ -90,6 +90,7 @@ DEFERRED = frozenset(
         "BOOKING_ABANDONED",
         "OFFER_SLOTS",
         "SLOT_READBACK",
+        "CURRENT_TIME_CHOICE",
         "SLOT_CHOICE",
     }
 )

@@ -20,7 +20,13 @@ from typing import Literal, Optional, Protocol
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from callbot.engine.extraction.model_budget import report_model_status
-from callbot.engine.extraction.schema import Agreement, ClinicalLevel, Intent, QuestionId
+from callbot.engine.extraction.schema import (
+    Agreement,
+    ClinicalLevel,
+    Intent,
+    QuestionId,
+    compact_json_schema,
+)
 from callbot.engine.extraction.text import normalize
 from callbot.engine.types import CancelReason, Direction, PendingAction
 from callbot.tracing.generation import finish_generation, generation_scope, normalized_result
@@ -116,7 +122,7 @@ class SemanticReading(BaseModel):
     model không có đường nào để tự khai quyền ghi.
     """
 
-    model_config = ConfigDict(strict=True, extra="forbid")
+    model_config = ConfigDict(json_schema_extra=compact_json_schema, strict=True, extra="forbid")
 
     intent: _INTENT_VALUES | None
     intent_span: str | None

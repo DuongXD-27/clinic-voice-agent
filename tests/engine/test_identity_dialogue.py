@@ -6,16 +6,18 @@ từ chối cung cấp, tra cứu lượt 0 thất bại. Mọi lượt trước
 
 import copy
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 
-from callbot.engine import BotAction, CallerInput, CallStart, create_orchestrator
+from callbot.engine import BotAction, CallerInput, CallStart, EngineSettings, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import OutboundStartFailed
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
 from clinic_mock_sim import FakeClinicAPI, store
+from tests.engine.test_name_slot_status import FakeGateway, named
 
 SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
@@ -76,8 +78,23 @@ def test_unregistered_inbound_is_transferred_at_turn_one_without_asking_name(fir
     assert clinic.writes == [] and clinic.requests == []  # §2.1: không có lệnh ghi
 
 
-def test_inbound_without_usable_phone_never_calls_mock() -> None:
-    actions, clinic = _call(_inbound("c_nophone", None), ["Nguyễn Văn A"])
+def test_inbound_without_caller_number_asks_name_dob_then_phone_before_any_lookup() -> None:
+    """Harness mentor gửi `caller_number: null`: vẫn hỏi mở tên rồi ngày sinh (§1.1.9), sau đó mới xin số
+    điện thoại đã đăng ký để tra hồ sơ. Chưa có số thì chưa gọi mock, không nói gì về hồ sơ."""
+    actions, clinic = _call(_inbound("c_nophone", None), [NAME, DOB])
+    opening, after_name, after_dob = actions
+    assert opening.utterance == t.GREETING_INBOUND
+    assert after_name.utterance in t.static_choices(t.ASK_DOB)
+    assert after_dob.utterance in t.static_choices(t.ASK_PHONE)
+    assert after_dob.state == "AWAITING_IDENTITY" and not after_dob.ended
+    _assert_no_disclosure(actions)
+    assert clinic.patient_lookups == [] and clinic.calls == [] and clinic.writes == []
+
+
+def test_inbound_with_unusable_caller_number_still_transfers_at_turn_one() -> None:
+    """Có số gọi đến nhưng ngoài dạng mock nhận: như số không có hồ sơ — không hỏi số khác."""
+    actions, clinic = _call(_inbound("c_badphone", "+15551234567"), [NAME])
+    assert actions[0].utterance == t.GREETING_HANDOFF_INBOUND
     _ended(actions[-1], "TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.patient_lookups == [] and clinic.writes == []
 
@@ -132,10 +149,112 @@ def test_dob_before_name_is_kept_and_only_name_is_asked() -> None:
     _assert_no_disclosure(actions)
 
 
+@pytest.mark.parametrize(
+    "lines",
+    [
+        ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A, sinh 14/3/1978"],
+        ["Nguyễn Văn B", "à nhầm, tôi là Nguyễn Văn A", DOB],
+        ["Nguyễn Văn B", "a nham, toi la Nguyen Van A", DOB],  # ASR mất dấu
+        # Câu bị đọc nhầm thành tên, lượt sau tự giới thiệu tên thật
+        ["đường dây bận", "tôi là Nguyễn Văn A", DOB],
+    ],
+)
+def test_name_corrected_while_asking_dob_replaces_the_earlier_name(lines) -> None:
+    """R-44: chưa đối chiếu gì nên lời tự sửa tên ở lượt hỏi ngày sinh đè tên trước."""
+    actions, clinic = _call(_outbound("c_fix_name"), lines)
+    assert all(not action.ended for action in actions[1:])
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+    _assert_no_disclosure(actions)
+
+
+def test_name_correction_counts_as_understood_even_after_the_dob_retry() -> None:
+    """Sửa sang tên khác là câu đã hiểu: không tốn lượt hỏi lại, không đáp "em chưa nghe rõ"."""
+    lines = ["Nguyễn Văn B", "hình như 14/3/1978", "à nhầm, tôi là Nguyễn Văn A", DOB]
+    actions, clinic = _call(_outbound("c_fix_name_retry"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    assert not actions[3].ended and actions[3].utterance in t.static_choices(t.ASK_DOB)
+    assert actions[4].state == "AWAITING_INTENT" and clinic.writes == []
+
+
+def test_repeating_the_same_name_while_asking_dob_still_spends_the_retry() -> None:
+    lines = [NAME, f"tôi là {NAME}", f"tôi là {NAME}"]
+    actions, _ = _call(_outbound("c_same_name"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
+@pytest.mark.parametrize("fallback", [None, "Lê Na"])
+def test_name_without_common_surname_can_be_corrected_while_asking_dob(
+    monkeypatch, fallback
+) -> None:
+    """Lượt hỏi ngày sinh đọc lời tự sửa tên như lượt hỏi tên (luật nới / slot filling)."""
+    clinic = FakeClinicAPI()
+    clinic.seed_patient(
+        {
+            "patient_id": "pt_lena",
+            "phone": "0912000111",
+            "verify": {"full_name": "Lê Na", "dob": "1990-01-01"},
+        }
+    )
+    if fallback is None:
+        settings = EngineSettings(name_fallback_provider="none", _env_file=None)
+        bot = create_orchestrator(clinic, settings=settings)
+    else:
+        monkeypatch.setenv("OPENAI_API_KEY", "synthetic-test-secret")
+        settings = EngineSettings(name_fallback_provider="openai", _env_file=None)
+        with patch("callbot.engine.create_gateway", return_value=FakeGateway(named(fallback))):
+            bot = create_orchestrator(clinic, settings=settings)
+    bot.start_call(_inbound("c_lena", "0912000111"))
+    for turn, line in enumerate(["Nguyễn Văn B", "à nhầm, tôi là Lê Na", "01/01/1990"], start=1):
+        action = bot.handle_turn("c_lena", CallerInput(turn=turn, text=line))
+    assert action.state == "AWAITING_INTENT"
+
+
+def test_dob_corrected_while_asking_name_replaces_the_earlier_dob() -> None:
+    actions, clinic = _call(_outbound("c_fix_dob"), ["sinh 15/3/1978", "à nhầm, 14/3/1978", NAME])
+    assert actions[1].utterance == t.ASK_NAME_AFTER_DOB and not actions[2].ended
+    assert actions[-1].state == "AWAITING_INTENT" and clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["Nguyễn Văn A, con tôi sinh 5/6/2010", "Nguyễn Văn A, 15/3/1978", "15/3/1978"]
+)
+def test_another_date_without_self_correction_keeps_the_earlier_dob(answer) -> None:
+    """Ngày sinh đã khai chỉ bị đè khi có lời tự sửa: ngày của người thân không thay ngày sinh."""
+    actions, clinic = _call(_outbound("c_keep_dob"), [DOB, answer, NAME])
+    verified = next(a for a in actions[2:] if a.state != "AWAITING_IDENTITY")
+    assert verified.state == "AWAITING_INTENT" and clinic.writes == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["Ngày 14 tháng 3 năm 1978 ạ, chị Hoa", "15/3, à không, 14/3/1978"]
+)
+def test_dob_answer_without_self_naming_never_replaces_the_name(answer) -> None:
+    actions, _ = _call(_outbound("c_keep_name"), [NAME, answer])
+    assert actions[-1].state == "AWAITING_INTENT"
+
+
+def test_bare_name_while_asking_dob_is_not_read_as_a_correction() -> None:
+    """Giới hạn đã chốt: ở lượt hỏi ngày sinh chỉ đọc tên khi có tín hiệu tự sửa / tự giới thiệu, để
+    câu khác không thành tên đè lên tên đúng. Tên nói trơn không đè tên trước."""
+    actions, _ = _call(_outbound("c_bare_name"), ["Nguyễn Văn B", NAME, DOB])
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "IDENTITY_FAILED")
+    assert actions[3].utterance == t.IDENTITY_FAILED_TRANSFER
+
+
+def test_wrong_name_then_unclear_dob_twice_is_not_understood() -> None:
+    """R-40: ngày sinh không chắc hai lần là chưa hiểu, chưa đối chiếu nên không phải IDENTITY_FAILED."""
+    lines = ["Nguyễn Văn B", "hình như 14/3/1978", "hình như 14/3/1978"]
+    actions, _ = _call(_outbound("c_unclear_dob"), lines)
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
+    _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
+
+
 def test_wrong_identity_transfers_at_once_without_saying_which_field() -> None:
     actions, clinic = _call(_outbound("c_wrong"), ["Nguyễn Văn A, sinh ngày 15/03/1978"])
     _ended(actions[-1], "TRANSFERRED", "IDENTITY_FAILED")
-    assert actions[-1].utterance == t.TRANSFER
+    assert actions[-1].utterance == t.IDENTITY_FAILED_TRANSFER
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "IDENTITY_FAILED"})]
 
 
@@ -373,7 +492,7 @@ def test_identity_question_free_pass_is_per_call_not_per_field() -> None:
 
 def test_a_greeting_while_asking_dob_uses_the_single_retry() -> None:
     actions, _ = _call(_outbound("c_alo_dob"), [NAME, "alo", "tôi không rõ"])
-    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
 
 
@@ -458,7 +577,7 @@ def test_cannot_provide_twice_is_identity_failed() -> None:
     actions, clinic = _call(
         _outbound("c_declined"), [NAME, "tôi không nhớ ngày sinh", "không nhớ thật mà"]
     )
-    assert actions[2].utterance == t.ASK_DOB_AGAIN
+    assert actions[2].utterance in t.static_choices(t.ASK_DOB_AGAIN)
     _ended(actions[3], "TRANSFERRED", "NOT_UNDERSTOOD")
     assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
 
@@ -532,6 +651,8 @@ def test_name_and_dob_in_one_turn_over_http(client) -> None:
     [
         ["Alo", "nguyen van a", DOB],
         ["Hello?", "Nguyen Van A", "March 14, 1978"],
+        # QC qc-w6-01 nguyên văn: ASR tiếng Anh ghi số bằng chữ
+        ["Hello?", "Nguyen Van A", "March fourteenth, nineteen seventy-eight"],
         ["Hello?", "My name is Nguyen Van A, born on March 14th 1978"],
         ["I'm Nguyen Van A", "1978-03-14"],
         ["NGUYEN VAN A, 14/3/1978"],
@@ -551,8 +672,8 @@ def test_unaccented_or_english_identity_verifies(lines) -> None:
     "lines",
     [
         ["nguyen van a", "14/03/1979"],  # ngày sinh vẫn so tuyệt đối
-        ["Tran Van B"],
-        ["Nguyễn Van A"],  # có dấu một phần: luật chặt
+        ["Tran Van B", DOB],
+        ["Nguyễn Van A", DOB],  # có dấu một phần: luật chặt
     ],
 )
 def test_unaccented_name_still_needs_the_exact_dob(lines) -> None:

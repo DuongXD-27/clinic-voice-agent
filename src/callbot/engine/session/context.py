@@ -20,9 +20,13 @@ from callbot.engine.types import (
 
 SCHEMA_VERSION = 1
 
-IdentityStep = Literal["ASK_NAME", "ASK_DOB", "VERIFIED"]
-# Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu
-IdentityLookup = Literal["PENDING", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"]
+IdentityStep = Literal["ASK_NAME", "ASK_DOB", "ASK_PHONE", "VERIFIED"]
+# Kết quả tra cứu hồ sơ ở lượt 0 (T-01): LOADED = có dữ liệu chuẩn để đối chiếu.
+# AWAITING_PHONE: inbound không có caller_number — chưa tra cứu; sau tên + ngày sinh, Dialogue hỏi số
+# điện thoại đã đăng ký rồi Verifier tra theo số đó (`lookup_spoken_phone`).
+IdentityLookup = Literal[
+    "PENDING", "AWAITING_PHONE", "LOADED", "NO_PHONE", "NO_CANDIDATES", "UNAVAILABLE"
+]
 # REQUEST: người gọi yêu cầu hành động (chỉ dùng cho hủy lịch, SF-05)
 # CONFIRMATION: người gọi đồng ý câu hỏi xác nhận của hành động đang chờ
 EvidenceKind = Literal["REQUEST", "CONFIRMATION"]
@@ -91,6 +95,9 @@ class CallContext:
     # SF-03/§1.1.2: KHÔNG đưa vào build_turn_context (IE), trace hay lời thoại — Verifier đọc riêng.
     identity_lookup: IdentityLookup = "PENDING"
     identity_reference: list[dict[str, Any]] = field(default_factory=list)
+    # Lý do xác minh không đạt (MatchDetail: NAME_MISMATCH, DOB_MISMATCH, AMBIGUOUS...) — chỉ cho
+    # trace/vận hành, không chứa giá trị hồ sơ và không bao giờ nói cho người gọi (§1.1.2).
+    identity_result: Optional[str] = None
 
     # Inbound: patient tìm qua GET /patients, appointment tạo bằng POST /appointments
     patient_id: Optional[str] = None
@@ -119,6 +126,10 @@ class CallContext:
     # Ngày người gọi xin (ISO), mốc tìm khung của yêu cầu — kể cả khi ngày đó kín / không đúng giờ xin
     slot_day: Optional[str] = None
     offered_slot_ids: list[str] = field(default_factory=list)
+    # Các khung câu chọn mơ hồ vừa khớp ("3 giờ chiều" khớp 14/10 và 21/10): trang mơ hồ là yêu cầu hiện
+    # hành — "khung khác" đọc tiếp trong tập này, "Còn N khung khác" đếm trong tập này (review 12-10 B3/B4).
+    # Không dùng `slot_request`: tiêu chí của yêu cầu mới quy thứ trần về tuần này, câu chọn thì không.
+    slot_candidate_ids: list[str] = field(default_factory=list)
     # Khung người gọi đã từ chối: bỏ qua suốt việc đổi / đặt đang chờ, qua mọi yêu cầu (V-9)
     refused_slot_ids: list[str] = field(default_factory=list)
     # Số ngày / khoảng thời gian người gọi đã nêu cho việc đổi / đặt đang chờ (R-29, T-10 §3.2)
@@ -208,6 +219,7 @@ class CallContext:
         self.slot_request = request
         self.slot_day = day
         self.offered_slot_ids = []
+        self.slot_candidate_ids = []
 
     def _clear_slot_search(self) -> None:
         self.reset_slot_request(None)
@@ -246,6 +258,7 @@ class CallContext:
             "business_write_blocked": self.business_write_blocked,
             "identity_lookup": self.identity_lookup,
             "identity_reference": [dict(item) for item in self.identity_reference],
+            "identity_result": self.identity_result,
             "patient_id": self.patient_id,
             "created_appointment_id": self.created_appointment_id,
             "question": _question_to_dict(self.question),
@@ -261,6 +274,7 @@ class CallContext:
             "slot_request": self.slot_request,
             "slot_day": self.slot_day,
             "offered_slot_ids": list(self.offered_slot_ids),
+            "slot_candidate_ids": list(self.slot_candidate_ids),
             "refused_slot_ids": list(self.refused_slot_ids),
             "slot_round": self.slot_round,
             "failed_understandings": self.failed_understandings,
@@ -294,6 +308,7 @@ class CallContext:
             # Hai khóa thêm ở T-01, đọc bằng .get để phiên lưu trước đó (schema 1 cũ) vẫn mở được
             identity_lookup=data.get("identity_lookup", "PENDING"),
             identity_reference=[dict(item) for item in data.get("identity_reference", [])],
+            identity_result=data.get("identity_result"),
             patient_id=data["patient_id"],
             created_appointment_id=data["created_appointment_id"],
             question=_question_from_dict(data["question"]),
@@ -314,6 +329,7 @@ class CallContext:
             slot_request=data.get("slot_request"),
             slot_day=data.get("slot_day"),
             offered_slot_ids=list(data.get("offered_slot_ids", [])),
+            slot_candidate_ids=list(data.get("slot_candidate_ids", [])),
             refused_slot_ids=list(data.get("refused_slot_ids", [])),
             slot_round=int(data.get("slot_round", 0)),
             failed_understandings=data["failed_understandings"],
