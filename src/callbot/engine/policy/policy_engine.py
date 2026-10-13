@@ -6,7 +6,13 @@ Nhận thẳng `ExtractionResult`; `transfer_reason` / `unreachable_reason` do P
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from callbot.engine.extraction.schema import ClinicalLevel, ExtractionResult, Intent, LineSignal
+from callbot.engine.extraction.schema import (
+    IDENTITY_QUESTIONS,
+    ClinicalLevel,
+    ExtractionResult,
+    Intent,
+    LineSignal,
+)
 from callbot.engine.session.context import CallContext
 from callbot.engine.settings import EngineSettings
 from callbot.engine.types import PhoneStatus, TransferReason, UnreachableReason
@@ -71,6 +77,20 @@ _ALWAYS_TRANSFER: dict[Intent, TransferReason] = {
 }
 
 
+def _inbound_symptom(ctx: CallContext, extraction: ExtractionResult) -> bool:
+    """Inbound (đặt lịch): khách kể triệu chứng là chuyển máy, kể cả khi đã tự chọn khoa (owner 13-10,
+    D-11; §1.2.1 — chuyển máy luôn đúng, bot không diễn giải triệu chứng). Outbound giữ MENTION như cũ:
+    "tôi bị ốm nên không đi được" là lý do hủy.
+
+    Lượt khai tên / ngày sinh có đọc ra tên hoặc ngày thì không tính: luật lâm sàng nhận "Nguyễn Văn Ho",
+    "Trần Thị Sốt" là có triệu chứng.
+    """
+    if ctx.call.direction != "inbound" or extraction.clinical.value is not ClinicalLevel.MENTION:
+        return False
+    identity_turn = extraction.question_id in IDENTITY_QUESTIONS
+    return not (identity_turn and (extraction.full_name.found or extraction.dob.found))
+
+
 class PolicyEngine:
     def __init__(self, settings: EngineSettings) -> None:
         self._settings = settings
@@ -118,6 +138,8 @@ class PolicyEngine:
             return PolicyDecision.unreachable(_UNREACHABLE_REASON[line.value])
         # SF-04: lâm sàng xét trước mọi intent; MENTION không chuyển máy (thiết kế §5.5)
         if extraction.clinical.value in _TRANSFER_CLINICAL:
+            return PolicyDecision.transfer("CLINICAL_QUESTION")
+        if _inbound_symptom(ctx, extraction):
             return PolicyDecision.transfer("CLINICAL_QUESTION")
         intent = extraction.intent.value
         if intent in _ALWAYS_TRANSFER:

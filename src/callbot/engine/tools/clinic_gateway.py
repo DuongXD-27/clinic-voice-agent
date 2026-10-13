@@ -480,7 +480,7 @@ class ClinicGateway:
                     # 429 / không kết nối được: lệnh chắc chắn chưa áp dụng, gửi lại cùng key
                     journal.begin(command)
                     continue
-                if exc.code == "SLOT_TAKEN":
+                if exc.code == "SLOT_TAKEN" or _slot_gone(kind, exc):
                     raise SlotTaken(exc.status, exc.code) from exc
                 if exc.code == "INVALID_STATE_TRANSITION":
                     raise AppointmentNotActionable(exc.code) from exc
@@ -552,3 +552,13 @@ class ClinicGateway:
         guardrails.assert_target_appointment(ctx, appointment_id)
         assert appointment_id is not None
         return appointment_id
+
+
+def _slot_gone(kind: str, exc: ClinicAPIError) -> bool:
+    """Đặt lịch: mock trả 404 "slot … not found" khi khung vừa bị người khác lấy (`create_appointment` bỏ
+    khung khỏi danh sách trống) — như SLOT_TAKEN: đọc lại /slots, mời lại, cần đồng ý mới (G9, Listing 4)."""
+    return (
+        kind == "book"
+        and exc.status == 404
+        and (exc.message or "").strip().lower().startswith("slot")
+    )

@@ -114,9 +114,14 @@ class CallContext:
     # lượt trước (R-44).
     early_reschedule: Optional[str] = None
     # Inbound (QC qc-ib-10): lời yêu cầu đặt lịch nói ở bước danh tính (đã bỏ tên, ngày sinh). Sau xác
-    # minh mời khung theo lời đó ngay, không hỏi lại nhu cầu. Chuỗi rỗng = có yêu cầu nhưng không có
-    # tiêu chí thời gian.
+    # minh: có tiêu chí thời gian thì mời khung theo lời đó ngay; chuỗi rỗng (có yêu cầu, chưa nêu giờ)
+    # thì hỏi ngày / buổi muốn đặt (Hình 0), không hỏi lại "cần hỗ trợ gì".
     early_book: Optional[str] = None
+    # Câu hỏi ngày / buổi đặt lịch inbound đang chờ: "TIME" = hỏi lần đầu, "TIME_AGAIN" = khách chỉ nêu khoa,
+    # đã hỏi lại một lần. None: câu "cần hỗ trợ gì" / không ở bước này
+    booking_step: Optional[str] = None
+    # Câu chỉ nêu nhu cầu đặt lịch ở bước danh tính đã được hỏi lại một lần mà không tính hiểu sai (D-2)
+    booking_need_heard: bool = False
     # SF-02: toàn bộ slot GET /slots trả về ở lần đọc gần nhất trong cuộc gọi này
     slots: list[dict[str, Any]] = field(default_factory=list)
     presented_slot_ids: list[str] = field(default_factory=list)
@@ -270,6 +275,8 @@ class CallContext:
             "early_cancel_reason": self.early_cancel_reason,
             "early_reschedule": self.early_reschedule,
             "early_book": self.early_book,
+            "booking_step": self.booking_step,
+            "booking_need_heard": self.booking_need_heard,
             "slots": [dict(slot) for slot in self.slots],
             "presented_slot_ids": list(self.presented_slot_ids),
             "slot_request": self.slot_request,
@@ -325,6 +332,9 @@ class CallContext:
             # Khóa thêm ở R-43: phiên lưu trước đó chưa có
             early_reschedule=data.get("early_reschedule"),
             early_book=data.get("early_book"),
+            # Khóa thêm ở t11 (đặt lịch inbound): phiên lưu trước đó chưa có
+            booking_step=data.get("booking_step"),
+            booking_need_heard=bool(data.get("booking_need_heard", False)),
             slots=[dict(slot) for slot in data["slots"]],
             presented_slot_ids=list(data["presented_slot_ids"]),
             # Khóa thêm ở T-10: phiên lưu trước đó chưa có

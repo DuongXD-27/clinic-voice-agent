@@ -631,10 +631,13 @@ def test_request_before_identity_asks_to_verify_first() -> None:
     assert actions[1].utterance == t.ASK_NAME_FOR_REQUEST
     _assert_no_disclosure(actions)
     # Nhu cầu nói trước xác minh chỉ được dùng SAU khi xác minh xong (R-43 cho đặt lịch inbound): tới
-    # lúc đó không đọc slot nào; xác minh xong thì mời khung ngay, không hỏi lại "cần hỗ trợ gì"
+    # lúc đó không đọc slot nào. Xác minh xong, nhu cầu chưa có giờ: hỏi ngày / buổi muốn đặt (Hình 0),
+    # không hỏi lại "cần hỗ trợ gì" và chưa đọc khung — qc-ib-01 trả lời câu này ("Khám tổng quát", rồi
+    # "Còn lịch nào gần nhất không em?")
     assert all(action.state == "AWAITING_IDENTITY" for action in actions[:3])
-    assert actions[3].state == "OFFERING_SLOTS"
-    assert sum(call.operation == "get_slots" for call in clinic.calls) == 1
+    assert actions[3].state == "AWAITING_INTENT"
+    assert actions[3].utterance in t.static_choices(t.ASK_SLOT_PREFERENCE["BOOK"])
+    assert all(call.operation != "get_slots" for call in clinic.calls)
     assert clinic.writes == []
 
 
