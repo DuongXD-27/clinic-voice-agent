@@ -46,9 +46,9 @@ RUN mkdir -p /app/models/silero && \
     curl -fL -o /app/models/silero/silero_vad.onnx \
     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
 
-# Silero v6.2.3 chính thức (~2,3MB, MIT): bộ phân loại tiếng nói LiveKit khi silero_vad_version=v6
-# (config/speech.yaml, mặc định v4). Tải sẵn để bật bằng config không cần build lại; sha256 = đúng
-# bản đã đo (docs/evidence/livekit-vad-model-comparison-2026-10-13.md).
+# Silero v6.2.3 chính thức (~2,3MB, MIT): bộ phân loại tiếng nói của LiveKit và /v1/stt
+# (silero_vad_version trong config/speech.yaml, v6 từ 13/10). sha256 = đúng bản đã đo
+# (docs/evidence/livekit-vad-model-comparison-2026-10-13.md). Thiếu file thì worker chạy v4 ở trên.
 RUN curl -fL -o /app/models/silero/silero_vad_v6.onnx \
     https://github.com/snakers4/silero-vad/raw/v6.2.3/src/silero_vad/data/silero_vad.onnx && \
     echo "1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3  /app/models/silero/silero_vad_v6.onnx" \

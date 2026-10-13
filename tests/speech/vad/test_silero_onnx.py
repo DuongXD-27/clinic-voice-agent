@@ -127,11 +127,13 @@ def test_version_setting_picks_the_classifier() -> None:
     pytest.importorskip("onnxruntime")
     pytest.importorskip("sherpa_onnx")
     from speech.asr.vad.silero import SileroVadClassifier
-    from speech.bundle import _build_silero
+    from speech.bundle import build_silero_classifier
 
     # File v4 đứng thay cho v6: chỉ kiểm việc chọn đường chạy, không cần tải model v6.
-    v6 = _build_silero(_settings(silero_vad_version="v6", silero_vad_v6_model_path=str(_V4)), 16000)
-    v4 = _build_silero(_settings(silero_vad_version="v4"), 16000)
+    v6 = build_silero_classifier(
+        _settings(silero_vad_version="v6", silero_vad_v6_model_path=str(_V4)), 16000
+    )
+    v4 = build_silero_classifier(_settings(silero_vad_version="v4"), 16000)
 
     assert isinstance(v6, SileroOnnxClassifier)
     assert isinstance(v4, SileroVadClassifier)
@@ -142,15 +144,49 @@ def test_v6_without_its_model_file_falls_back_to_v4(tmp_path, caplog) -> None:
     """Image chưa có file v6: cuộc gọi vẫn có VAD (v4), chỉ cảnh báo."""
     pytest.importorskip("sherpa_onnx")
     from speech.asr.vad.silero import SileroVadClassifier
-    from speech.bundle import _build_silero
+    from speech.bundle import build_silero_classifier
 
     missing = tmp_path / "missing.onnx"
-    vad = _build_silero(
+    vad = build_silero_classifier(
         _settings(silero_vad_version="v6", silero_vad_v6_model_path=str(missing)), 16000
     )
 
     assert isinstance(vad, SileroVadClassifier)
     assert "missing.onnx" in caplog.text
+
+
+@pytest.mark.skipif(not _V4.is_file(), reason="chưa tải silero_vad.onnx (config/speech.yaml)")
+def test_instances_share_one_session_per_model_file() -> None:
+    """Tạo session ~0,1 s: một lần mỗi process (prewarm), không phải mỗi cuộc gọi."""
+    pytest.importorskip("onnxruntime")
+    first = SileroOnnxClassifier(str(_V4))
+    second = SileroOnnxClassifier(str(_V4))
+
+    assert first._session is second._session
+
+
+def test_warm_up_vad_preloads_v6_only_when_a_channel_uses_it(tmp_path, monkeypatch) -> None:
+    from speech import bundle
+    from speech.asr.vad import silero_onnx
+
+    loaded: list[str] = []
+    monkeypatch.setattr(silero_onnx, "preload", loaded.append)
+    model = tmp_path / "v6.onnx"
+    model.write_bytes(b"")
+
+    bundle.warm_up_vad(_settings(silero_vad_version="v4", silero_vad_v6_model_path=str(model)))
+    bundle.warm_up_vad(
+        _settings(
+            silero_vad_version="v4",
+            silero_vad_v6_model_path=str(model),
+            phone_overrides={"silero_vad_version": "v6"},
+        )
+    )
+    bundle.warm_up_vad(
+        _settings(silero_vad_version="v6", silero_vad_v6_model_path=str(tmp_path / "missing"))
+    )
+
+    assert loaded == [str(model)]  # chỉ ca SIP dùng v6 và có file
 
 
 def test_phone_overrides_accept_the_version_key() -> None:

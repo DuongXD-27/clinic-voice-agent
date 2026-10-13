@@ -23,7 +23,7 @@ from callbot.transports.livekit.stt_session import SttSession
 from inference.asr import create_asr_gateway
 from inference.asr.base import AsrAuthError
 from speech.asr.recognizer import SpeechRecognizer
-from speech.bundle import build_streaming_bundle, turn_controller_options, warm_up
+from speech.bundle import build_streaming_bundle, turn_controller_options, warm_up, warm_up_vad
 from speech.settings import SpeechSettings
 
 if TYPE_CHECKING:
@@ -41,8 +41,8 @@ ASR_ATTRIBUTE = "asr_provider"
 
 
 def prewarm(proc: "JobProcess") -> None:
-    """Load model ASR local (vd. ZipFormer) một lần mỗi LiveKit job process, trước khi
-    process đó nhận call."""
+    """Load model ASR local (vd. ZipFormer) và Silero v6 một lần mỗi LiveKit job process, trước
+    khi process đó nhận call."""
     provider = LiveKitSettings().asr_provider or SpeechSettings().asr_provider
     asr = SpeechRecognizer(create_asr_gateway(provider))
     try:
@@ -50,6 +50,11 @@ def prewarm(proc: "JobProcess") -> None:
     except NotImplementedError:
         logger.info("ASR %s uses streaming only; skipping batch warm-up", asr.name)
     proc.userdata[_PREWARMED_ASR] = asr
+    # Chỉ để cuộc gọi đầu không phải nạp model trên event loop; lỗi thật sẽ lộ khi dựng bundle.
+    try:
+        warm_up_vad(SpeechSettings())
+    except Exception as exc:
+        logger.warning("worker: không nạp sẵn được Silero v6: %s", exc)
 
 
 def speech_settings_for(

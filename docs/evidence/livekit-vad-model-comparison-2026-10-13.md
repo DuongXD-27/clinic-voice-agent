@@ -11,7 +11,7 @@ Validator, tăng âm giọng nhỏ không đổi. HTTP `/v1/stt` vẫn Silero v4
 | 3 | Chạy v6 qua sherpa-onnx (đường production hiện tại) lệch bản chính thức: 98,3% khung trùng, đầu câu muộn p50 30 ms / p90 60 ms; qua pipeline WER web kém hơn 0,008 [0,003; 0,012] | **Thêm** `SileroOnnxClassifier` (onnxruntime, đúng `OnnxWrapper` chính thức + máy trạng thái của sherpa): với v4 trùng sherpa 100% khung |
 | 4 | Pipeline đầy đủ, cặp trial cùng seed, 110 câu có nhãn người mỗi điều kiện | Điện thoại: WER lượt 0,482 → 0,160 [Δ −0,352; −0,291], mất lượt 338 → 11/880; người gọi nói nhỏ 0,382 → 0,204, mất lượt 80 → 41/330. Web: 0,236 → 0,171 [Δ −0,078; −0,053], mất lượt 137 → 32/1430; với pre-roll 1000 ms của nhánh `fix/stt-noise-turn-loss`: 0,261 → 0,187 [Δ −0,095; −0,054], mất lượt 120 → 22/880. Nhiễu không phải giọng người (văn phòng, đường phố, giao thông, hành lang, xe buýt, nhà ga, tiếng động trong nhà): lượt giả không tăng (web 3 → 0, điện thoại 0 → 0); căng tin web 7 → 7, điện thoại 0 → 0 |
 | 5 | Đổi lại | Người gọi im lặng mà nền là giọng người (TV, đài, người khác nói): lượt giả web 154 → 203/216, điện thoại 157 → 206/216 (v4 đã chép 71–73%); tiếng người không lời (ho, cười…) +1/24 web, +2/24 điện thoại; ngắt lời có tiếng vọng điện thoại: bot tự ngắt lời 1/12 (v4 0) ở cả −30 và −20 dB, xác nhận ở −30 dB 26 → 17/39 |
-| 6 | Bật mặc định? | **Chưa** — theo quy tắc không thêm lượt giả. Một khoá `silero_vad_version: v6` (cả hai kênh) hoặc trong `phone_overrides` (chỉ SIP); Dockerfile tải sẵn model (sha256 cố định). Chờ owner |
+| 6 | Bật mặc định? | **Có, từ 13/10 — owner chọn v6 cho cả web lẫn SIP** sau khi xem đánh đổi ở mục 5 và thử trực tiếp hai bản. Khoá `silero_vad_version` (quay lại: `SILERO_VAD_VERSION=v4`); `/v1/stt` dùng cùng model; model nạp sẵn trong prewarm của worker; Dockerfile tải sẵn model (sha256 cố định) |
 
 ## Vì sao đo VAD
 
@@ -307,28 +307,30 @@ phần lần +0,046. Lượt giả trên đoạn chỉ có tiếng căng tin kh�
 - **Option tốt nhất: Silero v6.2.3 chạy qua onnxruntime** (`silero_vad_version: v6`). Hơn v4 ở mọi
   nhóm điều kiện có người gọi nói, rõ nhất trên SIP (v4 gần như điếc trong nhiễu) và người gọi nói nhỏ;
   không thêm lượt giả trên nhiễu không phải giọng người; nhả cuối câu nhanh hơn; CPU như v4.
-- **Mặc định: CHƯA bật** (giữ v4). Theo quy tắc của dự án, thay đổi làm tăng lượt giả trên đoạn người
-  gọi im lặng thì không bật mặc định chỉ vì WER tốt hơn: v6 thêm lượt giả khi nền là giọng người
-  (+49/216 web, +49/216 điện thoại), tiếng người không lời (+1, +2 /24) và 1/12 lần bot tự ngắt lời vì
-  tiếng vọng điện thoại.
-- Owner quyết định một trong:
-  - **Chỉ SIP** — thêm `silero_vad_version: v6` vào `phone_overrides`: SIP hiện mất 8–94% câu trong
-    nhiễu (văn phòng 8 dB → căng tin 5 dB) và 15–38% câu khi người gọi nói nhỏ (v6: 0–3%, 7–18%); đổi
-    lại như trên.
-  - **Cả hai kênh** — `silero_vad_version: v6` (hoặc `SILERO_VAD_VERSION=v6`).
-  - Nên đi cùng cổng giọng người gọi khi CAM++ vào image (chặn TV / người khác sau khi có giọng mẫu).
+- Bản đo ban đầu để v6 tắt mặc định theo quy tắc của dự án: thay đổi làm tăng lượt giả trên đoạn người
+  gọi im lặng thì không tự bật chỉ vì WER tốt hơn. v6 thêm lượt giả khi nền là giọng người (+49/216 web,
+  +49/216 điện thoại), tiếng người không lời (+1, +2 /24) và 1/12 lần bot tự ngắt lời vì tiếng vọng điện
+  thoại.
+- **13/10: owner chọn v6 cho cả web lẫn SIP**, đã xem các đánh đổi trên và thử trực tiếp hai bản v4 / v6
+  trên trang gọi thử. `silero_vad_version: v6` là mặc định; `/v1/stt` dùng cùng model.
+- Nên đi cùng cổng giọng người gọi khi CAM++ vào image (chặn TV / người khác sau khi có giọng mẫu).
 - Thay `vad_frontend: gtcrn` (12/10) cho việc cứu SIP: v6 làm cùng việc bằng chính model (không thêm tầng
   khử nhiễu), ~1,3% một lõi so với ~7%.
 
 ## Cấu hình
 
-- `config/speech.yaml`: `silero_vad_version: v4` (mặc định), `silero_vad_v6_model_path`,
-  `silero_threshold: 0.5`; cách bật cho SIP ghi trong khối `phone_overrides`.
-- `src/speech/bundle.py` `_build_silero`: v6 → `SileroOnnxClassifier` với model v6; thiếu file v6 thì
-  cảnh báo và chạy v4 (cuộc gọi không bao giờ mất VAD). v4 → `SileroVadClassifier` như trước.
-- Dockerfile: tải `silero_vad_v6.onnx` từ tag v6.2.3, kiểm sha256
-  `1a153a22…d8788e3` (đúng file đã đo), đặt `SILERO_VAD_V6_MODEL_PATH` — bật bằng config / biến môi
-  trường, không cần build lại.
+- `config/speech.yaml`: `silero_vad_version: v6` (từ 13/10, cả web lẫn SIP), `silero_vad_v6_model_path`,
+  `silero_threshold: 0.5`. Quay lại v4: `SILERO_VAD_VERSION=v4` trong `.env`, không cần build lại.
+- `src/speech/bundle.py` `build_silero_classifier`: v6 → `SileroOnnxClassifier` với model v6; thiếu file
+  v6 thì cảnh báo và chạy v4 (cuộc gọi không bao giờ mất VAD). v4 → `SileroVadClassifier` như trước.
+  Dùng cho LiveKit và cho `/v1/stt` (`callbot/transports/http/main.py`), để hai đường cắt câu bằng cùng
+  model.
+- Nạp sẵn: một `InferenceSession` cho mỗi file model trong process, tạo trong prewarm của worker
+  (`warm_up_vad`). Trước đó mỗi cuộc gọi tạo session trong entrypoint, chặn event loop 104 ms (cảnh báo
+  của livekit-agents khi thử trên UI); sau prewarm dựng bộ phân loại cho cuộc gọi còn 0,1 ms.
+- Dockerfile: tải `silero_vad_v6.onnx` từ tag v6.2.3, kiểm sha256 `1a153a22…d8788e3` (đúng file đã đo),
+  đặt `SILERO_VAD_V6_MODEL_PATH`; `docker-compose*.yml` ghi cùng đường dẫn cạnh đường dẫn v4 (phiên
+  bản vẫn do `config/speech.yaml` quyết định).
 
 ## Kiểm chứng
 
@@ -337,6 +339,7 @@ phần lần +0,046. Lượt giả trên đoạn chỉ có tiếng căng tin kh�
 | `tests/speech/vad/test_silero_onnx.py` (mới, 8 ca): v4 qua onnxruntime trùng sherpa từng frame; bắt đầu sau 250 ms > ngưỡng, giữ trên ngưỡng − 0,15, nhả sau 500 ms; không xoá mốc im khi xác suất chen giữa hai ngưỡng; v6 gắn cờ câu TTS thật và nhả sau câu; `silero_vad_version` chọn đúng bộ phân loại; thiếu file v6 → v4 + cảnh báo; `phone_overrides` nhận khoá | Pass |
 | Đổi sang khoá `silero_vad_version` (refactor): 110 trial web sạch chạy lại cùng seed | trùng 110/110 (final, lượt, thời điểm chốt) với lần đo v6 trước đó |
 | `STT_EVAL_ENABLED=false python -m pytest -o pythonpath=src tests` (mặc định `silero_vad_version: v4`) | 5342 passed, 9 skipped |
+| Sau khi đổi mặc định sang v6 (+ test: session dùng chung, nạp sẵn chỉ khi kênh nào dùng v6, `/v1/stt` theo `silero_vad_version`) | 5345 passed, 9 skipped |
 | `ruff check src tests eval/noise-bench eval/vad-bench` / `ruff format --check` | Pass |
 | `barge_in_eval.py` ghi được file JSON kết quả (trước đây hỏng ở bước cuối vì giá trị numpy) | chạy lại điện thoại −30 / −20 dB ra đúng số trong log cũ |
 

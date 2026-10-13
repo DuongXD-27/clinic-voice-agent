@@ -38,7 +38,7 @@ from callbot.transports.livekit.settings import LiveKitSettings
 from speech.asr.offline import VadFactory
 from speech.asr.vad import FrameClassifier
 from speech.audio.storage import STATIC_AUDIO_PATH
-from speech.bundle import SpeechBundle, build_speech_bundle, warm_up
+from speech.bundle import SpeechBundle, build_silero_classifier, build_speech_bundle, warm_up
 from speech.settings import SpeechSettings
 
 logger = logging.getLogger(__name__)
@@ -81,13 +81,11 @@ def _default_livekit_settings() -> LiveKitSettings:
 
 
 def _default_stt_vad_factory() -> VadFactory:
-    model_path = SpeechSettings().silero_vad_model_path
+    settings = SpeechSettings()
 
     def build(sample_rate: int) -> FrameClassifier:
-        # Silero stateful: mỗi request một instance
-        from speech.asr.vad.silero import SileroVadClassifier
-
-        return SileroVadClassifier(model_path, sample_rate=sample_rate)
+        # Silero stateful: mỗi request một instance; cùng model với LiveKit (silero_vad_version)
+        return build_silero_classifier(settings, sample_rate)
 
     return build
 

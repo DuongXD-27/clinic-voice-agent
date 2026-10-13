@@ -15,13 +15,40 @@ Model v4 bản k2-fsa (đầu vào x, h, c) cũng chạy được — chọn the
 
 from __future__ import annotations
 
-from typing import Optional
+import threading
+from typing import Any, Optional
 
 import numpy as np
 
 _RATE = 16_000
 _WINDOW = 512
 _CONTEXT = 64
+
+_SESSIONS: dict[str, Any] = {}
+_SESSIONS_LOCK = threading.Lock()
+
+
+def _session(model_path: str) -> Any:
+    """Một `InferenceSession` cho mỗi file model trong process, dùng chung giữa các instance: trạng
+    thái luồng audio nằm ở từng classifier, và `run` của onnxruntime chạy song song an toàn. Tạo
+    session mất ~0,1 s (v6 2,3 MB) — gọi `preload` trước (prewarm của worker) để việc này không
+    chặn event loop của cuộc gọi."""
+    with _SESSIONS_LOCK:
+        session = _SESSIONS.get(model_path)
+        if session is None:
+            import onnxruntime as ort
+
+            options = ort.SessionOptions()
+            options.intra_op_num_threads = 1
+            options.inter_op_num_threads = 1
+            session = ort.InferenceSession(model_path, options, providers=["CPUExecutionProvider"])
+            _SESSIONS[model_path] = session
+        return session
+
+
+def preload(model_path: str) -> None:
+    """Tạo sẵn session và chạy thử một cửa sổ, trước khi process nhận cuộc gọi."""
+    SileroOnnxClassifier(model_path).is_speech(bytes(2 * _WINDOW))
 
 
 class SileroOnnxClassifier:
@@ -36,14 +63,7 @@ class SileroOnnxClassifier:
         min_silence_ms: int = 500,
         min_speech_ms: int = 250,
     ) -> None:
-        import onnxruntime as ort
-
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = 1
-        options.inter_op_num_threads = 1
-        self._session = ort.InferenceSession(
-            model_path, options, providers=["CPUExecutionProvider"]
-        )
+        self._session = _session(model_path)
         names = {i.name for i in self._session.get_inputs()}
         self._v5 = "state" in names
         if self._v5:

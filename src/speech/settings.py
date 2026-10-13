@@ -45,8 +45,8 @@ class SpeechSettings(YamlSettings):
     silero_threshold: float
     # v4: silero_vad_model_path qua sherpa-onnx. v6: silero_vad_v6_model_path (Silero v6.2.3 chính
     # thức) qua onnxruntime — speech/asr/vad/silero_onnx.py, cùng máy trạng thái (sherpa chạy v6 lệch
-    # bản chính thức, mất âm đầu câu nhiều hơn). Thiếu file v6 thì cảnh báo và dùng v4. Chỉ cho bộ
-    # phân loại của LiveKit.
+    # bản chính thức, mất âm đầu câu nhiều hơn). Thiếu file v6 thì cảnh báo và dùng v4. Dùng cho bộ
+    # phân loại của LiveKit và cho /v1/stt.
     silero_vad_version: Literal["v4", "v6"]
     silero_vad_v6_model_path: str
     # Audio riêng cho bộ phân loại tiếng nói (speech/audio/vad_frontend.py): khử nhiễu chỉ để

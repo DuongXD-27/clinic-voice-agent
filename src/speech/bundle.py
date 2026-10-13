@@ -265,7 +265,7 @@ def build_streaming_bundle(
         evidence = TurnEvidence(
             detector.view()
             if settings.vad_provider == "silero"
-            else _build_silero(settings, sample_rate),
+            else build_silero_classifier(settings, sample_rate),
             frame_ms=frame_ms,
         )
     speaker_gate = _build_speaker_gate(settings) if settings.speaker_gate_mode != "off" else None
@@ -325,7 +325,7 @@ def _build_vad_frontend(settings: SpeechSettings, sample_rate: int) -> Optional[
 
 def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
     if settings.vad_provider == "silero":
-        return _build_silero(settings, sample_rate)
+        return build_silero_classifier(settings, sample_rate)
     if settings.vad_provider == "webrtc":
         from speech.asr.vad.webrtc import WebRtcVadClassifier
 
@@ -335,7 +335,9 @@ def _build_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassi
     return EnergyFrameClassifier(settings.vad_rms_threshold)
 
 
-def _build_silero(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+def build_silero_classifier(settings: SpeechSettings, sample_rate: int) -> FrameClassifier:
+    """Silero theo `silero_vad_version` — một instance mỗi luồng audio (có trạng thái). Dùng cho
+    LiveKit và cho `/v1/stt`, để hai đường cắt câu bằng cùng một model."""
     if settings.silero_vad_version == "v6":
         model_path = settings.silero_vad_v6_model_path
         if Path(model_path).is_file():
@@ -356,6 +358,20 @@ def _build_silero(settings: SpeechSettings, sample_rate: int) -> FrameClassifier
         min_silence_ms=settings.silero_min_silence_ms,
         threshold=settings.silero_threshold,
     )
+
+
+def warm_up_vad(settings: SpeechSettings) -> None:
+    """Nạp sẵn Silero v6 (onnxruntime, ~0,1 s) khi web hoặc điện thoại dùng nó. Gọi trong prewarm
+    của worker: dựng bundle trong entrypoint chạy trên event loop của cuộc gọi. v4 qua sherpa-onnx
+    nạp đủ nhanh, không cần."""
+    if "v6" not in {settings.silero_vad_version, settings.for_phone().silero_vad_version}:
+        return
+    model_path = settings.silero_vad_v6_model_path
+    if not Path(model_path).is_file():
+        return  # build_silero_classifier cảnh báo và dùng v4
+    from speech.asr.vad.silero_onnx import preload
+
+    preload(model_path)
 
 
 def warm_up(asr: Recognizer) -> None:

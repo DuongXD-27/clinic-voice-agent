@@ -23,7 +23,8 @@ vad_provider: silero
 vad_rms_threshold: 500.0       # chỉ cho energy
 vad_webrtc_aggressiveness: 2   # chỉ cho webrtc
 vad_end_silence_ms: 600
-# Silero dùng cho vad_provider=silero và LUÔN dùng cho SNR của Turn Validator. Tải:
+# Silero dùng cho vad_provider=silero và LUÔN dùng cho SNR của Turn Validator. File v4 (k2-fsa): chạy
+# khi silero_vad_version=v4 hoặc khi thiếu file v6. Tải:
 #   curl -L -o src/speech/asr/vad/assets/silero_vad.onnx \
 #     https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
 silero_vad_model_path: src/speech/asr/vad/assets/silero_vad.onnx
@@ -32,18 +33,19 @@ silero_vad_model_path: src/speech/asr/vad/assets/silero_vad.onnx
 silero_min_silence_ms: 500
 # Xác suất tiếng nói tối thiểu của Silero (0,5 = mặc định của model).
 silero_threshold: 0.5
-# v4 | v6 — model Silero của bộ phân loại tiếng nói LiveKit (HTTP /v1/stt và đường không phải
-# LiveKit vẫn dùng v4). v6 = Silero v6.2.3 chính thức chạy qua onnxruntime. Đo 13/10 (docs/evidence/
-# livekit-vad-model-comparison-2026-10-13.md, cặp trial cùng seed, golden + PM + VietMed): v6 nghe
-# được người gọi trong nhiễu — mất lượt điện thoại 338 -> 11/880, web 137 -> 32/1430; WER lượt điện
-# thoại 0,482 -> 0,160, web 0,236 -> 0,171; nhiễu không phải giọng người không thêm lượt giả. Đổi lại
-# nó nghe cả giọng người phía sau: người gọi im lặng mà nền là TV / đài / người khác nói thì lượt giả
-# web 154 -> 203/216, điện thoại 157 -> 206/216 (v4 đã chép phần lớn); ngắt lời có tiếng vọng điện
-# thoại: bot tự ngắt lời 1/12 (v4 0). Theo quy tắc không thêm lượt giả: CHƯA bật — chờ owner (bật
-# cả hai kênh: khoá này; chỉ SIP: thêm vào phone_overrides). Tải:
+# v4 | v6 — model Silero cắt câu cho LiveKit (VAD chính, bộ chốt câu của ASR, SNR của Validator,
+# ngắt lời) và cho HTTP /v1/stt. v6 = Silero v6.2.3 chính thức chạy qua onnxruntime (nạp sẵn trong
+# prewarm của worker); v4 = silero_vad_model_path qua sherpa-onnx. Thiếu file v6 thì cảnh báo và chạy
+# v4. Cả web lẫn SIP dùng v6 từ 13/10 theo quyết định owner, đã biết đánh đổi. Đo 13/10 (docs/
+# evidence/livekit-vad-model-comparison-2026-10-13.md, cặp trial cùng seed, golden + PM + VietMed): v6
+# nghe được người gọi trong nhiễu — mất lượt điện thoại 338 -> 11/880, web 137 -> 32/1430; WER lượt
+# điện thoại 0,482 -> 0,160, web 0,236 -> 0,171; nhiễu không phải giọng người không thêm lượt giả. Đổi
+# lại nó nghe cả giọng người phía sau: người gọi im lặng mà nền là TV / đài / người khác nói thì lượt
+# giả web 154 -> 203/216, điện thoại 157 -> 206/216 (v4 đã chép phần lớn); ngắt lời có tiếng vọng điện
+# thoại: bot tự ngắt lời 1/12 (v4 0). Tải:
 #   curl -L -o src/speech/asr/vad/assets/silero_vad_v6.onnx \
 #     https://github.com/snakers4/silero-vad/raw/v6.2.3/src/silero_vad/data/silero_vad.onnx
-silero_vad_version: v4
+silero_vad_version: v6
 silero_vad_v6_model_path: src/speech/asr/vad/assets/silero_vad_v6.onnx
 # Audio riêng cho bộ phân loại tiếng nói (speech/audio/vad_frontend.py): off | webrtc | webrtc_agc |
 # gtcrn | dpdfnet. Khử nhiễu chỉ để Silero quyết định có/không tiếng nói (bắt đầu/kết thúc đoạn ASR,
@@ -52,7 +54,8 @@ silero_vad_v6_model_path: src/speech/asr/vad/assets/silero_vad_v6.onnx
 # TẮT mặc định cả web lẫn SIP (đo 12/10, docs/evidence/livekit-vad-frontend-2026-10-12.md): Silero nghe
 # lại được giọng trong nhiễu nặng, nhưng cũng nghe được giọng TV / người xung quanh — thêm lượt giả
 # trên đoạn người gọi im lặng (SIP + gtcrn: TV 0 -> 31/36, căng tin 0 -> 3/36; web + webrtc_agc: TV
-# 0 -> 33/36, đường phố "Ừ" 0 -> 17/36). Cách bật cho SIP: xem phone_overrides. GTCRN (~520 KB):
+# 0 -> 33/36, đường phố "Ừ" 0 -> 17/36). Số đo này với Silero v4; từ 13/10 Silero v6 tự nghe được giọng
+# trong nhiễu nên không cần front-end. GTCRN (~520 KB):
 #   curl -L -o src/speech/asr/vad/assets/gtcrn_simple.onnx \
 #     https://github.com/k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx
 vad_frontend: "off"
@@ -91,16 +94,13 @@ asr_pre_speech_ms: null
 #   "VÂNG" (3/36 đoạn chỉ có nhiễu, tắt: 1/36). Đường sạch thì cải thiện mạnh (giọng nhỏ 25 dB: WER
 #   lượt 0,507 -> 0,233) — bật khi đã đo trên cuộc gọi SIP thật.
 #   docs/evidence/livekit-quiet-speech-gain-2026-10-11.md
-#   silero_vad_version v6 (CHƯA bật — chờ owner; cùng việc với vad_frontend gtcrn bên dưới nhưng là
-#   model thay vì thêm một tầng khử nhiễu, ~1,3% một lõi so với ~7%): đo 13/10 trên kênh điện thoại mô
-#   phỏng, 110 câu có nhãn mỗi điều kiện, cặp trial cùng seed, WER lượt · câu không thành lượt: văn
+#   silero_vad_version: không ghi đè — điện thoại dùng v6 như web (khoá ở trên). Đo 13/10 trên kênh
+#   điện thoại mô phỏng, 110 câu có nhãn mỗi điều kiện, WER lượt · câu không thành lượt v4 -> v6: văn
 #   phòng 8 dB 0,192 · 9 -> 0,112 · 1; giao thông 5 dB 0,690 · 64 -> 0,127 · 0; đường phố 5 dB 0,835 ·
-#   86 -> 0,194 · 1; căng tin 5 dB 0,965 · 103 -> 0,202 · 3; sạch 0,120 -> 0,108 · 1 -> 1. Đổi lại:
-#   người gọi im lặng mà nền là TV / đài / người khác nói thì lượt giả 157 -> 206/216 đoạn; ngắt lời
-#   có tiếng vọng: bot tự ngắt lời 1/12 (v4 0), xác nhận ở vọng -30 dB 26 -> 17/39.
-#   docs/evidence/livekit-vad-model-comparison-2026-10-13.md. Bật bằng khoá dưới đây.
-#     silero_vad_version: v6
-#   vad_frontend gtcrn (CHƯA bật — chờ owner chấp nhận đánh đổi, nên đi cùng cổng giọng người gọi):
+#   86 -> 0,194 · 1; căng tin 5 dB 0,965 · 103 -> 0,202 · 3; sạch 0,120 -> 0,108 · 1 -> 1. Riêng điện
+#   thoại có tiếng vọng: bot tự ngắt lời 1/12 (v4 0), xác nhận ngắt lời ở vọng -30 dB 26 -> 17/39.
+#   docs/evidence/livekit-vad-model-comparison-2026-10-13.md
+#   vad_frontend gtcrn (KHÔNG bật — số đo 12/10 với Silero v4; Silero v6 làm được cùng việc):
 #   đo 12/10 trên kênh điện thoại mô phỏng, 89 câu có nhãn (golden + PM + VietMed) mỗi điều kiện,
 #   WER lượt · câu không thành lượt: văn phòng 8 dB 0,207 · 11 -> 0,102 · 1; giao thông 5 dB 0,628 ·
 #   51 -> 0,124 · 3; đường phố 5 dB 0,889 · 76 -> 0,167 · 2; căng tin 5 dB 0,979 · 86 -> 0,201 · 4;
