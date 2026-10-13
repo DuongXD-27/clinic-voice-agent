@@ -15,7 +15,7 @@ Quy ước:
 
 import logging
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any, Optional
 
 from callbot.engine.dialogue import inbound, outbound
@@ -41,6 +41,15 @@ from callbot.engine.extraction.agreement import (
     mentions_cancel,
     rechooses,
 )
+from callbot.engine.extraction.booking import (
+    agrees_to_offered,
+    asks_earliest,
+    asks_new_profile,
+    books_for_other,
+    existing_appointment_request,
+    mentions_department,
+    refuses_other_times,
+)
 from callbot.engine.extraction.cancel_reason import DEFAULT as DEFAULT_CANCEL_REASON
 from callbot.engine.extraction.greeting import (
     is_greeting,
@@ -51,6 +60,7 @@ from callbot.engine.extraction.greeting import (
 from callbot.engine.extraction.identity import corrects_itself
 from callbot.engine.extraction.schema import (
     INVALID,
+    VN_TZ,
     Agreement,
     ExtractionResult,
     Field,
@@ -90,7 +100,6 @@ from callbot.engine.types import (
 )
 from callbot.engine.verification.identity import (
     IdentityVerifier,
-    LookupStatus,
     MatchDetail,
     VerificationStatus,
 )
@@ -108,12 +117,6 @@ MAX_SLOT_ROUNDS = 2
 MAX_IDENTITY_QUESTIONS = 2
 # Nhãn nghiệp vụ IE gán ở bước danh tính khi câu không có tên / ngày sinh ("tôi muốn đặt lịch")
 _REQUEST_INTENTS = frozenset({Intent.RESCHEDULE, Intent.CANCEL, Intent.BOOK, Intent.CONFIRM})
-# Lời hỏi lại mỗi câu hỏi danh tính: (chưa nghe rõ, người gọi nêu nhu cầu thay vì trả lời)
-_IDENTITY_RETRY_TEXTS: dict[QuestionId, tuple[str, str]] = {
-    QuestionId.ASK_NAME: (t.ASK_NAME_AGAIN, t.ASK_NAME_FOR_REQUEST),
-    QuestionId.ASK_DOB: (t.ASK_DOB_AGAIN, t.ASK_DOB_FOR_REQUEST),
-    QuestionId.ASK_PHONE: (t.ASK_PHONE_AGAIN, t.ASK_PHONE_FOR_REQUEST),
-}
 # Clinic chắc chắn không ghi lệnh kết thúc: vẫn chuyển máy để nhân viên xử lý
 _CLINIC_FAILURES = (ClinicWriteRejected, SevereFailureBlocked, AppointmentUnusable)
 
@@ -256,8 +259,6 @@ class DialogueManager:
             return self._slot_by_model(ctx, extraction, now)
         if question in (QuestionId.ASK_NAME, QuestionId.ASK_DOB):
             return self._identity(ctx, extraction, now)
-        if question is QuestionId.ASK_PHONE:
-            return self._phone(ctx, extraction, now)
         if question is QuestionId.CONFIRM_READBACK:
             return self._attendance(ctx, extraction, now, proposal)
         if question is QuestionId.ASK_INTENT:
@@ -291,7 +292,10 @@ class DialogueManager:
 
     def _reask_confirmation(self, ctx: CallContext, *, failed: bool = False) -> Reply:
         question = ctx.question
-        if question is not None and question.question_id in _IDENTITY_RETRY_TEXTS:
+        if question is not None and question.question_id in (
+            QuestionId.ASK_NAME,
+            QuestionId.ASK_DOB,
+        ):
             return self._retry_identity(ctx, question.question_id)
         if question is not None and question.action is not None:
             text = (
@@ -331,6 +335,10 @@ class DialogueManager:
         """
         name = ex.name_identity or self._legacy_identity(ex.full_name, ex.transcript)
         dob = ex.dob_identity or self._legacy_identity(ex.dob, ex.transcript)
+        if ctx.call.direction == "inbound":
+            handoff = self._inbound_handoff(ctx, ex)
+            if handoff is not None:
+                return handoff
         self._keep_early_request(ctx, ex)
         progressed = False
         if name.status is IdentityStatus.PRESENT and name.value != ctx.claimed_name:
@@ -344,9 +352,6 @@ class DialogueManager:
             ctx.claimed_dob = dob.value
             progressed = True
         if ctx.claimed_name is not None and ctx.claimed_dob is not None:
-            if ctx.identity_lookup == "AWAITING_PHONE":
-                # Inbound không có caller_number: chưa có hồ sơ để đối chiếu — xin số đã đăng ký trước
-                return self._ask_phone(ctx)
             return self._verify(ctx, now)
         question = QuestionId.ASK_NAME if ctx.claimed_name is None else QuestionId.ASK_DOB
         ctx.identity_step = question.value
@@ -386,9 +391,43 @@ class DialogueManager:
             else:
                 text = t.ASK_NAME_FOR_REQUEST if ask_name else t.ASK_DOB_FOR_REQUEST
             return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
+        if (
+            ctx.call.direction == "inbound"
+            and ex.intent.value is Intent.BOOK
+            and not ctx.booking_need_heard
+        ):
+            # Hình 0: "Alô, tôi muốn đặt lịch khám ạ." được đáp bằng câu hỏi tên — câu nêu nhu cầu đặt lịch
+            # không phải câu không hiểu (D-2). Chỉ miễn một lần: nói lại mãi vẫn tới chuyển máy (§1.1.5)
+            ctx.booking_need_heard = True
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
+            )
+            return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NEUTRAL")
         # Nhu cầu không kèm định danh vẫn là ABSENT và dùng lượt hỏi lại (stage1 R-40); chỉ đổi lời
         # hỏi lại để người gọi biết bot đã nghe nhu cầu, thay vì "em chưa nghe rõ".
         return self._retry_identity(ctx, question, request=ex.intent.value in _REQUEST_INTENTS)
+
+    def _inbound_handoff(self, ctx: CallContext, ex: ExtractionResult) -> Optional[Reply]:
+        """Inbound: việc ngoài kịch bản đặt lịch nói ở lượt danh tính thì chuyển ngay, không cần xác minh
+        (plan t11 §5.2); chưa xác minh nên không nói gì về hồ sơ (SF-03). Nhu cầu đặt lịch thì chỉ được giữ
+        (`_keep_early_request`).
+        """
+        if asks_new_profile(ex.transcript):
+            # §1.1.9: không tạo bệnh nhân — nhờ tạo hồ sơ mới là không có hồ sơ để tìm (qc-ib-05)
+            return Reply(self.transfer(ctx, "PATIENT_NOT_FOUND"))
+        if books_for_other(ex.transcript):
+            # Bảng 1: bệnh nhân gọi đến tự đặt; đặt hộ người khác ngoài kịch bản (D-7)
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
+        # Phần câu ngoài tên / ngày sinh mà IE không giữ làm yêu cầu (nhãn dự phòng khi câu không có tên,
+        # hoặc phần còn lại của câu có tên): việc với lịch có sẵn thì chuyển ngay — inbound chỉ có đặt lịch
+        # mới (Bảng 1, G22)
+        rest = ex.deferred_intent.span if ex.deferred_intent.value is Intent.NONE else None
+        no_identity = ex.intent.value in (Intent.CANCEL, Intent.RESCHEDULE, Intent.CONFIRM)
+        if (no_identity and existing_appointment_request(ex.transcript)) or (
+            rest and existing_appointment_request(rest)
+        ):
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
+        return None
 
     @staticmethod
     def _opening_greeting(ctx: CallContext, ex: ExtractionResult, question: QuestionId) -> bool:
@@ -414,6 +453,11 @@ class DialogueManager:
         yêu cầu hủy đã giữ; đổi ý ("không hủy nữa", "vẫn đi khám") bỏ yêu cầu đã giữ."""
         if not ex.deferred_intent.found:
             return
+        if ex.deferred_intent.value is Intent.BOOK:
+            # Inbound (QC qc-ib-10): giữ yêu cầu đặt lịch và tiêu chí thời gian cho `_early_book`
+            ctx.early_book = ex.deferred_request or ""
+            return
+        ctx.early_book = None
         if ex.deferred_intent.value is not Intent.CANCEL:
             ctx.early_cancel = ctx.early_cancel_reason = None
             rescheduling = ex.deferred_intent.value is Intent.RESCHEDULE
@@ -455,43 +499,13 @@ class DialogueManager:
         if ctx.identity_retries.get(key, 0) >= 1:
             return Reply(self.transfer(ctx, "NOT_UNDERSTOOD"))
         ctx.identity_retries[key] = 1
-        again, for_request = _IDENTITY_RETRY_TEXTS[question]
-        text = for_request if request else again
-        return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
-
-    # --- Inbound không có caller_number: số điện thoại đã đăng ký ----------------------------
-
-    def _ask_phone(self, ctx: CallContext) -> Reply:
-        """Tên + ngày sinh đã khai nhưng chưa có hồ sơ nào (không có số gọi đến): xin số đã đăng ký
-        để tra hồ sơ rồi mới đối chiếu (§1.1.9). Chưa đối chiếu nên không nói gì về hai giá trị đã khai."""
-        ctx.identity_step = "ASK_PHONE"
-        return Reply(ask(ctx, QuestionId.ASK_PHONE, t.ASK_PHONE, "AWAITING_IDENTITY"))
-
-    def _phone(self, ctx: CallContext, ex: ExtractionResult, now: datetime) -> Reply:
-        """Số người gọi đọc chỉ để tìm ứng viên; đối chiếu vẫn là `_verify` trên tên + ngày sinh đã khai.
-
-        Không có hồ sơ theo số đó: PATIENT_NOT_FOUND, không nói yếu tố nào sai (§1.1.2, §1.1.9). Mock
-        lỗi: SYSTEM_ERROR. Không đọc được số / số không đúng dạng: hỏi lại một lần (R-40), lần hai
-        chuyển máy NOT_UNDERSTOOD (§1.1.5) — cùng cách với tên và ngày sinh.
-        """
-        if ex.phone.found and ex.phone.value:
-            result = self._verifier.lookup_spoken_phone(ctx, ex.phone.value)
-            if result.status is LookupStatus.LOADED:
-                return self._verify(ctx, now)
-            if result.status is LookupStatus.UNAVAILABLE:
-                return Reply(self.transfer(ctx, "SYSTEM_ERROR"))
-            if result.transfer_reason is not None and result.status is not LookupStatus.NO_PHONE:
-                ctx.identity_result = MatchDetail.NO_REFERENCE.value
-                return Reply(self.transfer(ctx, result.transfer_reason, t.IDENTITY_FAILED_TRANSFER))
-        if is_identity_question(ex.transcript) and ctx.identity_questions < MAX_IDENTITY_QUESTIONS:
-            ctx.identity_questions += 1
-            return Reply(
-                ask(ctx, QuestionId.ASK_PHONE, t.INTRODUCE_AGAIN_ASK_PHONE, "AWAITING_IDENTITY"),
-                "NEUTRAL",
+        if request:
+            text = (
+                t.ASK_NAME_FOR_REQUEST if question is QuestionId.ASK_NAME else t.ASK_DOB_FOR_REQUEST
             )
-        return self._retry_identity(
-            ctx, QuestionId.ASK_PHONE, request=ex.intent.value in _REQUEST_INTENTS
-        )
+        else:
+            text = t.ASK_NAME_AGAIN if question is QuestionId.ASK_NAME else t.ASK_DOB_AGAIN
+        return Reply(ask(ctx, question, text, "AWAITING_IDENTITY"), "NOT_UNDERSTOOD")
 
     def _verify(self, ctx: CallContext, now: datetime) -> Reply:
         result = self._verifier.verify(ctx)
@@ -511,6 +525,8 @@ class DialogueManager:
         ctx.identity_step = "VERIFIED"
         ctx.patient_id = result.patient_id
         if ctx.call.direction == "inbound":
+            if ctx.early_book is not None:
+                return self._early_book(ctx, now)
             return Reply(ask(ctx, QuestionId.ASK_INTENT, t.ASK_INTENT_INBOUND, "AWAITING_INTENT"))
         if ctx.early_reschedule is not None:
             return self._early_reschedule(ctx, now)
@@ -533,6 +549,53 @@ class DialogueManager:
                 action="CONFIRM",
             )
         )
+
+    def _early_book(self, ctx: CallContext, now: datetime) -> Reply:
+        """Inbound, QC qc-ib-10: đã nói muốn đặt lịch cùng lượt khai danh tính — xác minh xong đi thẳng vào
+        đặt lịch theo lời đó (`_booking_need`), như `_early_reschedule`; không hỏi "cần hỗ trợ gì"."""
+        request = ctx.early_book or ""
+        ctx.early_book = None
+        return self._booking_need(ctx, now, request, early=True)
+
+    def _booking_need(
+        self, ctx: CallContext, now: datetime, request: str, *, early: bool = False
+    ) -> Reply:
+        """Nhu cầu đặt lịch inbound (contract Hình 0; plan t11 §5.3):
+
+        - Đã nêu giờ / ngày / buổi (qc-ib-10 "chiều 14 tháng 10"): tra GET /slots, mời theo đúng yêu cầu.
+        - "Gần nhất / sớm nhất / lúc nào cũng được" (qc-ib-01): mời một khung sớm nhất (G18).
+        - Có nhu cầu mà chưa nêu giờ — nói ở bước danh tính (`early`, qc-ib-01..08), hoặc chỉ nêu khoa ("Khám
+          tổng quát"): hỏi ngày / buổi muốn đặt. Chỉ nêu khoa lần nữa thì hỏi lại một lần, sau đó đọc khung sớm
+          nhất và mời nêu ngày khác (D-1). Câu hỏi đúng nguyên văn Hình 0 ("khoa nào và khoảng thời gian nào")
+          là câu TTS mới, chờ PM duyệt và thu âm — trong lúc đó dùng câu đã có trong cache.
+        - "Tôi muốn đặt lịch" trả lời câu "cần hỗ trợ gì": đọc khung sớm nhất, mời nêu ngày khác (D-1).
+        Khoa không lọc khung và không được nhắc lại (D-5): mock không nhận khoa.
+        """
+        step, ctx.booking_step = ctx.booking_step, None
+        timed = not _criteria(request, now).empty
+        if not timed and asks_earliest(request):
+            return self._offer_earliest(ctx, now)
+        department = mentions_department(request)
+        if not timed and (
+            (step is None and (early or department)) or (step == "TIME" and department)
+        ):
+            ctx.booking_step = "TIME" if step is None else "TIME_AGAIN"
+            return Reply(
+                ask(ctx, QuestionId.ASK_INTENT, t.ASK_SLOT_PREFERENCE["BOOK"], "AWAITING_INTENT")
+            )
+        ctx.set_pending("BOOK")
+        return self._new_request(ctx, now, request)
+
+    def _offer_earliest(self, ctx: CallContext, now: datetime) -> Reply:
+        """Mời đúng một khung sớm nhất bằng câu có/không (G18): câu trả lời sau đó ("được", "giờ đó cũng
+        được") chỉ có một khung để hiểu."""
+        ctx.set_pending("BOOK")
+        ctx.reset_slot_request(None)
+        slots = self._reads.list_open_slots(ctx, now)
+        if not slots:
+            ctx.clear_pending()
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE", t.NO_SLOTS_TRANSFER))
+        return Reply(self._offer_one(ctx, min(slots, key=_starts)))
 
     def _early_reschedule(self, ctx: CallContext, now: datetime) -> Reply:
         """R-43: xác minh xong thì đi thẳng vào luồng đổi lịch đã xin, không hỏi lại nhu cầu.
@@ -666,11 +729,15 @@ class DialogueManager:
                 )
             return self._not_understood(ctx)
 
-        if intent is Intent.BOOK:
-            return self._start(ctx, intent, ex, now)
+        if books_for_other(ex.transcript):
+            # Bảng 1: bệnh nhân gọi đến tự đặt; đặt hộ người khác ngoài kịch bản (D-7)
+            return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
         if intent in (Intent.CONFIRM, Intent.CANCEL, Intent.RESCHEDULE):
             # Inbound chỉ có kịch bản đặt lịch mới (§1); việc với lịch có sẵn -> chuyển ngay (§1.1.5)
             return Reply(self.transfer(ctx, "OUT_OF_SCOPE"))
+        if intent is Intent.BOOK or mentions_department(ex.transcript):
+            # IE đã gán BOOK cho câu chỉ nêu giờ / khoa / "gần nhất" ở câu hỏi này (G4)
+            return self._booking_need(ctx, now, ex.transcript)
         return self._not_understood(ctx)
 
     def _start(
@@ -996,6 +1063,21 @@ class DialogueManager:
             return self._abandon(ctx)
         if _only_rechooses(ex):
             return self._rechoose(ctx, now)
+        if (
+            action == "BOOK"
+            and ctx.presented_slot_ids == [slot_id]
+            and not ctx.business_write_blocked
+            and self._answers_last_question(ctx)
+            and agrees_to_offered(ex.transcript)
+        ):
+            # "Không có thì giờ em vừa nói cũng được" (qc-ib-07): lượt trước chỉ mời đúng một khung bằng câu
+            # có/không, nên "giờ em vừa nói" là khung đó — đồng ý rõ (R-23, G15)
+            ctx.add_evidence(
+                self._evidence(
+                    ctx, ex, "CONFIRMATION", Field(Agreement.AGREE, Provenance.EXACT, ex.transcript)
+                )
+            )
+            return self._write_slot(ctx, now)
         agreement = ex.agreement.value
         choice = ex.slot_choice.value
         _drop_excluded(ctx, choice)
@@ -1371,12 +1453,30 @@ class DialogueManager:
                 # kín rồi đọc khung gần ngày xin nhất — cửa sổ bắt đầu từ ngày xin nên sớm nhất là
                 # gần nhất (GC-RES-02, D-3)
                 ctx.reset_slot_request(None, day_iso)
+                if ctx.pending_action == "BOOK":
+                    return self._offer_nearest(ctx, criteria, now)
                 if day is not None and not filter_slots(slots, _dates_only(criteria)):
                     return self._offer_next(ctx, now, understanding="NEUTRAL", full_date=day)
                 # Ngày xin còn khung nhưng không đúng giờ xin: cửa sổ bắt đầu từ ngày xin nên khung
                 # đọc đầu tiên là khung của chính ngày đó (R-29)
                 return self._offer_next(ctx, now, t.SLOT_NO_MATCH, "NEUTRAL")
         return self._offer_next(ctx, now, prefix)
+
+    def _offer_nearest(self, ctx: CallContext, criteria: SlotCriteria, now: datetime) -> Reply:
+        """Đặt lịch, không có giờ khách xin: nói rõ rồi mời MỘT khung gần giờ xin nhất bằng câu có/không
+        (G21, D-12) — cùng ngày trước, rồi khung gần nhất. Câu "giờ em vừa nói cũng được" sau đó chỉ có một
+        khung để hiểu. Đổi lịch vẫn đọc trang 2 khung."""
+        candidates = [slot for slot in ctx.slots if slot["slot_id"] not in ctx.refused_slot_ids]
+        if not candidates:
+            return self._slots_exhausted(ctx)
+        target = _requested_moment(criteria, now)
+
+        def distance(slot: dict[str, Any]) -> tuple[bool, float]:
+            start = _starts(slot)
+            return start.date() != target.date(), abs((start - target).total_seconds())
+
+        nearest = min(candidates, key=distance)
+        return Reply(self._offer_one(ctx, nearest, t.SLOT_NO_MATCH), "NEUTRAL")
 
     def _offer_next(
         self,
@@ -1559,6 +1659,9 @@ class DialogueManager:
         - vế sau chỉ nêu đúng lịch hẹn đang đổi ("thì thôi, giữ 3 rưỡi chiều thứ Tư"): lớp chặn thứ hai,
           đối chiếu trên dữ liệu mock, không trên từ khóa.
         """
+        if ctx.pending_action == "BOOK" and refuses_other_times(ex.transcript):
+            # "Giờ khác không được" (qc-ib-06): khách chỉ nhận giờ đã xin mà giờ đó không có (G7)
+            return True
         if not gives_up_if_unavailable(ex.transcript):
             return False
         if answer_after_give_up(ex.transcript) is None:
@@ -1596,17 +1699,19 @@ class DialogueManager:
         """ "Thôi không đổi nữa", "giữ lịch cũ" giữa luồng đổi lịch: giữ nguyên lịch cũ, không ghi gì,
         chuyển nhân viên PATIENT_REQUEST như nhánh hết 2 vòng (PRD R-29 v2.1, GC-RES-09).
 
-        Đặt lịch (inbound) bỏ ngang thì chưa có lịch nào để giữ: hỏi lại nhu cầu như cũ.
+        Đặt lịch (inbound) bỏ ngang: chưa có lịch nào, không ghi gì, chuyển nhân viên PATIENT_REQUEST (G7,
+        PRD R-10, GC-BOOK-03 "Giờ khác không được").
         """
-        if ctx.pending_action == "RESCHEDULE" or ctx.slot_round >= MAX_SLOT_ROUNDS:
-            return self._rounds_exhausted(ctx)
-        return self._abandon(ctx)
+        return self._rounds_exhausted(ctx)
 
     def _rounds_exhausted(self, ctx: CallContext, taken: bool = False) -> Reply:
-        """Hết 2 vòng (R-29, GC-RES-05): lịch cũ giữ nguyên, không ghi gì, chuyển PATIENT_REQUEST."""
+        """Hết 2 vòng (R-29, GC-RES-05): lịch cũ giữ nguyên, không ghi gì, chuyển PATIENT_REQUEST.
+
+        Đặt lịch không có lịch cũ nào để nói "giữ nguyên" (G8): câu chuyển máy chung."""
+        booking = ctx.pending_action == "BOOK"
         ctx.clear_pending()
         text = t.SLOT_TAKEN_ROUNDS_TRANSFER if taken else t.ROUNDS_EXHAUSTED_TRANSFER
-        return Reply(self.transfer(ctx, "PATIENT_REQUEST", text))
+        return Reply(self.transfer(ctx, "PATIENT_REQUEST", t.TRANSFER if booking else text))
 
     def _not_understood(
         self,
@@ -1660,6 +1765,26 @@ def _criteria(request: str, now: datetime) -> SlotCriteria:
     Thứ trần quy về tuần này theo R-30 ("thứ Sáu" = thứ Sáu tuần này).
     """
     return resolve_request(replace(parse_slot_criteria(request, now), ordinal=None), now)
+
+
+# Giờ đại diện của buổi khi khách chỉ nêu buổi, để chọn khung gần nhất (G21)
+_PERIOD_START = {"MORNING": 8, "NOON": 11, "AFTERNOON": 14, "EVENING": 18}
+
+
+def _starts(slot: dict[str, Any]) -> datetime:
+    return to_local(datetime.fromisoformat(slot["starts_at"]))
+
+
+def _requested_moment(criteria: SlotCriteria, now: datetime) -> datetime:
+    """Thời điểm khách xin (ngày xin, hoặc hôm nay; giờ xin, hoặc đầu buổi) — mốc chọn khung gần nhất."""
+    day = requested_date(criteria, now) or to_local(now).date()
+    hours = sorted(criteria.hours or ())
+    if hours:
+        # "8 giờ" -> {8, 20}: lấy giờ trong ngày làm việc trước
+        hour = next((h for h in hours if 6 <= h <= 20), hours[0])
+    else:
+        hour = _PERIOD_START.get(criteria.period or "", 0)
+    return datetime.combine(day, time(hour, criteria.minute or 0), tzinfo=VN_TZ)
 
 
 def _busy(transcript: str) -> bool:

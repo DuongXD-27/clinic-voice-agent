@@ -130,18 +130,6 @@ Kết quả dưới đây ghi nhận trước bản sửa lần 2, qua `Informat
 câu nhiều mệnh đề, hỏi về tổ chức và lời đáp máy. Chấp nhận một tên sai có thể dẫn tới
 `IDENTITY_FAILED` khi đã đủ ngày sinh, còn bỏ sót tên thường dẫn tới hỏi lại.
 
-## Hai ca cần ngữ cảnh, chưa chấm đúng/sai
-
-`ID038–039`: `Nguyễn Văn A em nhé` và `Nguyễn Văn A em ạ`. `Em` có thể là cách gọi bot
-hoặc âm cuối của tên; chỉ nhìn transcript không đảm bảo phân biệt được. Corpus đánh dấu
-`expect_name=*`, không sửa nhãn thành đầu ra hiện có để báo PASS. Không dùng tên trong
-hồ sơ để đoán ngược. Cần gán nhãn với ngữ cảnh/audio hoặc thiết kế hỏi lại phần họ tên.
-
-`ID040`: `Nguyễn Văn Em nhé` cũng cần review vì cùng chuỗi có thể được hiểu là tên
-`Nguyễn Văn Em` hoặc tên `Nguyễn Văn` kèm lời gọi `em nhé`. Câu rõ hơn
-`Nguyễn Văn Em nhé anh` phải giữ `Em`; `Nguyễn Thị Anh nhé em` phải giữ `Anh`.
-Việc bỏ một danh xưng cuối câu vô điều kiện sẽ làm sai cả những tên hợp lệ này.
-
 ## Các hàng rào đang hoạt động trong tập khảo sát
 
 - Tự xưng `Tên em là…` khác với `Tên em tôi là…` / `con tôi tên…`.
@@ -157,7 +145,7 @@ Việc bỏ một danh xưng cuối câu vô điều kiện sẽ làm sai cả n
 
 ```powershell
 .venv\Scripts\python.exe scripts/identity_eval.py --output outputs/eval/identity/results.csv
-.venv\Scripts\python.exe scripts/identity_eval.py --slot-filling --groups suffix_other,name_particle_collision,boundary_review,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/slot-filling-results.csv
+.venv\Scripts\python.exe scripts/identity_eval.py --slot-filling --groups suffix_other,name_particle_collision,greeting_with_name,self_intro_variants,contact_with_name --output outputs/eval/identity/slot-filling-results.csv
 .venv\Scripts\python.exe -m pytest -q tests/engine/extraction tests/engine/test_identity_dialogue.py
 ```
 

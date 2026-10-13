@@ -20,6 +20,9 @@ from callbot.engine.verification.phone import MOCK_PHONE_RE, normalize_phone
         ("(+84) 912.345.600", "0912345600"),
         ("0999999999", "0999999999"),
         ("0212345678", "0212345678"),
+        ("849123456", "0849123456"),  # 0849123456 rơi số 0: "84" là đầu số, không phải mã quốc gia
+        ("912345600", "0912345600"),  # 0912345600 rơi số 0
+        ("84 912 3456", "0849123456"),
     ],
 )
 def test_normalizes_to_mock_pattern(raw: str, expected: str) -> None:
@@ -36,7 +39,9 @@ def test_normalizes_to_mock_pattern(raw: str, expected: str) -> None:
         "   ",
         "+15551234567",  # mã quốc gia khác
         "0112345678",  # đầu số ngoài danh sách mock
-        "091234560",  # 9 số
+        "091234560",  # 9 số còn số 0 đầu: không phải số rơi mất số 0
+        "112345600",  # 9 số rơi số 0 nhưng đầu số "01" ngoài danh sách mock
+        "+849123456",  # có "+": "84" là mã quốc gia, sau đó chỉ 7 số
         "09123456001",  # 11 số
         "02412345678",  # cố định 11 số — mock chỉ nhận 10
         "8491234560",  # "84" + 8 số: thiếu một chữ số

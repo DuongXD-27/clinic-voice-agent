@@ -61,7 +61,7 @@ def krisp_processor(enabled: bool) -> object | None:
 async def pump_caller_track(
     track: "rtc.Track",
     *,
-    room_name: str,
+    call_id: str,
     sample_rate: int,
     frame_ms: int,
     capacity_frames: int,
@@ -84,7 +84,7 @@ async def pump_caller_track(
     # chắn ASR hallucinate do audio bị méo (sample rate/capture sai) hay do model thật sự nghe
     # nhầm giọng nói rõ ràng. Tắt mặc định: PII + I/O per-frame không nên bật ở production.
     dump_writer = (
-        _open_debug_dump(room_name, sample_rate)
+        _open_debug_dump(call_id, sample_rate)
         if os.environ.get("LIVEKIT_DEBUG_DUMP_AUDIO")
         else None
     )
@@ -101,11 +101,11 @@ async def pump_caller_track(
         await stream.aclose()
 
 
-def _open_debug_dump(room_name: str, sample_rate: int):
+def _open_debug_dump(call_id: str, sample_rate: int):
     import wave
 
     os.makedirs("temp/audio", exist_ok=True)
-    path = f"temp/audio/livekit_debug_{room_name}.wav"
+    path = f"temp/audio/livekit_debug_{call_id}.wav"
     writer = wave.open(path, "wb")
     writer.setnchannels(1)
     writer.setsampwidth(2)

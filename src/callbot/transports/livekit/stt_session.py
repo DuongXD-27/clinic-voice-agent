@@ -187,7 +187,7 @@ class SttSession:
         self._pump_task = asyncio.ensure_future(
             pump_caller_track(
                 track,
-                room_name=self._room.name,
+                call_id=self._room.name,
                 sample_rate=self._sample_rate,
                 frame_ms=self._frame_ms,
                 capacity_frames=self._input_queue_frames,

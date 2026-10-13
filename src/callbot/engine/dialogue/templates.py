@@ -127,37 +127,6 @@ ASK_DOB_AGAIN = _static_group(
     "Anh chị đọc lại đủ ngày, tháng, năm sinh giúp em ạ.",
     "Em xin nghe lại ngày, tháng và năm sinh của anh chị ạ.",
 )
-# Inbound không có caller_number (§1.1.9): đã có tên + ngày sinh, xin số điện thoại đã đăng ký để tra
-# hồ sơ. Không nhắc lại tên / ngày sinh đã khai, không nói số đó có hồ sơ hay không (SF-03).
-ASK_PHONE = _static_group(
-    "ASK_PHONE",
-    "Anh chị cho em xin số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
-    "Em xin thêm số điện thoại anh chị đã đăng ký khám để tìm hồ sơ ạ.",
-    "Dạ, anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-)
-ASK_PHONE_AGAIN = _static_group(
-    "ASK_PHONE_AGAIN",
-    "Em chưa nghe rõ số. Anh chị đọc lại số điện thoại đã đăng ký khám, từng số một giúp em ạ.",
-    "Anh chị đọc lại giúp em số điện thoại đã đăng ký khám, từng số một ạ.",
-    "Dạ, anh chị nhắc lại số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
-)
-ASK_PHONE_VERIFY_SHARED = _static_group(
-    "ASK_PHONE_VERIFY_SHARED",
-    "Để hỗ trợ anh chị, em cần tra hồ sơ trước. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-    "Em cần tìm hồ sơ trước khi trao đổi thông tin lịch khám. "
-    "Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-    "Dạ, em sẽ hỗ trợ ngay sau khi tra được hồ sơ. "
-    "Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-)
-ASK_PHONE_FOR_REQUEST = ASK_PHONE_VERIFY_FIRST = ASK_PHONE_VERIFY_SHARED
-INTRODUCE_AGAIN_ASK_PHONE = _static_group(
-    "INTRODUCE_AGAIN_ASK_PHONE",
-    f"Em là {AI_DISCLOSURE} của tổng đài Vinmec. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-    f"Dạ, em là {AI_DISCLOSURE} của tổng đài Vinmec. "
-    "Em xin số điện thoại đã đăng ký khám để tra hồ sơ ạ.",
-    f"Anh chị đang nói chuyện với {AI_DISCLOSURE} của Vinmec. "
-    "Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-)
 ASK_INTENT_INBOUND = _static_group(
     "ASK_INTENT_INBOUND",
     "Cảm ơn anh chị. Anh chị cần em hỗ trợ gì ạ?",

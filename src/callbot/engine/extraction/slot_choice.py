@@ -253,6 +253,8 @@ _ANY = compile_phrases(
         "sớm nhất",
         "sớm nhất có thể",
         "càng sớm càng tốt",
+        # "Còn lịch nào gần nhất không em?" (qc-ib-01). "cái / khung gần nhất" là thứ tự trên trang (`_FIRST`)
+        "gần nhất",
     ]
 )
 # Số lượng khung ("2 khung cuối", "mấy khung còn lại", "4 khung khác"): xin nghe tiếp, không phải chọn

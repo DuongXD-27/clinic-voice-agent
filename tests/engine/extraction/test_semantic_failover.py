@@ -191,11 +191,11 @@ def test_min_secondary_must_fit_the_budget() -> None:
 # --- Cấu hình và factory ---------------------------------------------------------------------
 
 
-def test_config_defaults_to_jev_with_openai_fallback() -> None:
-    """Quyết định owner 10-10-2026: Jev chính, OpenAI dự phòng — đọc thẳng config/engine.yaml."""
+def test_config_defaults_to_jev_with_deepseek_fallback() -> None:
+    """Owner 10-10-2026: Jev chính; 13-10-2026: DeepSeek thay OpenAI dự phòng — đọc thẳng engine.yaml."""
     config = yaml.safe_load((CONFIG_DIR / "engine.yaml").read_text(encoding="utf-8"))
     assert config["semantic_provider"] == "jev"
-    assert config["semantic_backup_provider"] == "openai"
+    assert config["semantic_backup_provider"] == "deepseek"
     assert 0 < config["semantic_backup_min_remaining_s"] <= 4.0  # trần lượt MODEL_TIMEOUT_S
 
 

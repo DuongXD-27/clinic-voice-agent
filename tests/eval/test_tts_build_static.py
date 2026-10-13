@@ -56,8 +56,7 @@ def test_dry_run_does_not_construct_provider_or_write_files(monkeypatch, tmp_pat
     )
     assert build.main() == 0
     report = json.loads(capsys.readouterr().out)
-    # 74 câu catalog 08-10 + 12 câu bước hỏi số điện thoại (13-10)
-    assert report["total"] == 86 and report["selected_characters"] == 5794
+    assert report["total"] == 74 and report["selected_characters"] == 4787
     assert not (tmp_path / "dry").exists()
 
 

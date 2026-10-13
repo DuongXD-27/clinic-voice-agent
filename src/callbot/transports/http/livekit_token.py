@@ -24,8 +24,8 @@ class LiveKitTokenRequest(BaseModel):
     # khai direction + caller_number (inbound) hoặc appointment_id (outbound) để đi qua
     # đúng nhánh nghiệp vụ tương ứng, gắn vào token qua participant attribute mà
     # worker.py đọc lại khi participant join. inbound KHÔNG bắt buộc caller_number —
-    # để trống là một kịch bản hợp lệ: bot hỏi tên, ngày sinh rồi số điện thoại đã đăng ký
-    # để tra hồ sơ (ASK_PHONE, xem dialogue/manager.py `_phone`).
+    # để trống là một kịch bản hợp lệ (caller không xác định được -> policy engine
+    # chuyển máy ngay lượt đầu, xem policy_engine.py: LOOKUP_TRANSFER_REASON).
     direction: Literal["inbound", "outbound"] = "inbound"
     caller_number: Optional[str] = None
     appointment_id: Optional[str] = None

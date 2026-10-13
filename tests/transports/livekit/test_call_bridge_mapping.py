@@ -44,9 +44,9 @@ def test_call_start_from_room_uses_room_name_as_call_id() -> None:
 
 def test_call_start_from_room_passes_through_caller_number() -> None:
     """caller_number giả lập (từ participant attribute, xem worker.py) phải đi thẳng
-    vào CallStart — nếu None thì engine hỏi tên, ngày sinh rồi số điện thoại đã đăng ký
-    (ASK_PHONE) thay vì tra theo số gọi đến; trước đây None là transfer ngay lượt đầu, và
-    bug thật đã gặp là demo luôn None nên luôn transfer dù user chưa kịp nói gì."""
+    vào CallStart — nếu None thì engine đi nhánh NO_PHONE và transfer ngay lượt đầu
+    (đúng chính sách), đây chính là bug thật đã gặp: demo luôn None nên luôn transfer
+    ngay dù user chưa kịp nói gì."""
     call_start = call_start_from_room("web-abc123", "web-participant-1", caller_number="0912345600")
 
     assert call_start == CallStart(
@@ -195,6 +195,102 @@ class _FakeRoom:
         self._handlers[event] = callback
 
 
+def test_caller_disconnect_stops_input_but_observer_disconnect_does_not():
+    from types import SimpleNamespace
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-room"),
+        _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), []),
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+    )
+    bridge._on_participant_disconnected(SimpleNamespace(identity="observer"))
+    assert not bridge._input_done
+    assert not bridge._caller_gone
+    bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+    assert bridge._input_done
+    assert bridge._caller_gone
+
+
+async def test_sip_call_id_does_not_contain_phone_from_room_name(monkeypatch, caplog):
+    room = _FakeRoom("sip-booking-_+84912345600_random")
+    orchestrator = _FakeOrchestrator(BotAction("Chào", "ENDED", ended=True), [])
+    bridge = make_call_bridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+        is_sip=True,
+    )
+
+    async def publish_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish_track)
+    with caplog.at_level(logging.INFO):
+        await bridge.run()
+
+    call_id = orchestrator.started_calls[0].call_id
+    assert call_id.startswith("sip-")
+    assert "+84912345600" not in call_id
+    assert "+84912345600" not in caplog.text
+
+
+async def test_caller_hangup_before_queued_booking_confirmation_prevents_write(monkeypatch):
+    from types import SimpleNamespace
+
+    room = _FakeRoom("sip-booking-_+84912345600_random")
+    orchestrator = _FakeOrchestrator(
+        BotAction("Xin chào", "AWAITING_CONFIRMATION"),
+        [BotAction("Đã đặt lịch", "ENDED", ended=True, outcome="BOOKED")],
+    )
+    bridge = make_call_bridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([UserTurnCompleted(text="Tôi xác nhận đặt lịch")]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+        is_sip=True,
+    )
+
+    async def publish_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    publish_transcript = bridge._publish_transcript
+
+    async def publish_then_hangup(role, text, **kwargs):
+        await publish_transcript(role, text, **kwargs)
+        if role == "caller":
+            bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish_track)
+    monkeypatch.setattr(bridge, "_publish_transcript", publish_then_hangup)
+    await asyncio.wait_for(bridge.run(), timeout=2)
+
+    assert orchestrator.handled_turns == []
+    assert bridge._caller_gone
+    assert bridge._tts.spoken == ["Xin chào"]
+
+
+async def test_speak_skips_tts_after_caller_hangs_up():
+    from types import SimpleNamespace
+
+    tts = _FakeTTS()
+    bridge = make_call_bridge(
+        _FakeRoom("sip-room"),
+        _FakeOrchestrator(BotAction("Xin chào", "AWAITING_INTENT"), []),
+        _FakeSTTPipeline([]),
+        tts,
+        caller_identity="sip-caller",
+    )
+    bridge._audio_source = _FakeAudioSource()
+    bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+    await bridge._speak("Không được phát câu này")
+    assert tts.spoken == []
+
+
 async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkeypatch) -> None:
     """Kịch bản tối giản: opening không ended, 1 turn khiến orchestrator báo ended=True
     -> CallBridge phải dừng vòng lặp và cleanup, không cần LiveKit thật để test wiring."""
@@ -226,6 +322,43 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     assert len(fake_source.captured_frames) == 2
     assert fake_source.closed is True
     assert fake_source.wait_for_playout_calls == 2
+
+
+async def test_sip_hangup_follows_final_playout_before_media_cleanup(monkeypatch):
+    """Caller must receive BYE even when media cleanup needs the remote to hang up."""
+    source = _FakeAudioSource()
+    hangup = asyncio.Event()
+    bridge = None
+
+    async def close_caller():
+        assert source.wait_for_playout_calls == 2
+        assert not source.closed
+        hangup.set()
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-booking"),
+        _FakeOrchestrator(
+            BotAction("Xin chào", "AWAITING_INTENT"),
+            [BotAction("Đã đặt lịch", "ENDED", ended=True, outcome="BOOKED")],
+        ),
+        _FakeSTTPipeline([UserTurnCompleted(text="đồng ý")]),
+        _FakeTTS(),
+        on_close=close_caller,
+    )
+
+    async def publish():
+        bridge._audio_source = source
+
+    original_close = bridge.aclose
+
+    async def media_close():
+        await hangup.wait()
+        await original_close()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish)
+    monkeypatch.setattr(bridge, "aclose", media_close)
+    await asyncio.wait_for(bridge.run(), timeout=2)
+    assert source.closed
 
 
 async def test_outbound_start_failure_notifies_browser_without_crashing_job() -> None:

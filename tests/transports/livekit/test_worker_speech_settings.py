@@ -137,6 +137,8 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
         async def set_attributes(self, attributes):
             assert attributes == {worker.ASR_ATTRIBUTE: "zipformer"}
 
+    shutdowns: list[str] = []
+
     class _Job:
         proc = SimpleNamespace(userdata={worker._PREWARMED_ASR: _PrewarmedZipFormer()})
         room = SimpleNamespace(local_participant=_Bot())
@@ -151,6 +153,9 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
                 attributes={worker.ASR_ATTRIBUTE: "zipformer", worker.MODE_ATTRIBUTE: "stt"},
             )
 
+        def shutdown(self, reason=""):
+            shutdowns.append(reason)
+
     def no_bot(*args, **kwargs):
         raise AssertionError("trang thử STT không được mở cuộc gọi với bot")
 
@@ -162,6 +167,7 @@ async def test_stt_test_page_runs_only_the_stt_pipeline_without_a_bot(monkeypatc
     await worker.entrypoint(_Job())
 
     assert len(ran) == 1
+    assert shutdowns == ["stt session finished"]
     # Không dựng TTS (review PR #110): TTS cấu hình sai (vd. thiếu key của provider) không được
     # làm hỏng trang thử STT, vốn không phát gì.
     assert built[0]["with_tts"] is False
@@ -206,6 +212,8 @@ async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
         async def publish_data(self, payload, *, reliable, topic):
             published.append((topic, json.loads(payload)))
 
+    shutdowns: list[str] = []
+
     class _Job:
         proc = SimpleNamespace(userdata={worker._PREWARMED_ASR: _PrewarmedZipFormer()})
         room = SimpleNamespace(local_participant=_Bot())
@@ -220,12 +228,17 @@ async def test_stt_test_page_is_told_when_the_model_fails_mid_session(
                 attributes={worker.ASR_ATTRIBUTE: "zipformer", worker.MODE_ATTRIBUTE: "stt"},
             )
 
+        def shutdown(self, reason=""):
+            shutdowns.append(reason)
+
     bundle = SimpleNamespace(stt_pipeline=object(), validator=None, tts=None)
     monkeypatch.setattr(worker, "build_streaming_bundle", lambda *a, **k: bundle)
     monkeypatch.setattr(worker, "SttSession", _Session)
 
     with pytest.raises(type(error)):
         await worker.entrypoint(_Job())
+
+    assert shutdowns == ["stt session finished"]
 
     assert [(topic, body["code"]) for topic, body in published] == [
         ("callbot.status", "STT_FAILED")

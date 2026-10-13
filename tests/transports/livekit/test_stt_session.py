@@ -186,4 +186,4 @@ async def test_stt_page_uses_the_call_audio_path_including_krisp(monkeypatch) ->
     await asyncio.sleep(0)
 
     assert pumped and pumped[0]["krisp_enabled"] is True
-    assert pumped[0]["room_name"] == room.name
+    assert pumped[0]["call_id"] == room.name

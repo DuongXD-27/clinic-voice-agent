@@ -1,0 +1,297 @@
+{
+  "scope": "actual MicroSIP -> LiveKit SIP -> Python agent -> Core -> HTTP Clinic Mock",
+  "attempt": 2,
+  "worker_id": "AW_BD5hNLR6Jipy",
+  "job_id": "AJ_EJe46Amm7omg",
+  "room": "sip-booking-_+84912345600_xT9Q4CLQKSDG",
+  "participants": [
+    {
+      "sid": "PA_8fvS4NwpiMBY",
+      "identity": "sip_+84912345600",
+      "kind": 3,
+      "sip_phone_number": "+84912345600",
+      "sip_trunk_id": "ST_jDtgrynHhNbj",
+      "sip_call_status": "active"
+    },
+    {
+      "sid": "PA_pPLSRTjTXAJg",
+      "identity": "agent-AJ_EJe46Amm7omg",
+      "kind": 4,
+      "sip_phone_number": null,
+      "sip_trunk_id": null,
+      "sip_call_status": null
+    }
+  ],
+  "created": [
+    {
+      "appointment_id": "apt_7be453d3d624",
+      "status": "BOOKED",
+      "slot_id": null
+    }
+  ],
+  "spans": [
+    {
+      "turn": 0,
+      "operation": "clinic.find_patient_by_phone",
+      "status": "OK",
+      "outcome": "ok",
+      "http_method": "GET",
+      "http_status": 200,
+      "endpoint_template": "/patients",
+      "start_time": "2026-10-07T04:00:03.549108Z",
+      "end_time": "2026-10-07T04:00:04.557663Z"
+    },
+    {
+      "turn": 0,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "AWAITING_IDENTITY",
+      "state_after": "AWAITING_IDENTITY",
+      "question_after": "ASK_NAME",
+      "start_time": "2026-10-07T04:00:03.548961Z",
+      "end_time": "2026-10-07T04:00:04.562053Z"
+    },
+    {
+      "turn": 0,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 101638,
+      "audio_duration_ms": 6352.375,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 1651.1291000060737,
+      "start_time": "2026-10-07T04:00:04.874274Z",
+      "end_time": "2026-10-07T04:00:12.907334Z"
+    },
+    {
+      "turn": 1,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "AWAITING_IDENTITY",
+      "state_after": "AWAITING_IDENTITY",
+      "question_before": "ASK_NAME",
+      "question_after": "ASK_DOB",
+      "understanding": "UNDERSTOOD",
+      "start_time": "2026-10-07T04:00:17.150119Z",
+      "end_time": "2026-10-07T04:00:17.150351Z"
+    },
+    {
+      "turn": 1,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "AWAITING_IDENTITY",
+      "state_after": "AWAITING_IDENTITY",
+      "start_time": "2026-10-07T04:00:17.122965Z",
+      "end_time": "2026-10-07T04:00:17.167575Z"
+    },
+    {
+      "turn": 1,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 46434,
+      "audio_duration_ms": 2902.125,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 489.93109998991713,
+      "start_time": "2026-10-07T04:00:17.171157Z",
+      "end_time": "2026-10-07T04:00:20.563816Z"
+    },
+    {
+      "turn": 2,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "AWAITING_IDENTITY",
+      "state_after": "AWAITING_INTENT",
+      "question_before": "ASK_DOB",
+      "question_after": "ASK_INTENT",
+      "understanding": "UNDERSTOOD",
+      "start_time": "2026-10-07T04:00:25.745451Z",
+      "end_time": "2026-10-07T04:00:25.745745Z"
+    },
+    {
+      "turn": 2,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "AWAITING_IDENTITY",
+      "state_after": "AWAITING_INTENT",
+      "start_time": "2026-10-07T04:00:25.724989Z",
+      "end_time": "2026-10-07T04:00:25.760461Z"
+    },
+    {
+      "turn": 2,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 45252,
+      "audio_duration_ms": 2828.25,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 471.29040001891553,
+      "start_time": "2026-10-07T04:00:25.764599Z",
+      "end_time": "2026-10-07T04:00:29.065639Z"
+    },
+    {
+      "turn": 3,
+      "operation": "clinic.get_slots",
+      "status": "OK",
+      "outcome": "ok",
+      "http_method": "GET",
+      "http_status": 200,
+      "endpoint_template": "/slots",
+      "start_time": "2026-10-07T04:00:32.975438Z",
+      "end_time": "2026-10-07T04:00:33.994010Z"
+    },
+    {
+      "turn": 3,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "AWAITING_INTENT",
+      "state_after": "OFFERING_SLOTS",
+      "question_before": "ASK_INTENT",
+      "question_after": "OFFER_SLOTS",
+      "understanding": "UNDERSTOOD",
+      "start_time": "2026-10-07T04:00:32.975079Z",
+      "end_time": "2026-10-07T04:00:33.995560Z"
+    },
+    {
+      "turn": 3,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "AWAITING_INTENT",
+      "state_after": "OFFERING_SLOTS",
+      "start_time": "2026-10-07T04:00:32.959167Z",
+      "end_time": "2026-10-07T04:00:34.008348Z"
+    },
+    {
+      "turn": 3,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 168944,
+      "audio_duration_ms": 10559.0,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 721.5841999859549,
+      "start_time": "2026-10-07T04:00:34.011821Z",
+      "end_time": "2026-10-07T04:00:45.292830Z"
+    },
+    {
+      "turn": 4,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "OFFERING_SLOTS",
+      "state_after": "OFFERING_SLOTS",
+      "question_before": "OFFER_SLOTS",
+      "question_after": "OFFER_SLOTS",
+      "understanding": "NOT_UNDERSTOOD",
+      "start_time": "2026-10-07T04:00:49.285989Z",
+      "end_time": "2026-10-07T04:00:49.286177Z"
+    },
+    {
+      "turn": 4,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "OFFERING_SLOTS",
+      "state_after": "OFFERING_SLOTS",
+      "start_time": "2026-10-07T04:00:49.268451Z",
+      "end_time": "2026-10-07T04:00:49.298504Z"
+    },
+    {
+      "turn": 4,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 56446,
+      "audio_duration_ms": 3527.875,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 443.8135999953374,
+      "start_time": "2026-10-07T04:00:49.301609Z",
+      "end_time": "2026-10-07T04:00:53.273728Z"
+    },
+    {
+      "turn": 5,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "OFFERING_SLOTS",
+      "state_after": "AWAITING_CONFIRMATION",
+      "question_before": "OFFER_SLOTS",
+      "question_after": "SLOT_READBACK",
+      "understanding": "UNDERSTOOD",
+      "start_time": "2026-10-07T04:00:57.731426Z",
+      "end_time": "2026-10-07T04:00:57.731673Z"
+    },
+    {
+      "turn": 5,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "OFFERING_SLOTS",
+      "state_after": "AWAITING_CONFIRMATION",
+      "start_time": "2026-10-07T04:00:57.714016Z",
+      "end_time": "2026-10-07T04:00:57.745855Z"
+    },
+    {
+      "turn": 5,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 104132,
+      "audio_duration_ms": 6508.25,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 620.7121000043117,
+      "start_time": "2026-10-07T04:00:57.749067Z",
+      "end_time": "2026-10-07T04:01:04.879781Z"
+    },
+    {
+      "turn": 6,
+      "operation": "clinic.create_appointment",
+      "status": "OK",
+      "outcome": "ok",
+      "http_method": "POST",
+      "http_status": 201,
+      "endpoint_template": "/appointments",
+      "start_time": "2026-10-07T04:01:08.395307Z",
+      "end_time": "2026-10-07T04:01:09.417074Z"
+    },
+    {
+      "turn": 6,
+      "operation": "core.dialogue",
+      "status": "OK",
+      "state_before": "AWAITING_CONFIRMATION",
+      "state_after": "ENDED",
+      "question_before": "SLOT_READBACK",
+      "question_after": "SLOT_READBACK",
+      "understanding": "UNDERSTOOD",
+      "outcome": "BOOKED",
+      "start_time": "2026-10-07T04:01:08.395189Z",
+      "end_time": "2026-10-07T04:01:09.418134Z"
+    },
+    {
+      "turn": 6,
+      "operation": "core.handle_turn",
+      "status": "OK",
+      "state_before": "AWAITING_CONFIRMATION",
+      "state_after": "ENDED",
+      "outcome": "BOOKED",
+      "start_time": "2026-10-07T04:01:08.373758Z",
+      "end_time": "2026-10-07T04:01:09.432188Z"
+    },
+    {
+      "turn": 6,
+      "operation": "speech.tts.synthesize",
+      "status": "OK",
+      "bytes": 66314,
+      "audio_duration_ms": 4144.625,
+      "interrupted": false,
+      "truncated": false,
+      "ttfa_ms": 606.5619000000879,
+      "start_time": "2026-10-07T04:01:09.436505Z",
+      "end_time": "2026-10-07T04:01:14.188178Z"
+    }
+  ],
+  "hangup": {
+    "initiator": "caller",
+    "time_local": "2026-10-07T11:01:34+07:00",
+    "sip_bye_200_ok": true,
+    "automatic_hangup_verified": false
+  },
+  "repeatability_verified": false,
+  "appointment_post_count": 1
+}

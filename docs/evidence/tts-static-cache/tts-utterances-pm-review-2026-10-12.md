@@ -136,25 +136,6 @@ Thu nguyên câu sau khi chốt lời và nghe đạt. Câu báo đã đặt/đ�
 | A73 | Giờ vừa bị đặt, dừng tìm và chuyển nhân viên | Giờ đó vừa có người đặt. Lịch cũ vẫn giữ nguyên. Em xin chuyển máy tới nhân viên để tìm giờ phù hợp ạ. | SLOT_TAKEN_ROUNDS_TRANSFER |
 | A74 | **Mới.** Họ tên hoặc ngày sinh không khớp hồ sơ, không tìm thấy hồ sơ, hoặc nhiều hồ sơ cùng khớp: chuyển nhân viên, không nói trường nào sai | Em chưa xác minh được thông tin của anh chị. Em xin chuyển máy tới nhân viên để hỗ trợ anh chị ạ. | IDENTITY_FAILED_TRANSFER |
 
-### Bổ sung 13/10 — xin số điện thoại đã đăng ký (12 câu, chưa thu)
-
-Khách gọi vào mà tổng đài không nhận được số gọi đến (harness của mentor gửi `caller_number: null`): bot vẫn hỏi họ tên, ngày sinh như trên, rồi xin số điện thoại đã đăng ký để tìm hồ sơ, sau đó mới đối chiếu. Tổng danh sách thu thành 86 câu (đã vào reduction map, catalog và danh sách thu 08-10 xuất lại ngày 13-10); 12 câu này cần PM duyệt chữ rồi thu cùng đợt thu lại ở tốc độ 1.15.
-
-| Mã | Tình huống / cách nói | Nguyên văn | ID đối chiếu |
-|---|---|---|---|
-| A75 | Đã có tên và ngày sinh, xin số điện thoại — cách 1/3 | Anh chị cho em xin số điện thoại đã đăng ký khám để em tra hồ sơ ạ. | ASK_PHONE |
-| A76 | Đã có tên và ngày sinh, xin số điện thoại — cách 2/3 | Em xin thêm số điện thoại anh chị đã đăng ký khám để tìm hồ sơ ạ. | ASK_PHONE_v1 |
-| A77 | Đã có tên và ngày sinh, xin số điện thoại — cách 3/3 | Dạ, anh chị cho em biết số điện thoại đã đăng ký khám ạ. | ASK_PHONE_v2 |
-| A78 | Cần nghe lại số điện thoại — cách 1/3 | Em chưa nghe rõ số. Anh chị đọc lại số điện thoại đã đăng ký khám, từng số một giúp em ạ. | ASK_PHONE_AGAIN |
-| A79 | Cần nghe lại số điện thoại — cách 2/3 | Anh chị đọc lại giúp em số điện thoại đã đăng ký khám, từng số một ạ. | ASK_PHONE_AGAIN_v1 |
-| A80 | Cần nghe lại số điện thoại — cách 3/3 | Dạ, anh chị nhắc lại số điện thoại đã đăng ký khám để em tra hồ sơ ạ. | ASK_PHONE_AGAIN_v2 |
-| A81 | Khách nêu nhu cầu thay vì đọc số — cách 1/3 | Để hỗ trợ anh chị, em cần tra hồ sơ trước. Anh chị cho em xin số điện thoại đã đăng ký khám ạ. | ASK_PHONE_VERIFY_SHARED |
-| A82 | Khách nêu nhu cầu thay vì đọc số — cách 2/3 | Em cần tìm hồ sơ trước khi trao đổi thông tin lịch khám. Anh chị cho em xin số điện thoại đã đăng ký khám ạ. | ASK_PHONE_VERIFY_SHARED_v1 |
-| A83 | Khách nêu nhu cầu thay vì đọc số — cách 3/3 | Dạ, em sẽ hỗ trợ ngay sau khi tra được hồ sơ. Anh chị cho em biết số điện thoại đã đăng ký khám ạ. | ASK_PHONE_VERIFY_SHARED_v2 |
-| A84 | Giới thiệu lại tại bước hỏi số điện thoại — cách 1/3 | Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin số điện thoại đã đăng ký khám ạ. | INTRODUCE_AGAIN_ASK_PHONE |
-| A85 | Giới thiệu lại tại bước hỏi số điện thoại — cách 2/3 | Dạ, em là trợ lý ảo AI của tổng đài Vinmec. Em xin số điện thoại đã đăng ký khám để tra hồ sơ ạ. | INTRODUCE_AGAIN_ASK_PHONE_v1 |
-| A86 | Giới thiệu lại tại bước hỏi số điện thoại — cách 3/3 | Anh chị đang nói chuyện với trợ lý ảo AI của Vinmec. Anh chị cho em biết số điện thoại đã đăng ký khám ạ. | INTRODUCE_AGAIN_ASK_PHONE_v2 |
-
 ## B. Câu có dữ liệu thay đổi và câu ghép
 
 **55 ví dụ, bao phủ đủ 15 mẫu dựng câu trong Engine.** Đây là câu render thật từ dữ liệu minh họa. Ngày giờ, khoa, cơ sở và số giờ còn lại sẽ thay theo dữ liệu cuộc gọi. Trước mắt chưa dựng sẵn audio cho nhóm này.

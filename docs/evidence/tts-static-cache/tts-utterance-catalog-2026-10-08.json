@@ -2,18 +2,18 @@
   "schema_version": 1,
   "export_date": "2026-10-08",
   "owner": "Hưng",
-  "source_revision": "7e7d4e1",
-  "template_sha256": "6fdffc96d0f61b3a978701bdfb189c9b5ba6352f0c66ced48e6ede1bb79b892f",
+  "source_revision": "8a0c3f9",
+  "template_sha256": "f960e06a77ebd62c2d2a7af5d3e1c3837078d92424171d23495014526f48320a",
   "counts": {
-    "static_unique_texts": 89,
-    "static_prebuild_texts": 86,
+    "static_unique_texts": 77,
+    "static_prebuild_texts": 74,
     "static_deferred_texts": 3,
-    "static_alias_ids": 89,
-    "static_variant_groups": 20,
+    "static_alias_ids": 77,
+    "static_variant_groups": 16,
     "renderer_count": 16,
     "component_count": 9,
-    "static_characters": 6027,
-    "static_da_openings": 12
+    "static_characters": 5020,
+    "static_da_openings": 8
   },
   "delta_from_previous_review": {
     "previous_review": "docs/evidence/tts-static-cache/tts-utterance-review-2026-10-07.csv",
@@ -24,22 +24,10 @@
       "ASK_NAME_VERIFY_SHARED",
       "ASK_NAME_VERIFY_SHARED_v1",
       "ASK_NAME_VERIFY_SHARED_v2",
-      "ASK_PHONE",
-      "ASK_PHONE_AGAIN",
-      "ASK_PHONE_AGAIN_v1",
-      "ASK_PHONE_AGAIN_v2",
-      "ASK_PHONE_VERIFY_SHARED",
-      "ASK_PHONE_VERIFY_SHARED_v1",
-      "ASK_PHONE_VERIFY_SHARED_v2",
-      "ASK_PHONE_v1",
-      "ASK_PHONE_v2",
       "GREETING_BACK_SHARED",
       "GREETING_BACK_SHARED_v1",
       "GREETING_BACK_SHARED_v2",
-      "IDENTITY_FAILED_TRANSFER",
-      "INTRODUCE_AGAIN_ASK_PHONE",
-      "INTRODUCE_AGAIN_ASK_PHONE_v1",
-      "INTRODUCE_AGAIN_ASK_PHONE_v2"
+      "IDENTITY_FAILED_TRANSFER"
     ],
     "removed_ids": [
       "ASK_CHANGE_OR_CANCEL_v3",
@@ -198,9 +186,9 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1304",
-        "src/callbot/engine/dialogue/manager.py:531",
-        "src/callbot/engine/dialogue/manager.py:590"
+        "src/callbot/engine/dialogue/manager.py:1265",
+        "src/callbot/engine/dialogue/manager.py:492",
+        "src/callbot/engine/dialogue/manager.py:551"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -227,8 +215,8 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1439",
-        "src/callbot/engine/dialogue/manager.py:807"
+        "src/callbot/engine/dialogue/manager.py:1400",
+        "src/callbot/engine/dialogue/manager.py:768"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -255,9 +243,9 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1439",
-        "src/callbot/engine/dialogue/manager.py:820",
-        "src/callbot/engine/dialogue/manager.py:958"
+        "src/callbot/engine/dialogue/manager.py:1400",
+        "src/callbot/engine/dialogue/manager.py:781",
+        "src/callbot/engine/dialogue/manager.py:919"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -284,7 +272,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:782"
+        "src/callbot/engine/dialogue/manager.py:743"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -311,7 +299,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1378"
+        "src/callbot/engine/dialogue/manager.py:1339"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -338,7 +326,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:922"
+        "src/callbot/engine/dialogue/manager.py:883"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -365,9 +353,9 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1124",
-        "src/callbot/engine/dialogue/manager.py:1351",
-        "src/callbot/engine/dialogue/manager.py:1393"
+        "src/callbot/engine/dialogue/manager.py:1085",
+        "src/callbot/engine/dialogue/manager.py:1312",
+        "src/callbot/engine/dialogue/manager.py:1354"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -394,7 +382,7 @@
       "cache_policy": "NOT_A_COMPLETE_UTTERANCE",
       "selection": "RENDERER_COMPONENT",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1823"
+        "src/callbot/engine/dialogue/manager.py:1784"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -425,7 +413,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:531"
+        "src/callbot/engine/dialogue/manager.py:492"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -462,7 +450,7 @@
       "cache_policy": "FINITE_BRANCHES_DEFERRED",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1548"
+        "src/callbot/engine/dialogue/manager.py:1509"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -504,7 +492,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:651"
+        "src/callbot/engine/dialogue/manager.py:612"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -541,7 +529,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:590"
+        "src/callbot/engine/dialogue/manager.py:551"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -578,7 +566,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1127"
+        "src/callbot/engine/dialogue/manager.py:1088"
       ],
       "success_outcome": "BOOKED",
       "discloses": true,
@@ -611,7 +599,7 @@
       "cache_policy": "REUSE_STATIC_ASSET",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241"
+        "src/callbot/engine/dialogue/manager.py:1202"
       ],
       "success_outcome": "CANCELLED",
       "discloses": false,
@@ -642,7 +630,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:704"
+        "src/callbot/engine/dialogue/manager.py:665"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -679,7 +667,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:578"
+        "src/callbot/engine/dialogue/manager.py:539"
       ],
       "success_outcome": "CONFIRMED",
       "discloses": true,
@@ -712,7 +700,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:940"
+        "src/callbot/engine/dialogue/manager.py:901"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -749,7 +737,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1304"
+        "src/callbot/engine/dialogue/manager.py:1265"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -789,7 +777,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1439"
+        "src/callbot/engine/dialogue/manager.py:1400"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -844,7 +832,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1126"
+        "src/callbot/engine/dialogue/manager.py:1087"
       ],
       "success_outcome": "RESCHEDULED",
       "discloses": true,
@@ -877,7 +865,7 @@
       "cache_policy": "COMPOSITE_REQUIRES_ENUMERATION",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:154"
+        "src/callbot/engine/dialogue/manager.py:147"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -908,7 +896,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1468"
+        "src/callbot/engine/dialogue/manager.py:1429"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -959,8 +947,8 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1134",
-        "src/callbot/engine/dialogue/manager.py:1489"
+        "src/callbot/engine/dialogue/manager.py:1095",
+        "src/callbot/engine/dialogue/manager.py:1450"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -1001,7 +989,7 @@
       "cache_policy": "DYNAMIC_TTS_PHASE_1",
       "selection": "PARAMETERIZED_RENDERER",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1134"
+        "src/callbot/engine/dialogue/manager.py:1095"
       ],
       "success_outcome": "",
       "discloses": true,
@@ -1039,8 +1027,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:582",
-        "src/callbot/engine/dialogue/manager.py:664"
+        "src/callbot/engine/dialogue/manager.py:543",
+        "src/callbot/engine/dialogue/manager.py:625"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1071,8 +1059,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:582",
-        "src/callbot/engine/dialogue/manager.py:664"
+        "src/callbot/engine/dialogue/manager.py:543",
+        "src/callbot/engine/dialogue/manager.py:625"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1105,8 +1093,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:582",
-        "src/callbot/engine/dialogue/manager.py:664"
+        "src/callbot/engine/dialogue/manager.py:543",
+        "src/callbot/engine/dialogue/manager.py:625"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1137,7 +1125,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1168,7 +1156,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1199,7 +1187,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1230,7 +1218,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1323,9 +1311,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1356,9 +1344,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1389,9 +1377,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:114",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1422,7 +1410,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1453,7 +1441,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1486,7 +1474,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:514"
+        "src/callbot/engine/dialogue/manager.py:475"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1517,7 +1505,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:514"
+        "src/callbot/engine/dialogue/manager.py:475"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1548,7 +1536,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:514"
+        "src/callbot/engine/dialogue/manager.py:475"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1579,7 +1567,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1610,7 +1598,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1641,7 +1629,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:360"
+        "src/callbot/engine/dialogue/manager.py:351"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1672,7 +1660,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1703,7 +1691,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1734,7 +1722,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113"
+        "src/callbot/engine/dialogue/manager.py:454"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1798,9 +1786,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1831,9 +1819,9 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -1864,300 +1852,15 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:113",
-        "src/callbot/engine/dialogue/manager.py:385",
-        "src/callbot/engine/dialogue/manager.py:387"
+        "src/callbot/engine/dialogue/manager.py:376",
+        "src/callbot/engine/dialogue/manager.py:378",
+        "src/callbot/engine/dialogue/manager.py:451"
       ],
       "success_outcome": "",
       "discloses": false,
       "sources": {},
       "string_domains": {},
       "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE",
-      "aliases": [
-        "ASK_PHONE"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE"
-      ],
-      "variants": [
-        "ASK_PHONE:v0"
-      ],
-      "current_text": "Anh chị cho em xin số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
-      "character_count": 67,
-      "text_sha256": "be387200dd6e48f4decda3f8c1580e8adad1439e4645f88789cf62229f0aac63",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:468"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_AGAIN",
-      "aliases": [
-        "ASK_PHONE_AGAIN"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_AGAIN"
-      ],
-      "variants": [
-        "ASK_PHONE_AGAIN:v0"
-      ],
-      "current_text": "Em chưa nghe rõ số. Anh chị đọc lại số điện thoại đã đăng ký khám, từng số một giúp em ạ.",
-      "character_count": 89,
-      "text_sha256": "d0fe7f99ba41daa90cf767597e48e2ae4a51902535afebaee61249473e557294",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_AGAIN_v1",
-      "aliases": [
-        "ASK_PHONE_AGAIN_v1"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_AGAIN"
-      ],
-      "variants": [
-        "ASK_PHONE_AGAIN:v1"
-      ],
-      "current_text": "Anh chị đọc lại giúp em số điện thoại đã đăng ký khám, từng số một ạ.",
-      "character_count": 69,
-      "text_sha256": "47a5eb9d9b1eac8b91f19d0b1b1b1173c08bf68a51531b7ad938b398c74817aa",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_AGAIN_v2",
-      "aliases": [
-        "ASK_PHONE_AGAIN_v2"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_AGAIN"
-      ],
-      "variants": [
-        "ASK_PHONE_AGAIN:v2"
-      ],
-      "current_text": "Dạ, anh chị nhắc lại số điện thoại đã đăng ký khám để em tra hồ sơ ạ.",
-      "character_count": 69,
-      "text_sha256": "edbd41e4c6749063a0c5d20a384a90a22ee8043c36c59dcc977474d0bad12907",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [
-        "DA_OPENING"
-      ],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_VERIFY_SHARED",
-      "aliases": [
-        "ASK_PHONE_VERIFY_SHARED"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_VERIFY_SHARED"
-      ],
-      "variants": [
-        "ASK_PHONE_VERIFY_SHARED:v0"
-      ],
-      "current_text": "Để hỗ trợ anh chị, em cần tra hồ sơ trước. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-      "character_count": 94,
-      "text_sha256": "c2f2db07aa58976917f27191860823ae89eb05c0c1f5d5f0b38d49c0d32f588b",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_VERIFY_SHARED_v1",
-      "aliases": [
-        "ASK_PHONE_VERIFY_SHARED_v1"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_VERIFY_SHARED"
-      ],
-      "variants": [
-        "ASK_PHONE_VERIFY_SHARED:v1"
-      ],
-      "current_text": "Em cần tìm hồ sơ trước khi trao đổi thông tin lịch khám. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-      "character_count": 108,
-      "text_sha256": "143603307d41f3aa5ab66b9b9b353afeaadd477ecbaa881b8554d3286352f831",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_VERIFY_SHARED_v2",
-      "aliases": [
-        "ASK_PHONE_VERIFY_SHARED_v2"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE_VERIFY_SHARED"
-      ],
-      "variants": [
-        "ASK_PHONE_VERIFY_SHARED:v2"
-      ],
-      "current_text": "Dạ, em sẽ hỗ trợ ngay sau khi tra được hồ sơ. Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-      "character_count": 98,
-      "text_sha256": "232fdd606f0087d801b898b8187b893962bebe4b1c817e8e545ec2784979b191",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:115"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [
-        "DA_OPENING"
-      ],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_v1",
-      "aliases": [
-        "ASK_PHONE_v1"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE"
-      ],
-      "variants": [
-        "ASK_PHONE:v1"
-      ],
-      "current_text": "Em xin thêm số điện thoại anh chị đã đăng ký khám để tìm hồ sơ ạ.",
-      "character_count": 65,
-      "text_sha256": "873fabec11a5fb31116cae9b5cdfac82a0a07c0fccb7d298e266d5621f8d67ee",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:468"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "ASK_PHONE_v2",
-      "aliases": [
-        "ASK_PHONE_v2"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "ASK_PHONE"
-      ],
-      "variants": [
-        "ASK_PHONE:v2"
-      ],
-      "current_text": "Dạ, anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-      "character_count": 56,
-      "text_sha256": "75026727a22b4431ed0f26b8a087546f714d49ef759aa3d5dc7192aabc16af23",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:468"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [
-        "DA_OPENING"
-      ],
       "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
       "text_review_status": "PENDING",
       "listening_status": "NOT_REVIEWED"
@@ -2182,7 +1885,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2213,7 +1916,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2244,7 +1947,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2277,7 +1980,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2308,7 +2011,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2339,7 +2042,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1226"
+        "src/callbot/engine/dialogue/manager.py:1187"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2372,7 +2075,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
+        "src/callbot/engine/dialogue/manager.py:1202",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "BOOKED",
@@ -2404,7 +2107,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1298"
+        "src/callbot/engine/dialogue/manager.py:1259"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2435,7 +2138,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1298"
+        "src/callbot/engine/dialogue/manager.py:1259"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2468,7 +2171,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1298"
+        "src/callbot/engine/dialogue/manager.py:1259"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2499,7 +2202,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
+        "src/callbot/engine/dialogue/manager.py:1202",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "CANCELLED",
@@ -2531,8 +2234,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1259",
-        "src/callbot/engine/dialogue/manager.py:1271"
+        "src/callbot/engine/dialogue/manager.py:1220",
+        "src/callbot/engine/dialogue/manager.py:1232"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2563,8 +2266,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1255",
-        "src/callbot/engine/dialogue/manager.py:298"
+        "src/callbot/engine/dialogue/manager.py:1216",
+        "src/callbot/engine/dialogue/manager.py:292"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2595,7 +2298,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1265"
+        "src/callbot/engine/dialogue/manager.py:1226"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2626,7 +2329,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:704"
+        "src/callbot/engine/dialogue/manager.py:665"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2657,7 +2360,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
+        "src/callbot/engine/dialogue/manager.py:1202",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "CONFIRMED",
@@ -2689,7 +2392,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:300"
+        "src/callbot/engine/dialogue/manager.py:294"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2720,8 +2423,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
-        "src/callbot/engine/dialogue/manager.py:202",
+        "src/callbot/engine/dialogue/manager.py:1202",
+        "src/callbot/engine/dialogue/manager.py:195",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2753,8 +2456,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
-        "src/callbot/engine/dialogue/manager.py:202",
+        "src/callbot/engine/dialogue/manager.py:1202",
+        "src/callbot/engine/dialogue/manager.py:195",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2786,8 +2489,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
-        "src/callbot/engine/dialogue/manager.py:202",
+        "src/callbot/engine/dialogue/manager.py:1202",
+        "src/callbot/engine/dialogue/manager.py:195",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "",
@@ -2819,8 +2522,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:365",
-        "src/callbot/engine/dialogue/manager.py:375"
+        "src/callbot/engine/dialogue/manager.py:356",
+        "src/callbot/engine/dialogue/manager.py:366"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2851,8 +2554,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:365",
-        "src/callbot/engine/dialogue/manager.py:375"
+        "src/callbot/engine/dialogue/manager.py:356",
+        "src/callbot/engine/dialogue/manager.py:366"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2883,8 +2586,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:365",
-        "src/callbot/engine/dialogue/manager.py:375"
+        "src/callbot/engine/dialogue/manager.py:356",
+        "src/callbot/engine/dialogue/manager.py:366"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2915,7 +2618,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/inbound.py:24"
+        "src/callbot/engine/dialogue/inbound.py:17"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -2946,7 +2649,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/inbound.py:25"
+        "src/callbot/engine/dialogue/inbound.py:18"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3008,7 +2711,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:245"
+        "src/callbot/engine/dialogue/manager.py:238"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3041,7 +2744,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:245"
+        "src/callbot/engine/dialogue/manager.py:238"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3072,7 +2775,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:245"
+        "src/callbot/engine/dialogue/manager.py:238"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3103,8 +2806,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:485",
-        "src/callbot/engine/dialogue/manager.py:506"
+        "src/callbot/engine/dialogue/manager.py:467"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3135,7 +2837,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:367"
+        "src/callbot/engine/dialogue/manager.py:358"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3166,7 +2868,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:367"
+        "src/callbot/engine/dialogue/manager.py:358"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3199,102 +2901,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:367"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "INTRODUCE_AGAIN_ASK_PHONE",
-      "aliases": [
-        "INTRODUCE_AGAIN_ASK_PHONE"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "INTRODUCE_AGAIN_ASK_PHONE"
-      ],
-      "variants": [
-        "INTRODUCE_AGAIN_ASK_PHONE:v0"
-      ],
-      "current_text": "Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin số điện thoại đã đăng ký khám ạ.",
-      "character_count": 91,
-      "text_sha256": "8cbb6858c012df9da0c527a9e86786855e5c864418ebe4f42659c6fd4996f353",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:489"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "INTRODUCE_AGAIN_ASK_PHONE_v1",
-      "aliases": [
-        "INTRODUCE_AGAIN_ASK_PHONE_v1"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "INTRODUCE_AGAIN_ASK_PHONE"
-      ],
-      "variants": [
-        "INTRODUCE_AGAIN_ASK_PHONE:v1"
-      ],
-      "current_text": "Dạ, em là trợ lý ảo AI của tổng đài Vinmec. Em xin số điện thoại đã đăng ký khám để tra hồ sơ ạ.",
-      "character_count": 96,
-      "text_sha256": "232b3b3a3c4745d4aacdae0c19efd7d7500a03f4bb238545e98f9ed543505716",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:489"
-      ],
-      "success_outcome": "",
-      "discloses": false,
-      "sources": {},
-      "string_domains": {},
-      "review_flags": [
-        "DA_OPENING"
-      ],
-      "notes": "Có thể dựng nguyên câu sau khi chốt văn bản và nghe đạt; chưa phải asset đã duyệt.",
-      "text_review_status": "PENDING",
-      "listening_status": "NOT_REVIEWED"
-    },
-    {
-      "kind": "STATIC",
-      "template_id": "INTRODUCE_AGAIN_ASK_PHONE_v2",
-      "aliases": [
-        "INTRODUCE_AGAIN_ASK_PHONE_v2"
-      ],
-      "scenarios": "Identity",
-      "groups": [
-        "INTRODUCE_AGAIN_ASK_PHONE"
-      ],
-      "variants": [
-        "INTRODUCE_AGAIN_ASK_PHONE:v2"
-      ],
-      "current_text": "Anh chị đang nói chuyện với trợ lý ảo AI của Vinmec. Anh chị cho em biết số điện thoại đã đăng ký khám ạ.",
-      "character_count": 105,
-      "text_sha256": "d30fca1933d589f6df5db8a1bb7818781fa71ac601c8afeaf84efe583dad84d6",
-      "prebuild_candidate": true,
-      "cache_policy": "STATIC_AFTER_REVIEW",
-      "selection": "REGISTERED_3_VARIANTS",
-      "source_references": [
-        "src/callbot/engine/dialogue/manager.py:489"
+        "src/callbot/engine/dialogue/manager.py:358"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3325,7 +2932,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1615"
+        "src/callbot/engine/dialogue/manager.py:1576"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3356,7 +2963,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1615"
+        "src/callbot/engine/dialogue/manager.py:1576"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3387,7 +2994,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_3_VARIANTS",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1615"
+        "src/callbot/engine/dialogue/manager.py:1576"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3418,7 +3025,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1355"
+        "src/callbot/engine/dialogue/manager.py:1316"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3449,7 +3056,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
+        "src/callbot/engine/dialogue/manager.py:1202",
         "src/callbot/engine/policy/output_guard.py:262"
       ],
       "success_outcome": "RESCHEDULED",
@@ -3481,7 +3088,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1608"
+        "src/callbot/engine/dialogue/manager.py:1569"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3512,8 +3119,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:152",
-        "src/callbot/engine/dialogue/manager.py:154"
+        "src/callbot/engine/dialogue/manager.py:145",
+        "src/callbot/engine/dialogue/manager.py:147"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3544,7 +3151,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:302"
+        "src/callbot/engine/dialogue/manager.py:296"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3575,7 +3182,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1533"
+        "src/callbot/engine/dialogue/manager.py:1494"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3606,7 +3213,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1533"
+        "src/callbot/engine/dialogue/manager.py:1494"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3637,8 +3244,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1510",
-        "src/callbot/engine/dialogue/manager.py:895"
+        "src/callbot/engine/dialogue/manager.py:1471",
+        "src/callbot/engine/dialogue/manager.py:856"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3669,8 +3276,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1510",
-        "src/callbot/engine/dialogue/manager.py:895"
+        "src/callbot/engine/dialogue/manager.py:1471",
+        "src/callbot/engine/dialogue/manager.py:856"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3701,7 +3308,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1533"
+        "src/callbot/engine/dialogue/manager.py:1494"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3732,7 +3339,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1533"
+        "src/callbot/engine/dialogue/manager.py:1494"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3763,7 +3370,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1355"
+        "src/callbot/engine/dialogue/manager.py:1316"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3794,7 +3401,7 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1608"
+        "src/callbot/engine/dialogue/manager.py:1569"
       ],
       "success_outcome": "",
       "discloses": false,
@@ -3825,8 +3432,8 @@
       "cache_policy": "STATIC_AFTER_REVIEW",
       "selection": "REGISTERED_FIXED",
       "source_references": [
-        "src/callbot/engine/dialogue/manager.py:1241",
-        "src/callbot/engine/dialogue/manager.py:157",
+        "src/callbot/engine/dialogue/manager.py:1202",
+        "src/callbot/engine/dialogue/manager.py:150",
         "src/callbot/engine/orchestrator.py:60",
         "src/callbot/engine/policy/output_guard.py:262"
       ],

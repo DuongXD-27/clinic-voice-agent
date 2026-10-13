@@ -51,29 +51,10 @@ def small_release(tmp_path):
     return output, manifest, assets, catalog, identity, candidate
 
 
-# 12 câu bước hỏi số điện thoại (13-10) đã vào danh sách thu nhưng chưa có audio trong release
-# 2026-10-08-v2: chạy thật đi qua provider. Release mới có đủ 86 câu thì xoá tập này (test sẽ báo).
-PENDING_AUDIO = frozenset(
-    f"{group}{suffix}"
-    for group in (
-        "ASK_PHONE",
-        "ASK_PHONE_AGAIN",
-        "ASK_PHONE_VERIFY_SHARED",
-        "INTRODUCE_AGAIN_ASK_PHONE",
-    )
-    for suffix in ("", "_v1", "_v2")
-)
-
-
-async def test_shipped_catalog_covers_all_74_released_utterances_in_sync_and_stream():
+async def test_shipped_catalog_covers_all_74_current_utterances_in_sync_and_stream():
     assets, _ = build.load_shortlist("2026-10-08")
     tts, provider, fallback = cached_synthesizer()
-    pending = [asset for asset in assets if asset["template_id"] in PENDING_AUDIO]
-    assets = [asset for asset in assets if asset["template_id"] not in PENDING_AUDIO]
-    assert len(pending) == len(PENDING_AUDIO) == 12
     assert len(tts._static_cache) == len(assets) == 74
-    for asset in pending:
-        assert tts._static_cache.lookup(asset["utterance"]) is None
     for asset in assets:
         audio = tts.synthesize(asset["utterance"])
         chunks = [c async for c in tts.synthesize_stream(asset["utterance"])]

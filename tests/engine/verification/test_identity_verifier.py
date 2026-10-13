@@ -48,7 +48,7 @@ def _assert_read_only(fake: FakeClinicAPI) -> None:
 # --- prepare(): inbound ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("phone", ["+15551234567", "0112345678", "abc"])
+@pytest.mark.parametrize("phone", [None, "", "+15551234567", "0112345678", "abc"])
 def test_prepare_inbound_without_usable_phone_does_not_call_mock(phone) -> None:
     fake = FakeClinicAPI()
     ctx = _inbound(phone)
@@ -60,95 +60,14 @@ def test_prepare_inbound_without_usable_phone_does_not_call_mock(phone) -> None:
     assert fake.patient_lookups == [] and fake.calls == []
 
 
-@pytest.mark.parametrize("phone", [None, "", "   "])
-def test_prepare_inbound_without_caller_number_waits_for_spoken_phone(phone) -> None:
-    """Harness mentor gửi `caller_number: null`: chưa tra cứu, không chuyển máy — Dialogue hỏi tên, ngày
-    sinh rồi số điện thoại đã đăng ký."""
-    fake = FakeClinicAPI()
-    ctx = _inbound(phone)
-    result = _verifier(fake).prepare(ctx)
-
-    assert result.status is LookupStatus.AWAITING_PHONE
-    assert result.transfer_reason is None
-    assert (ctx.identity_lookup, ctx.identity_reference) == ("AWAITING_PHONE", [])
-    assert fake.patient_lookups == [] and fake.calls == []
-
-
 @pytest.mark.parametrize(
-    "spoken", ["0912345600", "84912345600", "840912345600", "+84 912 345 600", "0084912345600"]
+    "caller_number",
+    ["+84 912 345 600", "84912345600", "84 912 345 600", "840912345600", "0084912345600"],
 )
-def test_lookup_spoken_phone_normalizes_every_prefix_then_loads_candidates(spoken: str) -> None:
-    """Số người gọi đọc: đầu số "0", "+84" hay "84" trần đều tra cùng một số nội địa."""
+def test_prepare_inbound_normalizes_country_code_before_lookup(caller_number: str) -> None:
+    """Harness gửi "+84…", "84…" trần hay "840…": tra cứu cùng một số nội địa 0xxxxxxxxx."""
     fake = FakeClinicAPI()
-    ctx = _inbound(None)
-    verifier = _verifier(fake)
-    verifier.prepare(ctx)
-
-    result = verifier.lookup_spoken_phone(ctx, spoken)
-
-    assert result.status is LookupStatus.LOADED and result.candidates == 1
-    assert fake.patient_lookups == ["0912345600"]
-    assert ctx.identity_lookup == "LOADED"
-    assert verifier.verify(_claim(ctx)).status is VerificationStatus.VERIFIED
-    _assert_read_only(fake)
-
-
-@pytest.mark.parametrize("spoken", ["0112345678", "091234560", "12345678901", "+15551234567"])
-def test_lookup_spoken_phone_with_unusable_number_keeps_waiting_without_mock_call(spoken) -> None:
-    fake = FakeClinicAPI()
-    ctx = _inbound(None)
-    verifier = _verifier(fake)
-    verifier.prepare(ctx)
-
-    result = verifier.lookup_spoken_phone(ctx, spoken)
-
-    assert result.status is LookupStatus.NO_PHONE
-    assert (ctx.identity_lookup, ctx.identity_reference) == ("AWAITING_PHONE", [])
-    assert fake.calls == []
-
-
-def test_lookup_spoken_phone_without_record_is_patient_not_found() -> None:
-    fake = FakeClinicAPI()
-    ctx = _inbound(None)
-    verifier = _verifier(fake)
-    verifier.prepare(ctx)
-
-    result = verifier.lookup_spoken_phone(ctx, "0999999999")
-
-    assert result.status is LookupStatus.NO_CANDIDATES
-    assert result.transfer_reason == "PATIENT_NOT_FOUND"
-    assert (ctx.identity_lookup, ctx.identity_reference) == ("NO_CANDIDATES", [])
-    assert fake.patient_lookups == ["0999999999"]
-    _assert_read_only(fake)
-
-
-def test_lookup_spoken_phone_mock_failure_is_unavailable() -> None:
-    fake = FakeClinicAPI()
-    fake.fail_next("find_patient_by_phone")
-    ctx = _inbound(None)
-    verifier = _verifier(fake)
-    verifier.prepare(ctx)
-
-    result = verifier.lookup_spoken_phone(ctx, "0912345600")
-
-    assert result.status is LookupStatus.UNAVAILABLE
-    assert result.transfer_reason == "SYSTEM_ERROR"
-    assert (ctx.identity_lookup, ctx.identity_reference) == ("UNAVAILABLE", [])
-    assert fake.writes == []
-
-
-def test_lookup_spoken_phone_is_only_for_calls_without_caller_number() -> None:
-    fake = FakeClinicAPI()
-    ctx = _inbound("0912345600")
-    verifier = _verifier(fake)
-    verifier.prepare(ctx)
-    with pytest.raises(ValueError):
-        verifier.lookup_spoken_phone(ctx, "0912345600")
-
-
-def test_prepare_inbound_normalizes_e164_before_lookup() -> None:
-    fake = FakeClinicAPI()
-    ctx = _inbound("+84 912 345 600")
+    ctx = _inbound(caller_number)
     result = _verifier(fake).prepare(ctx)
 
     assert fake.patient_lookups == ["0912345600"]
