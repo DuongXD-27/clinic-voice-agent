@@ -3,8 +3,10 @@
 Giá trị mặc định ở config/llm.yaml (mỗi provider một section); API key chỉ đặt qua env.
 """
 
-from typing import ClassVar, Literal, Self
+from pathlib import Path
+from typing import Any, ClassVar, Literal, Self
 
+import yaml
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
@@ -34,6 +36,17 @@ class ProviderConfig(YamlSettings):
         if not self.api_key.get_secret_value().strip():
             raise ValueError(f"Selected provider requires {self.key_env}")
         return self
+
+
+def yaml_default(config_type: type[ProviderConfig], field: str) -> Any:
+    """Giá trị trong config/llm.yaml của provider, không qua env.
+
+    Tầng ngữ nghĩa dùng hàm này thay vì để `ProviderConfig` tự đọc: field không truyền sẽ lấy
+    `NAME_FALLBACK_*` (alias của slot filling họ tên), làm hai tầng dính cấu hình nhau.
+    """
+    settings = config_type.model_config
+    data = yaml.safe_load(Path(settings["yaml_file"]).read_text(encoding="utf-8"))
+    return data[settings["yaml_config_section"]][field]
 
 
 class OpenAIConfig(ProviderConfig):

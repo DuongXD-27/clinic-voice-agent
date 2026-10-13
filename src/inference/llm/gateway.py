@@ -21,6 +21,20 @@ from inference.llm.providers.groq import GroqProvider
 from inference.llm.providers.openai import OpenAIProvider
 from inference.llm.providers.openrouter import OpenRouterProvider
 
+PROVIDERS: dict[str, tuple[type[ProviderConfig], type[StructuredProvider]]] = {
+    "openai": (OpenAIConfig, OpenAIProvider),
+    "gemini": (GeminiConfig, GeminiProvider),
+    "groq": (GroqConfig, GroqProvider),
+    "openrouter": (OpenRouterConfig, OpenRouterProvider),
+    "deepseek": (DeepSeekConfig, DeepSeekProvider),
+}
+
+
+def provider_config_type(provider_name: ProviderName) -> type[ProviderConfig]:
+    if provider_name not in PROVIDERS:
+        raise UnsupportedProviderError("LLM", provider_name)
+    return PROVIDERS[provider_name][0]
+
 
 class LLMGateway:
     def __init__(
@@ -76,16 +90,8 @@ def create_gateway(
     config: ProviderConfig | None = None,
     client_factory: HttpClientFactory | None = None,
 ) -> LLMGateway:
-    registry = {
-        "openai": (OpenAIConfig, OpenAIProvider),
-        "gemini": (GeminiConfig, GeminiProvider),
-        "groq": (GroqConfig, GroqProvider),
-        "openrouter": (OpenRouterConfig, OpenRouterProvider),
-        "deepseek": (DeepSeekConfig, DeepSeekProvider),
-    }
-    if provider_name not in registry:
-        raise UnsupportedProviderError("LLM", provider_name)
-    config_type, provider_type = registry[provider_name]
+    config_type = provider_config_type(provider_name)
+    provider_type = PROVIDERS[provider_name][1]
     if config is not None and not isinstance(config, config_type):
         raise ValueError("Configuration does not match the selected provider")
     selected_config = config if config is not None else config_type()
