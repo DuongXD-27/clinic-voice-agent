@@ -97,7 +97,7 @@ Prompt v4 (12/10/2026) giữ nguyên quy tắc v3, chuyển 18 ví dụ vào tro
 `input -> output`) nên request chỉ còn `[system, user]`. Lý do: prompt caching của GPT-6 cần tiền
 tố ổn định tối thiểu 1024 token tính đến cuối developer message đầu; system v3 một mình dưới
 ngưỡng nên transcript mới không trúng cache (đo 12/10: `cached_tokens` 0/1703), còn v4 cache được
-gần toàn bộ. Bốn ví dụ trùng nguyên văn `eval/identity/cases.csv` (ID038, ID049, ID062, ID063) thay
+gần toàn bộ. Các ví dụ trùng nguyên văn `eval/identity/cases.csv` (ID049, ID062, ID063) thay
 bằng câu cùng dạng để bộ eval đo câu chưa thấy. Schema gửi model bỏ `title` tự sinh
 (`compact_json_schema`). Số liệu trước / sau: [evidence](../evidence/luna-prompt-v10-2026-10-12.md).
 
