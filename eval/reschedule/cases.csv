@@ -147,7 +147,7 @@ R146,holdout,book,inbound,OFFER_SLOTS,2,khung khác,MORE,no,BOOK
 R147,holdout,book,inbound,OFFER_SLOTS,2,ngày 19 thì sao,NEW_TIME:19/10,no,BOOK: không có cửa sổ R-29 nhưng vẫn lọc theo ngày
 R148,holdout,book,inbound,SLOT_READBACK,2,đồng ý,WRITE,no,BOOK: xác nhận rõ ràng (§1.1.10)
 R149,holdout,book,inbound,SLOT_READBACK,2,dạ,REREAD_YESNO,no,BOOK: dạ không phải đồng ý
-R150,holdout,book,inbound,OFFER_SLOTS,2,thôi không đặt nữa,KEEP_OLD,no,BOOK: bỏ đặt lịch
+R150,holdout,book,inbound,OFFER_SLOTS,2,thôi không đặt nữa,TRANSFER:PATIENT_REQUEST,no,"BOOK: bỏ đặt lịch — chuyển máy, không ghi (t11 G7, PRD R-10; như qc-rs-08)"
 R151,holdout,book,inbound,SLOT_READBACK,2,vâng,WRITE,no,BOOK theo D-2; cần PM chốt §1.1.10 có nhận vâng không
 R152,holdout,book,inbound,SLOT_READBACK,2,"không, khung khác",MORE,no,BOOK
 R153,prompt,review_agree_other_time,outbound,SLOT_READBACK,1,"vâng, 9 giờ sáng ngày 20",NEW_TIME:20/10,no,Review ý 1: đồng ý kèm giờ khung khác không ghi khung đang chốt

@@ -437,6 +437,7 @@ def read_full_name(
         or any(c.isdigit() for c in name)
         or not MIN_WORDS <= len(words) <= MAX_WORDS
         or any(w in _REJECTED_WORDS for w in words)
+        and not _function_word_in_given_name(words)
         # "T T B", "A B C": ASR nghe người gọi đánh vần / nói tắt. Không tên nào toàn chữ cái
         # đơn, và đưa nó vào Verifier là chuyển máy ngay thay vì hỏi lại tên.
         or all(len(w) == 1 for w in words)
@@ -446,6 +447,29 @@ def read_full_name(
         # "trời hôm nay đẹp quá", "trần nhà": đúng hình dạng nhưng không có dấu hiệu họ tên
         return Reading(Field.nothing(), Reason.UNANCHORED, segment)
     return Reading(Field(name, Provenance.NORMALIZED, span=name), Reason.OK, segment)
+
+
+# Từ chức năng có thể là một chữ trong tên đệm / tên ("Hoàng Văn Không Có" — qc-ib-03)
+_GIVEN_NAME_FUNCTION_WORDS = frozenset({"không", "khong"})
+# "Trần Văn... không nhớ": sau "không" là động từ của lời từ chối khai, không phải chữ trong tên
+_REFUSAL_VERBS = frozenset(
+    {"nhớ", "nho", "biết", "biet", "muốn", "muon", "rõ", "ro", "phải", "phai", "nói", "noi", "cần"}
+)
+
+
+def _function_word_in_given_name(words: list[str]) -> bool:
+    """G19: cả câu chỉ là một tên đủ họ + tên đệm ("Hoàng Văn Không Có"), từ chức năng chỉ nằm ở phần tên.
+
+    Vẫn loại "không có", "tôi không biết", "không phải tôi": các câu đó không mở đầu bằng họ + tên đệm. Lọt
+    nhầm vào Verifier thì chỉ chuyển máy, không lộ gì (§1.1.2).
+    """
+    rejected = [i for i, word in enumerate(words) if word in _REJECTED_WORDS]
+    return (
+        len(words) >= 3
+        and all(i >= 2 and words[i] in _GIVEN_NAME_FUNCTION_WORDS for i in rejected)
+        and not any(i + 1 < len(words) and words[i + 1] in _REFUSAL_VERBS for i in rejected)
+        and _anchored(words[:3])
+    )
 
 
 def _has_name_anchor(words: list[str]) -> bool:
