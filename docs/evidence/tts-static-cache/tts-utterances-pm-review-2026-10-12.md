@@ -138,7 +138,7 @@ Thu nguyên câu sau khi chốt lời và nghe đạt. Câu báo đã đặt/đ�
 
 ### Bổ sung 13/10 — xin số điện thoại đã đăng ký (12 câu, chưa thu)
 
-Khách gọi vào mà tổng đài không nhận được số gọi đến (harness của mentor gửi `caller_number: null`): bot vẫn hỏi họ tên, ngày sinh như trên, rồi xin số điện thoại đã đăng ký để tìm hồ sơ, sau đó mới đối chiếu. Tổng danh sách thu thành 86 câu; 12 câu này cần PM duyệt chữ rồi thu cùng đợt thu lại ở tốc độ 1.15 (`scripts/tts_static_shortlist.py` chưa nhận nhóm mới khi chưa review).
+Khách gọi vào mà tổng đài không nhận được số gọi đến (harness của mentor gửi `caller_number: null`): bot vẫn hỏi họ tên, ngày sinh như trên, rồi xin số điện thoại đã đăng ký để tìm hồ sơ, sau đó mới đối chiếu. Tổng danh sách thu thành 86 câu (đã vào reduction map, catalog và danh sách thu 08-10 xuất lại ngày 13-10); 12 câu này cần PM duyệt chữ rồi thu cùng đợt thu lại ở tốc độ 1.15.
 
 | Mã | Tình huống / cách nói | Nguyên văn | ID đối chiếu |
 |---|---|---|---|

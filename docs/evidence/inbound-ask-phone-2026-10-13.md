@@ -45,13 +45,13 @@ Số người gọi đọc chỉ để tìm ứng viên (§1.1.9), không vào t
 
 12 câu tĩnh mới (`ASK_PHONE`, `ASK_PHONE_AGAIN`, `ASK_PHONE_VERIFY_SHARED`, `INTRODUCE_AGAIN_ASK_PHONE`,
 mỗi nhóm 3 cách nói) chưa có audio trong release `assets/tts/static/2026-10-08-v2`: khi chạy, 12 câu
-này đi qua provider (Vbee) như câu động, 74 câu cũ vẫn dùng cache. Đã thêm vào danh sách PM duyệt
-(`tts-static-cache/tts-utterances-pm-review-2026-10-12.md`, mã A75–A86). Thứ tự còn lại do chủ TTS làm
-sau khi PM chốt chữ: `scripts/tts_utterance_catalog.py --date <ngày>` → thêm nhóm mới vào reduction map
-→ `scripts/tts_static_shortlist.py` → `scripts/tts_build_static.py --synthesize` (Vbee, trả phí) → nghe
-duyệt → `scripts/tts_release_static.py` → trỏ `config/tts_static.yaml` sang release mới. Cho tới lúc đó
-`tests/eval/test_tts_build_static.py` và `tests/speech/tts/test_static_cache.py` báo "Catalog cũ" (đúng
-thiết kế: template đổi thì phải xuất lại catalog trước khi thu).
+này đi qua provider (Vbee) như câu động, 74 câu cũ vẫn dùng cache. Đã làm phần văn bản của quy trình:
+thêm 4 nhóm vào reduction map, xuất lại catalog và danh sách thu (`tts-static-cache/*-2026-10-08.*`, 86
+câu, 5794 ký tự), thêm vào danh sách PM duyệt (`tts-utterances-pm-review-2026-10-12.md`, mã A75–A86).
+`tests/speech/tts/test_static_cache.py` ghi 12 câu này trong `PENDING_AUDIO` và kiểm chúng chưa có trong
+cache. Còn lại do chủ TTS làm sau khi PM chốt chữ: `scripts/tts_build_static.py --synthesize` (Vbee, trả
+phí) → nghe duyệt → `scripts/tts_release_static.py` → trỏ `config/tts_static.yaml` sang release mới →
+xoá `PENDING_AUDIO`.
 
 ## File liên quan
 
