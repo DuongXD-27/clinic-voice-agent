@@ -18,7 +18,7 @@ def config():
 
 @pytest.fixture
 def source():
-    assets, catalog = build.load_shortlist("2026-10-08")
+    assets, catalog = build.load_shortlist("2026-10-13")
     return assets[:2], catalog
 
 
@@ -48,7 +48,7 @@ def test_dry_run_does_not_construct_provider_or_write_files(monkeypatch, tmp_pat
         [
             "tts_build_static.py",
             "--date",
-            "2026-10-08",
+            "2026-10-13",
             "--dry-run",
             "--out",
             str(tmp_path / "dry"),
@@ -56,7 +56,7 @@ def test_dry_run_does_not_construct_provider_or_write_files(monkeypatch, tmp_pat
     )
     assert build.main() == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["total"] == 74 and report["selected_characters"] == 4787
+    assert report["total"] == 82 and report["selected_characters"] == 5516
     assert not (tmp_path / "dry").exists()
 
 
@@ -269,14 +269,14 @@ def test_active_lock_prevents_parallel_paid_build(config, source, tmp_path):
 
 
 def test_stale_catalog_fails_before_any_audio_is_built(monkeypatch, tmp_path):
-    _, catalog = build.load_shortlist("2026-10-08")
+    _, catalog = build.load_shortlist("2026-10-13")
     catalog["template_sha256"] = "outdated"
-    (tmp_path / "tts-utterance-catalog-2026-10-08.json").write_text(
+    (tmp_path / "tts-utterance-catalog-2026-10-13.json").write_text(
         json.dumps(catalog), encoding="utf-8"
     )
     monkeypatch.setattr(build, "DATA", tmp_path)
     with pytest.raises(ValueError, match="Catalog cũ"):
-        build.load_shortlist("2026-10-08")
+        build.load_shortlist("2026-10-13")
 
 
 @pytest.mark.parametrize(

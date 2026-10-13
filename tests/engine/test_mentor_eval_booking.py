@@ -239,7 +239,9 @@ def test_booking_need_asks_the_time_and_department_is_never_spoken() -> None:
     assert actions[3].utterance in questions and actions[4].utterance in questions
     assert actions[3].utterance != actions[4].utterance
     # "gần nhất": một khung sớm nhất, hỏi có/không
-    assert actions[5].state == "AWAITING_CONFIRMATION" and "giờ đó nhé" in actions[5].utterance
+    assert (
+        actions[5].state == "AWAITING_CONFIRMATION" and "giờ này được không" in actions[5].utterance
+    )
     assert all("tổng quát" not in action.utterance.lower() for action in actions)
 
 
@@ -248,8 +250,8 @@ def test_missing_time_offers_one_nearest_slot(dataset: str) -> None:
     """G21: không có giờ khách xin thì báo rồi mời MỘT khung gần nhất, để "giờ em vừa nói" rõ nghĩa."""
     actions, clinic, _ = _call(f"ib07-{dataset}", MAI, CASES["qc-ib-07"].lines[:4], dataset)
     offer = actions[-1].utterance
-    assert offer.startswith(t.SLOT_NO_MATCH) and offer.count("Em còn khung") == 1
-    assert "khung 1:" not in offer
+    assert offer.startswith(t.SLOT_NO_MATCH) and offer.count("Em còn trống") == 1
+    assert "khung" not in offer
     assert "3 giờ chiều" in offer and clinic.writes == []
 
 

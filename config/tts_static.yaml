@@ -2,4 +2,4 @@
 # TTS_STATIC_ENABLED=false restores the provider-only path.
 # A changed voice/speed/rate/bitrate or exact utterance automatically misses.
 enabled: true
-directory: assets/tts/static/2026-10-13-v3 # TTS_STATIC_DIRECTORY
+directory: assets/tts/static/2026-10-13-r4 # TTS_STATIC_DIRECTORY

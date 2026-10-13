@@ -168,7 +168,7 @@ def test_a_time_at_change_or_cancel_starts_the_reschedule(model: str) -> None:
     action = _run(bot, f"ask-intent-{model}", [*IDENTITY, "Không"])
     assert action.state == "AWAITING_INTENT"
     action = _run(bot, f"ask-intent-{model}", ["Cho tôi 3 giờ chiều ngày 14"], start=5)
-    assert "Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
+    assert "Em còn trống 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
     assert clinic.writes == []
     action = _run(bot, f"ask-intent-{model}", ["Vâng"], start=6)
     assert action.outcome == "RESCHEDULED"
@@ -248,7 +248,7 @@ def test_a_request_without_the_identity_is_kept_until_verification() -> None:
     action = _run(bot, "r43-held", ["Nguyễn Văn A", "tôi muốn đổi lịch sang chiều ngày 14"])
     assert action.state == "AWAITING_IDENTITY" and clinic.slot_reads == 0
     action = _run(bot, "r43-held", ["14/03/1978"], start=3)
-    assert "Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
+    assert "Em còn trống 3 giờ chiều, thứ Tư ngày 14 tháng 10" in action.utterance
     assert clinic.writes == []
 
 

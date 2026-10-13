@@ -227,7 +227,7 @@ def test_more_after_an_ambiguous_page_stays_within_the_matching_slots(mode: str)
     action = _run(bot, f"b4-{mode}", lines)
     ctx = _context(bot, f"b4-{mode}")
     assert ctx.presented_slot_ids == ["slot_b505", "slot_b507"]
-    assert "Còn 1 khung khác" in action.utterance
+    assert "Ngoài ra còn 1 giờ khác" in action.utterance
 
     action = _say(bot, f"b4-{mode}", ["khung khác"], lines)
     ctx = _context(bot, f"b4-{mode}")
@@ -356,7 +356,7 @@ def test_changing_ones_mind_at_the_offer_goes_back_to_the_appointment(mode: str,
     ctx = _context(bot, f"b15-{mode}-{line}")
     assert not action.ended and ctx.pending_action is None
     assert ctx.question.question_id is QuestionId.CONFIRM_READBACK
-    assert "Lịch cũ của anh chị vẫn giữ nguyên" in action.utterance
+    assert "em giữ nguyên lịch cũ" in action.utterance
     assert clinic.writes == []
 
 
@@ -367,7 +367,7 @@ def test_changing_ones_mind_at_the_slot_read_back_goes_back_to_the_appointment(m
     action = _run(bot, f"b15-rb-{mode}", lines)
     ctx = _context(bot, f"b15-rb-{mode}")
     assert ctx.pending_action is None and ctx.question.question_id is QuestionId.CONFIRM_READBACK
-    assert "Lịch cũ của anh chị vẫn giữ nguyên" in action.utterance
+    assert "em giữ nguyên lịch cũ" in action.utterance
     assert clinic.writes == []
 
 

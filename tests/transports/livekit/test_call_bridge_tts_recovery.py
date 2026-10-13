@@ -37,8 +37,9 @@ REPLY = BotAction(utterance="Anh chị cho em xin ngày sinh ạ?", state="AWAIT
 HANDED_OFF = BotAction(
     t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason="SYSTEM_ERROR"
 )
-# assets/tts/static/2026-10-08-v1/073_TRANSFER_*.wav: 21 768 mẫu 8 kHz (2,72 s) = 137 frame 20 ms
-TRANSFER_FRAMES = 137
+# assets/tts/static/2026-10-13-r4/082_TRANSFER_*.wav: 31 884 mẫu 8 kHz (3,99 s) = 200 frame 20 ms
+TRANSFER_SAMPLES = 31884
+TRANSFER_FRAMES = 200
 
 
 @pytest.fixture(autouse=True)
@@ -253,7 +254,7 @@ async def test_recorded_audio_is_resampled_to_a_24khz_track() -> None:
     assert len(frames) == TRANSFER_FRAMES
     assert {frame.sample_rate for frame in frames} == {24000}
     samples = sum(frame.samples_per_channel for frame in frames)
-    assert abs(samples / 24000 - 21768 / 8000) < 0.01
+    assert abs(samples / 24000 - TRANSFER_SAMPLES / 8000) < 0.01
 
 
 async def test_recovery_runs_at_most_once_per_call() -> None:

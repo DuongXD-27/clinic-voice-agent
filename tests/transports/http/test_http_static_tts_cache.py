@@ -101,4 +101,4 @@ def test_static_audio_is_ready_across_calls_and_turns_with_zero_provider_cost(
     assert len(misses) == 2
     assert all("billed_characters" not in s.attributes for s in misses)
     assert speech.audio_store.purge_older_than(-1) == 2
-    assert len(list(RELEASE.glob("*.wav"))) == 74
+    assert len(list(RELEASE.glob("*.wav"))) == 82

@@ -23,7 +23,7 @@ from callbot.engine import (
     TurnOutOfOrder,
 )
 from callbot.engine.dialogue import templates as t
-from callbot.engine.dialogue.templates import AI_DISCLOSURE, greeting
+from callbot.engine.dialogue.templates import greeting
 from callbot.engine.extraction.semantic import ReplyKind, SemanticOutcome
 from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from callbot.transports.http.call_mode import CallModeStore
@@ -179,8 +179,8 @@ def test_start_call_returns_engine_opening(client: TestClient) -> None:
         "state": "AWAITING_IDENTITY",
         "turn": 0,
     }
-    # [R-26] endpoint dùng đúng câu chào công bố AI của engine, không hard-code lại
-    assert AI_DISCLOSURE in body["utterance"]
+    # Endpoint dùng đúng câu chào của engine (nói bên gọi Vinmec), không hard-code lại
+    assert "Vinmec" in body["utterance"]
 
 
 def test_name_turn_asks_dob_instead_of_transferring(client: TestClient) -> None:

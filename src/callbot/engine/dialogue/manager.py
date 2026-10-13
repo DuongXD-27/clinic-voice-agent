@@ -1707,11 +1707,14 @@ class DialogueManager:
     def _rounds_exhausted(self, ctx: CallContext, taken: bool = False) -> Reply:
         """Hết 2 vòng (R-29, GC-RES-05): lịch cũ giữ nguyên, không ghi gì, chuyển PATIENT_REQUEST.
 
-        Đặt lịch không có lịch cũ nào để nói "giữ nguyên" (G8): câu chuyển máy chung."""
+        Đặt lịch không có lịch cũ nào để nói "giữ nguyên" (G8): câu riêng cho đặt mới."""
         booking = ctx.pending_action == "BOOK"
         ctx.clear_pending()
-        text = t.SLOT_TAKEN_ROUNDS_TRANSFER if taken else t.ROUNDS_EXHAUSTED_TRANSFER
-        return Reply(self.transfer(ctx, "PATIENT_REQUEST", t.TRANSFER if booking else text))
+        if booking:
+            text = t.SLOT_TAKEN_ROUNDS_BOOK_TRANSFER if taken else t.ROUNDS_EXHAUSTED_BOOK_TRANSFER
+        else:
+            text = t.SLOT_TAKEN_ROUNDS_TRANSFER if taken else t.ROUNDS_EXHAUSTED_TRANSFER
+        return Reply(self.transfer(ctx, "PATIENT_REQUEST", text))
 
     def _not_understood(
         self,
