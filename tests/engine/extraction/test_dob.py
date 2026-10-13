@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from callbot.engine.extraction.dob import extract_dob
+from callbot.engine.extraction.dob import extract_dob, read_dob
 from callbot.engine.extraction.schema import INVALID, Provenance
 
 TODAY = date(2026, 9, 15)
@@ -112,6 +112,58 @@ def test_no_date_content_is_none(text: str) -> None:
     result = extract_dob(text, TODAY)
     assert result.value is None
     assert result.provenance is Provenance.NONE
+
+
+@pytest.mark.parametrize(
+    "text, expected, zone",
+    [
+        # QC qc-ib-10: ngày sinh và ngày muốn khám trong cùng một câu — ngày sau mốc "sinh" là ngày sinh
+        (
+            "Chào em, chị là Nguyễn Thị Mai, sinh 12/4/1985, muốn đặt khám tổng quát chiều 14 tháng 10",
+            date(1985, 4, 12),
+            "12 4 1985",
+        ),
+        (
+            "sinh ngày 12 tháng 4 năm 1985, muốn đặt lịch ngày 20 tháng 10",
+            date(1985, 4, 12),
+            "12 tháng 4 năm 1985",
+        ),
+        (
+            "tôi muốn đặt khám chiều 14 tháng 10, tôi sinh 12/4/1985",
+            date(1985, 4, 12),
+            "12 4 1985",
+        ),
+        (
+            "sinh vào ngày 12 tháng 4 năm 1985, hẹn 14 tháng 10",
+            date(1985, 4, 12),
+            "12 tháng 4 năm 1985",
+        ),
+        ("sinh 12/4/1985 a, kham sang 14 thang 10 nhe", date(1985, 4, 12), "12 4 1985"),
+        (
+            "I was born on March 14, 1978, I want an appointment on October 20",
+            date(1978, 3, 14),
+            "march 14 1978",
+        ),
+    ],
+)
+def test_birth_date_wins_over_the_requested_appointment_date(
+    text: str, expected: date, zone: str
+) -> None:
+    reading = read_dob(text, TODAY)
+    assert reading.field.value == expected
+    assert reading.zone == zone
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "sinh ngày 14 tháng 3 hay 15 tháng 3 năm 1978",  # hai cách đọc cùng một ngày sinh
+        "12/4/1985, đặt khám chiều 14 tháng 10",  # không có mốc "sinh": không chọn hộ
+        "sinh 12/4/1985, hoặc sinh 13/4/1985",  # hai ngày đều có mốc
+    ],
+)
+def test_two_dates_without_a_single_birth_cue_stay_invalid(text: str) -> None:
+    assert extract_dob(text, TODAY).value is INVALID
 
 
 def test_self_correction_takes_last_value() -> None:
