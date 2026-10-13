@@ -78,8 +78,23 @@ def test_unregistered_inbound_is_transferred_at_turn_one_without_asking_name(fir
     assert clinic.writes == [] and clinic.requests == []  # §2.1: không có lệnh ghi
 
 
-def test_inbound_without_usable_phone_never_calls_mock() -> None:
-    actions, clinic = _call(_inbound("c_nophone", None), ["Nguyễn Văn A"])
+def test_inbound_without_caller_number_asks_name_dob_then_phone_before_any_lookup() -> None:
+    """Harness mentor gửi `caller_number: null`: vẫn hỏi mở tên rồi ngày sinh (§1.1.9), sau đó mới xin số
+    điện thoại đã đăng ký để tra hồ sơ. Chưa có số thì chưa gọi mock, không nói gì về hồ sơ."""
+    actions, clinic = _call(_inbound("c_nophone", None), [NAME, DOB])
+    opening, after_name, after_dob = actions
+    assert opening.utterance == t.GREETING_INBOUND
+    assert after_name.utterance in t.static_choices(t.ASK_DOB)
+    assert after_dob.utterance in t.static_choices(t.ASK_PHONE)
+    assert after_dob.state == "AWAITING_IDENTITY" and not after_dob.ended
+    _assert_no_disclosure(actions)
+    assert clinic.patient_lookups == [] and clinic.calls == [] and clinic.writes == []
+
+
+def test_inbound_with_unusable_caller_number_still_transfers_at_turn_one() -> None:
+    """Có số gọi đến nhưng ngoài dạng mock nhận: như số không có hồ sơ — không hỏi số khác."""
+    actions, clinic = _call(_inbound("c_badphone", "+15551234567"), [NAME])
+    assert actions[0].utterance == t.GREETING_HANDOFF_INBOUND
     _ended(actions[-1], "TRANSFERRED", "PATIENT_NOT_FOUND")
     assert clinic.patient_lookups == [] and clinic.writes == []
 

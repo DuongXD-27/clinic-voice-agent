@@ -485,19 +485,12 @@ def test_start_call_rejects_invalid_input(client: TestClient, overrides: dict[st
     assert _start(client, "c_invalid", **overrides).status_code == 422
 
 
-@pytest.mark.parametrize("caller_number", [None, "", "+840000000001"])
-def test_inbound_without_usable_caller_number_starts_and_transfers_without_write(
-    client: TestClient, clinic: FakeClinicAPI, caller_number: Optional[str]
-) -> None:
-    """Eval mentor 13-10 (qc-ib-*): harness gửi inbound với `caller_number: null` (Listing 1 cho phép).
-
-    Trước đây validator trả 422 nên cả bộ case lỗi trước lượt 1. Không có số dùng được thì chưa tra được
-    hồ sơ: mở phiên bình thường, lượt 1 chuyển máy, không tra mock, không ghi gì (§1.1.9, §2.1).
-    """
-    started = client.post(
+def _qc_inbound_start(client: TestClient, call_id: str, caller_number: Optional[str]):
+    """Đúng payload harness mentor (qc-ib-*, 13-10): inbound, `caller_number: null`."""
+    return client.post(
         "/v1/calls",
         json={
-            "call_id": "qc-ib-01-clean-booking-29d5a7e6",
+            "call_id": call_id,
             "direction": "inbound",
             "appointment_id": None,
             "caller_number": caller_number,
@@ -506,16 +499,55 @@ def test_inbound_without_usable_caller_number_starts_and_transfers_without_write
             "max_turns": 20,
         },
     )
+
+
+@pytest.mark.parametrize("caller_number", [None, ""])
+def test_inbound_without_caller_number_asks_identity_then_phone_and_books(
+    client: TestClient, clinic: FakeClinicAPI, caller_number: Optional[str]
+) -> None:
+    """Eval mentor 13-10 (qc-ib-01): harness gửi `caller_number: null` (Listing 1 cho phép).
+
+    Chưa có số để tra hồ sơ: vẫn hỏi mở tên, ngày sinh (§1.1.9), rồi xin số điện thoại đã đăng ký, tra
+    hồ sơ theo số đó, đối chiếu và đặt lịch như thường (§1.1.10). Trước khi có số không gọi mock.
+    """
+    call_id = "qc-ib-01-clean-booking-29d5a7e6"
+    started = _qc_inbound_start(client, call_id, caller_number)
     assert started.status_code == 200
     body = started.json()
-    assert (body["call_id"], body["state"], body["turn"]) == (
-        "qc-ib-01-clean-booking-29d5a7e6",
-        "AWAITING_IDENTITY",
-        0,
-    )
-    assert body["audio_url"] is None
+    assert (body["call_id"], body["state"], body["turn"]) == (call_id, "AWAITING_IDENTITY", 0)
+    assert body["utterance"] == t.GREETING_INBOUND and body["audio_url"] is None
 
-    ended = _turn(client, "qc-ib-01-clean-booking-29d5a7e6", 1, "Alô, tôi muốn đặt lịch khám ạ.")
+    first = _turn(client, call_id, 1, "Alô, tôi muốn đặt lịch khám ạ.")
+    assert first.status_code == 200 and not first.json()["ended"]
+    assert first.json()["utterance"] in t.static_choices(t.ASK_NAME_FOR_REQUEST)
+    assert clinic.calls == []
+
+    lines = ["Nguyễn Văn A", "14/03/1978", "84912345600", "Tôi muốn đặt lịch", "Khung 2"]
+    replies = [_turn(client, call_id, turn, line) for turn, line in enumerate(lines, start=2)]
+    assert all(reply.status_code == 200 for reply in replies)
+    assert replies[0].json()["utterance"] in t.static_choices(t.ASK_DOB)
+    assert replies[1].json()["utterance"] in t.static_choices(t.ASK_PHONE)
+    assert replies[2].json()["utterance"] in t.static_choices(t.ASK_INTENT_INBOUND)
+    assert clinic.patient_lookups == ["0912345600"]
+    assert replies[4].json()["state"] == "AWAITING_CONFIRMATION"  # đọc lại khung vừa chọn
+
+    booked = _turn(client, call_id, 7, "Đúng rồi, đặt cho tôi")
+    assert booked.status_code == 200
+    assert (booked.json()["ended"], booked.json()["outcome"]) == (True, "BOOKED")
+    assert [status for _, status, _ in clinic.writes] == ["BOOKED"]
+
+
+def test_inbound_with_unusable_caller_number_starts_and_transfers_without_write(
+    client: TestClient, clinic: FakeClinicAPI
+) -> None:
+    """Có số gọi đến nhưng ngoài dạng mock nhận: không hỏi số khác — mở phiên, lượt 1 chuyển máy, không
+    tra mock, không ghi gì (§1.1.9, §2.1)."""
+    call_id = "qc-ib-01-clean-booking-29d5a7e7"
+    started = _qc_inbound_start(client, call_id, "+840000000001")
+    assert started.status_code == 200
+    assert started.json()["utterance"] == t.GREETING_HANDOFF_INBOUND
+
+    ended = _turn(client, call_id, 1, "Alô, tôi muốn đặt lịch khám ạ.")
     assert ended.status_code == 200
     assert (ended.json()["ended"], ended.json()["outcome"]) == (True, "TRANSFERRED")
     assert clinic.writes == [] and clinic.patient_lookups == []
