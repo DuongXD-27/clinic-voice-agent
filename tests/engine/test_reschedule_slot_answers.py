@@ -21,8 +21,8 @@ from tests.engine.test_reschedule_ambiguity import (
     _slot_writes,
 )
 
-# Câu mời một khung ("Em còn khung 3 giờ chiều, thứ Tư ngày 14 tháng 10. Anh chị đổi sang giờ đó nhé
-# ạ?") — như ví dụ Reschedule của contract
+# Câu mời một khung ("Em còn trống 3 giờ chiều, thứ Tư ngày 14 tháng 10. Anh chị đổi sang giờ này
+# được không ạ?") — như ví dụ Reschedule của contract
 ONE_SLOT = [*IDENTITY, "Đổi sang chiều thứ 4 được không"]
 READ_BACK_FIRST = [*FIRST_PAGE, "khung nào cũng được"]  # câu chốt 91d2
 
@@ -160,7 +160,7 @@ def test_cai_thu_hai_within_the_page_is_still_slot_two() -> None:
 def test_khung_with_a_number_stays_a_slot_number(answer: str) -> None:
     clinic, bot = _call(f"b8-khung-{answer}")
     action = _run(bot, f"b8-khung-{answer}", [*FIRST_PAGE, answer])
-    assert "Em vừa đọc hai khung thôi" in action.utterance
+    assert "Em vừa báo hai giờ thôi" in action.utterance
     assert _slot_writes(clinic) == []
 
 
@@ -172,7 +172,7 @@ def test_refusing_the_page_for_a_missing_time_offers_other_slots(mode: str) -> N
     clinic, bot = _call(f"b10-{mode}", mode)
     action = _run(bot, f"b10-{mode}", [*FIRST_PAGE, "không, 5 giờ chiều"])
     ctx = _context(bot, f"b10-{mode}")
-    assert "chưa thấy khung giờ đó" in action.utterance
+    assert "em chưa thấy trống" in action.utterance
     assert ctx.presented_slot_ids == ["slot_b502", "slot_b503"]
     assert {"slot_91d2", "slot_b501"} <= set(ctx.refused_slot_ids)
     assert ctx.slot_round == 1
@@ -209,8 +209,8 @@ def test_naming_the_current_time_asks_keep_or_other(mode: str, answer: str) -> N
     action = _run(bot, call_id, [*READ_BACK_FIRST, answer])
     ctx = _context(bot, call_id)
     assert ctx.question.question_id is QuestionId.SLOT_REFUSE_CHOICE
-    assert "3 giờ 30 chiều, thứ Tư ngày 14 tháng 10 là giờ lịch hiện tại" in action.utterance
-    assert "giữ lịch cũ hay chọn giờ khác" in action.utterance
+    assert "3 giờ 30 chiều, thứ Tư ngày 14 tháng 10 đang là lịch hiện tại" in action.utterance
+    assert "giữ lịch này, hay chọn giờ khác" in action.utterance
     assert ctx.slot_round == 0
     assert _slot_writes(clinic) == []
 
@@ -319,8 +319,8 @@ def test_rechoosing_at_the_read_back_reads_the_page_again(mode: str, answer: str
     assert ctx.presented_slot_ids == ["slot_b502", "slot_b503"]
     assert ctx.selected_slot_id is None
     assert "slot_b503" not in ctx.refused_slot_ids  # vẫn chọn lại được
-    assert action.utterance.startswith("Dạ, em đọc lại để anh chị chọn ạ.")
-    assert "hoặc muốn đổi sang ngày khác" in action.utterance
+    assert action.utterance.startswith("Em đọc lại để anh chị chọn nhé.")
+    assert "hay muốn đổi sang ngày khác" in action.utterance
     assert ctx.failed_understandings == 0 and ctx.unclear_streak == 0
     assert ctx.slot_round == 0
     assert _slot_writes(clinic) == []

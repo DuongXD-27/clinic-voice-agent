@@ -278,9 +278,9 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
         if was is QuestionId.SLOT_READBACK and selected == before.selected_slot_id:
             return Observed("REREAD_YESNO")
         # Câu chốt khung (mọi biến thể của `t.slot_readback`), không phải câu có/không khung duy nhất
-        if selected in before.presented_slot_ids and utterance.endswith("Anh chị đồng ý chứ ạ?"):
+        if selected in before.presented_slot_ids and utterance.endswith("Anh chị đồng ý không ạ?"):
             return Observed(f"PICK:{before.presented_slot_ids.index(selected) + 1}", dates, hours)
-        if "còn khung" in utterance:  # đọc khung duy nhất còn lại, chưa đọc trước đó
+        if "còn trống" in utterance:  # đọc khung duy nhất còn lại, chưa đọc trước đó
             return Observed("MORE", dates, hours)
         return Observed("PICK_SLOT", dates, hours)
     if asked is QuestionId.OFFER_SLOTS:

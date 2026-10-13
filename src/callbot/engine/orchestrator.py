@@ -31,7 +31,11 @@ from callbot.engine.journal import turn_entries
 from callbot.engine.policy import output_guard
 from callbot.engine.policy.guardrails import SevereFailureBlocked
 from callbot.engine.policy.output_guard import GuardInput, GuardVerdict, Receipt
-from callbot.engine.policy.policy_engine import PolicyDecision, PolicyEngine
+from callbot.engine.policy.policy_engine import (
+    LOOKUP_TRANSFER_REASON,
+    PolicyDecision,
+    PolicyEngine,
+)
 from callbot.engine.policy.sources import SourceRegistry, bind_sources
 from callbot.engine.policy.utterances import RenderRecord, bind_ledger
 from callbot.engine.session.context import CallContext, Question
@@ -59,6 +63,18 @@ def _transfer_system_error() -> BotAction:
     return BotAction(
         t.TRANSFER, "ENDED", ended=True, outcome="TRANSFERRED", transfer_reason="SYSTEM_ERROR"
     )
+
+
+def _lookup_transfer_text(ctx: CallContext, decision: PolicyDecision) -> Optional[str]:
+    """Inbound tra hồ sơ theo số không được: lượt 1 chuyển máy kèm lý do (§1.1.9).
+
+    Chỉ khi chính kết quả tra cứu sinh ra quyết định chuyển máy, chưa hỏi danh tính nên không lộ gì.
+    """
+    if ctx.call.direction != "inbound" or ctx.identity_verified:
+        return None
+    if decision.transfer_reason != LOOKUP_TRANSFER_REASON.get(ctx.identity_lookup):
+        return None
+    return t.LOOKUP_TRANSFER.get(ctx.identity_lookup)
 
 
 class Tracer(Protocol):
@@ -260,7 +276,7 @@ class CallOrchestrator:
                 decision = self._policy.check_preconditions(ctx)
                 self._policy_event("preconditions", decision)
                 if decision.kind != "CONTINUE":
-                    action = self._execute(ctx, decision)
+                    action = self._execute(ctx, decision, _lookup_transfer_text(ctx, decision))
                 elif caller.phone_status is not None:
                     decision = self._policy.check_phone_status(ctx, caller.phone_status)
                     self._policy_event("phone_status", decision)
@@ -546,15 +562,17 @@ class CallOrchestrator:
         error.extraction = trace
         error.diagnostics = build_diagnostics(trace, transfer_reason=reason, error=error)
 
-    def _execute(self, ctx: CallContext, decision: PolicyDecision) -> BotAction:
+    def _execute(
+        self, ctx: CallContext, decision: PolicyDecision, text: Optional[str] = None
+    ) -> BotAction:
         if decision.kind == "UNREACHABLE" and decision.unreachable_reason:
             return self._dialogue_step(
                 ctx, lambda item: self._dialogue.unreachable(item, decision.unreachable_reason)
             )
-        return self._dialogue_step(
-            ctx,
-            lambda item: self._dialogue.transfer(item, decision.transfer_reason or "SYSTEM_ERROR"),
-        )
+        reason = decision.transfer_reason or "SYSTEM_ERROR"
+        if text is None:
+            return self._dialogue_step(ctx, lambda item: self._dialogue.transfer(item, reason))
+        return self._dialogue_step(ctx, lambda item: self._dialogue.transfer(item, reason, text))
 
     def _policy_event(self, stage: str, decision: PolicyDecision) -> None:
         reason = decision.transfer_reason or decision.unreachable_reason

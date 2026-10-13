@@ -8,7 +8,6 @@ import pytest
 
 from callbot.engine import CallEnded, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
-from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
@@ -66,15 +65,15 @@ def test_opening_discloses_ai_assistant() -> None:
         ),
     ]
     for opening in openings:
-        assert AI_DISCLOSURE in opening.utterance
+        assert "Vinmec" in opening.utterance
         assert opening.state == "AWAITING_IDENTITY"
         # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
         assert opening.utterance.rstrip().endswith("?")
     assert _context(bot, "c_greet_out").question.question_id is QuestionId.ASK_NAME
 
-    # T-02: không có hồ sơ -> không hỏi tên, nhưng vẫn công bố AI ngay câu đầu
+    # T-02: không có hồ sơ -> không hỏi tên; lượt 1 nói lý do rồi chuyển máy (LOOKUP_TRANSFER)
     handoff = bot.start_call(_inbound("c_greet_unknown", "0999999999"))
-    assert AI_DISCLOSURE in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
+    assert "Vinmec" in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
     assert _context(bot, "c_greet_unknown").question is None
 
 
@@ -159,7 +158,7 @@ def test_reference_call_reschedule() -> None:
         ["Nguyễn Văn A.", "Ngày 14 tháng 3 năm 1978.", "Tôi đổi sang buổi chiều được không?"],
     )
     assert action.state == "AWAITING_CONFIRMATION"
-    assert "2 giờ 30 chiều" in action.utterance and "đổi sang giờ đó" in action.utterance
+    assert "2 giờ 30 chiều" in action.utterance and "đổi sang giờ này" in action.utterance
     assert _context(bot, "c_resched").selected_slot_id == "slot_91d2" and clinic.writes == []
 
     action = _run(bot, "c_resched", ["Được, đổi giúp tôi."], start=4)

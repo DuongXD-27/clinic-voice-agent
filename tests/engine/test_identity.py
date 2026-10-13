@@ -24,11 +24,20 @@ def _assert_open_question(action: BotAction, kind: PromptKind, clinic: FakeClini
     if kind == "name":
         forbidden = (verify["full_name"], patient["display_name"])
         identity_terms = ("ho ten", "ho va ten", "ten day du", "anh chi nao")
-        request_terms = ("cho", "xin", "vui long", "dang noi chuyen")
+        # Câu hỏi mở tự nhiên ("…là gì ạ?", "nhắc lại…") cũng là xin khách tự nói, không nêu sẵn giá trị
+        request_terms = (
+            "cho",
+            "xin",
+            "vui long",
+            "dang noi chuyen",
+            "la gi",
+            "nhac lai",
+            "doc lai",
+        )
     else:
         forbidden = (verify["dob"], "14/03/1978", "14-03-1978", "14 thang 3 nam 1978")
-        identity_terms = ("ngay sinh", "nam sinh", "ngay thang nam sinh")
-        request_terms = ("cho", "xin", "vui long", "nhac lai")
+        identity_terms = ("ngay sinh", "nam sinh", "ngay thang nam sinh", "sinh ngay thang nam")
+        request_terms = ("cho", "xin", "vui long", "nhac lai", "doc lai", "noi lai", "nam nao")
 
     for value in forbidden:
         assert _searchable(value) not in utterance, (
