@@ -16,6 +16,7 @@ lịch" → "THÙY LINH" vẫn 0,79/0,98/0,57); hiện chỉ ghi log để đo.
 import asyncio
 import logging
 import math
+import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, AsyncIterator, NamedTuple, Optional
@@ -62,6 +63,8 @@ class ZipFormerASR:
         # Lượt tên dùng chung encoder (`_decode_guarded_shared`) khi chạy model thật; recognizer
         # tiêm từ ngoài (test, recognizer giả) đi nhánh sherpa.
         self._shared_encoder = recognizer is None
+        # Thời gian của final gần nhất (trace độ trễ lượt, không có chữ): xem `stream()`.
+        self.last_timing: Optional[dict[str, Any]] = None
 
     @property
     def model(self) -> str:
@@ -220,13 +223,48 @@ class ZipFormerASR:
             track_voice_end=tail_ms is not None,
         )
 
+        # Trace: lúc frame cuối còn là giọng tới ASR, số/tổng ms decode partial của câu đang mở.
+        trace = {"voice_end_at": None, "partials": 0, "partial_ms": 0.0}
+
         async def decode(*, final: bool = False) -> _Decoded:
             pcm = utterance.final_pcm(tail_ms) if final else bytes(utterance.pcm)
             hints = hotwords.current if final and hotwords is not None else NO_HOTWORDS
+            started = time.perf_counter()
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
             decoded = await asyncio.to_thread(
                 self._decode_stream_hinted, pcm, audio_sample_rate, hints
             )
+            decode_ms = (time.perf_counter() - started) * 1000
+            if not final:
+                trace["partials"] += 1
+                trace["partial_ms"] += decode_ms
+            else:
+                mode = "greedy"
+                if hints and self._config.hotwords_enabled:
+                    mode = "name" if hints.guard_one_word else "hotword"
+                voice_end_at = trace["voice_end_at"] or started
+                self.last_timing = {
+                    "voice_end_at": voice_end_at,
+                    "decode_start_at": started,
+                    "final_at": time.perf_counter(),
+                    "decode_ms": decode_ms,
+                    "mode": mode,
+                    "partials": trace["partials"],
+                    "partial_ms": trace["partial_ms"],
+                    "audio_ms": len(pcm) / 2 / audio_sample_rate * 1000,
+                }
+                # Không log chữ (PII).
+                logger.info(
+                    "zipformer: final mode=%s chờ sau giọng=%.0fms decode=%.0fms "
+                    "partial=%d (%.0fms) audio=%.0fms",
+                    mode,
+                    (started - voice_end_at) * 1000,
+                    decode_ms,
+                    trace["partials"],
+                    trace["partial_ms"],
+                    self.last_timing["audio_ms"],
+                )
+                trace.update(voice_end_at=None, partials=0, partial_ms=0.0)
             if final and decoded.text and nbest is not None and self.supports_nbest:
                 # Trong nền: final phát ngay, top N tới sau (chỉ để xem).
                 phrases = hints.phrases if self._config.hotwords_enabled else ()
@@ -258,8 +296,18 @@ class ZipFormerASR:
             if not frame:
                 continue
             is_speech = silence_classifier.is_speech(frame)
+            was_in_speech = utterance.in_speech
             if not utterance.add(frame, is_speech, is_preroll=is_preroll):
                 continue
+            if not was_in_speech:
+                trace.update(voice_end_at=None, partials=0, partial_ms=0.0)
+            # Còn là giọng theo mức năng lượng so với câu (không theo cờ VAD: Silero giữ "đang
+            # nói" thêm hangover sau khi hết tiếng).
+            voice_floor = utterance._voice_threshold(
+                utterance._peak, below_db=_VOICE_END_BELOW_PEAK_DB
+            )
+            if _level_dbfs(frame) >= voice_floor:
+                trace["voice_end_at"] = time.perf_counter()
             has_min_speech = utterance.speech_ms >= min_decode_ms
             # Mỗi partial decode lại cả câu; partial_interval_ratio giãn nhịp cho câu dài.
             partial_interval_ms = max(

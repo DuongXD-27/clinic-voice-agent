@@ -22,6 +22,18 @@ export interface NBestUpdate {
   segments: NBestHyp[][];
 }
 
+/** Độ trễ một lượt (call_bridge.py `_publish_timing`), ms; thiếu phần nào thì bỏ phần đó. */
+export interface TurnTiming {
+  turn: number;
+  asrMode: string | null;
+  waitSilence?: number;
+  asrDecode?: number;
+  turnWait?: number;
+  engine?: number;
+  ttsFirstAudio?: number;
+  total?: number;
+}
+
 export interface TranscriptLine {
   role: "bot" | "caller";
   /** Lượt hội thoại; câu chào của bot là lượt 0. */
@@ -35,6 +47,8 @@ export interface TranscriptLine {
   outcome: string | null;
   /** Top N phương án ASR (chỉ lời người gọi, tới sau); null = chưa có / không bật. */
   nbest?: NBestHyp[][] | null;
+  /** Độ trễ lượt (chỉ lời bot, tới sau khi bot có tiếng). */
+  timing?: TurnTiming | null;
 }
 
 const decoder = new TextDecoder();
@@ -99,6 +113,40 @@ export function parseNBest(payload: Uint8Array): NBestUpdate | null {
   return segments.length ? { turn: data.turn, segments } : null;
 }
 
+/** Gói `{type: "timing", turn, ...ms}` cùng topic transcript; sai dạng thì bỏ qua. */
+export function parseTiming(payload: Uint8Array): TurnTiming | null {
+  const data = decode(payload);
+  if (data?.type !== "timing" || typeof data.turn !== "number") return null;
+  const pick = (key: string, as: keyof TurnTiming) =>
+    typeof data[key] === "number" ? { [as]: data[key] } : {};
+  return {
+    turn: data.turn,
+    asrMode: typeof data.asr_mode === "string" ? data.asr_mode : null,
+    ...pick("wait_silence", "waitSilence"),
+    ...pick("asr_decode", "asrDecode"),
+    ...pick("turn_wait", "turnWait"),
+    ...pick("engine", "engine"),
+    ...pick("tts_first_audio", "ttsFirstAudio"),
+    ...pick("total", "total"),
+  };
+}
+
+/** "⏱ 3,50s = chờ im lặng 1,20 · ASR tên 0,20 · chốt lượt 0,70 · engine 0,90 · TTS 0,49". */
+export function formatTiming(timing: TurnTiming): string {
+  const s = (ms: number) => (ms / 1000).toFixed(2).replace(".", ",");
+  const mode =
+    timing.asrMode === "name" ? "ASR tên" : timing.asrMode === "hotword" ? "ASR hotword" : "ASR";
+  const parts = [
+    timing.waitSilence === undefined ? null : `chờ im lặng ${s(timing.waitSilence)}`,
+    timing.asrDecode === undefined ? null : `${mode} ${s(timing.asrDecode)}`,
+    timing.turnWait === undefined ? null : `chốt lượt ${s(timing.turnWait)}`,
+    timing.engine === undefined ? null : `engine ${s(timing.engine)}`,
+    timing.ttsFirstAudio === undefined ? null : `TTS ${s(timing.ttsFirstAudio)}`,
+  ].filter(Boolean);
+  const total = timing.total === undefined ? "⏱" : `⏱ ${s(timing.total)}s =`;
+  return `${total} ${parts.join(" · ")}`;
+}
+
 /** Thông báo lỗi trên STATUS_TOPIC (`{code, message}`); sai dạng thì bỏ qua. */
 export function parseStatus(payload: Uint8Array): string | null {
   const data = decode(payload);
@@ -113,7 +161,12 @@ export function toChatMessage(line: TranscriptLine, index: number): ChatMessage 
           `NGƯỜI GỌI · lượt ${line.turn}`,
           line.confidence === null ? null : `ASR ${Math.round(line.confidence * 100)}%`,
         ]
-      : [`BOT · lượt ${line.turn}`, line.state, line.outcome];
+      : [
+          `BOT · lượt ${line.turn}`,
+          line.state,
+          line.outcome,
+          line.timing ? formatTiming(line.timing) : null,
+        ];
   return {
     id: `${index}-${line.role}-${line.turn}`,
     role: line.role,

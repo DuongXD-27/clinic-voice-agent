@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { parseNBest, parseTranscript, toChatMessage, type TranscriptLine } from "./transcript";
+import {
+  formatTiming,
+  parseNBest,
+  parseTiming,
+  parseTranscript,
+  toChatMessage,
+  type TranscriptLine,
+} from "./transcript";
 
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -162,5 +169,43 @@ describe("toChatMessage với top N", () => {
 
   it("chưa có top N thì không có candidates", () => {
     expect(toChatMessage(caller, 1)).not.toHaveProperty("candidates");
+  });
+});
+
+describe("parseTiming", () => {
+  it("đọc độ trễ lượt và hiện dưới câu bot", () => {
+    const timing = parseTiming(
+      encode({
+        type: "timing",
+        turn: 3,
+        asr_mode: "name",
+        partials: 5,
+        wait_silence: 1200,
+        asr_decode: 200,
+        turn_wait: 700,
+        engine: 900,
+        hotwords: 10,
+        tts_first_audio: 490,
+        total: 3500,
+      }),
+    );
+    expect(timing).toEqual({
+      turn: 3,
+      asrMode: "name",
+      waitSilence: 1200,
+      asrDecode: 200,
+      turnWait: 700,
+      engine: 900,
+      ttsFirstAudio: 490,
+      total: 3500,
+    });
+    if (!timing) throw new Error("timing");
+    expect(formatTiming(timing)).toBe(
+      "⏱ 3,50s = chờ im lặng 1,20 · ASR tên 0,20 · chốt lượt 0,70 · engine 0,90 · TTS 0,49",
+    );
+  });
+
+  it("bỏ qua gói khác loại", () => {
+    expect(parseTiming(encode({ type: "nbest", turn: 1, segments: [] }))).toBeNull();
   });
 });

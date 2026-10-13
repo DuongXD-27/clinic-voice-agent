@@ -12,6 +12,7 @@ import {
 } from "./model/session";
 import {
   parseNBest,
+  parseTiming,
   parseStatus,
   parseTranscript,
   STATUS_TOPIC,
@@ -180,7 +181,12 @@ function subscribe(
         return;
       }
       const update = parseNBest(payload);
-      if (update) dispatch({ type: "nbest", update });
+      if (update) {
+        dispatch({ type: "nbest", update });
+        return;
+      }
+      const timing = parseTiming(payload);
+      if (timing) dispatch({ type: "timing", timing });
     })
     .on(RoomEvent.Reconnecting, () => {
       dispatch({ type: "reconnecting", at: Date.now() });

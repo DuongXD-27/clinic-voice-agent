@@ -791,3 +791,54 @@ async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> Non
             "hotwords": [["NGUYỄN VĂN ANH"]],
         }
     ]
+
+
+async def test_call_bridge_publishes_turn_timing_without_text(caplog) -> None:
+    """Trace độ trễ lượt: từ lúc khách dứt giọng tới lúc bot có tiếng, chia theo phần (chờ im
+    lặng, decode ASR, chờ chốt lượt, engine, TTS). Không có chữ (PII)."""
+    orchestrator = _FakeOrchestrator(
+        opening=BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False),
+        turn_actions=[],
+    )
+    stt_pipeline = _FakeSTTPipeline([])
+    stt_pipeline.asr = type(
+        "Asr",
+        (),
+        {
+            "last_timing": {
+                "voice_end_at": 10.0,
+                "decode_start_at": 11.2,
+                "final_at": 11.4,
+                "decode_ms": 200.0,
+                "mode": "name",
+                "partials": 5,
+            }
+        },
+    )()
+    room = _FakeRoom("timing-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
+    bridge._first_audio_at = 13.5
+    spoken = asyncio.Event()
+    spoken.set()
+
+    with caplog.at_level(logging.INFO):
+        await bridge._publish_timing(
+            3, received_at=12.1, engine_ms=900.0, hotwords_ms=10.0, spoken=spoken
+        )
+
+    ((payload, topic, _),) = room.local_participant.data
+    assert topic == TRANSCRIPT_TOPIC
+    assert payload == {
+        "type": "timing",
+        "turn": 3,
+        "asr_mode": "name",
+        "partials": 5,
+        "engine": 900,
+        "hotwords": 10,
+        "wait_silence": 1200,
+        "asr_decode": 200,
+        "turn_wait": 700,
+        "tts_first_audio": 490,
+        "total": 3500,
+    }
+    assert "turn 3 timing" in caplog.text

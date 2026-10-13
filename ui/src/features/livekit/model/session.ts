@@ -11,7 +11,7 @@
  */
 
 import { ASR_LABELS } from "./config";
-import type { NBestUpdate, TranscriptLine } from "./transcript";
+import type { NBestUpdate, TranscriptLine, TurnTiming } from "./transcript";
 
 export type Phase = "idle" | "connecting" | "connected" | "reconnecting";
 export type Tone = "info" | "success" | "warning" | "error";
@@ -59,6 +59,7 @@ export type LiveKitAction =
   | { type: "audioBlocked"; blocked: boolean }
   | { type: "transcript"; line: TranscriptLine; at: number }
   | { type: "nbest"; update: NBestUpdate }
+  | { type: "timing"; timing: TurnTiming }
   | { type: "notice"; notice: LiveKitSession["notice"] };
 
 export const initialSession: LiveKitSession = {
@@ -246,6 +247,22 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
       if (index < 0) return state;
       const transcript = state.transcript.map((line, i) =>
         i === index ? { ...line, nbest: segments } : line,
+      );
+      return { ...state, transcript };
+    }
+
+    case "timing": {
+      // Gắn vào câu bot gần nhất của đúng lượt; chưa có câu đó thì bỏ.
+      const { timing } = action;
+      let index = state.transcript.length - 1;
+      while (index >= 0) {
+        const line = state.transcript[index];
+        if (line?.role === "bot" && line.turn === timing.turn) break;
+        index -= 1;
+      }
+      if (index < 0) return state;
+      const transcript = state.transcript.map((line, i) =>
+        i === index ? { ...line, timing } : line,
       );
       return { ...state, transcript };
     }

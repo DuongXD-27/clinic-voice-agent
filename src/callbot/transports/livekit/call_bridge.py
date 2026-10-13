@@ -142,6 +142,8 @@ class CallBridge:
         self._caller_number = caller_number
         self._appointment_id = appointment_id
         self._turn_number = 0
+        # Lúc chunk TTS đầu tiên của câu bot đang nói tới (trace độ trễ lượt).
+        self._first_audio_at: Optional[float] = None
         self._frame_ms = frame_ms
         self._input_queue_frames = max(1, input_queue_ms // frame_ms)
         self._output_queue_ms = output_queue_ms
@@ -272,6 +274,7 @@ class CallBridge:
                     turn = UserTurnCompleted(text="", silence_ms=item.silence_ms)
                 else:
                     turn = item
+                received_at = perf_counter()
                 self._stop_silence_timer()
                 self._turn_number += 1
                 logger.info(
@@ -313,10 +316,14 @@ class CallBridge:
                                 vad_end_reason=turn.vad_end_reason,
                             )
                     caller = caller_input_from_turn(self._turn_number, turn)
+                    engine_started = perf_counter()
                     action = await asyncio.to_thread(
                         self._orchestrator.handle_turn, self._room.name, caller
                     )
+                    engine_ms = (perf_counter() - engine_started) * 1000
+                    hotwords_started = perf_counter()
                     await self._update_hotwords()
+                    hotwords_ms = (perf_counter() - hotwords_started) * 1000
                     logger.info(
                         "call_bridge: turn %d action state=%s ended=%s outcome=%s",
                         self._turn_number,
@@ -325,7 +332,24 @@ class CallBridge:
                         action.outcome,
                     )
                     await self._publish_transcript("bot", action.utterance, action=action)
-                    await self._speak(action.utterance)
+                    self._first_audio_at = None
+                    spoken = asyncio.Event()
+                    if not turn.silence_ms:
+                        self._tasks.append(
+                            asyncio.create_task(
+                                self._publish_timing(
+                                    self._turn_number,
+                                    received_at=received_at,
+                                    engine_ms=engine_ms,
+                                    hotwords_ms=hotwords_ms,
+                                    spoken=spoken,
+                                )
+                            )
+                        )
+                    try:
+                        await self._speak(action.utterance)
+                    finally:
+                        spoken.set()
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
                     )
@@ -384,6 +408,53 @@ class CallBridge:
             return
         box.set(Hotwords(hints.phrases, hints.guard_one_word))
         logger.info("call_bridge: hotword lượt sau: %d cụm", len(hints.phrases))
+
+    async def _publish_timing(
+        self,
+        turn_number: int,
+        *,
+        received_at: float,
+        engine_ms: float,
+        hotwords_ms: float,
+        spoken: asyncio.Event,
+    ) -> None:
+        """Trace độ trễ một lượt (không có chữ): từ lúc khách dứt giọng tới lúc bot có tiếng.
+        Ghi log và gửi `{type: "timing"}` để trang demo hiện dưới câu bot. Lỗi chỉ mất trace."""
+        try:
+            while self._first_audio_at is None and not spoken.is_set():
+                await asyncio.sleep(0.02)
+            asr = getattr(self._stt_pipeline, "asr", None)
+            timing = getattr(asr, "last_timing", None) or {}
+            ms = {"engine": engine_ms, "hotwords": hotwords_ms}
+            voice_end = timing.get("voice_end_at")
+            final_at = timing.get("final_at")
+            if voice_end is not None and final_at is not None and final_at <= received_at:
+                ms["wait_silence"] = (timing["decode_start_at"] - voice_end) * 1000
+                ms["asr_decode"] = timing["decode_ms"]
+                ms["turn_wait"] = (received_at - final_at) * 1000
+            if self._first_audio_at is not None:
+                ms["tts_first_audio"] = (
+                    (self._first_audio_at - received_at) * 1000 - engine_ms - hotwords_ms
+                )
+                if voice_end is not None:
+                    ms["total"] = (self._first_audio_at - voice_end) * 1000
+            payload = {
+                "type": "timing",
+                "turn": turn_number,
+                "asr_mode": timing.get("mode"),
+                "partials": timing.get("partials"),
+                **{key: round(value) for key, value in ms.items()},
+            }
+            logger.info(
+                "call_bridge: turn %d timing %s",
+                turn_number,
+                " ".join(f"{k}={v}" for k, v in payload.items() if k not in ("type", "turn")),
+            )
+            await self._room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
+            )
+        except Exception as exc:
+            logger.warning("call_bridge: không gửi được timing lượt: %s", type(exc).__name__)
 
     def _publish_nbest_later(self, turn_number: int) -> None:
         """Top N phương án ASR của các final trong lượt vừa xong (provider tính trong nền), gửi
@@ -634,6 +705,7 @@ class CallBridge:
                 async for chunk in chunks:
                     if chunk and first_audio_ms is None:
                         first_audio_ms = (perf_counter() - started) * 1000
+                        self._first_audio_at = perf_counter()
                     total_bytes += len(chunk)
                     if self._is_interrupted():
                         break
