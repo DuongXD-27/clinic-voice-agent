@@ -197,11 +197,13 @@ def test_slot_route_backup_can_be_turned_off(monkeypatch: pytest.MonkeyPatch) ->
     assert _slot_semantic_reader(settings) is None  # không Jev (thiếu khóa), không dự phòng
 
 
-def test_engine_yaml_keeps_openai_luna_as_the_llm_default() -> None:
-    """Không đổi hành vi mặc định: model trống = gpt-6-luna của openai trong llm.yaml."""
+def test_engine_yaml_uses_deepseek_with_the_luna_prompt() -> None:
+    """Owner 13-10-2026: DeepSeek thay Luna ở mọi chỗ dùng LLM, prompt giữ nguyên của Luna."""
+    from inference.llm.prompt.semantic import PROMPT_VERSION_LUNA
+
     engine = _engine_yaml()
-    llm = yaml.safe_load((CONFIG_DIR / "llm.yaml").read_text(encoding="utf-8"))
-    assert engine["semantic_backup_provider"] == "openai"
-    assert engine["slot_semantic_backup_provider"] == "openai"
-    assert engine["semantic_llm_model"] is None and engine["semantic_llm_prompt_version"] is None
-    assert llm["openai"]["model"] == "gpt-6-luna"
+    assert engine["name_fallback_provider"] == "deepseek"
+    assert engine["semantic_backup_provider"] == "deepseek"
+    assert engine["slot_semantic_backup_provider"] == "deepseek"
+    assert engine["semantic_llm_model"] is None  # model của deepseek trong llm.yaml
+    assert engine["semantic_llm_prompt_version"] == PROMPT_VERSION_LUNA

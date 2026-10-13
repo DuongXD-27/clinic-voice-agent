@@ -2,7 +2,7 @@
 # Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. SEMANTIC_FALLBACK_ENABLED=false).
 
 # Name slot filling fallback: none | openai | gemini | groq | openrouter | deepseek (cấu hình ở llm.yaml)
-name_fallback_provider: openai
+name_fallback_provider: deepseek
 
 # Tầng ngữ nghĩa (T-05 §8): model đọc các câu luật không chắc. Bật theo quyết định owner 22-09-2026;
 # thiếu khóa thì tự chạy chỉ-luật, không chặn khởi động.
@@ -14,7 +14,7 @@ semantic_fallback_enabled: true
 semantic_provider: jev
 # Provider dự phòng (none hoặc như trên), CHỈ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng); provider
 # chính đã trả lời thì không gọi. none = không dự phòng. Thiếu khóa provider chính -> chạy riêng dự phòng.
-semantic_backup_provider: openai
+semantic_backup_provider: deepseek
 # Chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây trong trần lượt 4 s (OpenAI p50 ~1,4 s)
 semantic_backup_min_remaining_s: 1.5
 
@@ -28,7 +28,7 @@ semantic_llm_model:
 semantic_llm_max_tokens: 400
 # Prompt của provider LLM; trống = tự chọn theo cancel_semantic_confirm_enabled và model (semantic_v10_luna
 # chỉ cho GPT-6 Luna). Đổi sang model khác mà muốn giữ prompt Luna: đặt semantic_v10_luna.
-semantic_llm_prompt_version:
+semantic_llm_prompt_version: semantic_v10_luna
 # Timeout của provider LLM: deadline tổng một request và timeout httpx theo pha; một request,
 # không retry. Trần lượt cho mọi model là 4 s (`model_budget.MODEL_TIMEOUT_S`, owner 12/10/2026).
 semantic_fallback_timeout_s: 3.0
@@ -45,7 +45,7 @@ cancel_semantic_confirm_enabled: true
 # tắt; tắt thì hành vi y hệt chỉ-luật. Jev chính, provider LLM khi câu không dấu hoặc Jev lỗi (owner 12-10-2026).
 slot_semantic_enabled: false
 # Provider LLM dự phòng của route chọn khung: none | openai | gemini | groq | openrouter | deepseek
-slot_semantic_backup_provider: openai
+slot_semantic_backup_provider: deepseek
 slot_semantic_jev_timeout_s: 1.5
 slot_semantic_llm_timeout_s: 3.0
 # Trần cả lượt của route chọn khung, gồm đường dự phòng provider LLM (vẫn dưới 8 s của contract §4.1.2)

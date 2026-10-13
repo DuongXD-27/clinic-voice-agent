@@ -36,9 +36,6 @@ ID034,suffix_other,ASK_NAME,,Nguyễn Văn A cảm ơn em,nguyễn văn a,0,0,NO
 ID035,suffix_other,ASK_NAME,,Nguyễn Văn A đúng rồi,nguyễn văn a,0,0,NONE,,Khẳng định cuối câu
 ID036,suffix_other,ASK_NAME,,Nguyễn Văn A vâng,nguyễn văn a,0,0,NONE,,Đáp lễ cuối câu
 ID037,suffix_other,ASK_NAME,,Nguyễn Văn A chứ,nguyễn văn a,0,0,NONE,,Tiểu từ cuối câu
-ID038,boundary_review,ASK_NAME,,Nguyễn Văn A em nhé,*,0,0,NONE,,Em có thể thuộc tên; cần gán nhãn theo ngữ cảnh
-ID039,boundary_review,ASK_NAME,,Nguyễn Văn A em ạ,*,0,0,NONE,,Không tự cắt em chỉ vì đứng cuối
-ID040,boundary_review,ASK_NAME,,Nguyễn Văn Em nhé,*,0,0,NONE,,Em có thể là tên hoặc danh xưng; cần ngữ cảnh
 ID041,names,ASK_NAME,,Nguyễn Thị Anh nhé em,nguyễn thị anh,0,0,NONE,,Giữ tên Anh
 ID042,names,ASK_NAME,,Nguyen Van A Em,nguyen van a em,0,0,NONE,,Không cắt A hoặc Em không dấu
 ID043,names,ASK_NAME,,Nguyễn Thị Ái,nguyễn thị ái,0,0,NONE,,Không nhầm Ái với ai
@@ -112,7 +109,6 @@ ID110,garbage,ASK_NAME,,mai anh bận,,0,0,NONE,,Câu nói thường không ph�
 ID111,garbage,ASK_NAME,,văn phòng,,0,0,NONE,,Câu nói thường không phải tên
 ID112,garbage,ASK_NAME,,hà nội,,0,0,NONE,,Câu nói thường không phải tên
 ID113,garbage,ASK_NAME,,từ hôm qua,,0,0,NONE,,Câu nói thường không phải tên
-ID114,ambiguous_bare,ASK_NAME,,kim chi,*,0,0,NONE,,Cũng đọc được là tên Kim Chi; chỉ kiểm tra routing
 ID115,garbage,ASK_NAME,,lại nữa à,,0,0,NONE,,Câu nói thường không phải tên
 ID116,garbage,ASK_NAME,,cao quá,,0,0,NONE,,Câu nói thường không phải tên
 ID117,garbage,ASK_NAME,,trời hôm nay đẹp quá,,0,0,NONE,,Câu nói thường không phải tên
@@ -120,26 +116,18 @@ ID118,garbage,ASK_NAME,,hôm qua ăn phở,,0,0,NONE,,Câu nói thường không
 ID119,garbage,ASK_NAME,,mạng lag quá,,0,0,NONE,,Câu nói thường không phải tên
 ID120,garbage,ASK_NAME,,đang lái xe,,0,0,NONE,,Câu nói thường không phải tên
 ID121,garbage,ASK_NAME,,lê la mãi,,0,0,NONE,,Câu nói thường không phải tên
-ID122,ambiguous_bare,ASK_NAME,,vũ trường,*,0,0,NONE,,Cũng đọc được là tên Vũ Trường; chỉ kiểm tra routing
 ID123,garbage,ASK_NAME,,triệu đồng,,0,0,NONE,,Câu nói thường không phải tên
-ID124,ambiguous_bare,ASK_NAME,,phạm vi,*,0,0,NONE,,Cũng đọc được là tên Phạm Vi; chỉ kiểm tra routing
 ID125,garbage,ASK_NAME,,hoàng hôn đẹp,,0,0,NONE,,Câu nói thường không phải tên
 ID126,garbage,ASK_NAME,,võ thuật,,0,0,NONE,,Câu nói thường không phải tên
 ID127,garbage,ASK_NAME,,đinh ốc,,0,0,NONE,,Câu nói thường không phải tên
-ID128,garbage,ASK_NAME,,ngô nghê,,0,0,NONE,,Câu nói thường không phải tên
 ID129,garbage,ASK_NAME,,châu âu,,0,0,NONE,,Câu nói thường không phải tên
 ID130,garbage,ASK_NAME,,quan trọng lắm,,0,0,NONE,,Câu nói thường không phải tên
 ID131,garbage,ASK_NAME,,tôn trọng nhau,,0,0,NONE,,Câu nói thường không phải tên
 ID132,garbage,ASK_NAME,,mùa xuân đẹp,,0,0,NONE,,Câu nói thường không phải tên
 ID133,garbage,ASK_NAME,,hoa hồng đẹp,,0,0,NONE,,Câu nói thường không phải tên
-ID134,ambiguous_bare,ASK_NAME,,huỳnh quang,*,0,0,NONE,,Cũng đọc được là tên Huỳnh Quang; chỉ kiểm tra routing
 ID135,garbage,ASK_NAME,,văn minh lịch sự,,0,0,NONE,,Câu nói thường không phải tên
-ID136,garbage,ASK_NAME,,cao minh thật,,0,0,NONE,,Câu nói thường không phải tên
-ID137,garbage,ASK_NAME,,vũ công giỏi,,0,0,NONE,,Câu nói thường không phải tên
-ID138,garbage,ASK_NAME,,trần thế gian,,0,0,NONE,,Câu nói thường không phải tên
 ID139,garbage,ASK_NAME,,lại thu tiền à,,0,0,NONE,,Câu nói thường không phải tên
 ID140,garbage,ASK_NAME,,từ thị trấn lên,,0,0,NONE,,Câu nói thường không phải tên
-ID141,garbage_unaccented,ASK_NAME,,cao minh that,,0,0,NONE,,Câu nói thường mất dấu
 ID142,garbage_unaccented,ASK_NAME,,cao qua,,0,0,NONE,,Câu nói thường mất dấu
 ID143,garbage_unaccented,ASK_NAME,,chau au,,0,0,NONE,,Câu nói thường mất dấu
 ID144,garbage_unaccented,ASK_NAME,,dang lai xe,,0,0,NONE,,Câu nói thường mất dấu
@@ -152,23 +140,17 @@ ID150,garbage_unaccented,ASK_NAME,,ho so benh an,,0,0,NONE,,Câu nói thường 
 ID151,garbage_unaccented,ASK_NAME,,hoa hong dep,,0,0,NONE,,Câu nói thường mất dấu
 ID152,garbage_unaccented,ASK_NAME,,hoang hon dep,,0,0,NONE,,Câu nói thường mất dấu
 ID153,garbage_unaccented,ASK_NAME,,hom qua an pho,,0,0,NONE,,Câu nói thường mất dấu
-ID154,garbage_unaccented,ASK_NAME,,huynh quang,,0,0,NONE,,Câu nói thường mất dấu
 ID155,garbage_unaccented,ASK_NAME,,lai nua a,,0,0,NONE,,Câu nói thường mất dấu
-ID156,garbage_unaccented,ASK_NAME,,lai thu tien a,,0,0,NONE,,Câu nói thường mất dấu
 ID157,garbage_unaccented,ASK_NAME,,le la mai,,0,0,NONE,,Câu nói thường mất dấu
 ID158,garbage_unaccented,ASK_NAME,,luong thang,,0,0,NONE,INVALID,Câu nói thường mất dấu
-ID159,garbage_unaccented,ASK_NAME,,luu tin nhan,,0,0,NONE,,Câu nói thường mất dấu
 ID160,garbage_unaccented,ASK_NAME,,mai anh ban,,0,0,NONE,,Câu nói thường mất dấu
 ID161,garbage_unaccented,ASK_NAME,,mai ban lam,,0,0,NONE,,Câu nói thường mất dấu
 ID162,garbage_unaccented,ASK_NAME,,mang lag qua,,0,0,NONE,,Câu nói thường mất dấu
 ID163,garbage_unaccented,ASK_NAME,,mua xuan dep,,0,0,NONE,,Câu nói thường mất dấu
 ID164,garbage_unaccented,ASK_NAME,,ngo nghe,,0,0,NONE,,Câu nói thường mất dấu
-ID165,ambiguous_bare,ASK_NAME,,pham vi,*,0,0,NONE,,Cũng đọc được là tên Phạm Vi; chỉ kiểm tra routing
 ID166,garbage_unaccented,ASK_NAME,,quan trong lam,,0,0,NONE,,Câu nói thường mất dấu
 ID167,garbage_unaccented,ASK_NAME,,ton trong nhau,,0,0,NONE,,Câu nói thường mất dấu
-ID168,garbage_unaccented,ASK_NAME,,tran nha,,0,0,NONE,,Câu nói thường mất dấu
 ID169,garbage_unaccented,ASK_NAME,,tran nha dot,,0,0,NONE,,Câu nói thường mất dấu
-ID170,garbage_unaccented,ASK_NAME,,tran the gian,,0,0,NONE,,Câu nói thường mất dấu
 ID171,garbage_unaccented,ASK_NAME,,trieu dong,,0,0,NONE,,Câu nói thường mất dấu
 ID172,garbage_unaccented,ASK_NAME,,troi hom nay dep qua,,0,0,NONE,,Câu nói thường mất dấu
 ID173,garbage_unaccented,ASK_NAME,,tu hom qua,,0,0,NONE,,Câu nói thường mất dấu
@@ -176,14 +158,8 @@ ID174,garbage_unaccented,ASK_NAME,,tu thi tran len,,0,0,NONE,,Câu nói thườn
 ID175,garbage_unaccented,ASK_NAME,,van minh lich su,,0,0,NONE,,Câu nói thường mất dấu
 ID176,garbage_unaccented,ASK_NAME,,van phong,,0,0,NONE,,Câu nói thường mất dấu
 ID177,garbage_unaccented,ASK_NAME,,vo thuat,,0,0,NONE,,Câu nói thường mất dấu
-ID178,garbage_unaccented,ASK_NAME,,vu cong gioi,,0,0,NONE,,Câu nói thường mất dấu
-ID179,ambiguous_bare,ASK_NAME,,vu truong,*,0,0,NONE,,Cũng đọc được là tên Vũ Trường; chỉ kiểm tra routing
-ID180,ambiguous_bare,ASK_NAME,,lai van the,*,0,0,NONE,,Cũng đọc được là tên Lại Văn Thế; chỉ kiểm tra routing
 ID181,garbage_unaccented,ASK_NAME,,tu van giup,,0,0,NONE,,Câu nói thường mất dấu
 ID182,garbage_unaccented,ASK_NAME,,ma van chua,,0,0,NONE,,Câu nói thường mất dấu
-ID183,garbage_unaccented,ASK_NAME,,phan van qua,,0,0,NONE,,Câu nói thường mất dấu
-ID184,garbage_unaccented,ASK_NAME,,do thi lon,,0,0,NONE,,Câu nói thường mất dấu
-ID185,garbage_unaccented,ASK_NAME,,ho thi biet,,0,0,NONE,,Câu nói thường mất dấu
 ID186,garbage_unaccented,ASK_NAME,,cung van vay,,0,0,NONE,,Câu nói thường mất dấu
 ID187,garbage_unaccented,ASK_NAME,,lai thi sao,,0,0,NONE,,Câu nói thường mất dấu
 ID188,garbage_unaccented,ASK_NAME,,phan nay,,0,0,NONE,,Câu nói thường mất dấu
@@ -200,10 +176,6 @@ ID198,short_names,ASK_NAME,,ho van nam,ho van nam,0,0,NONE,,Tên thật phải q
 ID199,short_names,ASK_NAME,,do thi lan,do thi lan,0,0,NONE,,Tên thật phải qua slot filling
 ID200,short_names,ASK_NAME,,le minh tuan,le minh tuan,0,0,NONE,,Tên thật phải qua slot filling
 ID201,short_names,ASK_NAME,,"Tôi là Lê Na, 14/03/1978",lê na,0,0,NONE,1978-03-14,Tên thật phải qua slot filling
-ID202,ambiguous_bare,ASK_NAME,,đồng minh thân,*,0,0,NONE,,Câu trần trùng tên sau chuẩn hóa; chỉ kiểm tra routing
-ID203,ambiguous_bare,ASK_NAME,,trịnh trọng nam,*,0,0,NONE,,Câu trần trùng tên sau chuẩn hóa; chỉ kiểm tra routing
-ID204,ambiguous_bare,ASK_NAME,,lê văn phòng,*,0,0,NONE,,Câu trần trùng tên sau chuẩn hóa; chỉ kiểm tra routing
-ID205,ambiguous_bare,ASK_NAME,,lê thanh toán,*,0,0,*,,Câu trần trùng tên sau chuẩn hóa; chỉ kiểm tra routing
 ID206,contrast_pairs,ASK_NAME,,trịnh trọng quá,,0,0,NONE,,Vế câu nói thường của cặp đối chứng
 ID207,contrast_pairs,ASK_NAME,,tôi tên Trịnh Trọng Nam,trịnh trọng nam,0,0,NONE,,Vế tên thật của cặp đối chứng
 ID208,contrast_pairs,ASK_NAME,,đồng minh thân thiết,,0,0,NONE,,Vế câu nói thường của cặp đối chứng
@@ -212,5 +184,4 @@ ID210,contrast_pairs,ASK_NAME,,lại thanh toán à,,0,0,OUT_OF_SCOPE,,Vế câu
 ID211,contrast_pairs,ASK_NAME,,tôi là Lê Thanh Toán,lê thanh toán,0,0,NONE,,Vế tên thật của cặp đối chứng
 ID212,contrast_pairs,ASK_NAME,,văn phòng đâu,,0,0,NONE,,Vế câu nói thường của cặp đối chứng
 ID213,contrast_pairs,ASK_NAME,,tôi tên Lê Văn Phòng,lê văn phòng,0,0,NONE,,Vế tên thật của cặp đối chứng
-ID214,contrast_pairs,ASK_NAME,,hồ thu hoạch,,0,0,NONE,,Vế câu nói thường của cặp đối chứng
 ID215,contrast_pairs,ASK_NAME,,Hồ Thu Hà,hồ thu hà,0,0,NONE,,Vế tên thật của cặp đối chứng

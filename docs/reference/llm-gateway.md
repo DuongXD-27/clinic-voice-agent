@@ -4,8 +4,8 @@
 
 ```text
 NameSlotFiller       → LLMGateway → OpenAI | Gemini | Groq | OpenRouter | DeepSeek
-LLMSemanticExtractor → LLMGateway → provider LLM bất kỳ (mặc định OpenAI gpt-6-luna)
-LunaSlotSemanticExtractor → LLMGateway → provider LLM bất kỳ (mặc định OpenAI gpt-6-luna)
+LLMSemanticExtractor → LLMGateway → provider LLM bất kỳ (mặc định DeepSeek deepseek-flash)
+LunaSlotSemanticExtractor → LLMGateway → provider LLM bất kỳ (mặc định DeepSeek deepseek-flash)
 ```
 
 Gateway chọn đúng một provider; không retry, không tự failover. Prompt và provider
@@ -57,13 +57,13 @@ Factory (`callbot.engine._llm_gateway`) dựng config của provider được ch
 |---|---|---|
 | `SEMANTIC_FALLBACK_ENABLED` | `true` | Mặc định **bật** (quyết định owner 22-09-2026, trước khi đánh giá model thật). Thiếu khóa → tự về chỉ-luật, không chặn khởi động |
 | `SEMANTIC_PROVIDER` | `jev` | Provider đọc câu, gọi trước: `jev` (TypeSafe, `TYPESAFE_API_KEY`) hoặc một provider LLM của gateway: `openai`, `gemini`, `groq`, `openrouter`, `deepseek` (owner 10-10-2026: jev) |
-| `SEMANTIC_BACKUP_PROVIDER` | `openai` | `none` hoặc như trên. Chỉ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng), trong phần còn lại của trần 3 s; `none` = không dự phòng. Thiếu khóa provider chính → chạy riêng dự phòng |
+| `SEMANTIC_BACKUP_PROVIDER` | `deepseek` | `none` hoặc như trên. Chỉ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng), trong phần còn lại của trần 3 s; `none` = không dự phòng. Thiếu khóa provider chính → chạy riêng dự phòng |
 | `SEMANTIC_BACKUP_MIN_REMAINING_S` | `1.5` | Lượt còn ít hơn chừng này giây thì không gọi dự phòng |
-| `SEMANTIC_LLM_MODEL` | trống | Model của provider LLM (tầng ngữ nghĩa và route chọn khung). Trống = model của provider đó trong `llm.yaml` (openai: `gpt-6-luna`); không đọc `NAME_FALLBACK_MODEL` |
+| `SEMANTIC_LLM_MODEL` | trống | Model của provider LLM (tầng ngữ nghĩa và route chọn khung). Trống = model của provider đó trong `llm.yaml` (deepseek: `deepseek-flash`, openai: `gpt-6-luna`); không đọc `NAME_FALLBACK_MODEL` |
 | `SEMANTIC_FALLBACK_TIMEOUT_S` | `3.0` | Deadline tổng từ lúc gửi request tới khi nhận đủ body; HTTPX vẫn giới hạn từng pha. Parsing sau response không thuộc deadline model-call. |
 | `SEMANTIC_LLM_MAX_TOKENS` | `400` | Mọi provider LLM. Không dùng ngầm mặc định 200 của slot filling họ tên |
-| `SEMANTIC_LLM_PROMPT_VERSION` | trống | Trống = tự chọn: cờ hủy tắt → `semantic_v5`; bật → `semantic_v10_luna` với GPT-6 Luna, model khác `semantic_v6`. Đặt tường minh (vd. `semantic_v10_luna`) để model khác dùng đúng prompt của Luna |
-| `SLOT_SEMANTIC_BACKUP_PROVIDER` | `openai` | Provider LLM của route chọn khung khi câu không dấu hoặc Jev lỗi; `none` = chỉ Jev |
+| `SEMANTIC_LLM_PROMPT_VERSION` | `semantic_v10_luna` | Trống = tự chọn: cờ hủy tắt → `semantic_v5`; bật → `semantic_v10_luna` với GPT-6 Luna, model khác `semantic_v6`. Đặt tường minh (vd. `semantic_v10_luna`) để model khác dùng đúng prompt của Luna |
+| `SLOT_SEMANTIC_BACKUP_PROVIDER` | `deepseek` | Provider LLM của route chọn khung khi câu không dấu hoặc Jev lỗi; `none` = chỉ Jev |
 | `SLOT_SEMANTIC_LLM_TIMEOUT_S` | `3.0` | Trần request provider LLM ở route chọn khung |
 | `SEMANTIC_FALLBACK_MAX_INPUT_CHARS` | `1500` | Vượt giới hạn → hỏi ngắn lại, **không** âm thầm cắt (cắt có thể mất lời phủ định) |
 
