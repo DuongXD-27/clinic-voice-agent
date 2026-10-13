@@ -1,8 +1,12 @@
 """Đo ngắt lời (barge-in) khi bot đang nói, có tiếng bot vọng lại (echo), qua đúng STTPipeline +
 TurnController + InterruptionController (bench.run_pipeline với `BotTurn`).
 
-Câu bot: 12 câu mẫu TTS đã sinh sẵn (`temp/noise-bench/bot_tts.wav`, đo Quail 30/09), cắt theo
-khoảng lặng 0,3 s chèn giữa các câu; text khớp theo thứ tự `_BOT_TEMPLATES`.
+Câu bot (`--bot-audio`): `static` (mặc định) = audio Vbee của cache TTS tĩnh đang phát trên
+production (`assets/tts/static/2026-10-08-v1`, đúng chữ template hiện tại), 8 kHz đưa lên 16 kHz;
+`wav` = 12 câu TTS sinh 30/09 (`temp/noise-bench/bot_tts.wav`, đo Quail) — đọc câu thoại TRƯỚC đợt
+chuẩn hoá 08/10 ("Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài…") nên lệch chữ với template
+hiện tại: chữ bot vọng lại không khớp câu bot, so khớp tiếng vọng thất bại (bot "tự ngắt lời" 6/12 câu
+ở web echo −30 dB là do lệch này). Chỉ dùng `wav` để so với số đo cũ.
 
 Echo: kênh `phone` = câu bot qua G.711 xuống máy người gọi, trễ `ECHO_DELAY_S`, vọng lại qua
 G.711 lên (AEC của máy/nhà mạng không khử hết); kênh `web` = trễ + suy giảm, không codec. Mức
@@ -73,12 +77,20 @@ _BOT_TEMPLATES = (
     t.ASK_CHANGE_OR_CANCEL, t.ASK_ATTENDANCE, t.NOT_UNDERSTOOD, t.SILENCE,
     t.CANCEL_RECONFIRM, t.TRANSFER, t.GOODBYE_UNREACHABLE,
 )  # fmt: skip
+# Cache TTS tĩnh không có ASK_ATTENDANCE (luôn đi kèm thông tin lịch): thay bằng câu hỏi có/không
+# cùng loại.
+STATIC_TTS_DIR = bench.ROOT / "assets" / "tts" / "static" / "2026-10-08-v1"
+_STATIC_BOT_TEMPLATES = tuple(
+    t.CONFIRM_CONFLICT if text == t.ASK_ATTENDANCE else text for text in _BOT_TEMPLATES
+)
 # Câu bot đọc trọn trước câu thử ở vị trí `later` (lời chào + hỏi lại khi im lặng).
 PRIOR_BOTS = (t.GREETING_INBOUND, t.ASK_NAME_AGAIN)
 REAL_REPEATS = bench.WORK_DIR / "real_repeat_candidates.json"
 
 
-def load_bot_sentences() -> list[tuple[str, np.ndarray]]:
+def load_bot_sentences(source: str = "static") -> list[tuple[str, np.ndarray]]:
+    if source == "static":
+        return _load_static_bot_sentences()
     samples, _ = bench._read_wav(bench.WORK_DIR / "bot_tts.wav")
     gap = int(0.25 * RATE)
     pieces, start, zeros = [], 0, 0
@@ -96,6 +108,18 @@ def load_bot_sentences() -> list[tuple[str, np.ndarray]]:
     if len(pieces) != len(_BOT_TEMPLATES):
         raise RuntimeError(f"bot_tts.wav cắt ra {len(pieces)} câu, cần {len(_BOT_TEMPLATES)}")
     return list(zip(_BOT_TEMPLATES, pieces, strict=True))
+
+
+def _load_static_bot_sentences() -> list[tuple[str, np.ndarray]]:
+    manifest = json.loads((STATIC_TTS_DIR / "manifest.json").read_text(encoding="utf-8"))
+    files = {asset["utterance"]: asset["file"] for asset in manifest["assets"]}
+    sentences = []
+    for text in _STATIC_BOT_TEMPLATES:
+        if text not in files:
+            raise RuntimeError(f"cache TTS tĩnh không có câu {text!r}")
+        samples, rate = bench._read_wav(STATIC_TTS_DIR / files[text])
+        sentences.append((text, bench._to_16k(samples, rate).astype(np.float64)))
+    return sentences
 
 
 def make_echo(
@@ -224,10 +248,11 @@ def run(
     overrides: dict,
     positions: list[str],
     kinds: list[str],
+    bot_audio: str = "static",
 ) -> dict:
     settings = bench.SpeechSettings(**{**bench.PROFILES["production"], **overrides})
     asr = bench.SpeechRecognizer(bench.create_asr_gateway(settings.asr_provider))
-    bots = load_bot_sentences()
+    bots = load_bot_sentences(bot_audio)
     by_text = dict(bots)
     model_path = settings.silero_vad_model_path
     callers = bench.build_short_set(asr, model_path) + bench.build_web_set(asr, model_path)[:20]
@@ -261,7 +286,12 @@ def run(
         "repeat": repeats,
         "repeat_real": load_real_repeats(bots),
     }
-    results: dict = {"label": label, "settings": overrides, "conditions": {}}
+    results: dict = {
+        "label": label,
+        "settings": overrides,
+        "bot_audio": bot_audio,
+        "conditions": {},
+    }
     for channel in channels:
         for level_db in echo_levels:
             for position in positions:
@@ -363,7 +393,17 @@ def run(
                 results["conditions"][key] = {"summary": summary, "rows": rows}
                 print(f"[{label}] {key:22} {json.dumps(summary, ensure_ascii=False)}", flush=True)
     out_path = bench.WORK_DIR / "results" / f"barge_{label}.json"
-    out_path.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    # Có giá trị kiểu numpy trong hàng kết quả: ghi thành list / số thay vì làm hỏng cả file ở cuối
+    # lần chạy (trước đây chỉ còn dòng tóm tắt trong log).
+    out_path.write_text(
+        json.dumps(
+            results,
+            ensure_ascii=False,
+            indent=1,
+            default=lambda o: o.tolist() if isinstance(o, np.ndarray | np.generic) else str(o),
+        ),
+        encoding="utf-8",
+    )
     print(f"-> {out_path.relative_to(bench.ROOT)}")
     return results
 
@@ -375,6 +415,7 @@ def main() -> None:
     parser.add_argument("--echo-levels", default="-30,-20,-10")
     parser.add_argument("--positions", default="first")
     parser.add_argument("--kinds", default="echo_only,caller,other,repeat,repeat_real")
+    parser.add_argument("--bot-audio", choices=("static", "wav"), default="static")
     parser.add_argument("--set", action="append", default=[], metavar="KHOÁ=GIÁ_TRỊ")
     args = parser.parse_args()
     overrides = dict(item.split("=", 1) for item in args.set)
@@ -386,6 +427,7 @@ def main() -> None:
         overrides,
         args.positions.split(","),
         args.kinds.split(","),
+        args.bot_audio,
     )
 
 

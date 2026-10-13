@@ -8,7 +8,6 @@ SessionManager, CallBridge chỉ là caller của nó, giống transports/http/c
 import asyncio
 import json
 import logging
-import os
 import sys
 import traceback
 import uuid
@@ -25,9 +24,10 @@ from callbot.tracing.pricing import tts_cost
 from callbot.transports.extraction_view import extraction_view
 from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
-    livekit_frame_to_segment,
     segment_to_livekit_frame,
 )
+from callbot.transports.livekit.caller_audio import accept_caller_track, pump_caller_track
+from callbot.transports.livekit.status import report_status
 from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
 from speech.turn.controller import TurnController
@@ -51,8 +51,6 @@ _PLAYOUT_FRAME_MS = 20
 _SILENCE_POLL_S = 0.25
 # Topic data channel mang lời thoại cho trang /ui/livekit (câu bot kèm trích xuất khi demo_debug).
 TRANSCRIPT_TOPIC = "callbot.transcript"
-# Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
-STATUS_TOPIC = "callbot.status"
 
 
 @dataclass(frozen=True)
@@ -245,24 +243,12 @@ class CallBridge:
                     self._call_id,
                     exc.code or "UNKNOWN",
                 )
-                try:
-                    await self._room.local_participant.publish_data(
-                        json.dumps(
-                            {
-                                "code": "OUTBOUND_START_FAILED",
-                                "message": "Không lấy được lịch hẹn hợp lệ từ Clinic. "
-                                "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
-                            },
-                            ensure_ascii=False,
-                        ),
-                        reliable=True,
-                        topic=STATUS_TOPIC,
-                    )
-                except Exception as publish_error:
-                    logger.warning(
-                        "call_bridge: không gửi được lỗi outbound tới browser (%s)",
-                        type(publish_error).__name__,
-                    )
+                await report_status(
+                    self._room,
+                    "OUTBOUND_START_FAILED",
+                    "Không lấy được lịch hẹn hợp lệ từ Clinic. "
+                    "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
+                )
                 return
 
             if opening.ended or self._caller_gone:
@@ -460,19 +446,12 @@ class CallBridge:
     def _on_track_subscribed(
         self, track: "rtc.Track", publication: "rtc.RemoteTrackPublication", participant: object
     ) -> None:
-        from livekit import rtc
-
-        if self._closing or track.kind != rtc.TrackKind.KIND_AUDIO:
+        if self._closing:
             return
-        identity = getattr(participant, "identity", None)
-        source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
-        if source not in (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_UNKNOWN):
-            logger.info("call_bridge: bỏ qua track audio nguồn %s của %s", source, identity)
-            return
-        if self._caller_identity is None:
-            self._caller_identity = identity
-        elif identity != self._caller_identity:
-            logger.info("call_bridge: bỏ qua track audio của participant khác %s", identity)
+        accepted, self._caller_identity = accept_caller_track(
+            track, publication, participant, self._caller_identity
+        )
+        if not accepted:
             return
         # Người gọi publish lại mic (đổi thiết bị): luồng mới thay luồng cũ, không chạy song song.
         if self._pump_task is not None and not self._pump_task.done():
@@ -493,66 +472,16 @@ class CallBridge:
             self._stop_silence_timer()
             self._on_disconnected()
 
-    def _krisp_processor(self) -> object | None:
-        """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
-        mới mỗi lần pump (không tái dùng qua re-publish): auto_close mặc định của AudioStream
-        đóng nó khi stream đóng, tái dùng instance đã đóng sẽ lỗi."""
-        if not self._krisp_noise_suppression_enabled:
-            return None
-        try:
-            from livekit.plugins import krisp
-        except ImportError:
-            logger.warning(
-                "call_bridge: krisp_noise_suppression_enabled=true nhưng "
-                "livekit-plugins-krisp chưa cài — bỏ qua, chạy không lọc"
-            )
-            return None
-        return krisp.KrispVivaFilterFrameProcessor(
-            mode=krisp.viva_filter.VivaMode.VOICE_ISOLATION, noise_suppression_level=90.0
-        )
-
     async def _pump_track(self, track: "rtc.Track") -> None:
-        from livekit import rtc
-
-        stream = rtc.AudioStream.from_track(
-            track=track,
+        await pump_caller_track(
+            track,
+            call_id=self._call_id,
             sample_rate=self._sample_rate,
-            num_channels=1,
-            frame_size_ms=self._frame_ms,
-            capacity=self._input_queue_frames,
-            noise_cancellation=self._krisp_processor(),
+            frame_ms=self._frame_ms,
+            capacity_frames=self._input_queue_frames,
+            krisp_enabled=self._krisp_noise_suppression_enabled,
+            put=self._frame_queue.put,
         )
-        # LIVEKIT_DEBUG_DUMP_AUDIO=1: ghi PCM thật (đã qua livekit_frame_to_segment, đúng
-        # đường dữ liệu đưa vào ASR) ra 1 file wav/call trong temp/audio/ — cách duy nhất
-        # để xác nhận chắc chắn ASR hallucinate do audio bị méo (sample rate/capture sai)
-        # hay do model thật sự nghe nhầm giọng nói rõ ràng. Tắt mặc định: PII + I/O per-frame
-        # không nên bật ở production.
-        dump_writer = (
-            self._open_debug_dump() if os.environ.get("LIVEKIT_DEBUG_DUMP_AUDIO") else None
-        )
-        try:
-            async for event in stream:
-                segment = livekit_frame_to_segment(event.frame, target_rate=self._sample_rate)
-                if segment.pcm:
-                    if dump_writer is not None:
-                        dump_writer.writeframes(segment.pcm)
-                    await self._frame_queue.put(segment.pcm)
-        finally:
-            if dump_writer is not None:
-                dump_writer.close()
-            await stream.aclose()
-
-    def _open_debug_dump(self):
-        import wave
-
-        os.makedirs("temp/audio", exist_ok=True)
-        path = f"temp/audio/livekit_debug_{self._call_id}.wav"
-        writer = wave.open(path, "wb")
-        writer.setnchannels(1)
-        writer.setsampwidth(2)
-        writer.setframerate(self._sample_rate)
-        logger.warning("call_bridge: LIVEKIT_DEBUG_DUMP_AUDIO bật — ghi PCM vào %s", path)
-        return writer
 
     async def _frames(self) -> AsyncIterator[bytes]:
         while True:
@@ -709,13 +638,14 @@ class CallBridge:
         await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
 
     async def cancel(self) -> None:
-        """Interruption target: dừng network TTS và audio đã queue ngay lập tức."""
-        await self._tts.cancel()
+        """Interruption target: tắt tiếng ngay (xoá audio đã queue, dừng vòng phát) rồi mới đóng
+        request TTS — đóng kết nối có thể chậm, người gọi không được nghe tiếp trong lúc chờ."""
         if self._audio_source is not None:
             self._audio_source.clear_queue()
         task = self._active_speak_task
         if task is not None and task is not asyncio.current_task() and not task.done():
             task.cancel()
+        await self._tts.cancel()
 
     def _signal_input_done(self) -> None:
         if self._input_done:

@@ -120,6 +120,7 @@ Mở `http://localhost:8000/ui/` (hoặc `/`, tự chuyển hướng):
 |---|---|
 | `/ui/call` | Gọi thử qua HTTP contract: gõ lời người gọi, hoặc ghi âm từ microphone (trang tự upload WAV và gửi `audio_url`). Có bảng trích xuất, request/response, kịch bản mẫu |
 | `/ui/livekit` | Nói chuyện trực tiếp với bot qua WebRTC/LiveKit, hiện lời thoại từng lượt để trace |
+| `/ui/stt` | Chỉ thử STT: bấm Nói, xem chữ từng lượt (tạm thời → chốt) của ZipFormer / Gemini Live / ElevenLabs Realtime qua đúng pipeline LiveKit, không có bot |
 | `/ui/observability` | Latency, lỗi, chất lượng STT/TTS, chi tiết cuộc gọi và từng lượt (đọc từ trace ẩn danh) |
 
 Link cũ `/demo/`, `/demo/livekit-demo.html`, `/observability/` chuyển hướng sang trang mới.

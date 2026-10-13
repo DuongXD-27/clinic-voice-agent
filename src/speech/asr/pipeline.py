@@ -1,7 +1,9 @@
 """STT đường LiveKit: frame PCM liên tục -> VAD + ASR song song -> TurnController -> lượt nói.
 
 Mỗi frame đi qua `_CallStream._fanout`:
-  1. Bộ phân loại dùng chung gán nhãn có/không tiếng nói (đúng một lần mỗi frame).
+  0. (`quiet_gain`) Tăng âm khi giọng người gọi quá nhỏ — mọi bước sau thấy frame đã tăng.
+  1. Bộ phân loại dùng chung gán nhãn có/không tiếng nói (đúng một lần mỗi frame); có
+     `vad_frontend` thì nó nghe bản đã khử nhiễu của frame, mọi bước sau vẫn nhận frame.
   2. Vào hàng đợi VAD (luôn luôn) và cập nhật bằng chứng SNR (khi bật Validator).
   3. Vào hàng đợi ASR — trừ lúc bot đang nói: giữ trong pre-roll, chỉ đưa vào ASR khi
      người gọi có dấu hiệu ngắt lời (barge-in).
@@ -16,14 +18,16 @@ import logging
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Callable, Optional
 
 from speech.asr.recognizer import Recognizer
 from speech.asr.stream_context import ASRStreamContext, StreamingFrame
 from speech.asr.vad.async_stream import AsyncStreamingVAD
 from speech.asr.vad.shared import SharedSpeechDetector
 from speech.audio.noise_tracker import NoiseEvidence
+from speech.audio.quiet_gain import QuietSpeechGain
 from speech.audio.speaker_gate import SpeakerGate
+from speech.audio.vad_frontend import VadFrontend
 from speech.turn.controller import TurnController, is_meaningful_text, strip_echo_prefix
 from speech.turn.events import UserTurnCompleted
 from speech.turn.evidence import TurnEvidence
@@ -81,11 +85,15 @@ class STTPipeline:
         asr_stream_options: Optional[Mapping[str, object]] = None,
         speaker_gate: Optional[SpeakerGate] = None,
         keep_unconfirmed_barge_in: bool = False,
+        quiet_gain: Optional[QuietSpeechGain] = None,
+        vad_frontend: Optional[VadFrontend] = None,
     ) -> None:
         """Kích thước hàng đợi/pre-roll tính bằng frame, `build_streaming_bundle` quy đổi từ
         config/livekit.yaml. `speaker_gate`: THỬ NGHIỆM, bỏ lượt dài không phải giọng người gọi.
         `keep_unconfirmed_barge_in`: lời chen lúc bot nói chưa được xác nhận ngắt lời được giữ
-        riêng (không qua ASR streaming), decode khi bot dứt lời (`_CallStream._decode_held`)."""
+        riêng (không qua ASR streaming), decode khi bot dứt lời (`_CallStream._decode_held`).
+        `quiet_gain`: tăng âm giọng người gọi quá nhỏ trước mọi bước xử lý (VAD, ASR, bằng chứng).
+        `vad_frontend`: audio riêng (khử nhiễu) cho bộ phân loại dùng chung — ASR vẫn nghe frame."""
         for name, value in (
             ("queue_max_frames", queue_max_frames),
             ("asr_queue_max_frames", asr_queue_max_frames),
@@ -106,6 +114,8 @@ class STTPipeline:
         self.barge_in_preroll_frames = barge_in_preroll_frames
         self.speaker_gate = speaker_gate
         self.keep_unconfirmed_barge_in = keep_unconfirmed_barge_in
+        self.quiet_gain = quiet_gain
+        self.vad_frontend = vad_frontend
 
     @property
     def provider_name(self) -> Optional[str]:
@@ -120,10 +130,13 @@ class STTPipeline:
         frames: AsyncIterator[bytes],
         turn_controller: TurnController,
         interruption: Optional[InterruptionController] = None,
+        on_turn_blocked: Optional[Callable[[UserTurnCompleted], None]] = None,
     ) -> AsyncIterator[UserTurnCompleted]:
         """`frames`: PCM ở `sample_rate`, liên tục suốt cuộc gọi. `interruption` nhận cùng
-        event VAD/ASR với TurnController để xác nhận barge-in."""
-        call = _CallStream(self, turn_controller, interruption)
+        event VAD/ASR với TurnController để xác nhận barge-in. `on_turn_blocked`: lượt
+        TurnController đã chốt nhưng cổng giọng bỏ (không được yield) — trang thử STT cần biết để
+        đánh số các lượt sau cho đúng."""
+        call = _CallStream(self, turn_controller, interruption, on_turn_blocked)
         async for turn in call.turns(frames):
             yield turn
 
@@ -136,10 +149,12 @@ class _CallStream:
         pipeline: STTPipeline,
         controller: TurnController,
         interruption: Optional[InterruptionController],
+        on_turn_blocked: Optional[Callable[[UserTurnCompleted], None]] = None,
     ) -> None:
         self._pipeline = pipeline
         self._controller = controller
         self._interruption = interruption
+        self._on_turn_blocked = on_turn_blocked
         self._vad_queue: "asyncio.Queue[object]" = asyncio.Queue(maxsize=pipeline.queue_max_frames)
         self._asr_queue: "asyncio.Queue[object]" = asyncio.Queue(
             maxsize=pipeline.asr_queue_max_frames
@@ -230,10 +245,12 @@ class _CallStream:
                 )
                 raise_worker_errors()
                 if next_turn in done:
-                    turn = next_turn.result()
-                    turn = await self._apply_speaker_gate(turn)
+                    committed = next_turn.result()
+                    turn = await self._apply_speaker_gate(committed)
                     if turn is not None:
                         yield turn
+                    elif self._on_turn_blocked is not None:
+                        self._on_turn_blocked(committed)
                     continue
                 # Một worker vừa xong (hết audio): bỏ lượt chờ dở, vòng sau kiểm tra kết thúc.
                 next_turn.cancel()
@@ -261,11 +278,25 @@ class _CallStream:
 
     async def _fanout(self, frames: AsyncIterator[bytes]) -> None:
         pipeline = self._pipeline
+        gain = pipeline.quiet_gain
         try:
             async for frame in frames:
+                raw = frame
+                if gain is not None:
+                    # Mọi bước sau (VAD, ASR, tiếng vọng) thấy cùng một frame đã tăng; riêng bằng
+                    # chứng SNR đo mức trên frame gốc (`raw`, xem TurnEvidence.observe_frame).
+                    frame = gain.apply(frame)
                 is_speech = None
                 if pipeline.detector is not None:
-                    is_speech = pipeline.detector.classify(frame)
+                    # Front-end chỉ đổi thứ bộ phân loại nghe; kết quả gắn với `frame`.
+                    analysis = (
+                        pipeline.vad_frontend.process(frame)
+                        if pipeline.vad_frontend is not None
+                        else None
+                    )
+                    is_speech = pipeline.detector.classify(frame, analysis=analysis)
+                if gain is not None:
+                    gain.observe(bool(is_speech), bot_speaking=self._controller.is_bot_speaking)
                 if self._context is None:
                     await self._vad_queue.put(frame)
                 else:
@@ -274,7 +305,7 @@ class _CallStream:
                     # Assign the VAD segment before stamping frames sent to remote ASR.
                     await processed.wait()
                 if pipeline.evidence is not None:
-                    pipeline.evidence.observe_frame(frame)
+                    pipeline.evidence.observe_frame(frame, level_frame=raw)
                 if self._interruption is not None:
                     self._interruption.on_caller_audio(frame, is_speech=is_speech)
                 if self._turn_audio_open and self._controller.is_bot_speaking:
@@ -569,6 +600,13 @@ class _CallStream:
             self._asr_idle = False
             if item is _QUEUE_DONE:
                 return
+            if item is AsrSegmentEnd.DISCARD and self._pipeline.evidence is not None:
+                # Partial của đoạn bỏ đi không được tính vào độ ổn định của đoạn sau: chuỗi chữ
+                # ngắn cũ còn trong cửa sổ thì partial thật của lần chen lời sau bị DROP vì
+                # "dao động" ("ĐÚNG" -> "Ừ" -> "ĐÚNG", 08/10). Reset lúc ASR tới dấu này, không
+                # phải lúc đưa vào hàng đợi: ASR chậm hơn thời gian thực còn tồn frame cũ, partial
+                # của chúng tới sau (review PR #110).
+                self._pipeline.evidence.reset_transcript()
             yield item
 
     # --- Bước 2: hai worker tiêu thụ song song ----------------------------------------
@@ -596,6 +634,8 @@ class _CallStream:
                     await self._interruption.on_speech_started(event)
                 elif event.kind == "speech_end":
                     await self._interruption.on_speech_ended_without_confirmation()
+                elif await self._interruption.on_speech_frame():
+                    self._barge_in_confirmed()
 
     async def _drain_asr(self) -> None:
         pipeline = self._pipeline
@@ -618,8 +658,12 @@ class _CallStream:
             await self._controller.on_transcript_event(event)
             if self._interruption is not None:
                 if await self._interruption.on_partial_transcript(event):
-                    self._unconfirmed_barge_in_audio = False
-                    self._expect_echo()
+                    self._barge_in_confirmed()
+
+    def _barge_in_confirmed(self) -> None:
+        """Đoạn ASR của ứng viên là lượt ngắt lời, đi tiếp như thường (không giữ riêng/bỏ)."""
+        self._unconfirmed_barge_in_audio = False
+        self._expect_echo()
 
     def _expect_echo(self) -> None:
         """ASR đã nghe audio lúc bot nói: chỉ chữ bot phát trong khoảng đó mới có thể vọng vào."""

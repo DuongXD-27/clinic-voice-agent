@@ -14,7 +14,7 @@ from tests.speech.pipeline_factory import make_stt_pipeline
 
 from speech.asr.vad.base import VadEvent
 from speech.turn.controller import TurnController
-from speech.turn.interruption import InterruptionController, InterruptionState
+from speech.turn.interruption import InterruptionController, InterruptionState, _EchoEvidence
 from speech.types import AsrSegmentEnd, Transcript, TranscriptEvent
 
 
@@ -160,8 +160,8 @@ async def test_confirmed_barge_in_keeps_asr_segment() -> None:
 class _EchoInMic(InterruptionController):
     """Mic có tiếng bot vọng lại (AEC không khử hết) — phần đo âm thanh có test riêng."""
 
-    def _echo_evidence(self) -> tuple[float, float]:
-        return 1.0, 1.0
+    def _echo_evidence(self) -> _EchoEvidence:
+        return _EchoEvidence(1.0, 1.0)
 
 
 class _FinalASR(_RecordingASR):
@@ -629,3 +629,163 @@ async def test_caller_mid_sentence_when_bot_starts_keeps_asr_segment_and_finaliz
     assert AsrSegmentEnd.DISCARD not in asr.items
     assert asr.items.count(AsrSegmentEnd.FINALIZE) == 1
     assert tts.cancel_calls == 0
+
+
+class _OnePartialASR(_RecordingASR):
+    """Phát đúng MỘT partial `text` sau `after` phần tử rồi im — như GipFormer khi chữ không đổi."""
+
+    def __init__(self, text: str, after: int) -> None:
+        super().__init__()
+        self._text = text
+        self._after = after
+
+    async def stream(self, frames: AsyncIterator) -> AsyncIterator[TranscriptEvent]:
+        async for item in frames:
+            self.items.append(item)
+            if len(self.items) == self._after:
+                yield TranscriptEvent(text=self._text, is_final=False, confidence=0.9)
+
+
+async def test_barge_in_confirms_on_a_vad_speech_frame_when_asr_sends_no_new_partial() -> None:
+    """Partial "hết luôn" tới khi người gọi mới nói chưa đủ lâu, ASR không phát partial nào nữa:
+    trước đây ứng viên chỉ được xét lại khi có partial mới nên bot nói tiếp (log 09/10, Gemini).
+    VAD còn nghe tiếng nói thì xét lại; đã xác nhận thì đoạn ASR đi tiếp, không bị bỏ."""
+    from speech.audio.noise_tracker import NoiseEvidence
+    from speech.turn.validator import TurnValidator
+
+    class _Clock:
+        now = 0.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    clock = _Clock()
+    controller = TurnController(min_speech_ms=0)
+    controller.on_bot_speaking_changed(True)
+    tts = _FakeCancellableTTS()
+    interruption = InterruptionController(
+        tts, clock=clock, validator=TurnValidator(), min_snr_db=0.0
+    )
+    interruption.on_bot_started_speaking("Dạ, em xin phép đọc các khung giờ còn trống")
+    interruption.on_evidence_updated(noise_evidence=NoiseEvidence(3000.0, 30.0, 25.0))
+    vad = _FakeAsyncVAD([VadEvent("speech_start")] + [VadEvent("speech", b"x")] * 9)
+    asr = _OnePartialASR("hết luôn", after=2)
+    pipeline = make_stt_pipeline(asr=asr, vad=vad)
+
+    def _tick(index: int) -> None:
+        clock.now = index * 0.1
+
+    frames = [_make_frame(i) for i in range(1, 11)]
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames, _tick), turn_controller=controller, interruption=interruption
+            )
+        ),
+        timeout=2.0,
+    )
+
+    assert interruption.state == InterruptionState.INTERRUPTED
+    assert tts.cancel_calls == 1
+    assert AsrSegmentEnd.DISCARD not in asr.items
+
+
+async def test_discarded_asr_segment_does_not_leak_into_the_next_segment_stability() -> None:
+    """Đoạn ASR bị bỏ lúc bot nói (ứng viên không được xác nhận) không có final, nên cửa sổ độ ổn
+    định không được reset: chữ ngắn của nó cộng với partial thật của lần chen lời sau thành mẫu
+    "dao động" và lần sau bị DROP ("ĐÚNG" -> "Ừ" -> "ĐÚNG", 08/10)."""
+    from speech.asr.evidence import TranscriptEvidenceTracker
+    from speech.turn.evidence import TurnEvidence
+
+    class _NoSpeech:
+        def is_speech(self, frame: bytes) -> bool:
+            return False
+
+    resets: list[int] = []
+
+    class _SpyTracker(TranscriptEvidenceTracker):
+        def reset(self) -> None:
+            resets.append(1)
+            super().reset()
+
+    controller = TurnController(min_speech_ms=0)
+    controller.on_bot_speaking_changed(True)
+    interruption = InterruptionController(_FakeCancellableTTS(), min_speech_ms=0)
+    interruption.on_bot_started_speaking()
+    vad = _FakeAsyncVAD(
+        [VadEvent("speech_start"), VadEvent("speech", b"x"), VadEvent("speech_end")]
+    )
+    evidence = TurnEvidence(_NoSpeech(), frame_ms=30, transcript=_SpyTracker())
+    pipeline = make_stt_pipeline(asr=_RecordingASR(), vad=vad, evidence=evidence)
+
+    frames = [_make_frame(i) for i in range(1, 8)]
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames), turn_controller=controller, interruption=interruption
+            )
+        ),
+        timeout=2.0,
+    )
+
+    assert resets  # đoạn của ứng viên bị bỏ -> cửa sổ độ ổn định bắt đầu lại
+
+
+async def test_stability_resets_when_the_asr_reaches_the_discard_not_when_it_is_queued() -> None:
+    """Review PR #110: reset lúc đưa DISCARD vào hàng đợi là quá sớm — ASR chậm hơn thời gian thực
+    (ZipFormer decode lại cả câu) còn tồn frame cũ, partial của chúng tới SAU lần reset và lại vào
+    cửa sổ độ ổn định của đoạn sau (đúng mẫu "ĐÚNG" -> "Ừ" -> "ĐÚNG" 08/10)."""
+    from speech.asr.evidence import TranscriptEvidenceTracker
+    from speech.turn.evidence import TurnEvidence
+    from speech.types import AsrSegmentEnd
+
+    class _NoSpeech:
+        def is_speech(self, frame: bytes) -> bool:
+            return False
+
+    log: list[str] = []
+
+    class _SpyTracker(TranscriptEvidenceTracker):
+        def observe(self, event):
+            log.append(event.text)
+            return super().observe(event)
+
+        def reset(self) -> None:
+            log.append("<reset>")
+            super().reset()
+
+    class _SlowASR(_RecordingASR):
+        """Mỗi frame decode mất 3 nhịp frame; partial của đoạn cũ là "CŨ", đoạn sau là "MỚI"."""
+
+        async def stream(self, frames: AsyncIterator) -> AsyncIterator[TranscriptEvent]:
+            discarded = False
+            async for item in frames:
+                if item is AsrSegmentEnd.DISCARD:
+                    discarded = True
+                    continue
+                await asyncio.sleep(0.03)
+                yield TranscriptEvent(text="MỚI" if discarded else "CŨ", is_final=False)
+
+    controller = TurnController(min_speech_ms=0)
+    evidence = TurnEvidence(_NoSpeech(), frame_ms=30, transcript=_SpyTracker())
+    pipeline = make_stt_pipeline(asr=_SlowASR(), vad=_FakeAsyncVAD([]), evidence=evidence)
+
+    def _bot_speaks_for_frames_4_to_6(index: int) -> None:
+        if index == 4:
+            controller.on_bot_speaking_changed(True)  # bỏ đoạn đang mở
+        if index == 7:
+            controller.on_bot_speaking_changed(False)
+
+    frames = [_make_frame(i) for i in range(1, 12)]
+    await asyncio.wait_for(
+        _collect(
+            pipeline.stream(
+                _realtime(frames, _bot_speaks_for_frames_4_to_6), turn_controller=controller
+            )
+        ),
+        timeout=3.0,
+    )
+
+    assert "<reset>" in log
+    after_reset = log[log.index("<reset>") + 1 :]
+    assert "CŨ" not in after_reset

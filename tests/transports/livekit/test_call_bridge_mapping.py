@@ -696,6 +696,33 @@ async def test_early_barge_in_stops_sentence_and_next_sentence_still_plays() -> 
     assert len(source.captured_frames) == 10 + 150
 
 
+async def test_barge_in_silences_playout_before_waiting_for_the_tts_request_to_close() -> None:
+    """Đóng request TTS (HTTP/WebSocket tới provider) có thể chậm: hàng đợi phát phải được xoá
+    trước khi chờ đóng xong, nếu không người gọi vẫn nghe audio đã queue trong lúc chờ."""
+    order: list[str] = []
+    closed = asyncio.Event()
+
+    class _SlowCloseTTS(_FakeTTS):
+        async def cancel(self) -> None:
+            order.append("tts_cancel")
+            await closed.wait()
+
+    class _OrderedSource(_FakeAudioSource):
+        def clear_queue(self) -> None:
+            order.append("clear_queue")
+            super().clear_queue()
+
+    bridge, _ = _speaking_bridge(_SlowCloseTTS())
+    bridge._audio_source = _OrderedSource()
+
+    cancelling = asyncio.create_task(bridge.cancel())
+    await asyncio.sleep(0)
+
+    assert order == ["clear_queue", "tts_cancel"]
+    closed.set()
+    await cancelling
+
+
 class _RecordingSpan:
     def __init__(self) -> None:
         self.attributes: dict[str, object] = {}

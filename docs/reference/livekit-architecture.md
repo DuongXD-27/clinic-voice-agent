@@ -46,6 +46,13 @@ Hai process **độc lập hoàn toàn**, không share state, không gọi trự
    từ LiveKit Cloud mỗi khi có participant mới join room, tạo 1 `CallBridge` xử lý toàn
    bộ vòng đời cuộc gọi đó.
 
+**Trang thử STT (`/ui/stt`).** Token xin với `mode=stt` gắn attribute `mode=stt` cho người dùng;
+worker khi đó không mở engine/clinic/TTS mà chạy `SttSession` (`transports/livekit/stt_session.py`):
+cùng `STTPipeline` + `TurnController` của cuộc gọi, gửi chữ qua data channel `callbot.stt` —
+`partial` (chữ lượt đang nói), `final` (lượt đã chốt, đúng chữ engine sẽ nhận), `dropped` (ASR nghe
+ra chữ nhưng pipeline bỏ: chỉ có từ đệm, Validator). Model hỏng giữa chừng thì worker báo
+`STT_FAILED` qua `callbot.status`.
+
 **Hệ quả vận hành quan trọng**: sửa `.env` (đổi `ASR_PROVIDER`, path model...) chỉ có
 hiệu lực sau khi **restart worker** — `LiveKitSettings`/`SpeechSettings` chỉ đọc
 `.env` một lần lúc process khởi động (`prewarm()`/`entrypoint()`), không tự reload.
@@ -171,13 +178,11 @@ Quy tắc chốt turn:
 
 State machine: `IDLE → BOT_SPEAKING → INTERRUPTION_CANDIDATE → INTERRUPTED`.
 
-Barge-in **chỉ được xác nhận qua `on_partial_transcript`**, luôn đi qua `_passes_gate()`
-gồm 3 điều kiện (không điều kiện nào một mình đủ):
-- **Duration**: candidate phải tồn tại ít nhất `min_speech_ms` (200ms mặc định).
-- **Nội dung có nghĩa**: `is_meaningful_text(event.text)` — dùng chung hàm với
-  `TurnController`.
-- **Confidence** (nếu provider hỗ trợ — hiện ZipFormer/gipformer1.5 luôn trả `None`,
-  kiểm tra này tắt hẳn khi không có tín hiệu).
+Barge-in **luôn cần chữ ASR**: gate (`_gate()`) xét mỗi partial (`on_partial_transcript`) và
+xét lại partial mới nhất khi VAD còn nghe tiếng nói (`on_speech_frame`). Điều kiện chi tiết
+(độ dài, chữ có nghĩa, tiếng vọng, SNR, TurnValidator, số chữ) ở docstring module và
+`docs/reference/stt-flow.md` §2.6; số đo ở
+`docs/evidence/livekit-barge-in-confirmation-2026-10-10.md`.
 
 Lịch sử 2 lỗ hổng đã gặp và sửa (ghi lại trong docstring module, không lặp lại):
 1. Từng tự xác nhận ngay khi ASR trả về BẤT KỲ text non-empty nào — ASR hallucinate 1
