@@ -1,0 +1,151 @@
+{
+  "evaluation_scope": "identity_extraction",
+  "limitations": "Synthetic discovery set, not held-out accuracy or dialogue compliance. REVIEW rows excluded from pass rate; transport errors are not model-quality evidence.",
+  "mode": "slot_filling",
+  "fallback_method": "slot_filling",
+  "models": [
+    "deepseek-flash"
+  ],
+  "prompt_versions": [
+    "name_slot_filling_v4"
+  ],
+  "cases": 186,
+  "scored_cases": 186,
+  "passed_cases": 186,
+  "failed_cases": 0,
+  "review_cases": 0,
+  "pass_rate": 1.0,
+  "by_group": {
+    "combined_dob": {
+      "PASS": 4
+    },
+    "contact": {
+      "PASS": 10
+    },
+    "contact_with_name": {
+      "PASS": 2
+    },
+    "contrast_pairs": {
+      "PASS": 9
+    },
+    "correction": {
+      "PASS": 2
+    },
+    "garbage": {
+      "PASS": 32
+    },
+    "garbage_unaccented": {
+      "PASS": 35
+    },
+    "greeting": {
+      "PASS": 4
+    },
+    "greeting_with_name": {
+      "PASS": 4
+    },
+    "listening": {
+      "PASS": 3
+    },
+    "mixed_question": {
+      "PASS": 1
+    },
+    "name_particle_collision": {
+      "PASS": 2
+    },
+    "names": {
+      "PASS": 11
+    },
+    "normalization": {
+      "PASS": 2
+    },
+    "other_person": {
+      "PASS": 4
+    },
+    "priority": {
+      "PASS": 5
+    },
+    "punctuation_loss": {
+      "PASS": 1
+    },
+    "reported_sentence": {
+      "PASS": 1
+    },
+    "self_intro": {
+      "PASS": 2
+    },
+    "self_intro_variants": {
+      "PASS": 3
+    },
+    "short_names": {
+      "PASS": 13
+    },
+    "state": {
+      "PASS": 1
+    },
+    "suffix_fixed": {
+      "PASS": 7
+    },
+    "suffix_other": {
+      "PASS": 9
+    },
+    "uncertain": {
+      "PASS": 4
+    },
+    "who": {
+      "PASS": 10
+    },
+    "who_variants": {
+      "PASS": 5
+    }
+  },
+  "mismatch_counts": {},
+  "ner_called_cases": 94,
+  "ner_transport_statuses": {
+    "completed": 94
+  },
+  "name_rate_by_group": {
+    "combined_dob": 1.0,
+    "contact": 0.0,
+    "contact_with_name": 1.0,
+    "contrast_pairs": 0.5556,
+    "correction": 1.0,
+    "garbage": 0.0,
+    "garbage_unaccented": 0.0,
+    "greeting": 0.0,
+    "greeting_with_name": 1.0,
+    "listening": 0.0,
+    "mixed_question": 1.0,
+    "name_particle_collision": 1.0,
+    "names": 1.0,
+    "normalization": 1.0,
+    "other_person": 0.25,
+    "priority": 0.0,
+    "punctuation_loss": 1.0,
+    "reported_sentence": 1.0,
+    "self_intro": 1.0,
+    "self_intro_variants": 1.0,
+    "short_names": 1.0,
+    "state": 0.0,
+    "suffix_fixed": 1.0,
+    "suffix_other": 1.0,
+    "uncertain": 0.0,
+    "who": 0.0,
+    "who_variants": 0.0
+  },
+  "slot_filling_statuses": {
+    "accepted": 25,
+    "no_name": 69
+  },
+  "slot_filling_elapsed_ms": {
+    "n": 94,
+    "p50": 713.0,
+    "p95": 991.0,
+    "p99": 1351.0,
+    "max": 1351.0
+  },
+  "failures": [],
+  "review_ids": [],
+  "source_results": "/home/nhuyhoan2004/Documents/VSF/callbot-vinmec/result/13-10-2026/identity/deepseek-v1/results.csv",
+  "results_modified_at": "2026-10-13T15:24:38+07:00",
+  "generated_at": "2026-10-13T15:24:38+07:00"
+}

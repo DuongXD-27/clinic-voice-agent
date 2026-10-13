@@ -45,9 +45,7 @@ cuộc gọi có ASR/TTS.
 | ID073 | Nguyễn Văn A tôi không nhớ rõ ngày sinh | FAIL: mất tên, intent `CANNOT_PROVIDE` | PASS: tên `nguyễn văn a`, intent `NONE` | Luật tách hậu tố phân vân về ngày sinh dù ASR thiếu dấu phẩy; không gọi model. |
 | ID069 | Nguyễn Văn A phải không | PASS: không nhận tên | FAIL: nhận `nguyễn văn a` từ `FALLBACK` | Regression: câu hỏi chưa khẳng định tên bị model coi là tự nhận. |
 
-Ba ca ID038, ID039, ID040 tiếp tục là REVIEW vì ranh giới tên và xưng hô chưa được gán nhãn
-chắc chắn. Không đưa chúng vào mẫu số tính tỷ lệ PASS. `completed` chỉ chứng minh request
-hoàn tất, không chứng minh chọn tên đúng.
+`completed` chỉ chứng minh request hoàn tất, không chứng minh chọn tên đúng.
 
 ## Phạm vi thay đổi và kiểm chứng
 

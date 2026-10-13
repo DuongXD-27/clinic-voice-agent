@@ -3,8 +3,10 @@
 Giá trị mặc định ở config/llm.yaml (mỗi provider một section); API key chỉ đặt qua env.
 """
 
-from typing import ClassVar, Literal, Self
+from pathlib import Path
+from typing import Any, ClassVar, Literal, Self
 
+import yaml
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
@@ -36,6 +38,17 @@ class ProviderConfig(YamlSettings):
         return self
 
 
+def yaml_default(config_type: type[ProviderConfig], field: str) -> Any:
+    """Giá trị trong config/llm.yaml của provider, không qua env.
+
+    Tầng ngữ nghĩa dùng hàm này thay vì để `ProviderConfig` tự đọc: field không truyền sẽ lấy
+    `NAME_FALLBACK_*` (alias của slot filling họ tên), làm hai tầng dính cấu hình nhau.
+    """
+    settings = config_type.model_config
+    data = yaml.safe_load(Path(settings["yaml_file"]).read_text(encoding="utf-8"))
+    return data[settings["yaml_config_section"]][field]
+
+
 class OpenAIConfig(ProviderConfig):
     model_config = yaml_config("llm.yaml", "openai", env_prefix="OPENAI_")
     key_env = "OPENAI_API_KEY"
@@ -60,6 +73,12 @@ class OpenRouterConfig(ProviderConfig):
     model_config = yaml_config("llm.yaml", "openrouter", env_prefix="OPENROUTER_")
     key_env = "OPENROUTER_API_KEY"
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENROUTER_API_KEY")
+
+
+class DeepSeekConfig(ProviderConfig):
+    model_config = yaml_config("llm.yaml", "deepseek", env_prefix="DEEPSEEK_")
+    key_env = "DEEPSEEK_API_KEY"
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="DEEPSEEK_API_KEY")
 
 
 class TypeSafeConfig(YamlSettings):

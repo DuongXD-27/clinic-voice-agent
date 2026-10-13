@@ -1,0 +1,180 @@
+{
+  "label": "jev-deepseek-v1-cases",
+  "mode": "semantic",
+  "today": "2026-09-29T10:00:00+07:00",
+  "model": "jev-1.13.0",
+  "repeats": 1,
+  "ran_at": "2026-10-13T08:23:39+00:00",
+  "runs": [
+    {
+      "cases": 210,
+      "failed_cases": 0,
+      "holdout_cases": 160,
+      "holdout_passed": 160,
+      "holdout_accuracy": 1.0,
+      "rule_cases": 140,
+      "rule_passed": 140,
+      "inference_cases": 20,
+      "inference_passed": 20,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 1,
+      "by_group": {
+        "agreement": {
+          "total": 9,
+          "ok": 9,
+          "routed": 0
+        },
+        "ambiguous_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "any": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "bare_agreement": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "book": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "cai_thu": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "current_time": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "exclusion": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "more": {
+          "total": 16,
+          "ok": 16,
+          "routed": 0
+        },
+        "new_time": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "numeric": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "pick_on_page": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "pick_ordinal": {
+          "total": 15,
+          "ok": 15,
+          "routed": 0
+        },
+        "pick_time": {
+          "total": 7,
+          "ok": 7,
+          "routed": 0
+        },
+        "rechoose": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        },
+        "refuse": {
+          "total": 8,
+          "ok": 8,
+          "routed": 0
+        },
+        "refuse_page": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "relative_date": {
+          "total": 12,
+          "ok": 12,
+          "routed": 0
+        },
+        "restate_slot": {
+          "total": 4,
+          "ok": 4,
+          "routed": 0
+        },
+        "safety_transfer": {
+          "total": 10,
+          "ok": 10,
+          "routed": 0
+        },
+        "switch_cancel": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "today": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 9,
+          "ok": 9,
+          "routed": 1
+        },
+        "unclear": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        }
+      },
+      "model_calls": 1,
+      "slot_calls": 11,
+      "slot_routes": {
+        "SLOT_UNRESOLVED": 3,
+        "SLOT_REFUSAL_WITH_CONTENT": 4,
+        "SLOT_HEDGED_ANSWER": 4
+      },
+      "slot_providers": {
+        "jev:": 11
+      },
+      "slot_statuses": {
+        "accepted": 11
+      },
+      "slot_latency_ms": {
+        "n": 11,
+        "p50": 295.3,
+        "p95": 314.8,
+        "max": 314.8
+      },
+      "model_statuses": {
+        "accepted": 1
+      },
+      "turn_latency_ms": {
+        "n": 210,
+        "p50": 3.1,
+        "p95": 290.6,
+        "max": 318.3
+      },
+      "failures": []
+    }
+  ]
+}
