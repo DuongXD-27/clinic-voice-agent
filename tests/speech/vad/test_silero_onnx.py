@@ -12,7 +12,7 @@ _V4 = Path("src/speech/asr/vad/assets/silero_vad.onnx")
 _V6 = Path("src/speech/asr/vad/assets/silero_vad_v6.onnx")
 # Câu TTS thật 8 kHz có trong repo (cache TTS tĩnh đang phát trên production).
 _TTS = Path(
-    "assets/tts/static/2026-10-08-v1/001_ASK_CHANGE_OR_CANCEL_anh-chi-muon-doi-lich-hay-huy-lich.wav"
+    "assets/tts/static/2026-10-13-v3/001_ASK_CHANGE_OR_CANCEL_anh-chi-muon-doi-lich-hay-huy-lich.wav"
 )
 _FRAME = 480  # 30 ms ở 16 kHz
 

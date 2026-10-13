@@ -5,9 +5,10 @@ from pathlib import Path
 
 from inference.tts import TTSGateway, TTSResult
 from speech.bundle import SpeechSynthesizer
-from speech.tts.static_cache import StaticAudioCache
+from speech.tts.static_cache import StaticAudioCache, StaticCacheSettings
 
-RELEASE = Path(__file__).resolve().parents[3] / "assets/tts/static/2026-10-08-v2"
+# Release đang chọn trong config/tts_static.yaml: đổi release không phải sửa test
+RELEASE = Path(__file__).resolve().parents[3] / StaticCacheSettings().directory
 
 
 def release_manifest():

@@ -2,7 +2,7 @@
 TurnController + InterruptionController (bench.run_pipeline với `BotTurn`).
 
 Câu bot (`--bot-audio`): `static` (mặc định) = audio Vbee của cache TTS tĩnh đang phát trên
-production (`assets/tts/static/2026-10-08-v1`, đúng chữ template hiện tại), 8 kHz đưa lên 16 kHz;
+production (`assets/tts/static/2026-10-13-v3`, đúng chữ template hiện tại), 8 kHz đưa lên 16 kHz;
 `wav` = 12 câu TTS sinh 30/09 (`temp/noise-bench/bot_tts.wav`, đo Quail) — đọc câu thoại TRƯỚC đợt
 chuẩn hoá 08/10 ("Dạ Vinmec xin nghe, em là trợ lý ảo AI của tổng đài…") nên lệch chữ với template
 hiện tại: chữ bot vọng lại không khớp câu bot, so khớp tiếng vọng thất bại (bot "tự ngắt lời" 6/12 câu
@@ -79,7 +79,7 @@ _BOT_TEMPLATES = (
 )  # fmt: skip
 # Cache TTS tĩnh không có ASK_ATTENDANCE (luôn đi kèm thông tin lịch): thay bằng câu hỏi có/không
 # cùng loại.
-STATIC_TTS_DIR = bench.ROOT / "assets" / "tts" / "static" / "2026-10-08-v1"
+STATIC_TTS_DIR = bench.ROOT / "assets" / "tts" / "static" / "2026-10-13-v3"
 _STATIC_BOT_TEMPLATES = tuple(
     t.CONFIRM_CONFLICT if text == t.ASK_ATTENDANCE else text for text in _BOT_TEMPLATES
 )

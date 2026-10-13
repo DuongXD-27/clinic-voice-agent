@@ -66,6 +66,13 @@ async def test_shipped_catalog_covers_all_74_current_utterances_in_sync_and_stre
     assert not provider.calls and not fallback.calls
 
 
+def test_shipped_release_matches_configured_vbee_audio():
+    # Đổi giọng/tốc độ trong config/tts.yaml mà không thu lại thì runtime bỏ cả release (chỉ có log
+    # TTS_STATIC_MANIFEST_MISMATCH), mọi câu tĩnh lại tốn Vbee — như speed 1.15 ngày 12/10.
+    config = VbeeTTSConfig(api_token="offline-only", app_id="offline-only", _env_file=None)
+    assert release_manifest()["audio_config"] == build.audio_config(config)
+
+
 async def test_dynamic_and_changed_exact_text_use_provider_and_do_not_enter_static_store():
     tts, provider, _ = cached_synthesizer()
     static = release_manifest()["assets"][0]["utterance"]
