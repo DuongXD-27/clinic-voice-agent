@@ -15,6 +15,8 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "eval" / "stt-bench"
 sys.path[:0] = [str(ROOT / "src"), str(BENCH), str(ROOT / "scripts")]
@@ -59,6 +61,24 @@ def main() -> None:
     def add(name: str, ms: float) -> None:
         steps.setdefault(name, []).append(ms)
 
+    # Cuộc gọi mới trên LiveKit = process mới, prewarm cũ chỉ nạp greedy: lượt tên đầu tiên và
+    # lượt hỏi ý định đầu tiên tự nạp model. So với process đã gọi `warm_up()`.
+    pcm0, rate0 = read_pcm(cases[0].audio_path)
+    hints0 = Hotwords(names_of(cases[0]), guard_one_word=True)
+    intent0 = Hotwords(("ĐẶT LỊCH", "ĐỔI LỊCH", "HỦY LỊCH"))
+    for label, warm in (("prewarm cũ (chỉ greedy)", False), ("prewarm mới (warm_up)", True)):
+        fresh = ZipFormerASR(config)
+        _, load = timed(fresh._decode_stream_scored, pcm0, rate0)
+        if warm:
+            _, extra = timed(fresh.warm_up)
+            load += extra
+        _, first_name = timed(fresh._decode_stream_hinted, pcm0, rate0, hints0)
+        _, first_intent = timed(fresh._decode_stream_hinted, pcm0, rate0, intent0)
+        print(
+            f"{label}: prewarm {load:.0f}ms | lượt tên ĐẦU TIÊN {first_name:.0f}ms"
+            f" | lượt hỏi ý định ĐẦU TIÊN {first_intent:.0f}ms"
+        )
+
     # Nạp model trước (lần đầu tạo session ONNX), không tính vào số đo.
     pcm0, rate0 = read_pcm(cases[0].audio_path)
     asr._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), guard_one_word=True))
@@ -82,6 +102,19 @@ def main() -> None:
         _, b = timed(asr._decode_scored, model_pcm, hotwords="/".join(hints.phrases))
         _, p = timed(asr._decode_scored, model_pcm)
         _, t = timed(asr._nbest_at_model_rate, model_pcm, config.hotwords_accept_top_k)
+        # Từng phần của đường mới: encoder một lần, hai beam riêng, hai beam gộp batch.
+        nb = asr._get_nbest()
+        samples = np.frombuffer(model_pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        frames, enc = timed(nb.encode, samples)
+        beam, score = config.max_active_paths, config.hotwords_score
+        searches = [
+            (max(1, config.nbest_top_k), hints.phrases, score, beam),
+            (max(1, config.hotwords_accept_top_k), (), 0, beam),
+        ]
+        cache: dict = {}
+        _, s1 = timed(nb.search, frames, *searches[0], cache)
+        _, s2 = timed(nb.search, frames, *searches[1], cache)
+        _, sm = timed(nb.search_many, frames, searches, {})
         new, total = timed(asr._decode_stream_hinted, pcm, rate, hints)
         _, ui = timed(asr.nbest, pcm, rate, hints.phrases)
         before, old_total = timed(old._decode_stream_hinted, pcm, rate, hints)
@@ -91,6 +124,10 @@ def main() -> None:
             ("có hotword", b),
             ("không hotword", p),
             ("top 10 thô", t),
+            ("encoder", enc),
+            ("beam có hotword (riêng)", s1),
+            ("beam không hotword (riêng, chung cache)", s2),
+            ("hai beam gộp batch", sm),
             ("tổng lượt tên", total),
             ("top 4 UI (lấy lại)", ui),
             ("cũ: tổng lượt tên", old_total),

@@ -327,3 +327,8 @@ def warm_up(asr: Recognizer) -> None:
         asr.transcribe(AudioSegment(pcm=b"\x00\x00" * 1600, sample_rate=asr.input_sample_rate))
     except NotImplementedError:
         pass
+    # Model lượt hotword / top N (ZipFormer) nạp lười: nạp luôn ở đây, không để lượt tên của cuộc
+    # gọi gánh.
+    extra = getattr(asr, "warm_up", None)
+    if callable(extra):
+        extra()

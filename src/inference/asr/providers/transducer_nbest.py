@@ -131,6 +131,36 @@ class TransducerNBest:
         )
         return to_nbest(hyps, symbols, k)
 
+    def search_many(
+        self,
+        frames: Any,
+        searches: Sequence[tuple[int, Sequence[str], float, int]],
+        decoder_cache: Optional[dict[tuple[int, ...], Any]] = None,
+    ) -> list[list[NBestHyp]]:
+        """Nhiều `search` trên cùng đầu ra encoder, mỗi cái `(k, hotwords, hotwords_score, beam)`,
+        chạy chung một vòng frame (gộp batch decoder/joiner) — nhanh hơn gọi `search` lần lượt,
+        kết quả y hệt."""
+        import numpy as np
+
+        if len(frames) == 0:
+            return [[] for _ in searches]
+        _, decoder, joiner, symbols, context_size = self._load()
+        paths = beam_search_many(
+            frames,
+            decode=lambda contexts: _run(decoder, np.array(contexts, dtype=np.int64)),
+            join=lambda enc, dec: _run(joiner, enc, dec),
+            context_size=context_size,
+            searches=[
+                (max(k, beam), self._context(hotwords, score, symbols))
+                for k, hotwords, score, beam in searches
+            ],
+            decoder_cache=decoder_cache,
+        )
+        return [
+            to_nbest(hyps, symbols, k) if k > 0 else []
+            for hyps, (k, *_) in zip(paths, searches, strict=True)
+        ]
+
     def _context(
         self, hotwords: Sequence[str], score: float, symbols: dict[int, str]
     ) -> Optional[ContextGraph]:
@@ -270,18 +300,41 @@ def beam_search(
     `decoder_cache`: đầu ra decoder theo ngữ cảnh token (chỉ phụ thuộc `context_size` token cuối,
     blank giữ nguyên ngữ cảnh nên lặp lại rất nhiều); truyền cùng một dict cho nhiều lần search
     trên cùng câu để dùng chung."""
+    return beam_search_many(
+        frames,
+        decode=decode,
+        join=join,
+        context_size=context_size,
+        searches=[(beam, context)],
+        decoder_cache=decoder_cache,
+    )[0]
+
+
+def beam_search_many(
+    frames: Any,
+    *,
+    decode: Any,
+    join: Any,
+    context_size: int,
+    searches: Sequence[tuple[int, Optional[ContextGraph]]],
+    decoder_cache: Optional[dict[tuple[int, ...], Any]] = None,
+) -> list[list[Path]]:
+    """Nhiều `beam_search` (mỗi cái một `(beam, context)`) trên cùng câu, chạy song song từng
+    frame: mỗi frame gọi decoder và joiner MỘT lần cho phương án của mọi search (gộp batch) thay
+    vì mỗi search một lần. Kết quả từng search y hệt chạy riêng."""
     import numpy as np
 
     cache: dict[tuple[int, ...], Any] = {} if decoder_cache is None else decoder_cache
 
     start = (BLANK_ID,) * context_size
-    # ys -> (điểm, phần hotword, trạng thái context, log-prob từng token); cùng ys thì cùng trạng
-    # thái context.
-    hyps: dict[tuple[int, ...], tuple[float, float, int, tuple[float, ...]]] = {
-        start: (0.0, 0.0, 0, ())
-    }
+    # Mỗi search: ys -> (điểm, phần hotword, trạng thái context, log-prob từng token); cùng ys thì
+    # cùng trạng thái context.
+    states: list[dict[tuple[int, ...], tuple[float, float, int, tuple[float, ...]]]] = [
+        {start: (0.0, 0.0, 0, ())} for _ in searches
+    ]
     for frame in frames:
-        items = list(hyps.items())
+        groups = [list(hyps.items()) for hyps in states]
+        items = [item for group in groups for item in group]
         contexts = [ys[-context_size:] for ys, _ in items]
         missing = list(dict.fromkeys(c for c in contexts if c not in cache))
         if missing:
@@ -289,39 +342,55 @@ def beam_search(
                 cache[ctx] = row
         dec_out = np.stack([cache[c] for c in contexts])
         enc = np.repeat(frame[None, :], len(items), axis=0)
-        logits = np.asarray(join(enc, dec_out), dtype=np.float64)
-        logits = logits.reshape(len(items), -1)
-        log_probs = logits - _logsumexp(logits)
-        totals = log_probs + np.array([h[0] for _, h in items])[:, None]
-        deltas = _context_deltas(totals.shape, items, context) if context else None
-        if deltas is not None:
-            totals = totals + deltas
-        flat = totals.ravel()
-        top = np.argpartition(-flat, min(beam, flat.size) - 1)[:beam]
-        merged: dict[tuple[int, ...], tuple[float, float, int, tuple[float, ...]]] = {}
-        vocab = totals.shape[1]
-        for index in top:
-            row, token = divmod(int(index), vocab)
-            ys, (_, bonus, node, token_lps) = items[row]
-            if token != BLANK_ID:
-                ys = ys + (token,)
-                token_lps = token_lps + (float(log_probs[row, token]),)
-                if context is not None:
-                    node, delta = context.step(node, token)
-                    bonus += delta
-            score = float(flat[index])
-            if ys in merged:
-                previous = merged[ys]
-                merged[ys] = (_logaddexp(previous[0], score), *previous[1:])
-            else:
-                merged[ys] = (score, bonus, node, token_lps)
-        hyps = merged
-    final = []
-    for ys, (score, bonus, node, token_lps) in hyps.items():
-        if context is not None:
-            score, bonus = score + context.finalize(node), bonus + context.finalize(node)
-        final.append(Path(ys[context_size:], score, bonus, token_lps))
-    return sorted(final, key=lambda item: item.score, reverse=True)
+        all_logits = np.asarray(join(enc, dec_out), dtype=np.float64)
+        all_logits = all_logits.reshape(len(items), -1)
+        offset = 0
+        for index, ((beam, context), group) in enumerate(zip(searches, groups, strict=True)):
+            logits = all_logits[offset : offset + len(group)]
+            offset += len(group)
+            states[index] = _beam_step(logits, group, beam, context)
+    results = []
+    for (_, context), hyps in zip(searches, states, strict=True):
+        final = []
+        for ys, (score, bonus, node, token_lps) in hyps.items():
+            if context is not None:
+                score, bonus = score + context.finalize(node), bonus + context.finalize(node)
+            final.append(Path(ys[context_size:], score, bonus, token_lps))
+        results.append(sorted(final, key=lambda item: item.score, reverse=True))
+    return results
+
+
+def _beam_step(
+    logits: Any, items: list, beam: int, context: Optional[ContextGraph]
+) -> dict[tuple[int, ...], tuple[float, float, int, tuple[float, ...]]]:
+    """Một frame của modified beam search: giữ `beam` phương án tốt nhất (đã gộp chuỗi trùng)."""
+    import numpy as np
+
+    log_probs = logits - _logsumexp(logits)
+    totals = log_probs + np.array([h[0] for _, h in items])[:, None]
+    deltas = _context_deltas(totals.shape, items, context) if context else None
+    if deltas is not None:
+        totals = totals + deltas
+    flat = totals.ravel()
+    top = np.argpartition(-flat, min(beam, flat.size) - 1)[:beam]
+    merged: dict[tuple[int, ...], tuple[float, float, int, tuple[float, ...]]] = {}
+    vocab = totals.shape[1]
+    for index in top:
+        row, token = divmod(int(index), vocab)
+        ys, (_, bonus, node, token_lps) = items[row]
+        if token != BLANK_ID:
+            ys = ys + (token,)
+            token_lps = token_lps + (float(log_probs[row, token]),)
+            if context is not None:
+                node, delta = context.step(node, token)
+                bonus += delta
+        score = float(flat[index])
+        if ys in merged:
+            previous = merged[ys]
+            merged[ys] = (_logaddexp(previous[0], score), *previous[1:])
+        else:
+            merged[ys] = (score, bonus, node, token_lps)
+    return merged
 
 
 def _context_deltas(shape: tuple[int, int], items: list, context: ContextGraph) -> Any:

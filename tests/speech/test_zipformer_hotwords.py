@@ -284,6 +284,12 @@ class _SharedNBest:
         texts = self.biased if hotwords else self.plain
         return [NBestHyp(t, -float(i), 0.1, confidence=0.8) for i, t in enumerate(texts[:k])]
 
+    def search_many(self, frames, searches, cache=None):
+        return [
+            self.search(frames, k, hotwords, score, beam, cache)
+            for k, hotwords, score, beam in searches
+        ]
+
 
 def _shared_case(monkeypatch, plain: list[str], biased: list[str], **config):
     asr = ZipFormerASR(_config(**config))
@@ -326,3 +332,20 @@ def test_shared_encoder_keeps_plain_for_different_name(monkeypatch) -> None:
     )
 
     assert decoded.text == "TÔI LÀ TRẦN THỊ HOA" and decoded.confidence == 0.8
+
+
+def test_warm_up_loads_hotword_models_before_the_first_call(monkeypatch) -> None:
+    """Mỗi job LiveKit một process: model lượt tên (top N/beam) phải nạp lúc prewarm, không để
+    lượt tên đầu tiên của cuộc gọi tự nạp."""
+    asr, fake = _shared_case(monkeypatch, ["XIN CHÀO"], ["XIN CHÀO"])
+    decoded: list[str] = []
+    monkeypatch.setattr(
+        asr, "_decode_scored", lambda pcm, hotwords="", *, beam=True: decoded.append(hotwords)
+    )
+    monkeypatch.setattr(asr, "_get_recognizer", lambda *, beam=True: None)
+
+    asr.warm_up()
+
+    assert decoded == ["XIN CHÀO"]
+    assert fake.encodes == 1
+    assert asr._nbest_ready is None

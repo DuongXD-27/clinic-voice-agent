@@ -13,6 +13,7 @@ from inference.asr.providers.transducer_nbest import (
     NBest,
     NBestHyp,
     beam_search,
+    beam_search_many,
     bpe_encode,
     to_nbest,
 )
@@ -229,3 +230,34 @@ def test_beam_search_decoder_cache_skips_repeated_contexts() -> None:
     assert len(seen) == len(set(seen))
     calls = len(seen)
     assert search(cache) == first and len(seen) == calls
+
+
+def test_beam_search_many_matches_separate_searches() -> None:
+    """Hai search (có / không hotword) gộp batch theo frame: kết quả y hệt chạy riêng từng cái,
+    và joiner chỉ được gọi một lần mỗi frame."""
+    rng = np.random.default_rng(0)
+    logits = rng.normal(size=(12, 4)).tolist()
+    frames = np.array([[i] for i in range(len(logits))], dtype=np.float32)
+    joins: list[int] = []
+
+    def decode(contexts):
+        # Đầu ra decoder phụ thuộc token cuối: thứ tự hàng trong batch phải giữ đúng.
+        return np.array([[float(c[-1])] for c in contexts])
+
+    def join(enc, dec):
+        joins.append(len(enc))
+        return np.array(
+            [
+                np.array(logits[int(e[0])]) + 0.7 * d[0] * np.arange(4)
+                for e, d in zip(enc, dec, strict=True)
+            ]
+        )
+
+    context = ContextGraph([[2, 1]], 2.0)
+    options = dict(decode=decode, join=join, context_size=2)
+    biased = beam_search(frames, beam=8, context=context, **options)
+    plain = beam_search(frames, beam=10, **options)
+    joins.clear()
+    together = beam_search_many(frames, searches=[(8, context), (10, None)], **options)
+    assert together == [biased, plain]
+    assert len(joins) == len(logits)

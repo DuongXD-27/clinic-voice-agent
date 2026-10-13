@@ -104,6 +104,29 @@ class ZipFormerASR:
             )
         return self._nbest
 
+    def warm_up(self) -> None:
+        """Nạp trước mọi model lượt có hotword dùng (recognizer beam, phiên onnxruntime của top N /
+        lượt tên) và chạy thử một lần. Không có bước này, lượt hotword đầu tiên của MỖI cuộc gọi
+        (thường là lượt tên — mỗi job LiveKit một process mới) phải tự nạp model."""
+        self._get_recognizer(beam=False)
+        if not self._config.hotwords_enabled and self._config.nbest_top_k <= 0:
+            return
+        # Nửa giây nhiễu nhỏ: đủ để encoder/beam chạy thật một vòng.
+        noise = np.random.default_rng(0).integers(-64, 64, self.input_sample_rate // 2)
+        pcm = noise.astype(np.int16).tobytes()
+        phrases = ("XIN CHÀO",)
+        if self._config.hotwords_enabled:
+            self._decode_scored(pcm, hotwords="/".join(phrases))
+        if self._shared_encoder:
+            try:
+                if self._config.hotwords_enabled:
+                    self._decode_guarded_shared(pcm, pcm, phrases)
+                else:
+                    self._nbest_at_model_rate(pcm, self._config.nbest_top_k)
+            except ImportError:
+                self._shared_encoder = False
+        self._nbest_ready = None
+
     @property
     def supports_hotwords(self) -> bool:
         """Bật hotword theo lượt (`stream(hotwords=...)`) — cần beam search, xem config/asr.yaml."""
@@ -306,11 +329,14 @@ class ZipFormerASR:
         frames = nbest.encode(samples)
         beam, score = self._config.max_active_paths, self._config.hotwords_score
         cache: dict = {}
-        biased_top = nbest.search(
-            frames, max(1, self._config.nbest_top_k), phrases, score, beam, cache
-        )
-        plain_top = nbest.search(
-            frames, max(1, self._config.hotwords_accept_top_k), (), 0, beam, cache
+        # Hai beam (có / không hotword) chạy chung một vòng frame: decoder/joiner gộp batch.
+        biased_top, plain_top = nbest.search_many(
+            frames,
+            [
+                (max(1, self._config.nbest_top_k), phrases, score, beam),
+                (max(1, self._config.hotwords_accept_top_k), (), 0, beam),
+            ],
+            cache,
         )
         if self._config.nbest_top_k > 0:
             self._nbest_ready = (final_pcm, NBest(biased_top, phrases))

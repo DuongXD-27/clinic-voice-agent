@@ -51,6 +51,12 @@ class SpeechRecognizer:
     def supports_segment_finalize(self) -> bool:
         return getattr(self._gateway.provider, "supports_segment_finalize", False)
 
+    def warm_up(self) -> None:
+        """Nạp trước phần model provider chỉ nạp khi cần (vd. ZipFormer: beam/hotword, top N)."""
+        warm = getattr(self._gateway.provider, "warm_up", None)
+        if callable(warm):
+            warm()
+
     def transcribe(self, segment: AudioSegment) -> Transcript:
         segment = to_sample_rate(segment, self.input_sample_rate)
         result = self._gateway.transcribe(segment.pcm, segment.sample_rate)
