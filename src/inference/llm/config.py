@@ -62,6 +62,12 @@ class OpenRouterConfig(ProviderConfig):
     api_key: SecretStr = Field(default=SecretStr(""), validation_alias="OPENROUTER_API_KEY")
 
 
+class DeepSeekConfig(ProviderConfig):
+    model_config = yaml_config("llm.yaml", "deepseek", env_prefix="DEEPSEEK_")
+    key_env = "DEEPSEEK_API_KEY"
+    api_key: SecretStr = Field(default=SecretStr(""), validation_alias="DEEPSEEK_API_KEY")
+
+
 class TypeSafeConfig(YamlSettings):
     """TypeSafe System One (Jev). Không kế thừa `ProviderConfig`: không có max tokens, không đọc
     `NAME_FALLBACK_*` — Jev chỉ dùng cho tầng ngữ nghĩa."""

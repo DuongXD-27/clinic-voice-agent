@@ -1,7 +1,7 @@
 # Engine — callbot.engine.settings.EngineSettings.
 # Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. SEMANTIC_FALLBACK_ENABLED=false).
 
-# Name slot filling fallback: none | openai | gemini | groq | openrouter (cấu hình ở llm.yaml)
+# Name slot filling fallback: none | openai | gemini | groq | openrouter | deepseek (cấu hình ở llm.yaml)
 name_fallback_provider: openai
 
 # Tầng ngữ nghĩa (T-05 §8): model đọc các câu luật không chắc. Bật theo quyết định owner 22-09-2026;

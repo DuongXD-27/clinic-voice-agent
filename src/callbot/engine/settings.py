@@ -8,7 +8,7 @@ class EngineSettings(YamlSettings):
 
     model_config = yaml_config("engine.yaml")
 
-    name_fallback_provider: Literal["none", "openai", "gemini", "groq", "openrouter"]
+    name_fallback_provider: Literal["none", "openai", "gemini", "groq", "openrouter", "deepseek"]
 
     # Tầng ngữ nghĩa (T-05 §8). Mặc định BẬT theo quyết định owner 22-09-2026, dù bước 7 (đánh giá
     # model thật) chưa chạy. Thiếu OPENAI_API_KEY thì factory tự về chỉ-luật, không chặn khởi động.

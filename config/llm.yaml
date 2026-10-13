@@ -40,6 +40,15 @@ openrouter: # OPENROUTER_API_KEY
   connect_timeout_s: 1.0
   max_completion_tokens: 200
 
+deepseek: # DEEPSEEK_API_KEY
+  endpoint: https://api.deepseek.com/chat/completions
+  # deepseek-flash: tên khuyến nghị (DeepSeek-V4.1-Flash); deepseek-v4-pro cho bản Pro
+  model: deepseek-flash
+  timeout_s: 3.0
+  connect_timeout_s: 1.0
+  # Tắt thinking nên budget chỉ cho JSON; API chỉ có JSON Output (json_object), không strict schema
+  max_completion_tokens: 200
+
 # TypeSafe System One (Jev) — tầng ngữ nghĩa khi SEMANTIC_PROVIDER=jev (engine.yaml).
 # Không phải chat provider: chỉ trả nhãn Choice/Noul có xác suất, không sinh text.
 typesafe: # TYPESAFE_API_KEY

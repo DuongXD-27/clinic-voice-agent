@@ -3,7 +3,7 @@
 `src/inference/llm/gateway.py` là điểm gọi chung cho structured generation, hiện có hai người dùng:
 
 ```text
-NameSlotFiller       → LLMGateway → OpenAI | Gemini | Groq | OpenRouter
+NameSlotFiller       → LLMGateway → OpenAI | Gemini | Groq | OpenRouter | DeepSeek
 LLMSemanticExtractor → LLMGateway → OpenAI (gpt-4o-mini, cố định trong đợt T-05)
 ```
 
@@ -20,6 +20,7 @@ validate schema và nghiệp vụ. Slot filling họ tên vẫn kiểm tra tên/
 | `gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
 | `groq` | `openai/gpt-oss-20b` | `GROQ_API_KEY` |
 | `openrouter` | `openai/gpt-4o-mini` | `OPENROUTER_API_KEY` |
+| `deepseek` | `deepseek-flash` | `DEEPSEEK_API_KEY` |
 
 `NAME_FALLBACK_MODEL` để trống sẽ dùng mặc định của provider; có giá trị sẽ ghi đè
 model của provider được chọn. Khi đổi provider, xóa giá trị cũ hoặc đặt model tương
@@ -37,6 +38,12 @@ giữ token budget cho JSON. Không trộn thought parts vào nội dung kết q
 OpenAI/Groq dùng Chat Completions với strict JSON Schema. Groq GPT-OSS dùng
 `reasoning_effort=low`. OpenRouter dùng `max_tokens` và yêu cầu endpoint hỗ trợ đủ
 tham số (`require_parameters=true`), tắt fallback giữa upstream endpoints.
+
+DeepSeek chỉ có JSON Output (`response_format={"type":"json_object"}`), không có strict JSON
+Schema: schema không được gửi, prompt phải chứa chữ "json" và mô tả output (prompt hiện có đã
+đáp ứng, không sửa). Dùng `max_tokens`, tắt thinking (`thinking={"type":"disabled"}`) để giữ
+latency và để `temperature=0` có hiệu lực. `finish_reason` khác `stop` (vd.
+`insufficient_system_resource`) trả `incomplete`.
 
 ## Cấu hình tầng ngữ nghĩa (T-05)
 

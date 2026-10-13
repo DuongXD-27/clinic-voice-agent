@@ -7,6 +7,7 @@ from typing import Any
 from inference.common.errors import UnsupportedProviderError
 from inference.common.transport import HttpClientFactory
 from inference.llm.config import (
+    DeepSeekConfig,
     GeminiConfig,
     GroqConfig,
     OpenAIConfig,
@@ -14,6 +15,7 @@ from inference.llm.config import (
     ProviderConfig,
 )
 from inference.llm.providers.base import ProviderName, StructuredProvider, StructuredReply
+from inference.llm.providers.deepseek import DeepSeekProvider
 from inference.llm.providers.gemini import GeminiProvider
 from inference.llm.providers.groq import GroqProvider
 from inference.llm.providers.openai import OpenAIProvider
@@ -79,6 +81,7 @@ def create_gateway(
         "gemini": (GeminiConfig, GeminiProvider),
         "groq": (GroqConfig, GroqProvider),
         "openrouter": (OpenRouterConfig, OpenRouterProvider),
+        "deepseek": (DeepSeekConfig, DeepSeekProvider),
     }
     if provider_name not in registry:
         raise UnsupportedProviderError("LLM", provider_name)
