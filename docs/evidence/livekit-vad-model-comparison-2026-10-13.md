@@ -12,6 +12,7 @@ Validator, tăng âm giọng nhỏ không đổi. HTTP `/v1/stt` vẫn Silero v4
 | 4 | Pipeline đầy đủ, cặp trial cùng seed, 110 câu có nhãn người mỗi điều kiện | Điện thoại: WER lượt 0,482 → 0,160 [Δ −0,352; −0,291], mất lượt 338 → 11/880; người gọi nói nhỏ 0,382 → 0,204, mất lượt 80 → 41/330. Web: 0,236 → 0,171 [Δ −0,078; −0,053], mất lượt 137 → 32/1430; với pre-roll 1000 ms của nhánh `fix/stt-noise-turn-loss`: 0,261 → 0,187 [Δ −0,095; −0,054], mất lượt 120 → 22/880. Nhiễu không phải giọng người (văn phòng, đường phố, giao thông, hành lang, xe buýt, nhà ga, tiếng động trong nhà): lượt giả không tăng (web 3 → 0, điện thoại 0 → 0); căng tin web 7 → 7, điện thoại 0 → 0 |
 | 5 | Đổi lại | Người gọi im lặng mà nền là giọng người (TV, đài, người khác nói): lượt giả web 154 → 203/216, điện thoại 157 → 206/216 (v4 đã chép 71–73%); tiếng người không lời (ho, cười…) +1/24 web, +2/24 điện thoại; ngắt lời có tiếng vọng điện thoại: bot tự ngắt lời 1/12 (v4 0) ở cả −30 và −20 dB, xác nhận ở −30 dB 26 → 17/39 |
 | 6 | Bật mặc định? | **Có, từ 13/10 — owner chọn v6 cho cả web lẫn SIP** sau khi xem đánh đổi ở mục 5 và thử trực tiếp hai bản. Khoá `silero_vad_version` (quay lại: `SILERO_VAD_VERSION=v4`); `/v1/stt` dùng cùng model; model nạp sẵn trong prewarm của worker; Dockerfile tải sẵn model (sha256 cố định) |
+| 7 | Gộp nhánh `fix/stt-noise-turn-loss` (pre-roll web 1000 ms, sửa cửa sổ gộp lượt) | **Gộp** — đo lại với v6 trên cùng trial: web WER 0,171 → 0,161 [Δ −0,014; −0,006], câu mất 32 → 23/1430; SIP không đổi; `labeled_eval` câu sai nghĩa khi ồn 72 → 60, sạch 6 → 2. Lượt giả gần như không đổi (mục "Sau khi gộp") |
 
 ## Vì sao đo VAD
 
@@ -301,6 +302,53 @@ Trên lần rút mẫu này bản sửa chỉ đổi 1 trial mỗi bên. Kết l
 nhiễu trình duyệt): đây là điều kiện duy nhất trên web mà v6 không hơn v4 — qua 3 lần rút mẫu v6 đều
 hơi kém (+0,014, +0,046, +0,010), lần nào KTC 95% cũng chạm 0; lỗi gộp lượt ở trên chỉ giải thích một
 phần lần +0,046. Lượt giả trên đoạn chỉ có tiếng căng tin không tăng (7 → 7, 8 → 7, 11 → 9).
+
+## Sau khi gộp nhánh `fix/stt-noise-turn-loss` (13/10)
+
+Nhánh của worktree kia (đo với Silero v4): sửa cửa sổ gộp lượt (fefe572), pre-roll ZipFormer web 300 →
+1000 ms (d1a19c3), bộ đo `labeled_eval.py` chỉ dùng nhãn người (4dd0b23)
+([stt-noise-turn-loss-2026-10-12.md](stt-noise-turn-loss-2026-10-12.md)). Gộp không conflict, test
+5350 passed. Đo lại với v6, cùng trial / seed với lần đo v6 trước khi gộp (`frontend_eval.py paired`,
+ZipFormer 1 luồng, cổng giọng tắt):
+
+| | Trước gộp → sau gộp | ΔWER [KTC 95%] | câu tốt hơn / tệ hơn | không thành lượt | lượt giả (chỉ nhiễu) |
+|---|---|---|---|---|---|
+| Web, 13 điều kiện | 0,171 → **0,161** | −0,010 [−0,014; −0,006] | 305 / 171 | 32 → 23 /1430 | 28 → 29 /264 |
+| SIP, 8 điều kiện (pre-roll vốn đã 1000 ms) | 0,160 → 0,160 | −0,000 [−0,001; +0,000] | 3 / 0 | 11 → 11 /880 | 23 → 23 /168 |
+| Nền là giọng người, web (người gọi im) | — | — | — | — | 203 → 207 /216 |
+| Nền là giọng người, SIP | — | — | — | — | 206 → 208 /216 |
+
+Web theo điều kiện: sạch 0,114 → 0,101, nhỏ 25 dB 0,208 → 0,185, văn phòng 0,126 → 0,113, hành lang
+0,125 → 0,109 (KTC không chạm 0 ở 9/13 điều kiện); căng tin 0,219 → 0,219; TV 0,288 → 0,310 (+0,021
+[−0,009; +0,056]) — pre-roll dài kéo thêm chữ của TV trước câu, như nhánh kia đã ghi. Độ trễ chốt lượt
+p50 / p90 không đổi. Lượt giả: nhiễu thường 8 đoạn chỉ có ở bản cũ / 9 chỉ ở bản mới; nền giọng người
+tăng chủ yếu ở TV (25 → 28/36 web) — chưa có ý nghĩa thống kê nhưng cùng một chiều.
+
+`labeled_eval.py` của nhánh kia (56 câu nhãn người mỗi điều kiện, golden không chữ số + PM; WER · câu
+sai nghĩa · câu mất; 30 đoạn chỉ nhiễu mỗi loại), trên code đã gộp:
+
+| Điều kiện | v4 + sửa của nhánh kia | v6 + sửa cửa sổ gộp, pre-roll 300 ms | **v6 + sửa của nhánh kia** |
+|---|---|---|---|
+| sạch | 5,9% · 4 · 1 | 7,7% · 6 · 1 | **5,1% · 2 · 1** |
+| văn phòng 10 dB | 6,7% · 5 · 1 | 11,0% · 10 · 0 | **6,7% · 5 · 0** |
+| văn phòng 5 dB | 8,4% · 2 · 2 | 11,5% · 6 · 0 | **6,9% · 3 · 0** |
+| đường phố 10 dB | 28,9% · 16 · 10 | 13,0% · 8 · 0 | **8,9% · 7 · 0** |
+| đường phố 5 dB | 73,2% · 32 · 37 | 23,8% · 20 · 5 | **20,2% · 18 · 3** |
+| TV 10 dB | 45,3% · 24 · 13 | 50,9% · 28 · 0 | **53,2% · 27 · 1** |
+| **có ồn (280 câu): câu sai nghĩa · câu mất** | 79 · 63 | 72 · 5 | **60 · 4** |
+| lượt giả: văn phòng / phố / TV (/30) | 0 / 0 / 19 | 0 / 0 / 27 | 0 / 0 / 27 |
+
+Hai hướng sửa hai lỗi khác nhau và cộng được: v6 giúp không bỏ sót câu (câu mất khi ồn 63 → 4); pre-roll
+1000 ms giúp không mất chữ đầu ngắn — điều kiện bật cờ 250 ms tiếng nói liên tục của Silero vẫn còn với
+v6 (câu sai nghĩa khi ồn 72 → 60, sạch 6 → 2). Lượt giả TV trên bộ này không đổi theo pre-roll (27 → 27);
+TV so với v4 vẫn là đánh đổi đã biết của v6.
+
+```bash
+python eval/noise-bench/frontend_eval.py paired vad_web_v6o merged_web_v6
+python eval/noise-bench/labeled_eval.py --label lab_merged_v6 --set speaker_gate_mode=off \
+    --set silero_vad_version=v6
+python eval/noise-bench/labeled_eval.py --compare lab_merged_v4 lab_merged_v6_pre300 lab_merged_v6
+```
 
 ## Quyết định
 

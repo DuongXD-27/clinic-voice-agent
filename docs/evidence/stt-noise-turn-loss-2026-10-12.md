@@ -148,6 +148,9 @@ Khử nhiễu đưa thẳng vào ASR (RNNoise, DeepFilterNet3, GTCRN, DPDFNet, K
   - Hạ ngưỡng giúp nhiều nhưng thêm lượt giả từ TV.
   - Trong cuộc gọi thật, cổng giọng (`speaker_gate_mode: enforce`) có thể chặn một phần tiếng TV sau khi đã học giọng người gọi; trial ở đây đứng riêng nên chưa có giọng mẫu.
   - Cần ghi âm thật để quyết.
+  - 13/10: đổi sang Silero v6.2.3 (`silero_vad_version: v6`, quyết định owner). Trên chính bộ đo này,
+    cùng hai sửa ở trên: câu mất khi ồn 63 → 4, câu sai nghĩa 79 → 60; lượt giả TV 19 → 27 / 30.
+    [livekit-vad-model-comparison-2026-10-13.md](livekit-vad-model-comparison-2026-10-13.md)
 - **Báo trước câu nghe nhầm:**
   - Hai model độc lập (GipFormer + ZipFormer-150M) khác nhau ở từ quan trọng thì coi là chưa chắc.
   - Trên bộ có ồn, cách này bắt được 74% câu sai nghĩa của GipFormer; hỏi lại oan 3–6% câu khi sạch hoặc văn phòng, 10–20% khi phố/TV.

@@ -1007,7 +1007,10 @@ def paired(base: str, other: str, *, rounds: int = 2000, seed: int = 0) -> None:
             pairs = [(sa[k]["turn_errors"], sb[k]["turn_errors"], sa[k]["words"]) for k in keys]
             pooled.extend(pairs)
             name = condition
-        noise_conditions = list(na) if condition is None else [c for c in [condition] if c in na]
+        # Chỉ điều kiện có ở cả hai lần chạy (lần chạy ngắn hơn so được trên phần chung).
+        noise_conditions = [
+            c for c in (list(na) if condition is None else [condition]) if c in na and c in nb
+        ]
         noise_pairs = [
             pair for c in noise_conditions for pair in zip(na[c], nb.get(c, []), strict=True)
         ]

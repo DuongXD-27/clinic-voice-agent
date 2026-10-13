@@ -65,6 +65,9 @@ zipformer:
   # không giúp: khoảng ngừng sau chữ đầu cắt mạch năng lượng. Lần đo 06/10 thấy "trái chiều" trên
   # bộ web lấy chữ ASR của bản sạch làm nhãn — bộ đó không thấy được chữ đầu bị mất.
   # Chi phí: mỗi lần decode thêm tối đa 0,7 s audio (khoảng +12 ms cho final ở 2 luồng).
+  # Với Silero v6 (13/10, cùng bộ đo): câu sai nghĩa khi ồn 72 -> 60, sạch 6 -> 2; lượt giả TV 27 -> 27
+  # trên 30 đoạn. Pipeline web (13 điều kiện, cùng trial): WER lượt 0,171 -> 0,161 kèm sửa cửa sổ gộp
+  # lượt; TV kéo thêm chữ nền (0,288 -> 0,310). docs/evidence/livekit-vad-model-comparison-2026-10-13.md
   pre_speech_ms: 1000 # ZIPFORMER_PRE_SPEECH_MS
   # Final chỉ decode tới frame cuối còn là giọng (Silero gắn cờ, hoặc to trong vòng 25 dB đỉnh câu)
   # + chừng này ms; null = cả ~1,1 s im lặng đuôi như trước 08/10. Đuôi im lặng dài làm câu ngắn
