@@ -227,8 +227,15 @@ _STRONG_AFFIRM = compile_phrases(
         "đương nhiên",
     ]
 )
-# Chỉ ở câu hỏi đến khám: "đến chứ" là khẳng định sẽ đến, không có từ đồng ý nào khác trong câu
-_ATTEND_AFFIRM = compile_phrases(["đến chứ", "đi chứ"])
+# Chỉ ở câu hỏi đến khám: "đến chứ" là khẳng định sẽ đến, không có từ đồng ý nào khác trong câu;
+# "lịch đó ổn" là nhận lịch vừa đọc, "hôm đó tôi qua sớm" là nói sẽ đến ("không ổn", "không qua sớm
+# được" bị phủ định; "đến sớm hơn được không" là câu hỏi đuôi; "qua sớm hơn" còn "hơn" nên hỏi lại).
+# Không đưa "qua sớm" vào intent CONFIRM: "đến sớm hơn" ở câu khác là xin giờ khác.
+_ATTEND_AFFIRM = compile_phrases(
+    ["đến chứ", "đi chứ", "ổn", "đến sớm", "tới sớm", "qua sớm"],
+    # "on" = ôn / ơn; "qua som" = quá sớm; "toi som" = tối sớm
+    unaccented_exclude=["ổn", "đến sớm", "tới sớm", "qua sớm"],
+)
 _SLOT_ACTION = compile_phrases(
     [
         "đổi đi",
@@ -292,8 +299,29 @@ _ATTEND_COMPLEMENTS = compile_phrases(
         "sẽ",
         "cứ",
         "đến",
+        "sớm",
+        # "ừ thế cũng được": nhận lịch, không thêm nội dung
+        "cũng",
+        # Hoàn cảnh cho phép đến; chỉ là bổ ngữ khi câu đã có lời đồng ý ("hôm đó tôi nghỉ phép rồi, đi
+        # được", "tôi sắp xếp được rồi"). Đứng riêng không có tín hiệu nào; "chưa sắp xếp được" là từ chối.
+        "rảnh",
+        "nghỉ phép",
+        "xin nghỉ",
+        "sắp xếp",
+        "thu xếp",
     ],
-    unaccented_exclude=["đúng giờ", "đúng hẹn"],  # "dung" = đừng
+    # "dung" = đừng; "cung" = cùng / cung; "ranh" = ranh; "som" = sờm; giữ lệch về UNCLEAR khi không dấu
+    unaccented_exclude=[
+        "đúng giờ",
+        "đúng hẹn",
+        "sớm",
+        "cũng",
+        "rảnh",
+        "nghỉ phép",
+        "xin nghỉ",
+        "sắp xếp",
+        "thu xếp",
+    ],
 )
 _SLOT_COMPLEMENTS = compile_phrases(
     [
@@ -598,18 +626,28 @@ def extract_agreement(
     đồng ý (contract Bảng 1: "states or agrees they will attend") — nhưng chỉ sau mọi chặn bên dưới.
     """
     result = _read_agreement(transcript, question_id, attendance)[0]
-    if result.value is Agreement.AGREE and confirmation_veto(transcript):
+    if result.value is Agreement.AGREE and confirmation_veto(transcript, question_id):
         return Field(Agreement.UNCLEAR, result.provenance, span=result.span)
     return result
 
 
-def confirmation_veto(transcript: str) -> bool:
+def confirmation_veto(transcript: str, question_id: Optional[QuestionId] = None) -> bool:
     """R-41: rechecked by the write invariant, independently of a model's AGREE label.
 
     Affirmative idioms ("không sao", "không vấn đề gì") are removed first: their "không" is not a
     negation. Any other "không / chưa / đừng" left in the turn still vetoes it.
+
+    At the attendance questions only, accented transcripts also drop the phrases this module already
+    reads as not refusing to attend: not cancelling / not changing (`_NOT_CANCEL`: "không hủy",
+    "không đổi gì") and the asides (`_ATTENDANCE_ASIDES`: "không trễ đâu"). "không hủy đâu, tôi vẫn
+    đến" then confirms; "không hủy, nhưng không đi được" still has a "không". Unaccented transcripts
+    keep the old rule ("khong doi" may be "không đợi"). Same list for IE and the write invariant;
+    pending PO review like `_AGREE_IDIOMS`.
     """
     text = remove_phrases(clean(transcript), _AGREE_IDIOMS)
+    if question_id in _ATTENDANCE_QUESTIONS and not is_unaccented(text):
+        for phrases in (_NOT_CANCEL, _ATTENDANCE_ASIDES):
+            text = remove_phrases(text, phrases, False)
     return is_bare_da(transcript) or bool(
         re.search(r"(?<!\w)(?:không|khong|chưa|chua|đừng|đổi ý|doi y)(?!\w)", text)
         or (is_unaccented(text) and _has_ambiguous_dung(text))
@@ -621,7 +659,7 @@ def confirmation_veto(transcript: str) -> bool:
 def conflicting_confirmation(
     transcript: str, question_id: QuestionId = QuestionId.CONFIRM_READBACK
 ) -> bool:
-    if not confirmation_veto(transcript) or is_bare_da(transcript):
+    if not confirmation_veto(transcript, question_id) or is_bare_da(transcript):
         return False
     text = clean(transcript)
     if question_id is QuestionId.CANCEL_RECONFIRM and _split_by_clause_break(

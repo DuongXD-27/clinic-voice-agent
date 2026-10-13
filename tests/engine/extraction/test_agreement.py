@@ -336,9 +336,6 @@ def test_attendance_agrees_on_polite_words_and_keeping(text: str) -> None:
     ],
 )
 def test_stated_attendance_agrees_only_at_attendance_questions(text: str, span: str) -> None:
-    if text in ("không hủy đâu, tôi vẫn đến",):
-        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
-        return
     result = extract_agreement(text, CONFIRM, attendance=span)
     assert (result.value, result.span) == (Agreement.AGREE, span)
     assert extract_agreement(text, CANCEL, attendance=span).value is not Agreement.AGREE
@@ -357,6 +354,82 @@ def test_stated_attendance_agrees_only_at_attendance_questions(text: str, span: 
 def test_attendance_traps(text: str, expected: Agreement) -> None:
     result = extract_agreement(text, CONFIRM, attendance="vẫn đến" if "đến" in text else None)
     assert result.value is expected and result.found
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "lịch đó ổn em ạ",
+        "ừ thế cũng được",
+        "tôi sắp xếp được rồi em",
+        "hôm đó tôi nghỉ phép rồi, đi được",
+        "hôm đó tôi rảnh, đến được",
+        "hôm đó tôi qua sớm",
+        "vâng tôi đến sớm",
+    ],
+)
+def test_attendance_words_that_accept_the_appointment(text: str) -> None:
+    assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
+    assert extract_agreement(text, CANCEL).value is not Agreement.AGREE
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "lịch đó không ổn",
+        "ổn không em",
+        "lich do on em a",
+        "tôi cũng bận",
+        "ừ, vợ tôi cũng đi",
+        "tôi chưa sắp xếp được",
+        "để tôi sắp xếp đã",
+        "hôm đó tôi nghỉ phép rồi, không đi được",
+        "hôm đó tôi rảnh",
+        "tôi không qua sớm được",
+        "hom do toi qua som",
+        "tôi qua sớm hơn",
+        "đến sớm hơn được không",
+        "hôm qua tôi đến sớm",
+        "thế cũng được, để tôi xem",
+        "cũng được nhưng tôi muốn đổi giờ",
+    ],
+)
+def test_new_attendance_words_have_negative_cases(text: str) -> None:
+    """Mỗi từ thêm vào `_ATTEND_AFFIRM` / `_ATTEND_COMPLEMENTS` nới ngưỡng ghi CONFIRMED."""
+    assert extract_agreement(text, CONFIRM).value is not Agreement.AGREE
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "không hủy đâu, tôi vẫn đến",
+        "không đổi gì cả, tôi đến",
+        "tôi sẽ đến đúng giờ, không trễ đâu",
+        "đừng hủy, tôi vẫn đi",
+    ],
+)
+def test_neutral_phrases_do_not_veto_at_attendance_questions(text: str) -> None:
+    """R-41: "không hủy / không đổi gì / không trễ đâu" không phủ định việc đến khám (chờ PO duyệt)."""
+    for question in (CONFIRM, QuestionId.ASK_ATTENDANCE):
+        assert not confirmation_veto(text, question)
+    # Câu hỏi khác, hoặc không biết câu hỏi: giữ nguyên chốt cũ
+    for question in (None, CANCEL, SLOT):
+        assert confirmation_veto(text, question)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "không hủy, không đi",
+        "không đổi gì, không đi được đâu",
+        "không hủy nhưng chưa chắc",
+        "khong huy dau, toi van den",
+        "không hủy đâu, à không, tôi đổi ý",
+    ],
+)
+def test_other_negations_still_veto_at_attendance_questions(text: str) -> None:
+    assert confirmation_veto(text, CONFIRM)
+    assert extract_agreement(text, CONFIRM, attendance="vẫn đến").value is not Agreement.AGREE
 
 
 @pytest.mark.parametrize("text", ["giữ lịch", "giữ nguyên", "không hủy", "đừng hủy"])

@@ -3,7 +3,7 @@
 from typing import Optional
 
 from callbot.engine.extraction.agreement import confirmation_veto, without_fallback_lead
-from callbot.engine.extraction.schema import Agreement, Intent, Provenance
+from callbot.engine.extraction.schema import Agreement, Intent, Provenance, QuestionId
 from callbot.engine.session.context import CallContext, PendingAction
 from callbot.engine.session.fsm import confirmation_questions, question_offers_slot
 
@@ -85,14 +85,16 @@ def assert_action_confirmed(
         None,
     )
 
-    def vetoed(text: str) -> bool:
+    def vetoed(text: str, question_id: Optional[QuestionId]) -> bool:
         # "Không có thì 3 giờ cũng được": "không" nói về khung vừa thiếu, không phải từ chối khung chọn.
-        # Hủy không bao giờ bỏ vế này (SF-05).
-        return confirmation_veto(without_fallback_lead(text) if action != "CANCEL" else text)
+        # Hủy không bao giờ bỏ vế này (SF-05). Câu hỏi đến khám: cùng bảng cụm trung tính với IE.
+        return confirmation_veto(
+            without_fallback_lead(text) if action != "CANCEL" else text, question_id
+        )
 
-    if caller is not None and vetoed(caller):
+    if caller is not None and vetoed(caller, question.question_id if question else None):
         raise SevereFailureBlocked(code, "Caller confirmation contains a veto")
-    if any(vetoed(item.transcript) for item in confirmations):
+    if any(vetoed(item.transcript, item.question_id) for item in confirmations):
         raise SevereFailureBlocked(code, "Confirmation evidence contains a veto")
     if not confirmations:
         raise SevereFailureBlocked(code, f"Chưa có xác nhận hợp lệ cho {action} ({slot_id})")

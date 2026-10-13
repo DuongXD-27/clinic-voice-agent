@@ -370,7 +370,8 @@ class InformationExtractor:
                 transcript, ctx.question_id
             )
             if conflict or (
-                result.agreement.value is Agreement.AGREE and confirmation_veto(transcript)
+                result.agreement.value is Agreement.AGREE
+                and confirmation_veto(transcript, ctx.question_id)
             ):
                 result = replace(
                     result, agreement=Field(Agreement.UNCLEAR, Provenance.EXACT, transcript)
