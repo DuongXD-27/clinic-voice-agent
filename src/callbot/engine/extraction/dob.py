@@ -12,7 +12,9 @@ Vì vậy mọi chỗ mơ hồ ở đây đều trả `INVALID` — đừng "s�
 
 Ngoại lệ duy nhất cho "hai ngày": câu gộp ngày sinh với ngày muốn khám ("sinh 12/4/1985, muốn đặt
 khám chiều 14 tháng 10", QC qc-ib-10). Ngày đứng ngay sau mốc "sinh" là ngày sinh, ngày kia thuộc
-vế nhu cầu — chỉ khi đúng một ngày có mốc và hai ngày không nối nhau bằng "hay / hoặc / or".
+vế nhu cầu — chỉ khi đúng một ngày có mốc, hai ngày không nối nhau bằng "hay / hoặc / or", và ngày
+kia trông như ngày khám: không có năm hoặc ở tương lai. Ngày kia đủ ngày/tháng/năm trong quá khứ thì
+chính nó có thể là ngày sinh, còn "sinh" là sinh con ("14/3/1978, con tôi sinh 5/6/2018") -> `INVALID`.
 
 Phủ định khác tự sửa: "không phải A" bỏ A mà không có gì thay thế -> `INVALID`; chỉ
 "không phải A mà là B" và "A, à nhầm B" mới lấy B, và chỉ khi B đủ ngày/tháng/năm.
@@ -253,7 +255,7 @@ def read_dob(transcript: str, today: date) -> Reading[DobValue]:
     if start is None:
         return invalid(Reason.NEGATED)
     segment = tokens[start:]
-    birth = _birth_anchored_date(segment)
+    birth = _birth_anchored_date(segment, today)
     if birth is not None:
         # Ngày sinh đi cùng ngày muốn khám: chỉ đọc vùng sau mốc "sinh"; vùng kia không phải ngày sinh
         start, segment = start + birth[0], segment[birth[0] : birth[1]]
@@ -619,10 +621,10 @@ def _affirmed_start(tokens: list[str]) -> Optional[int]:
     return after + token_index(tail, affirmation.end() - 1) + 1
 
 
-def _birth_anchored_date(tokens: list[str]) -> Optional[tuple[int, int]]:
+def _birth_anchored_date(tokens: list[str], today: date) -> Optional[tuple[int, int]]:
     """Câu có nhiều ngày: vùng (đầu, sau cuối) của ngày đứng ngay sau mốc "sinh", nếu đúng một vùng như
-    vậy và các ngày không nối nhau bằng "hay / hoặc / or". `None`: một ngày, hoặc không phân biệt được
-    (giữ hướng `INVALID` của module)."""
+    vậy, các ngày không nối nhau bằng "hay / hoặc / or" và mọi ngày còn lại trông như ngày khám.
+    `None`: một ngày, hoặc không phân biệt được (giữ hướng `INVALID` của module)."""
     anchors = [i for i, t in enumerate(tokens) if t == "tháng"]
     if len(anchors) < 2:
         return None
@@ -637,7 +639,17 @@ def _birth_anchored_date(tokens: list[str]) -> Optional[tuple[int, int]]:
         gap = tokens[hi:other_lo] if other_lo >= hi else tokens[other_hi:lo]
         if find_phrase(" ".join(gap), ALTERNATIVES, mixed=True) is not None:
             return None  # "sinh 14 tháng 3 hay 15 tháng 3": vẫn là hai cách đọc một ngày sinh
+        if _past_full_date(tokens[other_lo:other_hi], today):
+            # "14/3/1978, con tôi sinh 5/6/2018": ngày kia mới giống ngày sinh của người gọi
+            return None
     return lo, hi
+
+
+def _past_full_date(region: list[str], today: date) -> bool:
+    """Vùng ngày đủ ngày/tháng/năm, không ở tương lai — đọc được thành một ngày sinh hợp lệ. Ngày khám
+    thì thiếu năm ("chiều 14 tháng 10") hoặc ở tương lai ("20/10/2026")."""
+    value, _, _ = _parse_with_month_anchor(region, region.index("tháng"), today)
+    return value is not INVALID
 
 
 def _date_region(tokens: list[str], at: int) -> tuple[int, int]:
