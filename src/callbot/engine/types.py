@@ -46,6 +46,10 @@ TransferReason = Literal[
 UnreachableReason = Literal["SILENCE", "VOICEMAIL", "NO_ANSWER", "LINE_BUSY"]
 
 
+# Lỗi kỹ thuật phía transport (R-39): lượt điều khiển, không có lời khách, luôn chuyển máy SYSTEM_ERROR.
+ControlEvent = Literal["TTS_ERROR", "ASR_ERROR"]
+
+
 class PhoneStatus(str, Enum):
     """Dial results supplied by a phone adapter, never inferred from speech."""
 
@@ -84,8 +88,22 @@ class CallerInput:
     # Metadata ASR khi đầu vào đến từ audio; text mode để None
     asr_confidence: Optional[float] = None
     phone_status: Optional[PhoneStatus] = None
+    control_event: Optional[ControlEvent] = None
 
     def __post_init__(self) -> None:
+        if self.control_event is not None:
+            if type(self.turn) is not int or self.turn < 1:
+                raise ValueError("control event requires a positive integer turn")
+            if self.control_event not in ("TTS_ERROR", "ASR_ERROR"):
+                raise ValueError("unknown control event")
+            if (
+                self.text is not None
+                or self.audio_url is not None
+                or self.silence_ms != 0
+                or self.asr_confidence is not None
+                or self.phone_status is not None
+            ):
+                raise ValueError("control event cannot be combined with caller input")
         if self.phone_status is not None:
             if type(self.turn) is not int or self.turn < 1:
                 raise ValueError("phone status requires a positive integer turn")
@@ -116,6 +134,8 @@ class CallerInput:
         # Keep existing speech fingerprints compatible with stored turns.
         if self.phone_status is not None:
             result["phone_status"] = self.phone_status.value
+        if self.control_event is not None:
+            result["control_event"] = self.control_event
         return result
 
 
@@ -136,3 +156,19 @@ class BotAction:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BotAction":
         return cls(**data)
+
+
+@dataclass(frozen=True)
+class TTSRecovery:
+    """Kết quả xử lý lỗi kỹ thuật giữa cuộc gọi (R-39, bảng 2.2 của plan 11/10).
+
+    Phía khách luôn như nhau: phát `utterance` (luôn là câu TRANSFER cố định) rồi chuyển nhân viên.
+    `action` là lượt điều khiển đã chạy; None khi không chạy lượt nào (phiên đã kết thúc, hoặc còn
+    lệnh chờ đối soát). `preserve_business_outcome`: Clinic đã có kết quả của cuộc gọi, nhân viên
+    không được làm lại. `reconciliation_required`: còn lệnh ghi chưa rõ kết quả.
+    """
+
+    utterance: str
+    action: Optional[BotAction] = None
+    preserve_business_outcome: bool = False
+    reconciliation_required: bool = False

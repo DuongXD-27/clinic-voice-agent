@@ -123,13 +123,19 @@ async def test_livekit_parallel_calls_keep_separate_trace_trees() -> None:
         await bridge.run()
 
     await asyncio.gather(run("room-a"), run("room-b"))
-    roots = [item for item in sink.records if item.component == "TURN"]
+    closes = [item for item in sink.records if item.operation == "livekit.close_call"]
+    assert len({item.call_key for item in closes}) == 2  # mỗi cuộc gọi đóng phiên trong trace riêng
+    roots = [
+        item
+        for item in sink.records
+        if item.component == "TURN" and item.operation != "livekit.close_call"
+    ]
     assert len(roots) == 4
     assert len({item.call_key for item in roots}) == 2
     for call_key in {item.call_key for item in roots}:
         this_call = [item for item in sink.records if item.call_key == call_key]
         assert {item.turn for item in this_call if item.component == "TURN"} == {0, 1}
-        for root in (item for item in this_call if item.component == "TURN"):
+        for root in (item for item in this_call if item in roots):
             children = [item for item in this_call if item.parent_span_id == root.span_id]
             assert {item.component for item in children} == (
                 {"TTS"} if root.turn == 0 else {"STT", "TTS"}

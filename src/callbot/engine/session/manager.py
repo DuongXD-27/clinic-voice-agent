@@ -37,15 +37,19 @@ from callbot.engine.types import (
     CallerInput,
     CallStart,
     CallState,
+    ControlEvent,
     Outcome,
     TransferReason,
     UnreachableReason,
 )
+from callbot.engine.write_gate import bind_write_gate
 from callbot.tracing import trace_event
 
 logger = logging.getLogger(__name__)
 
 LOCK_TIMEOUT_S = 5.0
+# Đóng phiên chờ lượt đang chạy xong (trích xuất bằng model + lệnh ghi có thể quá 5 s).
+CLOSE_LOCK_TIMEOUT_S = 15.0
 
 
 def now_vn() -> datetime:
@@ -116,6 +120,28 @@ class SessionManager:
             )
             return action, False
 
+    # --- Khách rời cuộc gọi (R-36) ----------------------------------------------------
+
+    def request_close(self, call_id: str) -> None:
+        """Ghi nhận khách đã rời, không chờ khóa: lượt đang chạy không gửi thêm lệnh ghi nào nữa
+        (cổng ghi đọc yêu cầu này trước mỗi lần gửi) và không lượt mới nào được nhận."""
+        self._store.request_transport_close(call_id)
+        trace_event("session.close_requested", storage_status="CLOSE_REQUESTED")
+
+    def close_call(self, call_id: str, lock_timeout_s: float = CLOSE_LOCK_TIMEOUT_S) -> bool:
+        """Đóng phiên phía transport sau khi lượt đang chạy (nếu có) xong. Không gửi lệnh Clinic,
+        không đặt outcome. Trả False nếu không có phiên hoặc phiên đã đóng từ trước."""
+        self._store.request_transport_close(call_id)
+        with self._store.call_lock(call_id, lock_timeout_s):
+            self._store.expire_session(call_id)
+            if self._store.get_session(call_id) is None:
+                return False
+            changed = self._store.close_session(call_id)
+        trace_event(
+            "session.closed", replayed=not changed, terminal=True, storage_status="TRANSPORT_CLOSED"
+        )
+        return changed
+
     # --- Một lượt ------------------------------------------------------------------
 
     def run_turn(
@@ -132,63 +158,113 @@ class SessionManager:
             if session is None:
                 raise SessionNotFound(call_id)
             self._check_retired(session)
+            return self._run_admitted(session, caller, process, resolve_input)
 
-            admitted = self._admit(session, caller, resolve_input)
-            if isinstance(admitted, TurnRun):
-                trace_event(
-                    "session.replayed",
-                    replayed=True,
-                    terminal=admitted.action.ended,
-                    storage_status="COMPLETED",
-                    turn_ordering="REPLAY",
-                )
-                return admitted
-            received_at, caller = admitted
+    def run_system_error(
+        self, call_id: str, event: ControlEvent, process: TurnProcessor
+    ) -> Optional[TurnRun]:
+        """Lỗi kỹ thuật phía transport (R-39): chạy một lượt điều khiển `event` ở lượt kế tiếp, dưới
+        cùng khóa với các lượt thường. Rẽ nhánh theo bảng 2.2 của plan 11/10:
 
+        - khách đã rời cuộc gọi -> `CallEnded` (không phát, không chuyển máy);
+        - còn lệnh ghi chờ đối soát (PENDING/UNKNOWN, lượt bị chặn) -> `ReconciliationRequired`;
+        - phiên đã kết thúc (ENDED, đã purge) -> None: không chạy lượt, không ghi gì thêm, kết quả
+          đã có được giữ nguyên. Gọi lần hai trong cùng cuộc gọi cũng rơi vào đây.
+        """
+        with self._store.call_lock(call_id, self._lock_timeout_s):
+            self._store.expire_session(call_id)
+            session = self._store.get_session(call_id)
+            if session is None:
+                raise SessionNotFound(call_id)
+            if session.close_requested:
+                raise CallEnded(call_id)
+            if session.purged_reason in ("RECONCILIATION_REQUIRED", "CLINIC_COMMITTED"):
+                self._check_retired(session)
+            if session.ended or session.purged_reason:
+                return None
+            blocked = self._store.find_blocked_turn(call_id)
+            if blocked is not None:
+                raise ReconciliationRequired(call_id, blocked)
+            unsettled = [
+                command
+                for command in self._store.list_commands(call_id)
+                if command.status in ("PENDING", "UNKNOWN")
+            ]
+            if unsettled:
+                turn = max(command.turn for command in unsettled)
+                self._block(call_id, turn, "lệnh chưa rõ kết quả khi gặp lỗi kỹ thuật")
+                raise ReconciliationRequired(call_id, turn)
+            caller = CallerInput(turn=session.last_completed_turn + 1, control_event=event)
+            return self._run_admitted(session, caller, process, None)
+
+    def _run_admitted(
+        self,
+        session: SessionRecord,
+        caller: CallerInput,
+        process: TurnProcessor,
+        resolve_input: Optional[Callable[[], CallerInput]],
+    ) -> TurnRun:
+        """Phần còn lại của một lượt, đã giữ khóa và đã kiểm tra phiên còn nhận lượt."""
+        call_id = session.call_id
+        admitted = self._admit(session, caller, resolve_input)
+        if isinstance(admitted, TurnRun):
             trace_event(
-                "session.admitted",
-                replayed=False,
-                terminal=False,
-                storage_status="PROCESSING",
-                turn_ordering="ACCEPTED",
-            )
-
-            ctx = CallContext.from_dict(session.context)
-            journal = StoreCommandJournal(self._store, call_id, caller.turn)
-            try:
-                with bind_journal(journal):
-                    outcome = process(ctx, caller, received_at)
-            except WriteOutcomeUnknown as exc:
-                self._block(call_id, caller.turn, str(exc))
-                blocked = ReconciliationRequired(call_id, caller.turn, str(exc))
-                blocked.diagnostics, blocked.extraction = exc.diagnostics, exc.extraction
-                raise blocked from exc
-            except ReconciliationRequired as exc:
-                # Nhật ký phát hiện khóa lệnh đã tồn tại với kết quả chưa rõ
-                self._block(call_id, caller.turn, str(exc))
-                raise
-
-            self._store.complete_turn(
-                call_id,
-                caller.turn,
-                ctx.to_dict(),
-                outcome.action.to_dict(),
-                outcome.extraction,
-                ended=ctx.ended,
-            )
-            trace_event(
-                "session.committed",
-                replayed=False,
-                terminal=ctx.ended,
+                "session.replayed",
+                replayed=True,
+                terminal=admitted.action.ended,
                 storage_status="COMPLETED",
-                turn_ordering="COMMITTED",
+                turn_ordering="REPLAY",
             )
-            return TurnRun(
-                outcome.action,
-                replayed=False,
-                extraction=outcome.extraction,
-                diagnostics=outcome.diagnostics,
-            )
+            return admitted
+        received_at, caller = admitted
+
+        trace_event(
+            "session.admitted",
+            replayed=False,
+            terminal=False,
+            storage_status="PROCESSING",
+            turn_ordering="ACCEPTED",
+        )
+
+        ctx = CallContext.from_dict(session.context)
+        journal = StoreCommandJournal(self._store, call_id, caller.turn)
+        try:
+            with (
+                bind_journal(journal),
+                bind_write_gate(lambda: not self._store.is_close_requested(call_id)),
+            ):
+                outcome = process(ctx, caller, received_at)
+        except WriteOutcomeUnknown as exc:
+            self._block(call_id, caller.turn, str(exc))
+            blocked = ReconciliationRequired(call_id, caller.turn, str(exc))
+            blocked.diagnostics, blocked.extraction = exc.diagnostics, exc.extraction
+            raise blocked from exc
+        except ReconciliationRequired as exc:
+            # Nhật ký phát hiện khóa lệnh đã tồn tại với kết quả chưa rõ
+            self._block(call_id, caller.turn, str(exc))
+            raise
+
+        self._store.complete_turn(
+            call_id,
+            caller.turn,
+            ctx.to_dict(),
+            outcome.action.to_dict(),
+            outcome.extraction,
+            ended=ctx.ended,
+        )
+        trace_event(
+            "session.committed",
+            replayed=False,
+            terminal=ctx.ended,
+            storage_status="COMPLETED",
+            turn_ordering="COMMITTED",
+        )
+        return TurnRun(
+            outcome.action,
+            replayed=False,
+            extraction=outcome.extraction,
+            diagnostics=outcome.diagnostics,
+        )
 
     def _check_retired(self, session: SessionRecord) -> None:
         if session.purged_reason in ("RECONCILIATION_REQUIRED", "CLINIC_COMMITTED"):
@@ -196,7 +272,7 @@ class SessionManager:
             turn = max((c.turn for c in commands), default=session.last_completed_turn + 1)
             self._block(session.call_id, turn, "Customer content removed; reconcile in Clinic")
             raise ReconciliationRequired(session.call_id, turn)
-        if session.purged_reason or session.ended:
+        if session.purged_reason or session.ended or session.close_requested:
             raise CallEnded(session.call_id)
 
     @staticmethod

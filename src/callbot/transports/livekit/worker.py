@@ -24,7 +24,13 @@ from callbot.transports.livekit.stt_session import SttSession
 from inference.asr import create_asr_gateway
 from inference.asr.base import AsrAuthError
 from speech.asr.recognizer import SpeechRecognizer
-from speech.bundle import build_streaming_bundle, turn_controller_options, warm_up, warm_up_vad
+from speech.bundle import (
+    build_streaming_bundle,
+    turn_controller_options,
+    warm_static_cache,
+    warm_up,
+    warm_up_vad,
+)
 from speech.settings import SpeechSettings
 
 if TYPE_CHECKING:
@@ -56,6 +62,10 @@ def prewarm(proc: "JobProcess") -> None:
         warm_up_vad(SpeechSettings())
     except Exception as exc:
         logger.warning("worker: không nạp sẵn được Silero v6: %s", exc)
+    try:
+        warm_static_cache(SpeechSettings())
+    except Exception as exc:  # job vẫn tự nạp được lúc dựng bundle; chỉ mất phần làm sẵn
+        logger.warning("worker: không nạp sẵn được audio dựng sẵn: %s", type(exc).__name__)
 
 
 def speech_settings_for(
@@ -185,7 +195,8 @@ async def entrypoint(ctx: JobContext) -> None:
                 if close is not None:
                     close()
         finally:
-            # Returning from a raw entrypoint does not finish a connected SDK job.
+            # Trả về từ entrypoint không kết thúc job: bot vẫn ở trong phòng tới khi LiveKit đóng
+            # phòng (~25-30 s sau khi khách rời, đo 12/10). Cuộc gọi đã xong thì rời phòng ngay.
             ctx.shutdown(reason="call finished")
 
 
