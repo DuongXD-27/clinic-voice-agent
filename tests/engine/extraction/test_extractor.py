@@ -392,10 +392,6 @@ def test_trace_is_json_ready() -> None:
 )
 def test_stated_attendance_is_agreement_at_readback(text: str, span: str) -> None:
     """T-04, contract Bảng 1: "states or agrees they will attend"."""
-    if text in ("không hủy đâu, tôi vẫn đến",):
-        result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
-        assert result.agreement.value is Agreement.UNCLEAR
-        return
     result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
     assert result.intent.value is Intent.CONFIRM
     assert (result.agreement.value, result.agreement.span) == (Agreement.AGREE, span)
@@ -463,9 +459,5 @@ def test_explicit_callback_request_at_the_name_step_is_out_of_scope() -> None:
     "text", ["tôi sẽ đến đúng giờ", "không đổi gì cả, tôi đến", "vâng, tôi vẫn đi khám"]
 )
 def test_attendance_with_its_own_complements_still_agrees(text: str) -> None:
-    if text in ("không đổi gì cả, tôi đến",):
-        result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
-        assert result.agreement.value is Agreement.UNCLEAR
-        return
     result = InformationExtractor().extract(ctx(QuestionId.CONFIRM_READBACK), text)
     assert result.agreement.value is Agreement.AGREE

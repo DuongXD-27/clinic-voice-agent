@@ -91,10 +91,18 @@ def test_unknown_clinic_id_is_not_given_a_guessed_name() -> None:
         "không hủy đâu, tôi vẫn đến",
         "tôi biết địa chỉ rồi, tôi sẽ đến",
         "tôi sẽ đến đúng giờ, không trễ đâu",
+        # Cụm trung tính ở câu hỏi đến khám không phải phủ định (R-41, ngoại lệ chờ PO duyệt)
+        "không đổi gì đâu, tôi vẫn đến",
+        # Nhận lịch / hoàn cảnh cho phép đến, kèm lời đồng ý (eval confirm 13-10)
+        "lịch đó ổn em ạ",
+        "ừ thế cũng được",
+        "tôi thu xếp được rồi",
+        "hôm đó tôi xin nghỉ rồi, đến được",
+        "hôm đó tôi qua sớm",
     ],
 )
 def test_agreement_confirms_in_one_turn(answer: str) -> None:
-    if answer in ("dạ", "không hủy đâu, tôi vẫn đến", "tôi sẽ đến đúng giờ, không trễ đâu"):
+    if answer in ("dạ",):
         bot, clinic, _ = _at_readback("c_unsafe")
         action = _run(bot, "c_unsafe", [answer], start=3)
         assert not action.ended and clinic.writes == []
@@ -385,6 +393,32 @@ def test_statements_with_a_yes_word_reread_without_writing(answer: str) -> None:
     assert FACTS in action.utterance and action.utterance.endswith(t.ASK_ATTENDANCE)
     ctx = _context(bot, "c_t04s8_story")
     assert ctx.question.question_id is QuestionId.CONFIRM_READBACK and ctx.evidence == []
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "lịch đó không ổn",
+        "ổn không em",
+        "lich do on em a",
+        "ừ, vợ tôi cũng đi",
+        "tôi chưa sắp xếp được",
+        "để tôi sắp xếp đã",
+        "hôm đó tôi nghỉ phép rồi, không đi được",
+        "tôi không qua sớm được",
+        "hom do toi qua som",
+        "tôi qua sớm hơn",
+        "không hủy, nhưng không đi được",
+        "không đổi gì, không đi được đâu",
+        "khong huy dau, toi van den",
+        "không hủy đâu, chưa chắc đến",
+    ],
+)
+def test_new_attendance_words_never_write_when_negated_or_unclear(answer: str) -> None:
+    """Mỗi từ mới mở rộng ngưỡng ghi CONFIRMED có ca âm tính (`agreement._PARTICLE_WORDS`)."""
+    bot, clinic, _ = _at_readback("c_t04_new_words")
+    _run(bot, "c_t04_new_words", [answer], start=3)
+    assert clinic.writes == []
 
 
 def test_yes_after_the_reread_confirms() -> None:
