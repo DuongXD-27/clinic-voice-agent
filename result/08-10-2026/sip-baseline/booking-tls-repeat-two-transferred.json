@@ -1,0 +1,181 @@
+{
+  "commit": "18fc43e201ce6bd2c9e205a5799e1dd2aa0780f3",
+  "transport": "TLS",
+  "expected_synthetic_name": "Nguyễn Văn A",
+  "calls": [
+    {
+      "index": 1,
+      "job_id": "AJ_tcAWtSfiUhse",
+      "dispatch_id": "AD_WGqT9aV4Y3gu",
+      "room_id": "RM_D2hHHCKHUkFh",
+      "room": "sip-booking-_+84912345600_eDKXGWtxqj6R",
+      "received_at_utc": "2026-10-08T05:05:54.944474+00:00",
+      "turns": [
+        {
+          "at_utc": "2026-10-08T05:06:12.178086+00:00",
+          "action": "call_bridge: turn 1 action state=AWAITING_IDENTITY ended=False outcome=None"
+        },
+        {
+          "at_utc": "2026-10-08T05:06:21.327626+00:00",
+          "action": "call_bridge: turn 2 action state=ENDED ended=True outcome=TRANSFERRED"
+        }
+      ],
+      "worker_pid": 17332,
+      "sip_participant": true,
+      "outcome": "TRANSFERRED",
+      "hangup_api": "SIP hangup: caller removed",
+      "closed_at_utc": "2026-10-08T05:06:27.543481+00:00",
+      "new_records": [],
+      "existing_records_unchanged": true,
+      "booking_delta_pass": false,
+      "sip_bye_client_confirmation": "PENDING_PCAP_ANALYSIS",
+      "user_report": "Call 1: wrong name, asked again, wrong name, transferred",
+      "live_asr_audit": [
+        {
+          "turn": 1,
+          "timestamp_utc": "2026-10-08T05:06:12.136648+00:00",
+          "live_asr_text": "TÊN LÀ NGUYỄN VĂN AN",
+          "confidence": 0.9995089306573728,
+          "rule_name": null,
+          "rule_reason": "NO_SIGNAL",
+          "identity_status": "ABSENT",
+          "comparison_if_present": null
+        },
+        {
+          "turn": 2,
+          "timestamp_utc": "2026-10-08T05:06:21.285618+00:00",
+          "live_asr_text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+          "confidence": 0.8329228978365423,
+          "rule_name": "nguyễn văn an",
+          "rule_reason": "OK",
+          "identity_status": "PRESENT",
+          "comparison_if_present": "MISMATCH"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "job_id": "AJ_BjLYfWtLszxZ",
+      "dispatch_id": "AD_Agfpyzn2RLVz",
+      "room_id": "RM_iEzxJSvuvDUt",
+      "room": "sip-booking-_+84912345600_cWeeM8LonaqU",
+      "received_at_utc": "2026-10-08T05:06:42.718353+00:00",
+      "turns": [
+        {
+          "at_utc": "2026-10-08T05:06:59.023436+00:00",
+          "action": "call_bridge: turn 1 action state=ENDED ended=True outcome=TRANSFERRED"
+        }
+      ],
+      "worker_pid": 17332,
+      "sip_participant": true,
+      "outcome": "TRANSFERRED",
+      "hangup_api": "SIP hangup: caller removed",
+      "closed_at_utc": "2026-10-08T05:07:04.446432+00:00",
+      "new_records": [],
+      "existing_records_unchanged": true,
+      "booking_delta_pass": false,
+      "sip_bye_client_confirmation": "PENDING_PCAP_ANALYSIS",
+      "user_report": "Call 2: wrong name, transferred without retry",
+      "live_asr_audit": [
+        {
+          "turn": 1,
+          "timestamp_utc": "2026-10-08T05:06:58.979567+00:00",
+          "live_asr_text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+          "confidence": 0.9597806276924779,
+          "rule_name": "nguyễn văn an",
+          "rule_reason": "OK",
+          "identity_status": "PRESENT",
+          "comparison_if_present": "MISMATCH"
+        }
+      ]
+    }
+  ],
+  "booked_records_added": 0,
+  "gate_passed": false,
+  "third_call": "Not attempted",
+  "contract_reference": "docs/reference/stage1-requirements-2026-10-02.md, Identity (R-40)",
+  "contract_rule": "PRESENT + MISMATCH transfers immediately; ABSENT/UNCERTAIN/MULTIPLE gets one open retry per field.",
+  "analysis_scope": "Live transcript from local diagnostic worker; pure rule replay with live ASR confidence; no speech API calls.",
+  "hangup_scope": "Both calls executed configured 2000ms grace then RemoveParticipant succeeded; handset final-sentence playback not confirmed.",
+  "status": "ASR_NAME_ERROR_CONFIRMED; BOOKING_GATE_BLOCKED",
+  "offline_decoder_comparison": {
+    "scope": "Offline decode of RTP windows, not identical to live VAD input; no context bias or patient data supplied to ASR.",
+    "results": [
+      {
+        "call": 1,
+        "turn": 1,
+        "method": "greedy_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.9514340949455851
+      },
+      {
+        "call": 1,
+        "turn": 2,
+        "method": "greedy_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.9282171703789195
+      },
+      {
+        "call": 2,
+        "turn": 1,
+        "method": "greedy_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.8737690407127932
+      },
+      {
+        "call": 1,
+        "turn": 1,
+        "method": "modified_beam_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.9512171098417368
+      },
+      {
+        "call": 1,
+        "turn": 2,
+        "method": "modified_beam_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.9282155108869181
+      },
+      {
+        "call": 2,
+        "turn": 1,
+        "method": "modified_beam_search",
+        "text": "TÔI TÊN LÀ NGUYỄN VĂN AN",
+        "confidence": 0.8727601587176241
+      }
+    ]
+  },
+  "validation": {
+    "identity_dialogue_and_name_slot_tests": 140,
+    "passed": true,
+    "speech_api_calls_for_offline_audit": 0
+  },
+  "preceding_setup_failures": {
+    "status": "SETUP_FAILED_BEFORE_AGENT",
+    "cause": "Two Linphone versions running; calls from installed version used different SIP identity and did not complete trunk authentication.",
+    "livekit_error": "auth challenge issued, no authenticated retry received",
+    "sip_response": 407,
+    "attempts": [
+      {
+        "call_id": "SCL_ZN9srPo5P7Tz",
+        "started_local": "2026-10-08T11:59:13.07+07:00",
+        "caller": "vinmec-callbot",
+        "duration_seconds": 0
+      },
+      {
+        "call_id": "SCL_3RELTYmfPLBv",
+        "started_local": "2026-10-08T12:00:16.88+07:00",
+        "caller": "vinmec-callbot",
+        "duration_seconds": 0
+      }
+    ],
+    "worker_received_jobs": 0,
+    "recovery": "Closed installed Linphone and brought configured Linphone 5 baseline to foreground; live retry pending."
+  },
+  "superseding_prd_review": {
+    "version": "2.3",
+    "date": "2026-10-07",
+    "finding": "Both calls violate R-40/GC-ID-04: name mismatch must ask missing DOB before transfer. Previous contract_rule field describes outdated implementation, not current PRD.",
+    "reference": "docs/evidence/prd-v2.3-inbound-review-2026-10-08.md"
+  }
+}

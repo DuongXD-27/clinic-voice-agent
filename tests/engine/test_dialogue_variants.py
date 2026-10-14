@@ -102,8 +102,8 @@ def test_offers_say_same_day_only_when_dates_match_and_use_one_slot_question():
     assert "thứ Tư ngày 14 tháng 10" in other_day and "thứ Năm ngày 15 tháng 10" in other_day
     assert "cùng ngày" not in other_day
     single = t.offer_slots(ctx, [SLOTS[0]])
-    assert single.endswith("Anh chị chọn giờ này không ạ?")
-    assert "chọn khung nào" not in single
+    assert single.endswith("Anh chị lấy giờ này được không ạ?")
+    assert "chọn giờ nào" not in single
 
 
 def test_offer_and_silence_composite_stay_under_limit_with_long_dates_and_prefixes():
@@ -194,9 +194,9 @@ def test_fixed_slot_readback_keeps_selected_slot_and_consent(action_name, render
         text = render(ctx, SLOTS[0], action_name)
     assert "10 giờ sáng" in text and "thứ Tư ngày 14 tháng 10" in text
     ending = (
-        "Anh chị đồng ý chứ ạ?"
+        "Anh chị đồng ý không ạ?"
         if render is t.slot_readback
-        else f"Anh chị {'đặt' if action_name == 'BOOK' else 'đổi sang'} giờ đó nhé ạ?"
+        else f"Anh chị {'đặt' if action_name == 'BOOK' else 'đổi sang'} giờ này được không ạ?"
     )
     assert text.endswith(ending) and len(text) < 300
     action = _ask(
@@ -220,11 +220,12 @@ def test_all_offers_keep_prefix_page_count_and_invitation(variant):
         full = t.offer_slots(ctx, SLOTS, full_date=date(2026, 10, 13), variant=variant)
         invited = t.offer_slots(ctx, SLOTS, invite="BOOK", variant=variant)
     assert normal.startswith(t.SLOT_TAKEN) and normal.count("Dạ") == 0
-    assert "Còn 3 khung khác." in normal
+    assert "Ngoài ra còn 3 giờ khác nữa." in normal
     assert "Thứ Ba ngày 13 tháng 10 đã kín lịch" in full
-    assert invited.endswith("Anh chị chọn khung nào, hoặc muốn đặt vào ngày khác ạ?")
+    assert invited.endswith("Anh chị chọn một trong hai giờ này, hay muốn đặt ngày khác ạ?")
     for text in (normal, full, invited):
-        assert "khung 1: 10 giờ sáng" in text and "khung 2: 2 giờ 30 chiều" in text
+        assert "10 giờ sáng, thứ Tư ngày 14 tháng 10, và 2 giờ 30 chiều" in text
+        assert "khung" not in text
         assert len(text) < 300
 
 
@@ -273,9 +274,9 @@ def test_cancel_requires_unchanged_second_confirmation(variant):
 
 def test_slot_paging_and_confirmation_write_only_the_selected_slot(variant):
     clinic, bot, page = _call("c_variant_slot", "Tôi đổi sang buổi chiều được không?")
-    assert page.state == "OFFERING_SLOTS" and "Còn 4 khung khác" in page.utterance
+    assert page.state == "OFFERING_SLOTS" and "Ngoài ra còn 4 giờ khác" in page.utterance
     readback = _say(bot, "c_variant_slot", "khung 2 được không")
-    assert readback.utterance.endswith("Anh chị đồng ý chứ ạ?")
+    assert readback.utterance.endswith("Anh chị đồng ý không ạ?")
     assert clinic.writes == []
     done = _say(bot, "c_variant_slot", "đồng ý")
     assert done.outcome == "RESCHEDULED"
@@ -302,9 +303,11 @@ def test_unknown_inbound_opening_never_claims_identity_or_appointment(variant):
         CallStart(call_id="c_variant_unknown", direction="inbound", caller_number="0999999999")
     )
     assert opening.utterance in t.static_choices(t.GREETING_HANDOFF_INBOUND)
-    assert t.AI_DISCLOSURE in opening.utterance and "?" not in opening.utterance
+    assert "Vinmec" in opening.utterance and "?" not in opening.utterance
     action = _run(bot, "c_variant_unknown", ["alo"])
     assert action.outcome == "TRANSFERRED" and clinic.writes == []
+    # Tra hồ sơ theo số không được: nói lý do khi chuyển máy, không hỏi danh tính (§1.1.9)
+    assert action.utterance == t.LOOKUP_TRANSFER["NO_CANDIDATES"]
 
 
 def test_audio_transport_sends_the_selected_text_to_tts_and_serves_audio(variant, client, clinic):

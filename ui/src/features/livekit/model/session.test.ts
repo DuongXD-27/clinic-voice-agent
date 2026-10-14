@@ -267,6 +267,46 @@ describe("transcript", () => {
   });
 });
 
+describe("extraction", () => {
+  const botLine = (turn: number, extra: Partial<TranscriptLine> = {}): TranscriptLine => ({
+    role: "bot",
+    turn,
+    text: "Dạ",
+    confidence: null,
+    state: "AWAITING_INTENT",
+    ended: false,
+    outcome: null,
+    ...extra,
+  });
+  const say = (state: LiveKitSession, line: TranscriptLine) =>
+    liveKitReducer(state, { type: "transcript", line, at: 1 });
+
+  it("lấy trích xuất từ câu bot; giữ qua khi ngắt, xoá khi bắt đầu cuộc gọi mới", () => {
+    const first = say(connected, botLine(1, { extraction: { turn: 1, fields: null } }));
+    const second = say(first, botLine(2, { extraction: { turn: 2, fields: null } }));
+    const ended = liveKitReducer(second, { type: "disconnected", at: 3 });
+    const next = liveKitReducer(ended, { type: "connecting", step: "x" });
+
+    expect(second.extraction).toEqual({ turn: 2, fields: null });
+    expect(ended.extraction).toEqual({ turn: 2, fields: null });
+    expect(next).toMatchObject({ extraction: null, extractionIssue: null });
+  });
+
+  it("câu chào (lượt 0) không mang trích xuất: không phải lỗi", () => {
+    expect(say(connected, botLine(0))).toMatchObject({ extraction: null, extractionIssue: null });
+  });
+
+  it("câu bot không kèm hoặc kèm sai dạng: báo, không giữ trích xuất của lượt cũ", () => {
+    const first = say(connected, botLine(1, { extraction: { turn: 1, fields: null } }));
+
+    expect(say(first, botLine(2))).toMatchObject({ extraction: null, extractionIssue: "missing" });
+    expect(say(first, botLine(2, { extraction: "invalid" }))).toMatchObject({
+      extraction: null,
+      extractionIssue: "invalid",
+    });
+  });
+});
+
 describe("describeConnection", () => {
   it.each([
     ["idle", initialSession, { tone: "neutral", label: "Chưa kết nối", pulse: false }],

@@ -9,9 +9,7 @@ NA007,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,Hộp thư thoạ
 NA008,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Số máy quý khách vừa gọi hiện không trả lời, xin mời để lại tin nhắn sau tiếng bíp",UNREACHABLE,VOICEMAIL,,,Tổng đài chuyển hộp thư: VOICEMAIL chứ không NO_ANSWER
 NA009,regression,http,CONFIRMED,voicemail_vi,outbound,ASK_NAME,"Hộp thư của quý khách đã đầy, không thể nhận thêm tin nhắn",UNREACHABLE,VOICEMAIL,,,Hộp thư đầy vẫn là đã vào hộp thư
 NA010,dev,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, bạn đã gọi đến số của Lan. Hiện không thể nghe máy",UNREACHABLE,VOICEMAIL,,,Lời chào cá nhân (T-08)
-NA011,dev,http,REVIEW,voicemail_personal,outbound,ASK_NAME,"Xin chào, tôi là Lan, hiện không nghe máy được",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
 NA012,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, đây là hộp thư của Minh, vui lòng nhắn lại sau tiếng bíp",UNREACHABLE,VOICEMAIL,,,
-NA013,regression,http,REVIEW,voicemail_personal,outbound,ASK_NAME,"Chào bạn, mình là Hoa, hiện không thể nghe máy, mình sẽ gọi lại sau",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
 NA014,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Bạn đã gọi tới số của Tuấn, hiện tại Tuấn không bắt máy được, vui lòng gọi lại sau",UNREACHABLE,VOICEMAIL,,,"""gọi tới"" thay cho ""gọi đến"""
 NA015,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Xin chào, đây là hộp thư của Minh",UNREACHABLE,VOICEMAIL,,,"Chỉ ""hộp thư"", không có ""thoại"""
 NA016,regression,http,CONFIRMED,voicemail_personal,outbound,ASK_NAME,"Cảm ơn bạn đã gọi cho cửa hàng Hoa Mai, hiện chúng tôi không thể trả lời",UNREACHABLE,VOICEMAIL,,,
@@ -20,7 +18,6 @@ NA018,dev,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,"The person you are call
 NA019,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,"Please record your message after the beep. When you are finished, hang up",UNREACHABLE,VOICEMAIL,,,
 NA020,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,Your call has been forwarded to an automated voice messaging system,UNREACHABLE,VOICEMAIL,,,Lời chào hộp thư mặc định phổ biến
 NA021,regression,http,CONFIRMED,voicemail_en,outbound,ASK_NAME,The mailbox is full and cannot accept any messages,UNREACHABLE,VOICEMAIL,,,
-NA022,regression,http,REVIEW,voicemail_en,outbound,ASK_NAME,"Hello, this is Lan. Sorry I missed your call, I will get back to you",UNREACHABLE,VOICEMAIL,,,Transcript có thể là người thật đang bận; cần audio/ngữ cảnh trước khi chốt VOICEMAIL
 NA023,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,xin vui lòng để lại lời nhắn sau tiếng bíp,UNREACHABLE,VOICEMAIL,,,ASR: chữ thường không dấu câu
 NA024,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,xin vui long de lai loi nhan sau tieng bip,UNREACHABLE,VOICEMAIL,,,ASR / gõ không dấu
 NA025,regression,http,CONFIRMED,voicemail_asr,outbound,ASK_NAME,quy khach vui long de lai loi nhan thoai,UNREACHABLE,VOICEMAIL,,,

@@ -50,12 +50,18 @@ class LiveKitSettings(YamlSettings):
     # Gửi lượt im lặng cho core sau chừng này ms không có tiếng nói (0 = tắt). Core đã có luật
     # im lặng (max_silent_turns) nhưng đường LiveKit trước đây luôn gửi silence_ms=0.
     silence_timeout_ms: int
+    # Local AudioSource drainage does not acknowledge handset playback. Allow the
+    # final SIP audio frames to cross the network and remote jitter buffer before BYE.
+    sip_hangup_grace_ms: int = Field(ge=0, le=5000)
     # THỬ NGHIỆM (28/09/2026, xem docs/evidence §8): đo offline cho thấy Krisp VIVA làm WER
     # tệ hơn ở gần mọi điều kiện kể cả audio sạch — mặc định TẮT. Bật tạm để nghe thử qua
     # LiveKit thật (streaming, có network/jitter thật) trước khi quyết định cuối cùng; không
     # phải khuyến nghị bật cho production. Cần cài `livekit-plugins-krisp` (không có sẵn trong
     # pyproject.toml — xem cảnh báo về nâng cấp livekit-agents/openai ngoài ý muốn trong evidence).
     krisp_noise_suppression_enabled: bool = False
+    # Gửi trích xuất từng lượt (có PII) kèm câu bot cho trang /ui/livekit. Chỉ cho demo: cuộc gọi
+    # thật (SIP, production) phải tắt. Cùng vai trò header `X-Demo-Debug: 1` của HTTP.
+    demo_debug: bool = False
 
     @field_validator("agent_name", mode="before")
     @classmethod

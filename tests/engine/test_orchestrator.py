@@ -8,7 +8,6 @@ import pytest
 
 from callbot.engine import CallEnded, CallerInput, CallStart, create_orchestrator
 from callbot.engine.dialogue import templates as t
-from callbot.engine.dialogue.templates import AI_DISCLOSURE
 from callbot.engine.extraction import InformationExtractor, QuestionId, TurnContext
 from callbot.engine.session import CallContext
 from callbot.engine.verification import matches
@@ -66,15 +65,15 @@ def test_opening_discloses_ai_assistant() -> None:
         ),
     ]
     for opening in openings:
-        assert AI_DISCLOSURE in opening.utterance
+        assert "Vinmec" in opening.utterance
         assert opening.state == "AWAITING_IDENTITY"
         # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
         assert opening.utterance.rstrip().endswith("?")
     assert _context(bot, "c_greet_out").question.question_id is QuestionId.ASK_NAME
 
-    # T-02: không có hồ sơ -> không hỏi tên, nhưng vẫn công bố AI ngay câu đầu
+    # T-02: không có hồ sơ -> không hỏi tên; lượt 1 nói lý do rồi chuyển máy (LOOKUP_TRANSFER)
     handoff = bot.start_call(_inbound("c_greet_unknown", "0999999999"))
-    assert AI_DISCLOSURE in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
+    assert "Vinmec" in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
     assert _context(bot, "c_greet_unknown").question is None
 
 
@@ -159,7 +158,7 @@ def test_reference_call_reschedule() -> None:
         ["Nguyễn Văn A.", "Ngày 14 tháng 3 năm 1978.", "Tôi đổi sang buổi chiều được không?"],
     )
     assert action.state == "AWAITING_CONFIRMATION"
-    assert "2 giờ 30 chiều" in action.utterance and "đổi sang giờ đó" in action.utterance
+    assert "2 giờ 30 chiều" in action.utterance and "đổi sang giờ này" in action.utterance
     assert _context(bot, "c_resched").selected_slot_id == "slot_91d2" and clinic.writes == []
 
     action = _run(bot, "c_resched", ["Được, đổi giúp tôi."], start=4)
@@ -195,11 +194,14 @@ def test_ambiguous_slot_choice_does_not_pick_first_slot() -> None:
     bot.start_call(_outbound("c_ambiguous"))
     _run(bot, "c_ambiguous", ["Nguyễn Văn A", "14/03/1978", "Tôi muốn đổi lịch"])
 
+    # "buổi chiều" khớp 14:30 (trên trang) và 16:00 (ngoài trang): chọn khung chiều duy nhất trên trang
+    # vừa đọc, không phải khung đầu trang (10:00). Chỉ nêu buổi nên đọc câu chốt, không ghi (review 12-10 B7)
     action = _run(bot, "c_ambiguous", ["buổi chiều"], start=4)
-    assert action.state == "OFFERING_SLOTS"
+    assert action.state == "AWAITING_CONFIRMATION"
     ctx = _context(bot, "c_ambiguous")
-    assert ctx.presented_slot_ids == ["slot_91d2", "slot_cc03"]
-    assert ctx.selected_slot_id is None and ctx.failed_understandings == 0
+    assert ctx.presented_slot_ids == ["slot_aa01", "slot_91d2"]
+    assert ctx.selected_slot_id == "slot_91d2" and ctx.failed_understandings == 0
+    assert clinic.writes == []
 
 
 def test_refusing_slots_drops_pending_action_without_writing() -> None:
@@ -361,6 +363,17 @@ def test_two_failed_understandings_transfer() -> None:
     bot.start_call(_outbound("c_confused"))
     action = _run(bot, "c_confused", ["ờ để xem", "ờ để xem"])
     assert action.transfer_reason == "NOT_UNDERSTOOD"
+
+
+def test_two_hesitations_at_readback_transfer() -> None:
+    """Ậm ừ suông ở câu đọc lịch không phải câu trả lời chưa rõ — tính ngay lần đầu."""
+    clinic = FakeClinicAPI()
+    bot = create_orchestrator(clinic)
+    bot.start_call(_outbound("c_hesitant"))
+    lines = ["Nguyễn Văn A", "14/03/1978", "Ờ cái... ừ thì... à", "Cái đó... ờ, như kiểu..."]
+    action = _run(bot, "c_hesitant", lines)
+    assert action.transfer_reason == "NOT_UNDERSTOOD"
+    assert clinic.writes == [("apt_00417", "TRANSFERRED", {"transfer_reason": "NOT_UNDERSTOOD"})]
 
 
 def test_extraction_with_provenance_is_stored_on_turn_record() -> None:

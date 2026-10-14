@@ -3,9 +3,9 @@
 Hai bộ dữ liệu:
 - `seed_listing3`: giá trị Listing 3 của contract (apt_00417 lúc 09:00, hai slot trống). Test engine hiện có
   ghi cứng các giá trị này — đây là mặc định của `FakeClinicAPI()`.
-- `seed_mentor_mock`: y như `seed_default()` của mock sau /_harness/reset (apt_00417 lúc 15:30, một slot
-  canonical, 10 bệnh nhân demo pt_3401–pt_3410 với lịch apt_00418–apt_00427 và 10 slot trống
-  slot_b501–slot_b510, cộng bộ per-tenant). Mock gắn hậu tố tenant vào id per-tenant; sim giữ id gốc.
+- `seed_mentor_mock`: y như mock deploy sau /_harness/reset (apt_00417 lúc 15:30, một slot canonical,
+  6 bệnh nhân demo pt_3401–pt_3406 với lịch apt_00418–apt_00423 và 10 slot trống slot_b501–slot_b510,
+  cộng bộ per-tenant). Mock gắn hậu tố tenant vào id per-tenant; sim giữ id gốc.
 
 State của sim nằm trên `FakeClinicAPI` (không có `Store` riêng như mock) để test đọc thẳng
 `clinic.appointments`, `clinic.writes`...
@@ -65,8 +65,9 @@ CANONICAL_SLOTS = [
         "provider_id": DEFAULT_PROVIDER,
     },
 ]
-# Bản ghi demo mock thêm ngày 24-09-2026 (clinic-mock `aa8b94e`, mentor cho phép): hồ sơ thường, không
-# edge case. Mỗi bệnh nhân một lịch SCHEDULED chiếm slot riêng không nằm trong danh sách trống.
+# Bản ghi demo của team trên mock deploy (từ 12-10-2026, nạp từ clinic-mock `deploy/data/demo_patients.json`,
+# mentor cho phép): hồ sơ thường, không edge case. Mỗi bệnh nhân một lịch SCHEDULED chiếm slot riêng không
+# nằm trong danh sách trống.
 DEMO_PATIENTS = [
     {
         "patient_id": patient_id,
@@ -76,16 +77,12 @@ DEMO_PATIENTS = [
         "verify": {"full_name": full_name, "dob": dob},
     }
     for patient_id, display_name, phone, dob, full_name in [
-        ("pt_3401", "T. T. B.", "0901234501", "1990-06-21", "Trần Thị Bình"),
-        ("pt_3402", "L. V. C.", "0901234502", "1965-01-09", "Lê Văn Cường"),
-        ("pt_3403", "P. T. D.", "0901234503", "1988-12-02", "Phạm Thị Dung"),
-        ("pt_3404", "H. M. Đ.", "0901234504", "1975-07-30", "Hoàng Minh Đức"),
-        ("pt_3405", "V. T. H.", "0901234505", "1995-03-17", "Vũ Thị Hoa"),
-        ("pt_3406", "Đ. Q. H.", "0901234506", "1982-09-05", "Đặng Quốc Hùng"),
-        ("pt_3407", "B. T. L.", "0901234507", "1970-11-23", "Bùi Thị Lan"),
-        ("pt_3408", "Đ. V. L.", "0901234508", "1999-02-14", "Đỗ Văn Long"),
-        ("pt_3409", "N. T. M.", "0901234509", "1986-05-08", "Ngô Thị Minh"),
-        ("pt_3410", "D. T. P.", "0901234510", "1960-10-01", "Dương Thanh Phong"),
+        ("pt_3401", "N. H. H.", "0967769004", "2004-05-16", "Ngô Huy Hoàn"),
+        ("pt_3402", "N. D. H.", "0384141088", "2004-01-18", "Nguyễn Duy Hưng"),
+        ("pt_3403", "L. Q. H.", "0359898331", "2002-10-02", "Lê Quang Huy"),
+        ("pt_3404", "N. T. T. H.", "0702636966", "2004-03-05", "Nguyễn Thị Thanh Hiền"),
+        ("pt_3405", "N. T. D.", "0353223910", "2005-11-27", "Nguyễn Tuấn Dương"),
+        ("pt_3406", "P. T. V.", "0984586064", "2005-09-25", "Phạm Tuấn Việt"),
     ]
 ]
 # Sau slot_91d2 theo cả thứ tự lẫn giờ để slot_91d2 vẫn được đề xuất đầu tiên (như mock)
@@ -118,10 +115,6 @@ DEMO_APPOINTMENTS = [
     ("apt_00421", "slot_a421", "pt_3404", "2026-10-16T08:30", "2026-10-16T09:00", "Tiêu hóa"),
     ("apt_00422", "slot_a422", "pt_3405", "2026-10-16T10:00", "2026-10-16T10:30", "Da liễu"),
     ("apt_00423", "slot_a423", "pt_3406", "2026-10-16T15:00", "2026-10-16T15:30", "Cơ xương khớp"),
-    ("apt_00424", "slot_a424", "pt_3407", "2026-10-19T08:00", "2026-10-19T08:30", "Mắt"),
-    ("apt_00425", "slot_a425", "pt_3408", "2026-10-19T09:00", "2026-10-19T09:30", "Tai Mũi Họng"),
-    ("apt_00426", "slot_a426", "pt_3409", "2026-10-19T14:30", "2026-10-19T15:00", "Răng Hàm Mặt"),
-    ("apt_00427", "slot_a427", "pt_3410", "2026-10-20T09:00", "2026-10-20T09:30", "Thần kinh"),
 ]
 
 MOCK_TENANT_PATIENTS = [

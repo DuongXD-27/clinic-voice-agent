@@ -225,6 +225,8 @@ def _run_case(
     clinic = FakeClinicAPI()
     bot = create_orchestrator(clinic, store=_store())
     bot._extractor._semantic = semantic
+    # Tầng model chọn khung không thuộc phạm vi eval này: tắt kể cả khi .env bật SLOT_SEMANTIC_ENABLED
+    bot._extractor._slot_semantic = None
     bot.start_call(CallStart(call_id=call_id, direction="outbound", appointment_id="apt_00417"))
     lines = [*VERIFIED, *SETUP[row["question_id"]]]
     for turn, line in enumerate(lines, start=1):

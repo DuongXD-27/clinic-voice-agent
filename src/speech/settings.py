@@ -41,6 +41,23 @@ class SpeechSettings(YamlSettings):
     silero_vad_model_path: str
     # Silero giữ "đang nói" thêm chừng này sau khi hết tiếng — cộng vào độ trễ chốt lượt.
     silero_min_silence_ms: int
+    # Xác suất tiếng nói tối thiểu để Silero bắt đầu / giữ "đang nói" (0,5 = mặc định của model).
+    silero_threshold: float
+    # v4: silero_vad_model_path qua sherpa-onnx. v6: silero_vad_v6_model_path (Silero v6.2.3 chính
+    # thức) qua onnxruntime — speech/asr/vad/silero_onnx.py, cùng máy trạng thái (sherpa chạy v6 lệch
+    # bản chính thức, mất âm đầu câu nhiều hơn). Thiếu file v6 thì cảnh báo và dùng v4. Dùng cho bộ
+    # phân loại của LiveKit và cho /v1/stt.
+    silero_vad_version: Literal["v4", "v6"]
+    silero_vad_v6_model_path: str
+    # Audio riêng cho bộ phân loại tiếng nói (speech/audio/vad_frontend.py): khử nhiễu chỉ để
+    # Silero quyết định có/không tiếng nói, ASR vẫn nghe audio gốc. Chỉ dùng với vad_provider=silero.
+    vad_frontend: Literal["off", "webrtc", "webrtc_agc", "gtcrn", "dpdfnet"]
+    vad_frontend_model_path: str
+    # Tăng âm sau khi khử nhiễu, chỉ cho bộ phân loại (Silero phụ thuộc mức âm tuyệt đối).
+    vad_frontend_gain_db: float
+    # Nhiễu trắng nền (RMS, dBFS) cộng vào sau khi khử nhiễu: Silero không bao giờ nghe im lặng
+    # tuyệt đối. None = không cộng.
+    vad_frontend_floor_dbfs: Optional[float]
 
     # --- Chốt lượt (TurnController) ---
     # Lượt ngắn hơn ngưỡng này bị coi là tiếng động/backchannel.
@@ -79,6 +96,9 @@ class SpeechSettings(YamlSettings):
     # Lời người gọi nói chen lúc bot nói mà chưa được xác nhận ngắt lời: giữ riêng, decode khi bot
     # dứt lời, thành lượt nếu còn chữ sau khi bỏ tiếng vọng. False = bỏ (trước 08/10).
     turn_keep_unconfirmed_barge_in: bool
+    # Tăng âm giọng người gọi quá nhỏ trước VAD/ASR (speech/audio/quiet_gain.py). Giọng đủ to thì
+    # luồng giữ nguyên; nền nhiễu sau khi tăng không vượt -50 dBFS.
+    quiet_speech_gain_enabled: bool
 
     # THỬ NGHIỆM cổng giọng người gọi (speech/audio/speaker_gate.py): off | log | enforce.
     speaker_gate_mode: Literal["off", "log", "enforce"]

@@ -1,37 +1,55 @@
 # Engine — callbot.engine.settings.EngineSettings.
 # Ghi đè từng khóa bằng biến môi trường cùng tên viết hoa (vd. SEMANTIC_FALLBACK_ENABLED=false).
 
-# Name slot filling fallback: none | openai | gemini | groq | openrouter (cấu hình ở llm.yaml)
-name_fallback_provider: openai
+# Name slot filling fallback: none | openai | gemini | groq | openrouter | deepseek (cấu hình ở llm.yaml)
+name_fallback_provider: deepseek
 
 # Tầng ngữ nghĩa (T-05 §8): model đọc các câu luật không chắc. Bật theo quyết định owner 22-09-2026;
 # thiếu khóa thì tự chạy chỉ-luật, không chặn khởi động.
 semantic_fallback_enabled: true
 
-# Provider đọc câu (gọi trước): jev | openai. Mặc định jev — owner 10-10-2026,
-# docs/evidence/semantic-provider-jev-2026-10-10.md. jev cần TYPESAFE_API_KEY, cấu hình ở llm.yaml
-# mục typesafe; openai dùng semantic_openai_model bên dưới.
+# Provider đọc câu (gọi trước): jev | openai | gemini | groq | openrouter | deepseek. Mặc định jev —
+# owner 10-10-2026, docs/evidence/semantic-provider-jev-2026-10-10.md. jev cần TYPESAFE_API_KEY, cấu
+# hình ở llm.yaml mục typesafe; provider LLM dùng semantic_llm_* bên dưới và khóa của provider đó.
 semantic_provider: jev
-# Provider dự phòng, CHỈ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng); provider
+# Provider dự phòng (none hoặc như trên), CHỈ gọi khi provider chính lỗi dịch vụ (timeout, mạng, HTTP, trả lời hỏng); provider
 # chính đã trả lời thì không gọi. none = không dự phòng. Thiếu khóa provider chính -> chạy riêng dự phòng.
-semantic_backup_provider: openai
-# Chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây trong trần 3 s (OpenAI p50 ~1,4 s)
+semantic_backup_provider: deepseek
+# Chỉ gọi dự phòng khi lượt còn ít nhất chừng này giây trong trần lượt 4 s (OpenAI p50 ~1,4 s)
 semantic_backup_min_remaining_s: 1.5
 
 # Jev: nhãn confidence thấp hơn bị bỏ; đồng ý / từ chối thấp hơn -> AMBIGUOUS (hỏi lại)
 semantic_jev_min_confidence: 0.6
 # Jev: Noul (câu đọc lịch / "đổi hay hủy": không đến được, sẽ đến, xin giờ khác) tính là "có" từ mức này
 semantic_jev_min_noul: 0.5
-# OpenAI (khi là provider chính hoặc dự phòng)
-semantic_openai_model: gpt-6-luna
-semantic_openai_max_tokens: 400
-# Timeout httpx theo pha của mỗi provider (không phải trần tổng); một request, không retry
+# Provider LLM (chính, dự phòng, hoặc dự phòng của route chọn khung). Model trống = model của provider
+# đó trong llm.yaml (openai: gpt-6-luna, deepseek: deepseek-flash, ...).
+semantic_llm_model:
+semantic_llm_max_tokens: 400
+# Prompt của provider LLM; trống = tự chọn theo cancel_semantic_confirm_enabled và model (semantic_v10_luna
+# chỉ cho GPT-6 Luna). Đổi sang model khác mà muốn giữ prompt Luna: đặt semantic_v10_luna.
+semantic_llm_prompt_version: semantic_v10_luna
+# Timeout của provider LLM: deadline tổng một request và timeout httpx theo pha; một request,
+# không retry. Trần lượt cho mọi model là 4 s (`model_budget.MODEL_TIMEOUT_S`, owner 12/10/2026).
 semantic_fallback_timeout_s: 3.0
+# Jev: deadline tổng một request. 2 s (owner 12/10/2026): Jev treo thì lượt còn 2 s >= 1,5 s cho dự phòng
+# OpenAI; trước đây 3 s = cả trần lượt nên Jev treo là mất lượt (QC qc-cn-08-stress-max4).
+semantic_jev_timeout_s: 2.0
 # Câu dài hơn thì hỏi ngắn lại, không âm thầm cắt (cắt có thể mất chính lời phủ định)
 semantic_fallback_max_input_chars: 1500
 # Model đề xuất xác nhận hủy, luật kiểm chứng (docs/evidence/t05-cancel-dialogue.md, đợt 3).
-# Bật dùng semantic_v8_luna với GPT-6 Luna; model khác giữ semantic_v6
+# Bật dùng semantic_v10_luna với GPT-6 Luna; model khác giữ semantic_v6 (trừ khi đặt semantic_llm_prompt_version)
 cancel_semantic_confirm_enabled: true
+
+# Model đọc câu khó ở 4 câu hỏi chọn khung (docs/plans/t10-slot-semantic-jev-2026-10-12.md). Mặc định
+# tắt; tắt thì hành vi y hệt chỉ-luật. Jev chính, provider LLM khi câu không dấu hoặc Jev lỗi (owner 12-10-2026).
+slot_semantic_enabled: false
+# Provider LLM dự phòng của route chọn khung: none | openai | gemini | groq | openrouter | deepseek
+slot_semantic_backup_provider: deepseek
+slot_semantic_jev_timeout_s: 1.5
+slot_semantic_llm_timeout_s: 3.0
+# Trần cả lượt của route chọn khung, gồm đường dự phòng provider LLM (vẫn dưới 8 s của contract §4.1.2)
+slot_semantic_budget_s: 4.0
 
 clinic_id: cl_vinmec
 

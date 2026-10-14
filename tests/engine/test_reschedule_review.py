@@ -28,11 +28,11 @@ SLOT_READBACK = [*IDENTITY, "Đổi sang 15h ngày 14/10"]
     ("line", "said"),
     [
         # Không khớp khung nào: tra theo giờ khách vừa nêu
-        ("vâng, 9 giờ sáng ngày 20", "Em chưa thấy khung giờ đó"),
-        ("vâng thì 5 giờ", "Em chưa thấy khung giờ đó"),
+        ("vâng, 9 giờ sáng ngày 20", "Giờ đó em chưa thấy trống"),
+        ("vâng thì 5 giờ", "Giờ đó em chưa thấy trống"),
         # Khớp các khung chưa đọc
         ("vâng, ngày 20", "8 giờ sáng, thứ Ba ngày 20 tháng 10"),
-        ("vâng, 8 giờ sáng ngày 20", "Em còn khung 8 giờ sáng, thứ Ba ngày 20 tháng 10"),
+        ("vâng, 8 giờ sáng ngày 20", "Em còn trống 8 giờ sáng, thứ Ba ngày 20 tháng 10"),
     ],
 )
 def test_agreeing_with_another_time_does_not_write_the_slot_read_back(
@@ -115,7 +115,7 @@ def test_a_question_mentioning_a_day_is_not_a_reschedule_request(mode: str, line
 def test_asking_for_another_time_still_starts_the_reschedule(mode: str, line: str) -> None:
     clinic, bot = _outbound_call(f"r4-ok-{mode}-{line}", mode)
     action = _run(bot, f"r4-ok-{mode}-{line}", [*IDENTITY, line])
-    assert "khung" in action.utterance and clinic.slot_reads > 0 and clinic.writes == []
+    assert "còn trống" in action.utterance and clinic.slot_reads > 0 and clinic.writes == []
 
 
 # --- Ý 5: lời bỏ chỉ kết thúc việc đổi lịch khi là vế cuối ---------------------------------------
@@ -196,11 +196,11 @@ def test_a_slot_named_as_a_question_is_not_written(mode: str, line: str) -> None
     [
         (
             "Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978, muốn đổi lịch sang 14:00 ngày 16",
-            "Em còn khung 2 giờ chiều, thứ Sáu ngày 16 tháng 10",
+            "Em còn trống 2 giờ chiều, thứ Sáu ngày 16 tháng 10",
         ),
         (
             "Tôi là Nguyễn Văn A, sinh ngày 14 tháng 3 năm 1978, muốn đổi lịch sang 15:30 ngày 15",
-            "Em còn khung 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10",
+            "Em còn trống 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10",
         ),
     ],
 )
@@ -250,7 +250,7 @@ def test_a_reschedule_turn_reads_the_appointment_once(mode: str, lines: list[str
     _run(bot, call_id, lines[:-1])
     before = len(clinic.calls)
     action = _run(bot, call_id, lines[-1:], start=len(lines))
-    assert "khung" in action.utterance
+    assert "còn trống" in action.utterance
     assert _appointment_reads(clinic, before) == 1
 
 
@@ -357,8 +357,8 @@ def test_the_part_after_giving_up_a_time_is_the_new_request(
     clinic, bot = _outbound_call(call_id, mode)
     action = _run(bot, call_id, [*setup, line])
     assert not action.ended and said in action.utterance
-    # Giờ đã bỏ không còn là tiêu chí: không báo "chưa thấy khung giờ đó", không chốt khung giờ đó
-    assert "chưa thấy khung giờ đó" not in action.utterance
+    # Giờ đã bỏ không còn là tiêu chí: không báo "em chưa thấy trống", không chốt khung giờ đó
+    assert "em chưa thấy trống" not in action.utterance
     assert action.state == "OFFERING_SLOTS" and clinic.writes == []
 
 
@@ -376,7 +376,7 @@ def test_an_unaccented_request_for_another_time_starts_the_reschedule(mode: str,
     call_id = f"r2-unacc-{mode}-{line}"
     clinic, bot = _outbound_call(call_id, mode)
     action = _run(bot, call_id, [*IDENTITY, line])
-    assert "khung" in action.utterance and clinic.slot_reads > 0 and clinic.writes == []
+    assert "còn trống" in action.utterance and clinic.slot_reads > 0 and clinic.writes == []
 
 
 @pytest.mark.parametrize("mode", MODES)

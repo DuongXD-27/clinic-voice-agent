@@ -8,9 +8,12 @@
  * Action không hợp lệ ở pha hiện tại bị bỏ qua (trả nguyên state), nên double-click hay
  * response đến muộn sau "Phiên mới" không làm hỏng cuộc gọi.
  */
-import type { DemoDebug, ExtractionFields } from "../../../lib/api/demoDebug";
+import type { DemoDebug, TurnExtraction } from "../../../lib/api/demoDebug";
 import type { Schemas } from "../../../lib/api/types";
 import { messageMeta } from "./format";
+
+// Component (ExtractionPanel) không import lib/api: lấy type trích xuất qua model.
+export type { ExtractionModel, TurnExtraction } from "../../../lib/api/demoDebug";
 
 export type Phase = "idle" | "starting" | "active" | "sending" | "ended";
 export type BotState = Schemas["TurnResponse"]["state"];
@@ -46,7 +49,7 @@ export interface CallSession {
   messages: Message[];
   botState: BotState | null;
   outcome: Outcome | null;
-  extraction: { turn: number; fields: ExtractionFields | null } | null;
+  extraction: TurnExtraction | null;
   exchange: Exchange | null;
   notice: Notice | null;
   /** Mã lỗi backend của thao tác lỗi gần nhất (vd. BAD_KEY) để form đánh dấu ô cần sửa. */

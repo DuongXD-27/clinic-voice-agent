@@ -1,0 +1,111 @@
+{
+  "label": "jev-deepseek-v1-heldout",
+  "mode": "semantic",
+  "today": "2026-09-29T10:00:00+07:00",
+  "model": "jev-1.13.0",
+  "repeats": 1,
+  "ran_at": "2026-10-13T08:23:37+00:00",
+  "runs": [
+    {
+      "cases": 44,
+      "failed_cases": 0,
+      "holdout_cases": 44,
+      "holdout_passed": 44,
+      "holdout_accuracy": 1.0,
+      "rule_cases": 11,
+      "rule_passed": 11,
+      "inference_cases": 33,
+      "inference_passed": 33,
+      "unsafe_writes": 0,
+      "wrong_slot_writes": 0,
+      "not_understood": 0,
+      "by_group": {
+        "any": {
+          "total": 4,
+          "ok": 4,
+          "routed": 0
+        },
+        "cancel": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "clinical": {
+          "total": 2,
+          "ok": 2,
+          "routed": 1
+        },
+        "hedged": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "keep_old": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "more": {
+          "total": 2,
+          "ok": 2,
+          "routed": 0
+        },
+        "out_of_scope": {
+          "total": 3,
+          "ok": 3,
+          "routed": 0
+        },
+        "pick": {
+          "total": 5,
+          "ok": 5,
+          "routed": 0
+        },
+        "stay": {
+          "total": 10,
+          "ok": 10,
+          "routed": 0
+        },
+        "unaccented": {
+          "total": 5,
+          "ok": 5,
+          "routed": 1
+        },
+        "unclear": {
+          "total": 6,
+          "ok": 6,
+          "routed": 0
+        }
+      },
+      "model_calls": 2,
+      "slot_calls": 18,
+      "slot_routes": {
+        "SLOT_UNRESOLVED": 11,
+        "SLOT_HEDGED_ANSWER": 6,
+        "SLOT_REFUSAL_WITH_CONTENT": 1
+      },
+      "slot_providers": {
+        "jev:": 17,
+        "luna:unaccented": 1
+      },
+      "slot_statuses": {
+        "accepted": 18
+      },
+      "slot_latency_ms": {
+        "n": 18,
+        "p50": 295.6,
+        "p95": 326.6,
+        "max": 871.9
+      },
+      "model_statuses": {
+        "accepted": 2
+      },
+      "turn_latency_ms": {
+        "n": 44,
+        "p50": 4.1,
+        "p95": 329.5,
+        "max": 875.7
+      },
+      "failures": []
+    }
+  ]
+}

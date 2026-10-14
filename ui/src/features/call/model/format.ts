@@ -30,6 +30,25 @@ export const FIELD_LABELS: Readonly<Record<string, string>> = {
   line_signal: "Tín hiệu đường dây",
 };
 
+/** `provider_name` của gateway (TypeSafeClient, LLMGateway) -> tên hiển thị. */
+const MODEL_PROVIDERS: Readonly<Record<string, string>> = {
+  typesafe: "Jev",
+  openai: "OpenAI",
+};
+
+export const modelProviderLabel = (provider: string | null) =>
+  provider === null ? "Model" : (MODEL_PROVIDERS[provider] ?? provider);
+
+/** Trạng thái lượt gọi model (ModelBudget.status). Lỗi thì lượt đi nhánh thận trọng như chỉ-luật. */
+export const MODEL_STATUS: Readonly<
+  Record<string, { label: string; tone: "success" | "warning" | "danger" }>
+> = {
+  OK: { label: "OK", tone: "success" },
+  INVALID: { label: "trả lời không hợp lệ", tone: "warning" },
+  TIMEOUT: { label: "quá thời gian", tone: "danger" },
+  ERROR: { label: "lỗi", tone: "danger" },
+};
+
 export function formatValue(value: unknown): string {
   if (value === null || value === undefined) return "—";
   if (typeof value === "string") return value;

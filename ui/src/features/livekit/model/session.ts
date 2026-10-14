@@ -6,10 +6,11 @@
  *     ▲                    │ failed                 │ disconnected
  *     └────────────────────┴────────────────────────┘
  *
- * Transcript (lời thoại worker gửi qua data channel) giữ lại sau khi ngắt để xem lại; chỉ xoá
- * khi bắt đầu cuộc gọi mới.
+ * Transcript và trích xuất (worker gửi qua data channel) giữ lại sau khi ngắt để xem lại; chỉ
+ * xoá khi bắt đầu cuộc gọi mới.
  */
 
+import type { TurnExtraction } from "../../../lib/api/demoDebug";
 import { ASR_LABELS } from "./config";
 import type { NBestUpdate, TranscriptLine, TurnTiming } from "./transcript";
 
@@ -35,6 +36,10 @@ export interface LiveKitSession {
   audioBlocked: boolean;
   log: LogEntry[];
   transcript: TranscriptLine[];
+  /** Trích xuất của lượt người gọi gần nhất, đi kèm câu bot của lượt đó; null = chưa có. */
+  extraction: TurnExtraction | null;
+  /** Câu bot gần nhất (lượt ≥ 1) không kèm trích xuất dùng được: worker không gửi / gửi sai dạng. */
+  extractionIssue: "missing" | "invalid" | null;
   /** State / outcome theo câu bot gần nhất trong transcript. */
   botState: string | null;
   outcome: string | null;
@@ -72,6 +77,8 @@ export const initialSession: LiveKitSession = {
   audioBlocked: false,
   log: [],
   transcript: [],
+  extraction: null,
+  extractionIssue: null,
   botState: null,
   outcome: null,
   notice: null,
@@ -229,7 +236,12 @@ export function liveKitReducer(state: LiveKitSession, action: LiveKitAction): Li
             )
           : next;
       }
-      const withState = { ...next, botState: line.state, outcome: line.outcome };
+      const withState = {
+        ...next,
+        botState: line.state,
+        outcome: line.outcome,
+        ...(line.turn > 0 ? extractionOf(line) : {}),
+      };
       return line.ended
         ? log(withState, action.at, `Bot kết thúc cuộc gọi: ${line.outcome ?? "—"}.`, "success")
         : withState;
@@ -296,4 +308,13 @@ export function describeConnection(state: LiveKitSession): {
     case "reconnecting":
       return { tone: "warning", label: "Đang kết nối lại…", pulse: true };
   }
+}
+
+/** Trích xuất đi kèm câu bot của một lượt người gọi (câu chào lượt 0 không có). */
+function extractionOf(
+  line: TranscriptLine,
+): Pick<LiveKitSession, "extraction" | "extractionIssue"> {
+  if (line.extraction === undefined) return { extraction: null, extractionIssue: "missing" };
+  if (line.extraction === "invalid") return { extraction: null, extractionIssue: "invalid" };
+  return { extraction: line.extraction, extractionIssue: null };
 }

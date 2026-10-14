@@ -26,7 +26,7 @@ from speech.types import AudioSegment
 
 @pytest.fixture
 def small_release(tmp_path):
-    assets, catalog = build.load_shortlist("2026-10-08")
+    assets, catalog = build.load_shortlist("2026-10-13")
     assets = assets[:2]
     config = VbeeTTSConfig(api_token="offline-only", app_id="offline-only", _env_file=None)
     identity = build.audio_config(config)
@@ -51,10 +51,10 @@ def small_release(tmp_path):
     return output, manifest, assets, catalog, identity, candidate
 
 
-async def test_shipped_catalog_covers_all_74_current_utterances_in_sync_and_stream():
-    assets, _ = build.load_shortlist("2026-10-08")
+async def test_shipped_catalog_covers_all_82_current_utterances_in_sync_and_stream():
+    assets, _ = build.load_shortlist("2026-10-13")
     tts, provider, fallback = cached_synthesizer()
-    assert len(tts._static_cache) == len(assets) == 74
+    assert len(tts._static_cache) == len(assets) == 82
     for asset in assets:
         audio = tts.synthesize(asset["utterance"])
         chunks = [c async for c in tts.synthesize_stream(asset["utterance"])]
@@ -64,6 +64,13 @@ async def test_shipped_catalog_covers_all_74_current_utterances_in_sync_and_stre
         assert tts.last_stream_result.cache_key == audio.cache_key
         assert tts.last_stream_result.billed_characters == 0
     assert not provider.calls and not fallback.calls
+
+
+def test_shipped_release_matches_configured_vbee_audio():
+    # Đổi giọng/tốc độ trong config/tts.yaml mà không thu lại thì runtime bỏ cả release (chỉ có log
+    # TTS_STATIC_MANIFEST_MISMATCH), mọi câu tĩnh lại tốn Vbee — như speed 1.15 ngày 12/10.
+    config = VbeeTTSConfig(api_token="offline-only", app_id="offline-only", _env_file=None)
+    assert release_manifest()["audio_config"] == build.audio_config(config)
 
 
 async def test_dynamic_and_changed_exact_text_use_provider_and_do_not_enter_static_store():
@@ -254,4 +261,4 @@ def test_both_bundle_factories_share_verified_store(monkeypatch, tmp_path):
         asr=FakeASR(),
     )
     assert http.tts._static_cache is livekit.tts._static_cache
-    assert len(http.tts._static_cache) == 74
+    assert len(http.tts._static_cache) == 82

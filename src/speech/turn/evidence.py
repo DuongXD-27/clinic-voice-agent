@@ -34,10 +34,13 @@ class TurnEvidence:
         self.frame_noise: Optional[NoiseEvidence] = None
         self.utterance_noise: Optional[NoiseEvidence] = None
 
-    def observe_frame(self, frame: bytes) -> None:
-        """Gọi cho MỌI frame theo thứ tự tới, kể cả lúc bot đang nói."""
+    def observe_frame(self, frame: bytes, *, level_frame: Optional[bytes] = None) -> None:
+        """Gọi cho MỌI frame theo thứ tự tới, kể cả lúc bot đang nói. `level_frame`: cùng đoạn
+        PCM trước khi tăng âm (`QuietSpeechGain`) — SNR là tỉ số nên phải đo trên một thang: nền
+        (trung vị vài giây im lặng) đo ở hệ số cũ, câu mới ở hệ số mới thì SNR lệch đúng bằng
+        bước nhảy hệ số. `frame` vẫn là thứ đưa cho bộ phân loại (tra kết quả theo đối tượng)."""
         is_speech = self._noise_classifier.is_speech(frame)
-        self.frame_noise = self._noise.observe(frame, is_speech)
+        self.frame_noise = self._noise.observe(level_frame or frame, is_speech)
         self.utterance_noise = self._utterance.observe(self.frame_noise, is_speech)
 
     def observe_transcript(self, event: TranscriptEvent) -> StabilityVerdict:
@@ -47,3 +50,7 @@ class TurnEvidence:
             # "vâng" -> "có" -> "vâng" khớp mẫu dao động và câu thứ ba bị DROP.
             self._transcript.reset()
         return verdict
+
+    def reset_transcript(self) -> None:
+        """Đoạn ASR đang mở bị bỏ (không có final): bắt đầu lại độ ổn định cho đoạn sau."""
+        self._transcript.reset()

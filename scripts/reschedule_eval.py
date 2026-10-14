@@ -6,17 +6,18 @@
     python scripts/eval_compare.py result/<dd-mm-yyyy>/reschedule/<A> result/<dd-mm-yyyy>/reschedule/<B>
 
 Chạy tay, không nằm trong `pytest`. Mỗi câu chạy qua **Orchestrator thật + `FakeClinicAPI.mentor_mock()`**
-(dữ liệu như Clinic Mock deploy: Trần Thị Bình `apt_00418` 8 giờ sáng 15/10, 11 khung trống 14–21/10),
+(dữ liệu như Clinic Mock deploy: Ngô Huy Hoàn `apt_00418` 8 giờ sáng 15/10, 11 khung trống 14–21/10),
 đồng hồ cố định **thứ Ba 29/09/2026 10:00** để ngày tương đối có đáp án cố định. Ngữ cảnh dựng theo
 (`direction`, `question_id`, `page_size`) — bảng `SETUP`:
 
     outbound OFFER_SLOTS 2          "Tôi muốn đổi lịch"            -> trang [14/10 15:00, 15/10 10:30]
     outbound OFFER_SLOTS 2-trang2   + "khung khác"                  -> trang [15/10 15:30, 16/10 9:00]
+    outbound OFFER_SLOTS 2-mo-ho    + "khung khác" + "3 giờ chiều"  -> trang mơ hồ [14/10 15:00, 21/10 15:00]
     outbound SLOT_READBACK 1        "đổi sang ngày 14 tháng 10"    -> câu có/không khung duy nhất 14/10 15:00
     outbound SLOT_READBACK 2        + "khung nào cũng được"         -> câu chốt 14/10 15:00, trang 2 khung
     outbound SLOT_REFUSE_CHOICE 2   + "không"                       -> "nghe khung khác hay giữ lịch cũ"
     outbound ASK_SLOT_PREFERENCE 1  14/10 + "không"                 -> hết khung, hỏi ngày khác (vòng 1)
-    inbound  OFFER_SLOTS / SLOT_READBACK 2: như trên với "Tôi muốn đặt lịch" (BOOK, SĐT 0901234501)
+    inbound  OFFER_SLOTS / SLOT_READBACK 2: như trên với "Tôi muốn đặt lịch" (BOOK, SĐT 0967769004)
 
 Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dưới đây:
 
@@ -25,6 +26,7 @@ Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dướ
     SWITCH:CANCEL   Rời nhánh đổi lịch sang hỏi xác nhận hủy (chưa ghi).
     KEEP_OLD        Bỏ đặt lịch (inbound): không còn hành động chờ. Bỏ đổi lịch (outbound) thì giữ lịch cũ và
                     chuyển máy PATIENT_REQUEST (qc-rs-08), nhãn TRANSFER:PATIENT_REQUEST.
+    BACK_TO_APPOINTMENT  Outbound, "tôi đổi ý": bỏ đổi lịch, không ghi, quay lại câu hỏi lịch cũ (B15).
     NOT_UNDERSTOOD  "Dạ, em chưa hiểu ý anh chị..." — tính §1.1.5.
     ASK_DATE        Hỏi lại ngày kèm lý do (đã qua / không tồn tại / quá rộng / trùng hôm nay) — R-30.
     REFUSE_CHOICE   Hỏi "nghe khung khác / đổi ngày khác hay giữ lịch cũ" — không đoán (Q-4).
@@ -40,7 +42,8 @@ Nhãn hành vi (`expect`, `observed`) — `_observe` xét theo thứ tự dướ
     PICK_SLOT       Đọc câu chốt (hoặc, khi đổi lịch, ghi) một khung không nằm trong trang vừa đọc.
     MORE            Đọc khung chưa đọc (trang kế), không lặp khung vừa đọc / vừa từ chối.
     REREAD_YESNO    Hỏi lại câu có/không của đúng khung đang chốt, không ghi.
-    REREAD_PAGE     Đọc lại đúng trang vừa đọc.
+    ASK_WHICH       Trang mơ hồ không thu hẹp được: hỏi lại chọn khung nào trong đúng trang đó (B1).
+    REREAD_PAGE     Đọc lại đúng trang vừa đọc (kể cả từ câu chốt quay lại trang, "chọn lại" — B16).
     AMBIGUOUS       Đọc một trang khác chồng lên trang cũ (khớp nhiều khung).
     OTHER           Không khớp nhãn nào.
 
@@ -60,6 +63,7 @@ import json
 import re
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -78,6 +82,7 @@ from callbot.engine import (  # noqa: E402
     CallStart,
     EngineSettings,
     _semantic_extractor,
+    _slot_semantic_reader,
     create_orchestrator,
 )
 from callbot.engine.dialogue import templates as t  # noqa: E402
@@ -92,11 +97,12 @@ CASES = ROOT / "eval" / "reschedule" / "cases.csv"
 SLOT_PICK_QUESTIONS = frozenset(DIRECT_PICK_QUESTION_FOR.values())
 NOW = datetime(2026, 9, 29, 10, 0, tzinfo=VN_TZ)  # thứ Ba
 APPOINTMENT = "apt_00418"
-PHONE = "0901234501"
-VERIFIED = ["Trần Thị Bình", "21 tháng 6 năm 1990"]
+PHONE = "0967769004"
+VERIFIED = ["Ngô Huy Hoàn", "16 tháng 5 năm 2004"]
 SETUP: dict[tuple[str, str, str], list[str]] = {
     ("outbound", "OFFER_SLOTS", "2"): ["Tôi muốn đổi lịch"],
     ("outbound", "OFFER_SLOTS", "2-trang2"): ["Tôi muốn đổi lịch", "khung khác"],
+    ("outbound", "OFFER_SLOTS", "2-mo-ho"): ["Tôi muốn đổi lịch", "khung khác", "3 giờ chiều"],
     ("outbound", "SLOT_READBACK", "1"): ["đổi sang ngày 14 tháng 10"],
     ("outbound", "SLOT_READBACK", "2"): ["Tôi muốn đổi lịch", "khung nào cũng được"],
     ("outbound", "SLOT_REFUSE_CHOICE", "2"): ["Tôi muốn đổi lịch", "không"],
@@ -104,8 +110,9 @@ SETUP: dict[tuple[str, str, str], list[str]] = {
     ("inbound", "OFFER_SLOTS", "2"): ["Tôi muốn đặt lịch"],
     ("inbound", "SLOT_READBACK", "2"): ["Tôi muốn đặt lịch", "khung 1"],
 }
-# Câu hỏi lại ngày của `t.ask_date_again` (R-30)
-_DATE_REASK = ("đã qua rồi", "không có trong lịch", "ngày cụ thể", "hôm nay là")
+# Câu hỏi lại ngày của `t.ask_date_again` (R-30), so trên chữ thường: câu thoại chuẩn hoá 08/10 viết hoa
+# "Hôm nay là", hỏi "ngày nào cụ thể"
+_DATE_REASK = ("đã qua rồi", "không có trong lịch", "cụ thể", "hôm nay là")
 _FULL_DAY = re.compile(r"ngày (\d{1,2}) tháng (\d{1,2}) đã kín lịch")
 _PERIODS = {"sáng": range(0, 12), "chiều": range(12, 18), "tối": range(18, 24)}
 
@@ -123,6 +130,57 @@ class Capturing(Counting):
         if self.active:
             self.outcome = outcome
         return outcome
+
+
+@dataclass
+class SlotCounting:
+    """Bọc tầng chọn khung (plan Jev §4.11): ghi route, provider, trạng thái, độ trễ của lượt được chấm."""
+
+    inner: Any
+    active: bool = False
+    last: Optional[dict[str, Any]] = None
+
+    @property
+    def budget_s(self) -> float:
+        return self.inner.budget_s
+
+    @property
+    def _gateway(self) -> Any:
+        return getattr(self.inner, "_gateway", None)
+
+    def analyze(self, context: Any) -> Any:
+        started = time.perf_counter()
+        try:
+            reading = self.inner.analyze(context)
+            status = getattr(self.inner, "last_status", None) or ("accepted" if reading else "none")
+        except Exception:  # noqa: BLE001 — adapter thật không ném; vẫn ghi lại
+            reading, status = None, "exception"
+        if self.active:
+            self.last = {
+                "slot_route": context.route_reason,
+                "slot_provider": getattr(self.inner, "last_provider", None) or "",
+                "slot_reason": getattr(self.inner, "last_reason", None) or "",
+                "slot_status": status,
+                "slot_act": reading.act if reading is not None else "",
+                "slot_ms": round((time.perf_counter() - started) * 1000, 1),
+                # Jev: xác suất từng câu hỏi (calibration); Luna không có
+                "slot_probs": json.dumps(
+                    getattr(getattr(self.inner, "primary", None), "last_probabilities", None)
+                    if getattr(self.inner, "last_provider", None) == "jev"
+                    else None
+                ),
+            }
+        return reading
+
+
+class NullSlot:
+    """`--route-only`: tầng chọn khung không trả gì — chỉ đếm route."""
+
+    budget_s = 4.0
+    last_status = "none"
+
+    def analyze(self, context: Any) -> None:
+        return None
 
 
 class NullSemantic:
@@ -182,13 +240,15 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
     if after.pending_action == "CANCEL":
         return Observed("SWITCH:CANCEL")
     if after.pending_action is None:
+        if after.question is not None and after.question.question_id is QuestionId.CONFIRM_READBACK:
+            return Observed("BACK_TO_APPOINTMENT")
         return Observed("KEEP_OLD")
     utterance = action.utterance
     if utterance in t.static_choices(t.NOT_UNDERSTOOD):
         return Observed("NOT_UNDERSTOOD")
     asked = after.question.question_id if after.question else None
     if asked is QuestionId.ASK_SLOT_PREFERENCE:
-        if any(marker in utterance for marker in _DATE_REASK):
+        if any(marker in utterance.lower() for marker in _DATE_REASK):
             return Observed("ASK_DATE")
         if utterance in t.SLOT_EXHAUSTED.values():
             return Observed("REFUSE_CHOICE")
@@ -218,17 +278,22 @@ def _observe(action, before: CallContext, after: Optional[CallContext], clinic: 
         if was is QuestionId.SLOT_READBACK and selected == before.selected_slot_id:
             return Observed("REREAD_YESNO")
         # Câu chốt khung (mọi biến thể của `t.slot_readback`), không phải câu có/không khung duy nhất
-        if selected in before.presented_slot_ids and utterance.endswith("Anh chị đồng ý chứ ạ?"):
+        if selected in before.presented_slot_ids and utterance.endswith("Anh chị đồng ý không ạ?"):
             return Observed(f"PICK:{before.presented_slot_ids.index(selected) + 1}", dates, hours)
-        if "còn khung" in utterance:  # đọc khung duy nhất còn lại, chưa đọc trước đó
+        if "còn trống" in utterance:  # đọc khung duy nhất còn lại, chưa đọc trước đó
             return Observed("MORE", dates, hours)
         return Observed("PICK_SLOT", dates, hours)
     if asked is QuestionId.OFFER_SLOTS:
         previous = list(before.presented_slot_ids)
+        if was is QuestionId.SLOT_READBACK and shown == previous:
+            # Từ câu chốt quay lại đúng trang khách đang chọn ("tôi muốn chọn lại", B16)
+            return Observed("REREAD_PAGE", dates, hours)
         if was is QuestionId.SLOT_READBACK:
             return Observed(
                 "MORE" if before.selected_slot_id not in shown else "OTHER", dates, hours
             )
+        if shown == previous and utterance.startswith(t.SLOT_AMBIGUOUS_AGAIN + "anh chị chọn"):
+            return Observed("ASK_WHICH", dates, hours)
         if shown == previous:
             return Observed("REREAD_PAGE", dates, hours)
         if set(shown) & set(previous):
@@ -279,12 +344,20 @@ def _accepted(expect: str, seen: Observed) -> bool:
 
 
 def _run_case(
-    row: dict[str, str], call_id: str, semantic: Optional[Capturing], repeat: int
+    row: dict[str, str],
+    call_id: str,
+    semantic: Optional[Capturing],
+    repeat: int,
+    slot: Optional[SlotCounting] = None,
 ) -> dict[str, Any]:
     clinic = FakeClinicAPI.mentor_mock()
-    bot = create_orchestrator(clinic, store=_store())
+    # Bước xác minh chỉ là dựng ngữ cảnh: không gọi model điền tên (luật xác minh được bệnh nhân demo)
+    bot = create_orchestrator(
+        clinic, settings=EngineSettings(name_fallback_provider="none"), store=_store()
+    )
     bot.sessions._clock = lambda: NOW
     bot._extractor._semantic = semantic
+    bot._extractor._slot_semantic = slot
     if row["direction"] == "inbound":
         start = CallStart(call_id=call_id, direction="inbound", caller_number=PHONE)
     else:
@@ -299,12 +372,16 @@ def _run_case(
 
     if semantic is not None:
         semantic.last, semantic.outcome, semantic.active = None, None, True
+    if slot is not None:
+        slot.last, slot.active = None, True
     started = time.perf_counter()
     try:
         action = bot.handle_turn(call_id, CallerInput(turn=len(lines) + 1, text=row["transcript"]))
     finally:
         if semantic is not None:
             semantic.active = False
+        if slot is not None:
+            slot.active = False
     elapsed_ms = (time.perf_counter() - started) * 1000
 
     after = _context(bot, call_id)
@@ -347,6 +424,22 @@ def _run_case(
         "semantic_status": semantic_status,
         "semantic_kind": outcome.reply_kind.value if outcome else "",
         "semantic_ms": round(semantic_ms, 1) if semantic_ms is not None else "",
+        **(
+            slot.last
+            if slot is not None and slot.last
+            else dict.fromkeys(
+                (
+                    "slot_route",
+                    "slot_provider",
+                    "slot_reason",
+                    "slot_status",
+                    "slot_act",
+                    "slot_ms",
+                    "slot_probs",
+                ),
+                "",
+            )
+        ),
         "elapsed_ms": round(elapsed_ms, 1),
     }
 
@@ -379,6 +472,13 @@ def _summarise(rows: list[dict[str, Any]], counter: Optional[Counting]) -> dict[
         "not_understood": sum(r["observed"] == "NOT_UNDERSTOOD" for r in holdout),
         "by_group": {name: dict(bucket) for name, bucket in sorted(by_group.items())},
         "model_calls": counter.routed if counter else 0,
+        "slot_calls": sum(bool(r["slot_route"]) for r in rows),
+        "slot_routes": dict(Counter(r["slot_route"] for r in rows if r["slot_route"])),
+        "slot_providers": dict(
+            Counter(f"{r['slot_provider']}:{r['slot_reason']}" for r in rows if r["slot_route"])
+        ),
+        "slot_statuses": dict(Counter(r["slot_status"] for r in rows if r["slot_route"])),
+        "slot_latency_ms": _latency([r["slot_ms"] for r in rows if r["slot_ms"] != ""]),
         "model_statuses": dict(sorted(counter.statuses.items())) if counter else {},
         "turn_latency_ms": _latency([r["elapsed_ms"] for r in rows]),
         "failures": [
@@ -416,6 +516,7 @@ def _run_line(attempt: int, repeats: int, s: dict[str, Any]) -> str:
         f" [rule {s['rule_passed']}/{s['rule_cases']}, inference {s['inference_passed']}/{s['inference_cases']}]"
         f" · unsafe writes {s['unsafe_writes']} · wrong-slot writes {s['wrong_slot_writes']}"
         f" · not understood {s['not_understood']} · model calls {s['model_calls']}"
+        f" · slot calls {s['slot_calls']} {s['slot_providers'] or ''}"
     )
 
 
@@ -451,7 +552,15 @@ def main() -> int:
     )
     mode.add_argument("--semantic", action="store_true", help="rules + real model")
     parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument(
+        "--cases", type=Path, default=CASES, help="CSV ca chấm (mặc định eval/reschedule/cases.csv)"
+    )
     parser.add_argument("--label", default=None, help="result folder name (default: mode)")
+    parser.add_argument(
+        "--no-slot-layer",
+        action="store_true",
+        help="không bật tầng model chọn khung (so sánh với tầng ngữ nghĩa cũ)",
+    )
     parser.add_argument(
         "--safety-only", action="store_true", help="exit 1 only on unsafe / wrong-slot writes"
     )
@@ -470,8 +579,16 @@ def main() -> int:
         extractor._gateway = gateway
     elif args.route_only:
         extractor = NullSemantic()
+    slot_inner: Any = None
+    if args.semantic and not args.no_slot_layer:
+        slot_inner = _slot_semantic_reader(EngineSettings(slot_semantic_enabled=True))
+        if slot_inner is None:
+            print("Cannot build the slot layer: check TYPESAFE / OpenAI keys.", file=sys.stderr)
+            return 2
+    elif args.route_only and not args.no_slot_layer:
+        slot_inner = NullSlot()
 
-    with CASES.open(encoding="utf-8") as fh:
+    with args.cases.open(encoding="utf-8") as fh:
         cases = list(csv.DictReader(fh))
     scored = sum(1 for row in cases if row["split"] == "holdout")
     print(
@@ -483,9 +600,10 @@ def main() -> int:
     runs: list[tuple[list[dict[str, Any]], Optional[Capturing]]] = []
     for attempt in range(args.repeats):
         counter = Capturing(extractor, gateway) if extractor is not None else None
+        slot = SlotCounting(slot_inner) if slot_inner is not None else None
         rows = []
         for i, row in enumerate(cases):
-            rows.append(_run_case(row, f"reval_{stamp}_{attempt}_{i}", counter, attempt + 1))
+            rows.append(_run_case(row, f"reval_{stamp}_{attempt}_{i}", counter, attempt + 1, slot))
             sys.stdout.write(_mark(rows[-1]))
             if (i + 1) % 64 == 0:
                 sys.stdout.write("\n")

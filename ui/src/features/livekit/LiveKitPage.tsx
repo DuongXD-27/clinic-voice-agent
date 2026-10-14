@@ -10,6 +10,7 @@ import { Notice } from "../../components/ui/Notice";
 import { StatusIndicator } from "../../components/ui/StatusIndicator";
 import { API_KEY_STORAGE, readSession, writeSession } from "../../lib/storage";
 import { resetClinic } from "../call/api";
+import { ExtractionPanel } from "../call/components/ExtractionPanel";
 import { useClinicFixtures } from "../call/useClinicFixtures";
 import { EventLog } from "./components/EventLog";
 import { LiveKitConfigPanel } from "./components/LiveKitConfigPanel";
@@ -19,6 +20,13 @@ import { DEFAULT_LIVEKIT_CONFIG, type LiveKitConfig } from "./model/config";
 import { describeConnection, isActive } from "./model/session";
 import { toChatMessage } from "./model/transcript";
 import { useLiveKitCall } from "./useLiveKitCall";
+
+/** Thẻ trích xuất khi chưa có gì để hiện, theo `extractionIssue` của câu bot gần nhất. */
+const EXTRACTION_ISSUES = {
+  none: "Chưa có lượt nào.",
+  missing: "Bot không gửi trích xuất: worker tắt demo_debug (config/livekit.yaml) hoặc là bản cũ.",
+  invalid: "Trích xuất bot gửi sai dạng: worker và trang có thể lệch phiên bản.",
+} as const;
 
 export function LiveKitPage() {
   const [config, setConfig] = useState<LiveKitConfig>(DEFAULT_LIVEKIT_CONFIG);
@@ -105,6 +113,16 @@ export function LiveKitPage() {
                 lý: nếu nhiều worker cùng đăng ký một project LiveKit, cuộc gọi có thể vào worker
                 khác.
               </Notice>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="Trích xuất lượt gần nhất" />
+            <CardBody>
+              <ExtractionPanel
+                extraction={session.extraction}
+                empty={EXTRACTION_ISSUES[session.extractionIssue ?? "none"]}
+              />
             </CardBody>
           </Card>
 

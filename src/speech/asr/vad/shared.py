@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from typing import Optional
 
 from speech.asr.vad.base import FrameClassifier
 
@@ -35,9 +36,11 @@ class SharedSpeechDetector:
         self._results: OrderedDict[int, tuple[bytes, bool]] = OrderedDict()
         self._missed = 0
 
-    def classify(self, frame: bytes) -> bool:
-        """Gọi đúng một lần cho mỗi frame, theo thứ tự tới."""
-        is_speech = self._classifier.is_speech(frame)
+    def classify(self, frame: bytes, *, analysis: Optional[bytes] = None) -> bool:
+        """Gọi đúng một lần cho mỗi frame, theo thứ tự tới. `analysis`: audio bộ phân loại nghe
+        thay cho `frame` (front-end khử nhiễu của VAD, `speech.audio.vad_frontend` — có thể rỗng
+        hoặc khác độ dài); kết quả vẫn gắn với `frame`, thứ consumer tra lại."""
+        is_speech = self._classifier.is_speech(frame if analysis is None else analysis)
         key = id(frame)
         self._results.pop(key, None)
         self._results[key] = (frame, is_speech)

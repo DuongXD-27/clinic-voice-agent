@@ -12,7 +12,13 @@ from callbot.engine import EngineSettings, create_orchestrator
 from callbot.engine.extraction.name_slot_filling import NameExtraction, NameSlotFiller
 from callbot.engine.types import CallerInput, CallStart
 from clinic_mock_sim import FakeClinicAPI
-from inference.llm.config import GeminiConfig, GroqConfig, OpenAIConfig, OpenRouterConfig
+from inference.llm.config import (
+    DeepSeekConfig,
+    GeminiConfig,
+    GroqConfig,
+    OpenAIConfig,
+    OpenRouterConfig,
+)
 from inference.llm.gateway import create_gateway
 from inference.llm.prompt.name_slot_filling import build_messages
 
@@ -25,6 +31,7 @@ CONFIGS = {
         "gemini": GeminiConfig,
         "groq": GroqConfig,
         "openrouter": OpenRouterConfig,
+        "deepseek": DeepSeekConfig,
     }.items()
 }
 NAME = "Nguyễn Văn A"
@@ -165,6 +172,15 @@ def test_gateway_calls_correct_provider_and_normalizes_usage(provider):
         assert str(request.url) == endpoint(provider)
         assert request.headers["authorization"] == f"Bearer {SECRET}"
         assert payload["messages"] == build_messages(TEXT)
+        if provider == "deepseek":
+            # JSON Output only: prompt unchanged, no schema sent, thinking off so temperature applies
+            assert payload["response_format"] == {"type": "json_object"}
+            assert payload["thinking"] == {"type": "disabled"}
+            assert payload["temperature"] == 0
+            assert payload["max_tokens"] == CONFIGS["deepseek"][2]
+            assert "max_completion_tokens" not in payload
+            assert "store" not in payload and "service_tier" not in payload
+            return
         assert payload["response_format"]["json_schema"] == {
             "name": "name_slot_filling_v1",
             "strict": True,
@@ -296,7 +312,7 @@ def test_gateway_model_and_token_override(provider):
         assert [r["generationConfig"]["maxOutputTokens"] for r in requests] == [350, 450]
         assert all("thinkingConfig" not in r["generationConfig"] for r in requests)
     else:
-        key = "max_tokens" if provider == "openrouter" else "max_completion_tokens"
+        key = "max_tokens" if provider in {"openrouter", "deepseek"} else "max_completion_tokens"
         assert [r[key] for r in requests] == [350, 450]
         assert all(r["model"] == "custom-model" for r in requests)
 
@@ -354,3 +370,26 @@ def test_name_slot_filling_and_orchestrator_route_through_gateway(provider):
     assert session.context["claimed_name"] == "nguyễn văn a"
     assert session.context["identity_step"] == "ASK_DOB"
     assert len(clients) == 2 and all(client.is_closed for client in clients)
+
+
+@pytest.mark.parametrize(
+    "finish_reason,status",
+    [("length", "incomplete"), ("insufficient_system_resource", "incomplete")],
+)
+def test_deepseek_non_stop_finish_is_incomplete(finish_reason, status):
+    body = response_body("deepseek")
+    body["choices"][0]["finish_reason"] = finish_reason
+    gateway, _ = mocked_gateway("deepseek", lambda _: httpx.Response(200, json=body))
+    reply = generate(gateway)
+    assert reply.status == status and reply.content is None
+
+
+def test_deepseek_ignores_reasoning_content_and_reads_cached_tokens():
+    body = response_body("deepseek")
+    body["choices"][0]["message"]["reasoning_content"] = None
+    body["usage"]["prompt_cache_hit_tokens"] = 64
+    body["usage"]["prompt_tokens_details"] = {"cached_tokens": 64}
+    gateway, _ = mocked_gateway("deepseek", lambda _: httpx.Response(200, json=body))
+    reply = generate(gateway)
+    assert reply.status == "completed" and reply.content == OUTPUT
+    assert reply.cached_input_tokens == 64

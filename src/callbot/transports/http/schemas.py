@@ -33,14 +33,12 @@ class StartCallRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_direction_fields(self) -> "StartCallRequest":
-        # §1.1.8: outbound gắn với một lịch hẹn; inbound định danh qua số gọi đến
+        # §1.1.8: outbound gắn với một lịch hẹn; inbound không có appointment_id. `caller_number` được
+        # phép null (Listing 1) — harness gửi null ở mọi case inbound; engine tự xử lý khi thiếu số.
         if self.direction == "outbound" and not self.appointment_id:
             raise ValueError("outbound yêu cầu appointment_id")
-        if self.direction == "inbound":
-            if not self.caller_number:
-                raise ValueError("inbound yêu cầu caller_number")
-            if self.appointment_id is not None:
-                raise ValueError("inbound không được có appointment_id")
+        if self.direction == "inbound" and self.appointment_id is not None:
+            raise ValueError("inbound không được có appointment_id")
         return self
 
 

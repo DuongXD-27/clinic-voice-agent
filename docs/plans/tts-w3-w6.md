@@ -221,7 +221,7 @@ Gộp task theo vùng code / loại đầu ra, không theo ngày: mỗi tuần m
 
 #### T2 05/10 · Đường A — Rà soát và chuẩn hoá câu thoại toàn bộ kịch bản
 
-> **Tiến độ 08/10:** Hưng đã sửa template Engine và selector theo [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-08.md); số câu mở bằng “Dạ” giảm 85 → 8. Chào/chuyển máy/readback an toàn giữ cố định, hỏi đáp giữ ba cách nói. Registry còn 3 mẫu dự phòng hoãn thu ngoài danh sách 73 câu. Đã thu đủ 73 audio từ Vbee cho 4.690 ký tự và Hưng xác nhận nghe đạt toàn bộ, không cần phiếu CSV/HTML. Đã đóng gói release `2026-10-08-v1` và nối cache HTTP/LiveKit, bật mặc định trong code; chưa deploy. [Evidence](../evidence/tts-static-cache/tts-static-build-2026-10-08.json) và [plan chi tiết](tts-static-cache-plan-2026-10-07.md) ghi kiểm chứng và phần còn lại. Audit renderer/câu nhắc im lặng và nghe đủ 7 kịch bản vẫn còn; task T2 chưa Done.
+> **Tiến độ 08/10:** Hưng đã sửa template Engine và selector theo [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-12.md); số câu mở bằng “Dạ” giảm 85 → 8. Chào/chuyển máy/readback an toàn giữ cố định, hỏi đáp giữ ba cách nói. Registry còn 3 mẫu dự phòng hoãn thu ngoài danh sách 73 câu. Đã thu đủ 73 audio từ Vbee cho 4.690 ký tự và Hưng xác nhận nghe đạt toàn bộ, không cần phiếu CSV/HTML. Đã đóng gói release `2026-10-08-v1` và nối cache HTTP/LiveKit, bật mặc định trong code; chưa deploy. [Evidence](../evidence/tts-static-cache/tts-static-build-2026-10-08.json) và [plan chi tiết](tts-static-cache-plan-2026-10-07.md) ghi kiểm chứng và phần còn lại. Audit renderer/câu nhắc im lặng và nghe đủ 7 kịch bản vẫn còn; task T2 chưa Done.
 
 > **Điểm cần xử lý:** review renderer đã gộp trong plan chi tiết. Tổ hợp OFFER_SLOTS + SILENCE_REPROMPT từng đạt 320 ký tự đã được rút câu; vẫn cần audit luồng thực tế đủ 7 kịch bản và nghe các nhánh đại diện, cùng chính sách câu cố định theo PRD v2.1 R-42. Review văn bản và kiểm WAV/hash chưa thay thế kết quả nghe; task chưa Done.
 
@@ -456,7 +456,7 @@ Kiểm độ dài, nghe và ghi bảng. Xử lý nốt các lỗi TTS còn tồn
 
 | Việc | Lý do |
 |---|---|
-| Phát câu "xin lỗi" từ cache khi TTS lỗi | Audio khác `utterance`, vi phạm §4.1.3 |
+| Phát câu "xin lỗi" (hay bất kỳ câu nào khác) từ cache khi TTS lỗi | Audio khác `utterance`, vi phạm §4.1.3. **Sửa 12/10 theo R-39 (PRD v2.3):** TTS lỗi thì chỉ phát đúng câu `TRANSFER` cố định ghi sẵn (Engine trả `TTSRecovery.utterance = TRANSFER`, audio trùng nguyên văn, kiểm checksum) rồi chuyển máy SYSTEM_ERROR — xem `docs/plans/call-lifecycle-recovery-plan-2026-10-11.md` §2.2, §5 |
 | Cache toàn bộ câu kịch bản demo, hoặc cache câu có phần động | Dễ phát audio lệch `utterance`. Chỉ dựng sẵn audio cho câu cố định, tra theo đúng nguyên văn text (task 05/10) |
 | Đặt ngưỡng ms tự nghĩ ra cho TTFA / barge-in | Contract không đặt; chỉ đo và báo số, ngưỡng do team chốt với PM |
 

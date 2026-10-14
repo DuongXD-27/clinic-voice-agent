@@ -1,0 +1,41 @@
+{
+  "scope": "core-http-clinic-mock; no SIP/ASR/TTS",
+  "calls": [
+    {
+      "call_id": "core-booking-db5936c6373049e5988caa1533fc630b",
+      "states": [
+        "AWAITING_IDENTITY",
+        "AWAITING_IDENTITY",
+        "AWAITING_INTENT",
+        "AWAITING_CONFIRMATION",
+        "AWAITING_CONFIRMATION",
+        "ENDED"
+      ],
+      "outcome": "BOOKED",
+      "passed": true,
+      "created": [
+        {
+          "appointment_id": "apt_c29f12722e8f",
+          "status": "BOOKED"
+        }
+      ],
+      "api": [
+        {
+          "method": "GET",
+          "path": "/patients",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/slots",
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/appointments",
+          "status": 201
+        }
+      ]
+    }
+  ]
+}

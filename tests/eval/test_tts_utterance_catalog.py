@@ -11,17 +11,18 @@ from callbot.engine.dialogue import templates as t
 from callbot.engine.policy.utterances import STATIC_UTTERANCES, UtteranceSpec
 
 
-def test_shared_identity_group_is_one_asset_candidate_for_both_call_directions():
-    shared = t.GREETING_BACK_OUTBOUND
-    assert shared == t.GREETING_BACK_INBOUND
-    matches = [row for row in build_rows() if row["current_text"] == shared]
-    assert len(matches) == 1
-    row = matches[0]
-    assert row["aliases"] == ["GREETING_BACK_SHARED"]
-    assert row["cache_policy"] == "STATIC_AFTER_REVIEW"
-    assert row["selection"] == "REGISTERED_3_VARIANTS"
-    assert "FIXED_GROUP_HAS_VARIANTS_REVIEW_R42" not in row["review_flags"]
-    assert any("manager.py:" in site for site in row["source_references"])
+def test_identity_greeting_back_is_one_asset_group_per_call_direction():
+    # Bản câu thoại 13/10/2026: gọi ra nói lý do gọi, gọi vào không — hai nhóm riêng
+    assert t.GREETING_BACK_OUTBOUND != t.GREETING_BACK_INBOUND
+    for name in ("GREETING_BACK_OUTBOUND", "GREETING_BACK_INBOUND"):
+        matches = [row for row in build_rows() if row["current_text"] == getattr(t, name)]
+        assert len(matches) == 1
+        row = matches[0]
+        assert row["aliases"] == [name]
+        assert row["cache_policy"] == "STATIC_AFTER_REVIEW"
+        assert row["selection"] == "REGISTERED_3_VARIANTS"
+        assert "FIXED_GROUP_HAS_VARIANTS_REVIEW_R42" not in row["review_flags"]
+        assert any("manager.py:" in site for site in row["source_references"])
 
 
 def test_parameterized_templates_and_fragments_are_not_static_assets():
@@ -41,11 +42,11 @@ def test_parameterized_templates_and_fragments_are_not_static_assets():
     assert by_id["CANCELLED_DONE"]["listening_status"] == "NOT_REVIEWED"
 
 
-def test_recording_scope_is_74_exact_texts_with_three_deferred_backups():
+def test_recording_scope_is_82_exact_texts_with_three_deferred_backups():
     rows = build_rows()
     statics = [row for row in rows if row["kind"] == "STATIC"]
     candidates = [row for row in statics if row["prebuild_candidate"]]
-    assert len(candidates) == 74
+    assert len(candidates) == 82
     assert {row["template_id"] for row in statics if not row["prebuild_candidate"]} == {
         "ASK_NAME_DECLINED",
         "ASK_DOB_INVALID",
@@ -63,7 +64,7 @@ def test_unclassified_new_static_template_fails_instead_of_silently_skipping(mon
 
 def test_exports_are_complete_repeatable_and_do_not_change_the_registry(tmp_path):
     before = dict(STATIC_UTTERANCES)
-    catalog = build_catalog("2026-10-08")
+    catalog = build_catalog("2026-10-13")
     paths = write_catalog(catalog, tmp_path)
     first = [path.read_bytes() for path in paths]
     write_catalog(catalog, tmp_path)
@@ -92,7 +93,7 @@ def test_dry_run_uses_no_provider_and_creates_no_output(monkeypatch, tmp_path):
     monkeypatch.setattr(VbeeTTS, "synthesize", reject_provider)
     monkeypatch.setattr(
         "sys.argv",
-        ["tts_utterance_catalog.py", "--date", "2026-10-08", "--out", str(tmp_path), "--dry-run"],
+        ["tts_utterance_catalog.py", "--date", "2026-10-13", "--out", str(tmp_path), "--dry-run"],
     )
     assert main() == 0
     assert list(tmp_path.iterdir()) == []

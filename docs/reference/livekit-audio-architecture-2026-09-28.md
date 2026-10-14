@@ -288,6 +288,8 @@ Local: 4 bản Silero chạy trên mỗi frame. Prod: 2 bản WebRTC (#1, #2).
   không biết bot vừa hỏi gì.
 
 ### D4. InterruptionController (barge-in)
+> Cập nhật 12/10: gate đã viết lại thành `_gate()` (10/10) — điều kiện hiện tại ở docstring `speech/turn/interruption.py` và `docs/reference/stt-flow.md` §2.6. Phần dưới mô tả code lúc viết.
+
 - Máy trạng thái: `IDLE → BOT_SPEAKING → INTERRUPTION_CANDIDATE → INTERRUPTED`.
 - Candidate khi VAD `speech_start` lúc bot nói; quay lại `BOT_SPEAKING` nếu `speech_end` trước
   khi xác nhận.

@@ -8,27 +8,31 @@ SessionManager, CallBridge chỉ là caller của nó, giống transports/http/c
 import asyncio
 import json
 import logging
-import os
 import sys
 import traceback
+import uuid
 from contextlib import aclosing
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Optional
 
 from callbot.engine import BotAction, CallerInput, CallOrchestrator, CallStart
-from callbot.engine.errors import OutboundStartFailed
-from callbot.engine.types import Direction
-from callbot.tracing import Tracer, null_tracer
+from callbot.engine.dialogue.templates import TRANSFER
+from callbot.engine.errors import CallEnded, OutboundStartFailed, ReconciliationRequired
+from callbot.engine.types import Direction, TTSRecovery
+from callbot.tracing import SpanHandle, Tracer, null_tracer
 from callbot.tracing.pricing import tts_cost
+from callbot.transports.extraction_view import extraction_view
 from callbot.transports.input_mapping import caller_input_from_transcript
 from callbot.transports.livekit.audio_adapter import (
-    livekit_frame_to_segment,
     segment_to_livekit_frame,
 )
+from callbot.transports.livekit.caller_audio import accept_caller_track, pump_caller_track
+from callbot.transports.livekit.status import STATUS_TOPIC, report_status
 from speech.asr.hotwords import NO_HOTWORDS, Hotwords
 from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
+from speech.tts.fixed_fallback import fixed_utterance_pcm
 from speech.turn.controller import TurnController
 from speech.turn.events import UserTurnCompleted
 from speech.turn.interruption import EchoPolicy, InterruptionController, InterruptionState
@@ -40,6 +44,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+def _error_locations(exc: BaseException) -> str:
+    """Vị trí các frame của lỗi, để log khi không được format traceback: message và source line có
+    thể chứa PII (text câu nói, tên khách) hoặc token của provider."""
+    return " -> ".join(
+        f"{frame.filename}:{frame.lineno}" for frame in traceback.extract_tb(exc.__traceback__)
+    )
+
+
 _FRAME_DONE = object()
 _TURN_DONE = object()
 # Giới hạn chờ AudioSource.wait_for_playout() — xem docstring trong _speak() cho lý do.
@@ -48,10 +61,18 @@ _PLAYOUT_TIMEOUT_S = 20.0
 _PLAYOUT_FRAME_MS = 20
 # Nhịp kiểm tra lại khi người dùng đang nói dở (chưa thể tính là im lặng).
 _SILENCE_POLL_S = 0.25
-# Topic data channel mang lời thoại cho trang web /ui/livekit (hiện transcript để trace).
+# Topic data channel mang lời thoại cho trang /ui/livekit (câu bot kèm trích xuất khi demo_debug).
 TRANSCRIPT_TOPIC = "callbot.transcript"
-# Topic báo lỗi (`{code, message}`) để trang /ui/livekit không im lặng khi bot không chạy được.
-STATUS_TOPIC = "callbot.status"
+
+
+class TTSPlaybackError(Exception):
+    """TTS không phát được câu (R-39): provider lỗi trước chunk đầu (không có hoặc hết dự phòng), lỗi
+    giữa câu, hoặc không trả byte nào. Chỉ mang mã lỗi, không mang message gốc của provider.
+    Bị ngắt lời / khách rời cuộc gọi không phải lỗi TTS."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -70,9 +91,9 @@ def call_start_from_room(
     direction: Direction = "inbound",
     caller_number: Optional[str] = None,
     appointment_id: Optional[str] = None,
+    call_id: Optional[str] = None,
 ) -> CallStart:
-    """Map LiveKit room/participant -> CallStart (room name đã unique per call, dùng
-    thẳng làm call_id — không cần map qua UUID riêng).
+    """Map LiveKit room/participant -> CallStart. SIP callers use an opaque call ID.
 
     Demo web không có caller ID/PBX dial-out thật (khác PSTN) — worker.py đọc
     direction/caller_number/appointment_id từ participant attribute (gắn lúc sinh token,
@@ -83,7 +104,7 @@ def call_start_from_room(
     - outbound: cần appointment_id có sẵn trong clinic-mock, không có caller_number —
       bot chủ động gọi ra để xác nhận/nhắc lịch hẹn đã có."""
     return CallStart(
-        call_id=room_name,
+        call_id=call_id or room_name,
         direction=direction,
         caller_number=caller_number,
         appointment_id=appointment_id,
@@ -123,15 +144,21 @@ class CallBridge:
         output_queue_ms: int,
         silence_timeout_ms: int,
         krisp_noise_suppression_enabled: bool,
+        demo_debug: bool,
         direction: Direction = "inbound",
         caller_number: Optional[str] = None,
         appointment_id: Optional[str] = None,
         interruption_echo_policy: EchoPolicy = "acoustic",
         caller_identity: Optional[str] = None,
+        is_sip: bool = False,
+        on_close: Optional[Callable[[], Awaitable[None]]] = None,
     ) -> None:
         """Mọi tham số cấu hình (StreamingSpeechBundle, config/livekit.yaml, config/speech.yaml)
         đều bắt buộc — worker.py truyền đủ. Chỉ thông tin của cuộc gọi là tuỳ chọn."""
         self._room = room
+        # Individual SIP dispatch room names contain the caller's phone number.
+        # Keep that name out of the core session key, traces, logs and debug paths.
+        self._call_id = f"sip-{uuid.uuid4().hex}" if is_sip else room.name
         self._orchestrator = orchestrator
         candidate_tracer = getattr(orchestrator, "tracer", None)
         self._tracer = candidate_tracer if isinstance(candidate_tracer, Tracer) else null_tracer()
@@ -140,6 +167,7 @@ class CallBridge:
         self._sample_rate = sample_rate
         self._direction = direction
         self._caller_number = caller_number
+        self._on_close = on_close
         self._appointment_id = appointment_id
         self._turn_number = 0
         # Lúc chunk TTS đầu tiên của câu bot đang nói tới (trace độ trễ lượt).
@@ -156,6 +184,15 @@ class CallBridge:
         self._active_speak_task: Optional[asyncio.Task] = None
         self._closing = False
         self._input_done = False
+        # Phiên Core đã mở (start_call xong): chỉ khi đó mới có phiên để đóng lúc kết thúc.
+        self._session_opened = False
+        # Khách đã rời cuộc gọi (R-36): lý do (`PARTICIPANT_DISCONNECTED` | `ROOM_DISCONNECTED`).
+        # Từ lúc này không gửi lượt nào cho Core, không phát gì, phiên được đóng khi run() kết thúc.
+        self._hangup: Optional[str] = None
+        self._turns_dropped = 0
+        self._close_intent_task: Optional[asyncio.Task] = None
+        # Đã chuyển máy do lỗi kỹ thuật (R-39): tối đa một lần mỗi cuộc gọi.
+        self._system_error_handled = False
         # Chỉ nghe mic của người gọi (participant worker.py đã chờ). None: khoá vào participant
         # đầu tiên có track mic. Trước đây mọi track audio của mọi participant (người thứ hai,
         # track share màn hình) cùng đổ vào MỘT hàng đợi — hai luồng PCM xen kẽ nhau.
@@ -170,6 +207,8 @@ class CallBridge:
         # WER tệ hơn ở gần mọi điều kiện kể cả audio sạch. Bật tạm để nghe thử qua streaming
         # thật; không phải khuyến nghị bật cho production.
         self._krisp_noise_suppression_enabled = krisp_noise_suppression_enabled
+        # config/livekit.yaml `demo_debug`: câu bot kèm trích xuất của lượt (có PII) cho trang demo.
+        self._demo_debug = demo_debug
         # CallBridge giữ TurnController để báo bot đang nói/đã dứt lời (StreamingSpeechBundle
         # tạo sẵn theo SpeechSettings).
         self._turn_controller = turn_controller
@@ -191,6 +230,9 @@ class CallBridge:
         # xong trước đó, khiến CallBridge không bao giờ nhận được audio user.
         try:
             self._room.on("track_subscribed", self._on_track_subscribed)
+            # Khách rời phòng: biết ngay qua participant_disconnected. `disconnected` của chính
+            # phòng chỉ tới khi LiveKit đóng phòng (~25-30 s sau, đo 12/10) — giữ làm dự phòng.
+            self._room.on("participant_disconnected", self._on_participant_disconnected)
             self._room.on("disconnected", self._on_disconnected)
             for participant in self._room.remote_participants.values():
                 for publication in participant.track_publications.values():
@@ -203,11 +245,12 @@ class CallBridge:
                 direction=self._direction,
                 caller_number=self._caller_number,
                 appointment_id=self._appointment_id,
+                call_id=self._call_id,
             )
-            logger.info("call_bridge: start_call room=%s", self._room.name)
+            logger.info("call_bridge: start_call call_id=%s", self._call_id)
             try:
                 with self._tracer.start_trace(
-                    call_id=self._room.name,
+                    call_id=self._call_id,
                     turn=0,
                     component="TURN",
                     operation="livekit.start_call",
@@ -216,13 +259,16 @@ class CallBridge:
                     opening: BotAction = await asyncio.to_thread(
                         self._orchestrator.start_call, call_start
                     )
+                    self._session_opened = True
+                    if self._hangup is not None:
+                        return
                     await self._update_hotwords()
                     await self._publish_tts_track()
                     # Receive audio during the opening; the consumer has its own task context.
                     self._pipeline_task = asyncio.create_task(self._consume_turns())
                     await asyncio.sleep(0)
                     await self._publish_transcript("bot", opening.utterance, action=opening)
-                    await self._speak(opening.utterance)
+                    spoken = await self._speak_or_fail(root, opening.utterance)
                     root.enrich(
                         state_after=opening.state, ended=opening.ended, outcome=opening.outcome
                     )
@@ -231,40 +277,34 @@ class CallBridge:
                 # dùng được. Báo lỗi qua data channel để web demo không im lặng sau khi
                 # đã kết nối room; không biến lỗi nghiệp vụ dự kiến thành job crash.
                 logger.warning(
-                    "call_bridge: outbound start failed room=%s code=%s",
-                    self._room.name,
+                    "call_bridge: outbound start failed call_id=%s code=%s",
+                    self._call_id,
                     exc.code or "UNKNOWN",
                 )
-                try:
-                    await self._room.local_participant.publish_data(
-                        json.dumps(
-                            {
-                                "code": "OUTBOUND_START_FAILED",
-                                "message": "Không lấy được lịch hẹn hợp lệ từ Clinic. "
-                                "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
-                            },
-                            ensure_ascii=False,
-                        ),
-                        reliable=True,
-                        topic=STATUS_TOPIC,
-                    )
-                except Exception as publish_error:
-                    logger.warning(
-                        "call_bridge: không gửi được lỗi outbound tới browser (%s)",
-                        type(publish_error).__name__,
-                    )
+                await report_status(
+                    self._room,
+                    "OUTBOUND_START_FAILED",
+                    "Không lấy được lịch hẹn hợp lệ từ Clinic. "
+                    "Hãy kiểm tra mã, trạng thái lịch và kết nối Clinic.",
+                )
                 return
 
-            if opening.ended:
+            if not spoken:
+                await self._recover_tts_error()
+                return
+            if opening.ended or self._hangup is not None:
                 return
             self._start_silence_timer()
 
             while True:
                 item = await self._turn_queue.get()
                 if item is _TURN_DONE:
-                    if self._pipeline_error is not None:
+                    if self._pipeline_error is not None and self._hangup is None:
                         raise self._pipeline_error
                     return
+                if self._hangup is not None:
+                    self._turns_dropped += 1
+                    continue
                 if isinstance(item, _SilenceTimeout):
                     if item.generation != self._silence_generation:
                         continue
@@ -292,7 +332,7 @@ class CallBridge:
                     await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
                     self._publish_nbest_later(self._turn_number)
                 with self._tracer.start_trace(
-                    call_id=self._room.name,
+                    call_id=self._call_id,
                     turn=self._turn_number,
                     component="TURN",
                     operation="livekit.call_turn",
@@ -316,11 +356,38 @@ class CallBridge:
                                 vad_end_reason=turn.vad_end_reason,
                             )
                     caller = caller_input_from_turn(self._turn_number, turn)
+                    if self._hangup is not None:
+                        # Khách rời ngay trước khi lượt tới Core: không gửi lượt (không có lệnh ghi)
+                        self._turns_dropped += 1
+                        root.event(
+                            "call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED"
+                        )
+                        return
                     engine_started = perf_counter()
-                    action = await asyncio.to_thread(
-                        self._orchestrator.handle_turn, self._room.name, caller
-                    )
+                    try:
+                        run = await asyncio.to_thread(
+                            self._orchestrator.handle_turn_with_details, self._call_id, caller
+                        )
+                    except (CallEnded, ReconciliationRequired):
+                        # Khách rời giữa lượt: cổng ghi đã chặn lệnh chưa gửi (CallEnded) hoặc lệnh
+                        # đã gửi chưa rõ kết quả chờ đối soát. Không còn ai để nói.
+                        if self._hangup is None:
+                            raise
+                        root.event(
+                            "call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED"
+                        )
+                        return
                     engine_ms = (perf_counter() - engine_started) * 1000
+                    action = run.action
+                    if self._hangup is not None:
+                        # Lượt xong sau khi khách rời: kết quả (nếu đã ghi) giữ nguyên, không phát.
+                        root.event(
+                            "call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED"
+                        )
+                        root.enrich(
+                            state_after=action.state, ended=action.ended, outcome=action.outcome
+                        )
+                        return
                     hotwords_started = perf_counter()
                     await self._update_hotwords()
                     hotwords_ms = (perf_counter() - hotwords_started) * 1000
@@ -331,9 +398,11 @@ class CallBridge:
                         action.ended,
                         action.outcome,
                     )
-                    await self._publish_transcript("bot", action.utterance, action=action)
+                    await self._publish_transcript(
+                        "bot", action.utterance, action=action, extraction=run.extraction
+                    )
                     self._first_audio_at = None
-                    spoken = asyncio.Event()
+                    played = asyncio.Event()
                     if not turn.silence_ms:
                         self._tasks.append(
                             asyncio.create_task(
@@ -342,26 +411,39 @@ class CallBridge:
                                     received_at=received_at,
                                     engine_ms=engine_ms,
                                     hotwords_ms=hotwords_ms,
-                                    spoken=spoken,
+                                    spoken=played,
                                 )
                             )
                         )
                     try:
-                        await self._speak(action.utterance)
+                        spoken = await self._speak_or_fail(root, action.utterance)
                     finally:
-                        spoken.set()
+                        played.set()
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
                     )
-                if action.ended:
+                if not spoken:
+                    await self._recover_tts_error()
+                    return
+                if action.ended or self._hangup is not None:
                     return
                 self._start_silence_timer()
         finally:
-            await self.aclose()
+            logger.info(
+                "call_bridge: closing dialogue, SIP callback=%s", self._on_close is not None
+            )
+            # SIP BYE must follow final playout, before closing the incoming media.
+            # Waiting for the caller's media to close before sending BYE can leave
+            # the handset connected after the dialogue has already ended.
+            try:
+                if self._on_close is not None:
+                    await self._on_close()
+            finally:
+                await self.aclose()
 
     def _start_silence_timer(self) -> None:
         self._stop_silence_timer()
-        if self._silence_timeout_ms > 0:
+        if self._silence_timeout_ms > 0 and self._hangup is None and not self._closing:
             self._silence_task = asyncio.create_task(self._watch_silence(self._silence_generation))
 
     def _stop_silence_timer(self) -> None:
@@ -397,11 +479,11 @@ class CallBridge:
         if box is None or not getattr(asr, "supports_hotwords", False):
             return
         try:
-            hints = await asyncio.to_thread(self._orchestrator.asr_hints, self._room.name)
+            hints = await asyncio.to_thread(self._orchestrator.asr_hints, self._call_id)
         except Exception as exc:
             logger.warning(
-                "call_bridge: không lấy được hotword room=%s: %s",
-                self._room.name,
+                "call_bridge: không lấy được hotword call_id=%s: %s",
+                self._call_id,
                 type(exc).__name__,
             )
             box.set(NO_HOTWORDS)
@@ -501,10 +583,15 @@ class CallBridge:
         *,
         action: Optional[BotAction] = None,
         confidence: Optional[float] = None,
+        extraction: Optional[dict[str, Any]] = None,
     ) -> None:
         """Gửi một dòng hội thoại qua data channel tới người trong phòng — chính người đang
         gọi, nên họ chỉ thấy lại lời của mình và của bot. Không log text (PII). Gửi lỗi chỉ
-        mất dòng hiển thị, không được làm hỏng cuộc gọi."""
+        mất dòng hiển thị, không được làm hỏng cuộc gọi.
+
+        Câu bot của lượt người gọi (`extraction` là trace của lượt) kèm `extraction_view` khi bật
+        `demo_debug`: cùng một gói nên trang demo có câu trả lời và trích xuất của lượt cùng lúc,
+        không lệch nhau. `null` = lượt không qua bước trích xuất (vd. lượt replay)."""
         payload: dict[str, object] = {
             "type": "transcript",
             "role": role,
@@ -515,14 +602,16 @@ class CallBridge:
             payload["confidence"] = confidence
         if action is not None:
             payload.update(state=action.state, ended=action.ended, outcome=action.outcome)
+        if self._demo_debug and role == "bot" and self._turn_number > 0:
+            payload["extraction"] = extraction_view(extraction)
         try:
             await self._room.local_participant.publish_data(
                 json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
             )
         except Exception as exc:
             logger.warning(
-                "call_bridge: không gửi được transcript room=%s: %s",
-                self._room.name,
+                "call_bridge: không gửi được transcript call_id=%s: %s",
+                self._call_id,
                 type(exc).__name__,
             )
 
@@ -533,21 +622,20 @@ class CallBridge:
                 turn_controller=self._turn_controller,
                 interruption=self._interruption,
             ):
+                if self._hangup is not None or self._closing:
+                    self._turns_dropped += 1
+                    continue
                 await self._turn_queue.put(turn)
         except asyncio.CancelledError:
             raise
         except BaseException as exc:
             self._pipeline_error = exc
             # Chỉ log vị trí frame, không format traceback (message/source có thể chứa PII).
-            locations = " -> ".join(
-                f"{frame.filename}:{frame.lineno}"
-                for frame in traceback.extract_tb(exc.__traceback__)
-            )
             logger.error(
-                "call_bridge: voice pipeline failed room=%s error=%s locations=%s",
-                self._room.name,
+                "call_bridge: voice pipeline failed call_id=%s error=%s locations=%s",
+                self._call_id,
                 type(exc).__name__,
-                locations,
+                _error_locations(exc),
             )
         finally:
             await self._put_turn_done()
@@ -555,19 +643,12 @@ class CallBridge:
     def _on_track_subscribed(
         self, track: "rtc.Track", publication: "rtc.RemoteTrackPublication", participant: object
     ) -> None:
-        from livekit import rtc
-
-        if self._closing or track.kind != rtc.TrackKind.KIND_AUDIO:
+        if self._closing or self._hangup is not None:
             return
-        identity = getattr(participant, "identity", None)
-        source = getattr(publication, "source", rtc.TrackSource.SOURCE_UNKNOWN)
-        if source not in (rtc.TrackSource.SOURCE_MICROPHONE, rtc.TrackSource.SOURCE_UNKNOWN):
-            logger.info("call_bridge: bỏ qua track audio nguồn %s của %s", source, identity)
-            return
-        if self._caller_identity is None:
-            self._caller_identity = identity
-        elif identity != self._caller_identity:
-            logger.info("call_bridge: bỏ qua track audio của participant khác %s", identity)
+        accepted, self._caller_identity = accept_caller_track(
+            track, publication, participant, self._caller_identity
+        )
+        if not accepted:
             return
         # Người gọi publish lại mic (đổi thiết bị): luồng mới thay luồng cũ, không chạy song song.
         if self._pump_task is not None and not self._pump_task.done():
@@ -575,72 +656,62 @@ class CallBridge:
         self._pump_task = asyncio.ensure_future(self._pump_track(track))
         self._tasks.append(self._pump_task)
 
+    def _on_participant_disconnected(self, participant: object) -> None:
+        identity = getattr(participant, "identity", None)
+        if self._caller_identity is not None and identity != self._caller_identity:
+            return  # người khác trong phòng rời đi, không phải người gọi
+        self._on_caller_left("PARTICIPANT_DISCONNECTED")
+
     def _on_disconnected(self, *_args: object) -> None:
+        self._on_caller_left("ROOM_DISCONNECTED")
+
+    def _on_caller_left(self, reason: str) -> None:
+        """Khách rời cuộc gọi (R-36). Chạy trong callback của SDK nên không chặn: ghi nhận yêu cầu
+        đóng phiên ở thread (lệnh ghi chưa gửi bị chặn ngay cả giữa lượt), bỏ lượt đang chờ, dừng
+        phát. Lượt Core đang chạy không bị bỏ ngang; run() chờ nó xong rồi đóng phiên."""
+        if self._hangup is not None or self._closing:
+            return
+        self._hangup = reason
+        logger.info("call_bridge: khách rời cuộc gọi (%s) call_id=%s", reason, self._call_id)
+        self._stop_silence_timer()
+        if self._session_opened:
+            self._close_intent_task = asyncio.ensure_future(self._publish_close_intent())
         self._signal_input_done()
+        while True:
+            try:
+                item = self._turn_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if item is not _TURN_DONE:
+                self._turns_dropped += 1
+        self._turn_queue.put_nowait(_TURN_DONE)
+        if self._audio_source is not None:
+            self._audio_source.clear_queue()
         task = self._active_speak_task
         if task is not None and not task.done():
             task.cancel()
 
-    def _krisp_processor(self) -> object | None:
-        """THỬ NGHIỆM (docs/evidence §8) — None nếu tắt hoặc package chưa cài. Processor tạo
-        mới mỗi lần pump (không tái dùng qua re-publish): auto_close mặc định của AudioStream
-        đóng nó khi stream đóng, tái dùng instance đã đóng sẽ lỗi."""
-        if not self._krisp_noise_suppression_enabled:
-            return None
+    async def _publish_close_intent(self) -> None:
         try:
-            from livekit.plugins import krisp
-        except ImportError:
+            await asyncio.to_thread(self._orchestrator.request_call_close, self._call_id)
+        except Exception as exc:
+            # aclose() vẫn đóng phiên (close_call ghi lại yêu cầu này trước khi lấy khóa).
             logger.warning(
-                "call_bridge: krisp_noise_suppression_enabled=true nhưng "
-                "livekit-plugins-krisp chưa cài — bỏ qua, chạy không lọc"
+                "call_bridge: không ghi được yêu cầu đóng phiên call_id=%s: %s",
+                self._call_id,
+                type(exc).__name__,
             )
-            return None
-        return krisp.KrispVivaFilterFrameProcessor(
-            mode=krisp.viva_filter.VivaMode.VOICE_ISOLATION, noise_suppression_level=90.0
-        )
 
     async def _pump_track(self, track: "rtc.Track") -> None:
-        from livekit import rtc
-
-        stream = rtc.AudioStream.from_track(
-            track=track,
+        await pump_caller_track(
+            track,
+            call_id=self._call_id,
             sample_rate=self._sample_rate,
-            num_channels=1,
-            frame_size_ms=self._frame_ms,
-            capacity=self._input_queue_frames,
-            noise_cancellation=self._krisp_processor(),
+            frame_ms=self._frame_ms,
+            capacity_frames=self._input_queue_frames,
+            krisp_enabled=self._krisp_noise_suppression_enabled,
+            put=self._frame_queue.put,
         )
-        # LIVEKIT_DEBUG_DUMP_AUDIO=1: ghi PCM thật (đã qua livekit_frame_to_segment, đúng
-        # đường dữ liệu đưa vào ASR) ra 1 file wav/call trong temp/audio/ — cách duy nhất
-        # để xác nhận chắc chắn ASR hallucinate do audio bị méo (sample rate/capture sai)
-        # hay do model thật sự nghe nhầm giọng nói rõ ràng. Tắt mặc định: PII + I/O per-frame
-        # không nên bật ở production.
-        dump_writer = (
-            self._open_debug_dump() if os.environ.get("LIVEKIT_DEBUG_DUMP_AUDIO") else None
-        )
-        try:
-            async for event in stream:
-                segment = livekit_frame_to_segment(event.frame, target_rate=self._sample_rate)
-                if segment.pcm:
-                    if dump_writer is not None:
-                        dump_writer.writeframes(segment.pcm)
-                    await self._frame_queue.put(segment.pcm)
-        finally:
-            if dump_writer is not None:
-                dump_writer.close()
-            await stream.aclose()
-
-    def _open_debug_dump(self):
-        import wave
-
-        os.makedirs("temp/audio", exist_ok=True)
-        path = f"temp/audio/livekit_debug_{self._room.name}.wav"
-        writer = wave.open(path, "wb")
-        writer.setnchannels(1)
-        writer.setsampwidth(2)
-        writer.setframerate(self._sample_rate)
-        logger.warning("call_bridge: LIVEKIT_DEBUG_DUMP_AUDIO bật — ghi PCM vào %s", path)
-        return writer
 
     async def _frames(self) -> AsyncIterator[bytes]:
         while True:
@@ -674,7 +745,7 @@ class CallBridge:
         nói tiếp phần còn lại, và câu kế tiếp bị native từ chối
         ("InvalidState - failed to capture frame"), sập job. Frame nhỏ thì phần còn treo sau
         khi huỷ tối đa một frame, xong ngay khi `clear_queue()` xả hàng đợi."""
-        if not text.strip() or self._audio_source is None:
+        if self._hangup is not None or not text.strip() or self._audio_source is None:
             return
 
         self._turn_controller.on_bot_speaking_changed(True)
@@ -685,6 +756,7 @@ class CallBridge:
         # Chunk TTS cắt theo byte HTTP tuỳ ý; gom lại rồi cắt đúng ranh giới frame PCM16.
         pending = bytearray()
         interrupted = False
+        failure: Optional[str] = None
         total_bytes = 0
         started = perf_counter()
         first_audio_ms = None
@@ -707,22 +779,22 @@ class CallBridge:
                         first_audio_ms = (perf_counter() - started) * 1000
                         self._first_audio_at = perf_counter()
                     total_bytes += len(chunk)
-                    if self._is_interrupted():
+                    if self._stopped():
                         break
                     self._interruption.on_bot_audio(chunk, sample_rate)
                     pending.extend(chunk)
-                    while len(pending) >= frame_bytes and not self._is_interrupted():
+                    while len(pending) >= frame_bytes and not self._stopped():
                         await self._capture(bytes(pending[:frame_bytes]), sample_rate)
                         del pending[:frame_bytes]
-                    if self._is_interrupted():
+                    if self._stopped():
                         break
-            if not self._is_interrupted():
+            if not self._stopped():
                 self._interruption.on_bot_audio(b"", sample_rate, complete=True)
             # Đuôi câu ngắn hơn một frame; bỏ byte lẻ vì rtc.AudioFrame cần PCM16 trọn mẫu.
             tail = len(pending) - len(pending) % 2
-            if tail and not self._is_interrupted():
+            if tail and not self._stopped():
                 await self._capture(bytes(pending[:tail]), sample_rate)
-            interrupted = self._is_interrupted()
+            interrupted = self._stopped()
             if interrupted:
                 # Chỉ dừng đẩy chunk MỚI là chưa đủ — chunk đã capture nhưng chưa phát
                 # ra loa vẫn còn trong hàng đợi playout của AudioSource, phải xoá luôn
@@ -734,24 +806,31 @@ class CallBridge:
                     try:
                         await asyncio.wait_for(wait_for_playout(), timeout=_PLAYOUT_TIMEOUT_S)
                     except TimeoutError:
-                        # wait_for_playout() chờ track TTS được phía client thực sự phát
-                        # hết (_join_fut nội bộ của AudioSource) — nếu track không bao
-                        # giờ được browser subscribe/consume (mất kết nối, tab đóng đột
-                        # ngột, lỗi network), future đó không bao giờ resolve và cuộc gọi
-                        # bị khoá vô thời hạn (bug thật đã gặp: 56s im lặng rồi room mới
-                        # tự ngắt). Timeout ở đây không phải để "đúng" mọi trường hợp —
-                        # chỉ đảm bảo CallBridge luôn tự giải phóng, không bao giờ treo
-                        # cứng chờ 1 sự kiện WebRTC có thể không bao giờ tới.
+                        # SDK _join_fut tracks local AudioSource queue time, not
+                        # acknowledgement of client playback. Bound that local wait;
+                        # SIP hangup adds a separate remote-media grace period.
                         logger.warning(
                             "call_bridge: wait_for_playout timeout sau %.0fs, tiếp tục turn tiếp theo",
                             _PLAYOUT_TIMEOUT_S,
                         )
         except asyncio.CancelledError:
-            interrupted = self._is_interrupted()
+            interrupted = self._stopped()
             if not interrupted:
                 raise
+        except Exception as exc:
+            # Provider chính lỗi trước chunk đầu và không có / cũng hỏng dự phòng (R-39). Cũng bắt
+            # cả lỗi phía phát (capture_frame...), nên log vị trí lỗi: không có dòng này thì bug
+            # code trên production chỉ hiện ra như "TTS lỗi, chuyển máy".
+            if not self._stopped():
+                failure = type(exc).__name__
+                logger.error(
+                    "call_bridge: TTS stream failed call_id=%s error=%s locations=%s",
+                    self._call_id,
+                    failure,
+                    _error_locations(exc),
+                )
         finally:
-            interrupted = interrupted or self._is_interrupted()
+            interrupted = interrupted or self._stopped()
             actual = getattr(self._tts, "last_stream_result", None)
             actual_provider = getattr(actual, "provider_actual", None) or getattr(
                 self._tts, "name", None
@@ -760,7 +839,12 @@ class CallBridge:
             # Provider lỗi giữa câu: gateway dừng êm (không đọc lại) và chỉ ghi mã lỗi — người
             # gọi nghe thiếu câu, nên span phải là ERROR + truncated, không tính tiền (§4.1.3).
             stream_error = None if interrupted else getattr(actual, "error_code", None)
-            failed = sys.exc_info()[0] is not None or stream_error is not None
+            if failure is None and not interrupted:
+                if stream_error is not None:
+                    failure = str(stream_error)
+                elif total_bytes == 0:
+                    failure = "TTS_EMPTY_AUDIO"
+            failed = sys.exc_info()[0] is not None or failure is not None
             tts_span.enrich(
                 provider_actual=actual_provider,
                 voice=voice,
@@ -775,12 +859,12 @@ class CallBridge:
                 bytes=total_bytes,
                 interrupted=interrupted,
                 truncated=interrupted or stream_error is not None,
-                barge_in=interrupted,
+                barge_in=self._is_interrupted(),
                 result="ERROR" if failed else "CANCELLED" if interrupted else "OK",
             )
-            if stream_error is not None:
-                tts_span.enrich(provider_error_code=stream_error)
-                if stream_error == "timeout":
+            if failure is not None:
+                tts_span.enrich(provider_error_code=failure)
+                if failure == "timeout":
                     tts_span.set_error_code("TIMEOUT", "TTS_TIMEOUT")
                 else:
                     tts_span.set_error_code("PROVIDER", "TTS_PROVIDER_ERROR")
@@ -791,25 +875,203 @@ class CallBridge:
                 if cost is not None:
                     tts_span.enrich(cost_usd=cost)
             scope.__exit__(*sys.exc_info())
-            self._turn_controller.on_bot_speaking_changed(False, preserve_candidate=interrupted)
+            self._turn_controller.on_bot_speaking_changed(
+                False, preserve_candidate=self._is_interrupted()
+            )
             self._interruption.on_bot_stopped_speaking()
             self._active_speak_task = None
+        if failure is not None:
+            raise TTSPlaybackError(failure)
+
+    async def _speak_or_fail(self, root: SpanHandle, text: str) -> bool:
+        """Phát câu của lượt; False khi TTS lỗi (người gọi chưa nghe trọn câu) — run() chuyển sang
+        `_recover_tts_error` sau khi đóng trace của lượt."""
+        try:
+            await self._speak(text)
+        except TTSPlaybackError as exc:
+            logger.error(
+                "call_bridge: TTS lỗi call_id=%s code=%s -> phát câu chuyển máy ghi sẵn",
+                self._call_id,
+                exc.code,
+            )
+            root.event("tts.playback_failed", provider_error_code=exc.code)
+            return False
+        return True
+
+    async def _recover_tts_error(self) -> None:
+        """TTS lỗi giữa cuộc gọi (R-39, bảng 2.2 của plan 11/10). Phía khách luôn như nhau: nghe câu
+        TRANSFER ghi sẵn (giọng Vbee đã duyệt) rồi được chuyển nhân viên (SYSTEM_ERROR); Core quyết
+        định phía Clinic. Khách đã rời thì không phát, không chuyển. Tối đa một lần mỗi cuộc gọi."""
+        if self._system_error_handled or self._hangup is not None or self._closing:
+            return
+        self._system_error_handled = True
+        self._stop_silence_timer()
+        # Không nhận lượt mới: cuộc gọi kết thúc sau câu chuyển máy
+        self._signal_input_done()
+        self._turn_number += 1
+        with self._tracer.start_trace(
+            call_id=self._call_id,
+            turn=self._turn_number,
+            component="TURN",
+            operation="livekit.tts_recovery",
+        ) as root:
+            root.enrich(direction=self._direction, mode="livekit")
+            try:
+                recovery: TTSRecovery = await asyncio.to_thread(
+                    self._orchestrator.handle_tts_error, self._call_id
+                )
+            except CallEnded:
+                root.event("call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED")
+                return
+            except Exception as exc:
+                # Không biết Clinic đã ghi gì: vẫn chuyển nhân viên, kèm cờ cần đối soát
+                logger.error(
+                    "call_bridge: Core không xử lý được lỗi TTS call_id=%s error=%s locations=%s",
+                    self._call_id,
+                    type(exc).__name__,
+                    _error_locations(exc),
+                )
+                recovery = TTSRecovery(TRANSFER, reconciliation_required=True)
+            if self._hangup is not None:
+                root.event("call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED")
+                return
+            if recovery.action is not None:
+                root.enrich(
+                    state_after=recovery.action.state,
+                    ended=recovery.action.ended,
+                    outcome=recovery.action.outcome,
+                )
+            try:
+                await self._tts.cancel()
+            except Exception as exc:
+                logger.warning("call_bridge: không hủy được TTS: %s", type(exc).__name__)
+            if self._audio_source is not None:
+                self._audio_source.clear_queue()
+            await self._publish_transcript("bot", recovery.utterance, action=recovery.action)
+            await self._play_fixed(root, recovery.utterance)
+            if self._hangup is not None:
+                root.event("call.event_ignored", stage="TTS", decision_reason="TRANSPORT_CLOSED")
+                return
+            await self._request_handoff(root, recovery)
+
+    async def _play_fixed(self, root: SpanHandle, text: str) -> None:
+        """Phát câu ghi sẵn theo frame 20 ms như `_speak` (dừng ngay khi khách rời). Thiếu audio
+        hoặc phát lỗi thì chỉ ghi log/trace: việc chuyển nhân viên vẫn tiếp tục."""
+        if self._audio_source is None:
+            root.event("tts.fallback_played", played=False, decision_reason="NO_AUDIO_TRACK")
+            return
+        sample_rate = self._tts.stream_sample_rate
+        try:
+            pcm = await asyncio.to_thread(fixed_utterance_pcm, text, sample_rate)
+        except Exception as exc:
+            # Đọc/resample asset lỗi bất ngờ: coi như thiếu audio, không được bỏ bước chuyển máy
+            logger.error(
+                "call_bridge: không đọc được câu ghi sẵn call_id=%s error=%s locations=%s",
+                self._call_id,
+                type(exc).__name__,
+                _error_locations(exc),
+            )
+            pcm = None
+        if pcm is None:
+            root.event(
+                "tts.fallback_played", played=False, decision_reason="TTS_FALLBACK_AUDIO_MISSING"
+            )
+            return
+        frame_bytes = sample_rate * _PLAYOUT_FRAME_MS // 1000 * 2
+        end = len(pcm) - len(pcm) % 2
+        self._active_speak_task = asyncio.current_task()
+        played = False
+        try:
+            for offset in range(0, end, frame_bytes):
+                if self._stopped():
+                    break
+                await self._capture(pcm[offset : min(offset + frame_bytes, end)], sample_rate)
+            if self._stopped():
+                self._audio_source.clear_queue()
+            else:
+                played = True
+                wait_for_playout = getattr(self._audio_source, "wait_for_playout", None)
+                if wait_for_playout is not None:
+                    try:
+                        await asyncio.wait_for(wait_for_playout(), timeout=_PLAYOUT_TIMEOUT_S)
+                    except TimeoutError:
+                        logger.warning(
+                            "call_bridge: wait_for_playout timeout sau %.0fs (câu ghi sẵn)",
+                            _PLAYOUT_TIMEOUT_S,
+                        )
+        except asyncio.CancelledError:
+            if not self._stopped():
+                raise
+        except Exception as exc:
+            logger.error("call_bridge: không phát được câu ghi sẵn: %s", type(exc).__name__)
+        finally:
+            self._active_speak_task = None
+        root.event(
+            "tts.fallback_played",
+            played=played,
+            decision_reason=None if played else "INTERRUPTED",
+            audio_duration_ms=round(end / (2 * sample_rate) * 1000),
+        )
+
+    async def _request_handoff(self, root: SpanHandle, recovery: TTSRecovery) -> None:
+        """HANDOFF_REQUESTED: chuyển cuộc gọi cho nhân viên. Demo web chưa có tổng đài viên (chuyển
+        máy SIP thật ngoài phạm vi) nên báo qua `STATUS_TOPIC` + trace để vận hành theo dõi."""
+        logger.info(
+            "call_bridge: HANDOFF_REQUESTED call_id=%s reason=SYSTEM_ERROR outcome=%s preserve=%s "
+            "reconcile=%s",
+            self._call_id,
+            recovery.action.outcome if recovery.action is not None else None,
+            recovery.preserve_business_outcome,
+            recovery.reconciliation_required,
+        )
+        root.event(
+            "call.handoff_requested",
+            transfer_reason="SYSTEM_ERROR",
+            preserve_business_outcome=recovery.preserve_business_outcome,
+            reconciliation_required=recovery.reconciliation_required,
+        )
+        try:
+            await self._room.local_participant.publish_data(
+                json.dumps(
+                    {
+                        "code": "HANDOFF_REQUESTED",
+                        "message": "Bot gặp lỗi giọng nói, đã chuyển cuộc gọi tới nhân viên "
+                        "(SYSTEM_ERROR).",
+                        "transfer_reason": "SYSTEM_ERROR",
+                        "preserve_business_outcome": recovery.preserve_business_outcome,
+                        "reconciliation_required": recovery.reconciliation_required,
+                    },
+                    ensure_ascii=False,
+                ),
+                reliable=True,
+                topic=STATUS_TOPIC,
+            )
+        except Exception as exc:
+            logger.warning(
+                "call_bridge: không gửi được HANDOFF_REQUESTED tới browser (%s)",
+                type(exc).__name__,
+            )
 
     def _is_interrupted(self) -> bool:
         return self._interruption.state == InterruptionState.INTERRUPTED
+
+    def _stopped(self) -> bool:
+        """Câu đang phát phải dừng: khách nói chen, khách đã rời cuộc gọi, hoặc bridge đang đóng."""
+        return self._hangup is not None or self._closing or self._is_interrupted()
 
     async def _capture(self, pcm: bytes, sample_rate: int) -> None:
         segment = AudioSegment(pcm=pcm, sample_rate=sample_rate)
         await self._audio_source.capture_frame(segment_to_livekit_frame(segment))
 
     async def cancel(self) -> None:
-        """Interruption target: dừng network TTS và audio đã queue ngay lập tức."""
-        await self._tts.cancel()
+        """Interruption target: tắt tiếng ngay (xoá audio đã queue, dừng vòng phát) rồi mới đóng
+        request TTS — đóng kết nối có thể chậm, người gọi không được nghe tiếp trong lúc chờ."""
         if self._audio_source is not None:
             self._audio_source.clear_queue()
         task = self._active_speak_task
         if task is not None and task is not asyncio.current_task() and not task.done():
             task.cancel()
+        await self._tts.cancel()
 
     def _signal_input_done(self) -> None:
         if self._input_done:
@@ -847,7 +1109,65 @@ class CallBridge:
         pending = list(self._tasks)
         if self._pipeline_task is not None and self._pipeline_task is not asyncio.current_task():
             pending.append(self._pipeline_task)
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        if self._audio_source is not None:
-            await self._audio_source.aclose()
+        stopped = await asyncio.gather(*pending, return_exceptions=True) if pending else []
+        with self._tracer.start_trace(
+            call_id=self._call_id,
+            turn=self._turn_number,
+            component="TURN",
+            operation="livekit.close_call",
+        ) as root:
+            if self._hangup is not None:
+                root.event(
+                    "call.hangup", decision_reason=self._hangup, turns_dropped=self._turns_dropped
+                )
+            tts_closed = queue_cleared = audio_closed = True
+            try:
+                # Đóng hẳn request TTS còn mở (vd. đang chờ chunk đầu của Vbee lúc khách cúp máy).
+                await self._tts.cancel()
+            except Exception as exc:
+                tts_closed = False
+                logger.warning("call_bridge: không hủy được TTS: %s", type(exc).__name__)
+            if self._audio_source is not None:
+                try:
+                    self._audio_source.clear_queue()
+                except Exception:
+                    queue_cleared = False
+                try:
+                    await self._audio_source.aclose()
+                except Exception:
+                    audio_closed = False
+            session_closed = None
+            if self._session_opened:
+                session_closed = await self._close_session()
+            logger.info(
+                "call_bridge: đã đóng cuộc gọi call_id=%s hangup=%s turns_dropped=%d session_closed=%s",
+                self._call_id,
+                self._hangup,
+                self._turns_dropped,
+                session_closed,
+            )
+            root.event(
+                "call.cleanup",
+                timers_stopped=True,
+                input_stopped=not any(isinstance(result, Exception) for result in stopped),
+                tts_closed=tts_closed,
+                queue_cleared=queue_cleared,
+                audio_closed=audio_closed,
+                session_closed=session_closed,
+            )
+
+    async def _close_session(self) -> bool:
+        """Đóng phiên Core (R-36): chờ lượt đang chạy xong, không gửi lệnh Clinic, không đổi outcome
+        đã có. Gọi cả khi cuộc gọi kết thúc bình thường (phiên đã ENDED thì chỉ đánh dấu đã đóng)."""
+        if self._close_intent_task is not None:
+            await asyncio.gather(self._close_intent_task, return_exceptions=True)
+        try:
+            await asyncio.to_thread(self._orchestrator.close_call, self._call_id)
+            return True
+        except Exception as exc:
+            logger.error(
+                "call_bridge: không đóng được phiên call_id=%s: %s",
+                self._call_id,
+                type(exc).__name__,
+            )
+            return False
