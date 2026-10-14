@@ -17,7 +17,7 @@ Phạm vi gồm Identity, Confirm, Cancel, Transfer, Reschedule, No-answer, Book
 
 ## 2. Kết quả rà hiện trạng
 
-**Cập nhật sau chuẩn hoá 08/10:** [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-08.md), [catalog JSON hiện tại](../evidence/tts-static-cache/tts-utterance-catalog-2026-10-08.json). Registry có 76 nguyên văn tĩnh: 73 câu trong đợt thu, 3 mẫu dự phòng chưa có call site được hoãn thu; 16 nhóm hỏi đáp có 3 biến thể, 15 renderer và 7 mảnh nội dung. Đợt thu có 4.690 ký tự, 8/73 câu mở bằng “Dạ”. Trước sửa là 124 câu, 85 câu mở bằng “Dạ”; các con số trong bảng dưới thuộc snapshot 07/10 và được giữ để đối chiếu.
+**Cập nhật sau chuẩn hoá 08/10:** [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-12.md), [catalog JSON hiện tại](../evidence/tts-static-cache/tts-utterance-catalog-2026-10-08.json). Registry có 76 nguyên văn tĩnh: 73 câu trong đợt thu, 3 mẫu dự phòng chưa có call site được hoãn thu; 16 nhóm hỏi đáp có 3 biến thể, 15 renderer và 7 mảnh nội dung. Đợt thu có 4.690 ký tự, 8/73 câu mở bằng “Dạ”. Trước sửa là 124 câu, 85 câu mở bằng “Dạ”; các con số trong bảng dưới thuộc snapshot 07/10 và được giữ để đối chiếu.
 
 Snapshot review cũ: `9e48549`. [CSV review 07/10](../evidence/tts-static-cache/tts-utterance-review-2026-10-07.csv) là baseline công cụ catalog dùng đối chiếu thay đổi. Phần review renderer đã gộp vào cuối plan này; không giữ thêm CSV renderer trùng nội dung.
 
@@ -54,7 +54,7 @@ Các renderer `ASK_DATE_AGAIN` nhánh INVALID/TOO_BROAD × 2 action có 4 câu h
 
 ## 4. Review cần ưu tiên
 
-Review toàn bộ câu tĩnh sau sửa nằm trong [danh sách gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-08.md). Đã thu 73 câu tĩnh và Hưng xác nhận nghe đạt; các ví dụ renderer bên dưới lấy từ Engine hiện tại và mới chuẩn hoá văn bản, chưa có kết quả nghe renderer.
+Review toàn bộ câu tĩnh sau sửa nằm trong [danh sách gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-12.md). Đã thu 73 câu tĩnh và Hưng xác nhận nghe đạt; các ví dụ renderer bên dưới lấy từ Engine hiện tại và mới chuẩn hoá văn bản, chưa có kết quả nghe renderer.
 
 | Câu | Nguyên văn hiện tại / mẫu renderer | Mục đích |
 |---|---|---|
@@ -89,7 +89,7 @@ Catalog này là snapshot văn bản để review; trạng thái duyệt audio h
 
 ### Bước B — Sửa và chốt văn bản (Hưng, khoảng 0,5–1 ngày)
 
-**Đã thực hiện phần sửa lời 08/10 (Hưng):** [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-08.md), [CSV nguyên văn để thu](../evidence/tts-static-cache/tts-static-shortlist-2026-10-08.csv), [đối chiếu 125 ID/alias cũ](../evidence/tts-static-cache/tts-static-reduction-map-2026-10-08.csv). Chào đầu/chuyển máy giữ một câu; hỏi đáp giữ ba cách nói; gộp ba cặp nhóm cùng mục đích. Ba nhóm chưa có call site còn một mẫu dự phòng mỗi nhóm và hoãn thu. Engine chọn trong tập ba câu, ưu tiên câu chưa nói trong lịch sử và tránh mở liên tiếp bằng “Dạ” khi có lựa chọn khác; không thêm trạng thái phiên. Các renderer đọc lại an toàn chỉ nhận v0; manager không chọn biến thể cho chúng. Câu huỷ giữ từ khoá và hai lượt xác nhận; báo thành công giữ receipt. Ngắt nhịp ngày sinh/ngày giờ/cơ sở, rút prefix và câu mời slot, chỉ đọc ngày một lần khi hai slot cùng ngày, một slot hỏi có/không. Bỏ lời hứa gọi lại. Số câu mở bằng “Dạ” của danh sách thu giảm 85 → 8; text đợt thu 4.690 ký tự. Đã thu, được Hưng xác nhận nghe đạt và đóng gói audio ở bước C/D.
+**Đã thực hiện phần sửa lời 08/10 (Hưng):** [danh sách câu gửi PM](../evidence/tts-static-cache/tts-utterances-pm-review-2026-10-12.md), [CSV nguyên văn để thu](../evidence/tts-static-cache/tts-static-shortlist-2026-10-08.csv), [đối chiếu 125 ID/alias cũ](../evidence/tts-static-cache/tts-static-reduction-map-2026-10-08.csv). Chào đầu/chuyển máy giữ một câu; hỏi đáp giữ ba cách nói; gộp ba cặp nhóm cùng mục đích. Ba nhóm chưa có call site còn một mẫu dự phòng mỗi nhóm và hoãn thu. Engine chọn trong tập ba câu, ưu tiên câu chưa nói trong lịch sử và tránh mở liên tiếp bằng “Dạ” khi có lựa chọn khác; không thêm trạng thái phiên. Các renderer đọc lại an toàn chỉ nhận v0; manager không chọn biến thể cho chúng. Câu huỷ giữ từ khoá và hai lượt xác nhận; báo thành công giữ receipt. Ngắt nhịp ngày sinh/ngày giờ/cơ sở, rút prefix và câu mời slot, chỉ đọc ngày một lần khi hai slot cùng ngày, một slot hỏi có/không. Bỏ lời hứa gọi lại. Số câu mở bằng “Dạ” của danh sách thu giảm 85 → 8; text đợt thu 4.690 ký tự. Đã thu, được Hưng xác nhận nghe đạt và đóng gói audio ở bước C/D.
 
 1. Áp review trong `templates.py`; sửa call site chọn biến thể trong manager/questions/inbound đối với nhóm cố định theo R-42. Giữ selector cho nhóm được phép; kiểm việc xoay v0–v2 không tự bảo đảm “không lặp” cho mọi số lượt.
 2. Ngắt nhịp ngày sinh, thời gian, cơ sở; rút OFFER_SLOTS và prefix; kiểm cả SILENCE_REPROMPT. Câu có một/two slot phải đúng loại câu hỏi, không hỏi “chọn khung nào” khi chỉ có một khung.

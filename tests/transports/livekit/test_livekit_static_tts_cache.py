@@ -31,7 +31,7 @@ async def test_cache_audio_reaches_livekit_frames_and_traces_zero_cost():
         assert span.attributes["billed_characters"] == 0
         assert span.attributes["cost_usd"] == 0
         assert span.attributes["result"] == "OK"
-        assert span.attributes["catalog_version"] == "2026-10-08-v2"
+        assert span.attributes["catalog_version"] == release_manifest()["catalog_version"]
 
 
 async def test_barge_in_stops_cached_audio_and_next_turn_can_play():

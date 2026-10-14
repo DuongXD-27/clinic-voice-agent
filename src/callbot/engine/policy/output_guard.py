@@ -322,6 +322,21 @@ def check_opening(action: BotAction, ctx: CallContext) -> GuardVerdict:
     return PASS
 
 
+def check_tts_fallback(utterance: str) -> GuardVerdict:
+    """Câu phát bằng audio ghi sẵn khi TTS lỗi (R-39): chỉ được là câu `TRANSFER` tĩnh, nguyên văn,
+    không lộ thông tin lịch. Không có lượt, journal hay nguồn dữ liệu để đối chiếu."""
+    try:
+        spec = STATIC_UTTERANCES.get(utterance)
+        if utterance != t.TRANSFER or spec is None or spec.success_outcome is not None:
+            raise _Violation("OG-0", OUTPUT_UNREGISTERED)
+        if spec.discloses:
+            raise _Violation("OG-1", "SF-03")
+        _clinical(utterance)
+    except _Violation as violation:
+        return GuardVerdict(False, violation.rule, violation.code)
+    return PASS
+
+
 def _origin(inp: GuardInput) -> tuple[UtteranceSpec, Optional[RenderRecord]]:
     """OG-0: câu phải khớp nguyên văn một dạng trong allow-list §3.2."""
     utterance = inp.action.utterance

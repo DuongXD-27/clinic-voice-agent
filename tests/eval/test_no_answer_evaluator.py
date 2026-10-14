@@ -123,7 +123,7 @@ def test_cases_match_contract_enums_and_setup():
     assert len({r["id"] for r in rows}) == len(rows)
     for row in rows:
         assert row["split"] in {"dev", "holdout", "regression"}, row
-        assert row["label_status"] in {"CONFIRMED", "REVIEW"}, row
+        assert row["label_status"] == "CONFIRMED", row
         assert row["scope"] in {"http", "telephony", "recovery"}, row
         if row["fault"]:
             assert row["scope"] == "recovery", row
@@ -274,28 +274,6 @@ def test_no_implicit_model_gateway_with_enabled_environment(monkeypatch, semanti
     assert bot._extractor._semantic is semantic
 
 
-def test_review_is_observed_but_not_scored_or_counted_as_holdout():
-    result = _run_case(
-        _row(
-            label_status="REVIEW",
-            turns="Xin chào, tôi là Lan, hiện không nghe máy được",
-            expect_reason="VOICEMAIL",
-        ),
-        "na_review",
-        None,
-        1,
-    )
-    assert result["status"] == "REVIEW" and result["passed"] is None
-    summary = _summarise([result], None)
-    assert summary["review_cases"] == 1
-    assert summary["passed_cases"] == summary["failed_cases"] == summary["scored_cases"] == 0
-    assert summary["holdout"]["total"] == 0
-    assert _exit_code([summary]) == 0
-    # REVIEW must not hide a real disclosure or record corruption.
-    result.update(contract_ok=False, contract_errors="disclosure_unverified")
-    assert _exit_code([_summarise([result], None)]) == 1
-
-
 def test_reporting_separates_http_telephony_recovery_and_regression():
     base = _run_case(_row(), "na_buckets", None, 1)
     rows = [
@@ -329,5 +307,4 @@ def test_confirmed_corpus_behaviour_and_record_checks():
     for row in rows:
         result = _run_case(row, f"corpus_{row['id']}", None, 1)
         assert result["contract_ok"] and not result["recovery_errors"], result
-        if row["label_status"] != "REVIEW":
-            assert result["passed"], result
+        assert result["passed"], result

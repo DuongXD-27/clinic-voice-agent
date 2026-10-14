@@ -43,4 +43,5 @@ export function toTokenRequest(config: LiveKitConfig): TokenRequest {
 export const ASR_LABELS: Record<string, string> = {
   zipformer: "ZipFormer",
   gemini_live: "Gemini Live",
+  elevenlabs_realtime: "ElevenLabs Realtime",
 };

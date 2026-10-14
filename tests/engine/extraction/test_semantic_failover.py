@@ -1,5 +1,7 @@
 """Provider chính, lỗi dịch vụ thì provider dự phòng (cấu hình ở engine.yaml) — không gọi mạng."""
 
+import threading
+from types import SimpleNamespace
 from typing import Any, Optional
 
 import pytest
@@ -7,7 +9,12 @@ import yaml
 
 from appconfig import CONFIG_DIR
 from callbot.engine import _semantic_extractor
-from callbot.engine.extraction.model_budget import invoke_model, model_turn, report_model_status
+from callbot.engine.extraction.model_budget import (
+    hand_over_model,
+    invoke_model,
+    model_turn,
+    report_model_status,
+)
 from callbot.engine.extraction.schema import Intent, QuestionId
 from callbot.engine.extraction.semantic import (
     LLMSemanticExtractor,
@@ -105,8 +112,8 @@ def test_a_primary_service_failure_falls_back(status: str) -> None:
 
 
 def test_no_fallback_when_the_turn_has_too_little_time_left() -> None:
-    """Lỗi ở giây 2,5 của trần 3 s: dự phòng không kịp, gọi chỉ tốn tiền."""
-    extractor, _, secondary = _pair("network_error", cost_s=2.5)
+    """Lỗi ở giây 3,5 của trần 4 s: dự phòng không kịp, gọi chỉ tốn tiền."""
+    extractor, _, secondary = _pair("network_error", cost_s=3.5)
     assert extractor.analyze(CONTEXT) is None
     assert secondary.calls == 0 and extractor.last_provider is None
 
@@ -119,6 +126,16 @@ def test_the_turn_budget_uses_the_fallback_answer() -> None:
         result = invoke_model(extractor, lambda: extractor.analyze(CONTEXT))
     assert result is SECONDARY_OUTCOME
     assert (budget.status, budget.model) == ("OK", "openai-model")
+    # Trang demo báo đúng provider dự phòng đã trả lời và provider chính đã lỗi
+    assert (budget.provider, budget.backup_for) == ("openai", "typesafe")
+
+
+def test_the_turn_budget_names_the_primary_when_it_answers() -> None:
+    extractor, _, _ = _pair("accepted", PRIMARY_OUTCOME)
+    with model_turn() as budget:
+        invoke_model(extractor, lambda: extractor.analyze(CONTEXT))
+    assert (budget.status, budget.model) == ("OK", "typesafe-model")
+    assert (budget.provider, budget.backup_for) == ("typesafe", None)
 
 
 def test_the_turn_budget_keeps_the_failure_when_no_fallback_runs() -> None:
@@ -126,6 +143,32 @@ def test_the_turn_budget_keeps_the_failure_when_no_fallback_runs() -> None:
     with model_turn() as budget:
         result = invoke_model(extractor, lambda: extractor.analyze(CONTEXT))
     assert result is None and budget.status == "TIMEOUT"
+
+
+def test_a_late_fallback_does_not_rewrite_a_timed_out_turn() -> None:
+    """Bộ chuyển chạy trong thread của model: lượt đã hết giờ thì việc trao lại muộn không được xoá
+    TIMEOUT hay ghi tên provider dự phòng chưa kịp trả lời."""
+    release, handed_over = threading.Event(), threading.Event()
+    config = SimpleNamespace(timeout_s=0.05)
+    gateway = SimpleNamespace(
+        model="typesafe-model", provider_name="typesafe", _provider=SimpleNamespace(_config=config)
+    )
+
+    def late_failover() -> None:
+        release.wait(2)
+        hand_over_model("openai-model", "openai")
+        handed_over.set()
+
+    with model_turn() as budget:
+        assert invoke_model(SimpleNamespace(_gateway=gateway), late_failover) is None
+        release.set()
+        assert handed_over.wait(2)
+    assert (budget.status, budget.model, budget.provider, budget.backup_for) == (
+        "TIMEOUT",
+        "typesafe-model",
+        "typesafe",
+        None,
+    )
 
 
 def test_eval_hooks_point_at_the_primary() -> None:
@@ -141,19 +184,19 @@ def test_eval_hooks_point_at_the_primary() -> None:
 def test_min_secondary_must_fit_the_budget() -> None:
     with pytest.raises(ValueError):
         FailoverSemanticExtractor(
-            FakeAdapter("a", "accepted"), FakeAdapter("b", "accepted"), min_secondary_s=4.0
+            FakeAdapter("a", "accepted"), FakeAdapter("b", "accepted"), min_secondary_s=4.5
         )
 
 
 # --- Cấu hình và factory ---------------------------------------------------------------------
 
 
-def test_config_defaults_to_jev_with_openai_fallback() -> None:
-    """Quyết định owner 10-10-2026: Jev chính, OpenAI dự phòng — đọc thẳng config/engine.yaml."""
+def test_config_defaults_to_jev_with_deepseek_fallback() -> None:
+    """Owner 10-10-2026: Jev chính; 13-10-2026: DeepSeek thay OpenAI dự phòng — đọc thẳng engine.yaml."""
     config = yaml.safe_load((CONFIG_DIR / "engine.yaml").read_text(encoding="utf-8"))
     assert config["semantic_provider"] == "jev"
-    assert config["semantic_backup_provider"] == "openai"
-    assert 0 < config["semantic_backup_min_remaining_s"] <= 3.0
+    assert config["semantic_backup_provider"] == "deepseek"
+    assert 0 < config["semantic_backup_min_remaining_s"] <= 4.0  # trần lượt MODEL_TIMEOUT_S
 
 
 def _settings(**changes: Any) -> EngineSettings:

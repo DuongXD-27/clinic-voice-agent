@@ -21,8 +21,12 @@ OPERATIONS = frozenset(
         "http.start_call",
         "livekit.call_turn",
         "livekit.start_call",
+        "livekit.close_call",
+        "livekit.tts_recovery",
         "core.handle_turn",
         "core.start_call",
+        "core.close_call",
+        "core.system_error",
         "core.extract",
         "core.dialogue",
         "core.output_guard",
@@ -42,10 +46,32 @@ OPERATIONS = frozenset(
     }
 )
 EVENT_FIELDS: dict[str, frozenset[str]] = {
-    "ie.model": frozenset({"model", "latency_ms", "model_result"}),
+    "ie.model": frozenset(
+        {"model", "latency_ms", "model_result", "provider_requested", "provider_actual"}
+    ),
     "session.admitted": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.replayed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
     "session.committed": frozenset({"replayed", "terminal", "storage_status", "turn_ordering"}),
+    "session.close_requested": frozenset({"storage_status"}),
+    "session.closed": frozenset({"replayed", "terminal", "storage_status"}),
+    "clinic.write_blocked": frozenset({"write_operation", "decision_reason"}),
+    "call.hangup": frozenset({"decision_reason", "turns_dropped"}),
+    "call.event_ignored": frozenset({"stage", "decision_reason"}),
+    "tts.playback_failed": frozenset({"provider_error_code", "error_class", "decision_reason"}),
+    "tts.fallback_played": frozenset({"played", "decision_reason", "audio_duration_ms"}),
+    "call.handoff_requested": frozenset(
+        {"transfer_reason", "preserve_business_outcome", "reconciliation_required"}
+    ),
+    "call.cleanup": frozenset(
+        {
+            "timers_stopped",
+            "input_stopped",
+            "tts_closed",
+            "queue_cleared",
+            "audio_closed",
+            "session_closed",
+        }
+    ),
     "policy.decision": frozenset({"stage", "decision", "decision_reason"}),
     "fsm.transition": frozenset(
         {"state_before", "state_after", "outcome", "status", "error_type", "error_code"}

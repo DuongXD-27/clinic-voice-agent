@@ -48,6 +48,14 @@
   --chart-core: #7a55a0;
   --chart-tts: #b06a10;
 
+  /* Nền loang màu của trang thử STT */
+  --stage-base: #4a4f7a;
+  --stage-warm: #f08a5d;
+  --stage-gold: #f2c879;
+  --stage-teal: #1f8a8a;
+  --stage-blue: #3d5a99;
+  --stage-violet: #7a4f7f;
+
   /* Khoảng cách (bội số 4px) */
   --space-1: 4px;
   --space-2: 8px;
@@ -125,6 +133,13 @@
     --chart-stt: #6fb0e6;
     --chart-core: #b89ae0;
     --chart-tts: #f0b25a;
+
+    --stage-base: #22263d;
+    --stage-warm: #8a4a33;
+    --stage-gold: #7d6534;
+    --stage-teal: #135454;
+    --stage-blue: #233a66;
+    --stage-violet: #4b2f50;
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);

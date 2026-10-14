@@ -1,0 +1,40 @@
+{
+  "test": "Linphone 5.3.4 transport-only, direct SIP INVITE, TCP, 75-second generated tone",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "worker_id": "AW_L5KZyzFDXUHu",
+  "job_id": "AJ_tRBGACDd3hka",
+  "dispatch_id": "AD_vqNQTcGEQaGb",
+  "room": "sip-booking-_+84912345600_viQrdK3TvWCT",
+  "room_id": "RM_jhFiu5NE8Wxj",
+  "participant_kind": 3,
+  "registration": false,
+  "keepalive_period_ms": 15000,
+  "ipv6": false,
+  "stun_ice": false,
+  "synthetic_input_core_tts": true,
+  "silence_timeout_ms": 0,
+  "speech_api_requests": 0,
+  "booking_writes": 0,
+  "events_local_time": {
+    "bridge_started": "14:02:04.804575",
+    "client_streams_running": "14:02:07.358",
+    "bridge_ended": "14:03:20.880477",
+    "remove_participant_started": "14:03:20.987606",
+    "remove_participant_succeeded": "14:03:23.239495",
+    "client_server_bye_transaction": "14:03:23.253",
+    "client_call_end": "14:03:23.762",
+    "client_call_released": "14:03:24.595"
+  },
+  "rtp": {"tx_packets": 3795, "rx_packets": 3389, "rx_late_packets": 0},
+  "automatic_client_hangup": "PASS for this diagnostic call",
+  "unchanged_configuration_repeat": {
+    "invite_sent": "14:04:03.826",
+    "error": "Request timeout at 14:04:35.843",
+    "livekit_job_dispatched": false,
+    "reused_tcp_channel": true,
+    "result": "FAIL"
+  },
+  "acceptance_scope": "Transport diagnosis only. Not real speech, booking, PSTN or repeatability acceptance.",
+  "raw_logs": "Local Linphone/worker logs excluded from Git; authorization headers and credentials omitted."
+}

@@ -41,6 +41,7 @@ RENDERER_SCENARIOS = {
     "CANCEL_READBACK": "Cancel",
     "CONFIRMED_DONE": "Confirm",
     "KEEP_APPOINTMENT": "Reschedule/Confirm",
+    "CURRENT_TIME_CHOICE": "Reschedule",
     "OFFER_SLOTS": "Reschedule/Booking",
     "ASK_DATE_AGAIN": "Reschedule/Booking",
     "SLOT_OFFER_READBACK": "Reschedule/Booking",
@@ -60,6 +61,10 @@ def text_hash(text: str) -> str:
 def scenario(template_id: str) -> str:
     if template_id.startswith("GREETING_HANDOFF") or template_id == "IDENTITY_FAILED_TRANSFER":
         return "Identity/Transfer"
+    if template_id.startswith("LOOKUP_TRANSFER"):
+        return "Booking/Transfer"
+    if "_BOOK_" in template_id:
+        return "Booking"
     if template_id.startswith(("GREETING", "ASK_NAME", "ASK_DOB", "INTRODUCE")):
         return "Identity"
     if template_id.startswith(("SILENCE", "GOODBYE")):

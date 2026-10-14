@@ -1,0 +1,28 @@
+{
+  "test": "Linphone 5.3.4 direct inbound SIP signaling over UDP on the existing iPhone 4G hotspot",
+  "date": "2026-10-07",
+  "timezone": "Asia/Ho_Chi_Minh",
+  "profile": {"registration": false, "transport": "UDP", "keepalive_period_ms": 15000, "use_rport": true},
+  "speech_api_requests": 0,
+  "booking_writes": 0,
+  "short_repeat_worker_id": "AW_DKhxNieBsBau",
+  "short_calls": [
+    {"job_id": "AJ_LPA4GrLdHAEc", "room": "sip-booking-_+84912345600_Wi5dsu2RsD7o", "generated_tone_seconds": 20, "remove_participant": "PASS", "pcap_server_bye_relative_s": 26.910380, "pcap_client_200_relative_s": 26.932993, "client_hangup": "PASS"},
+    {"job_id": "AJ_QC8Qi85c9cL7", "room": "sip-booking-_+84912345600_MGQAjnQUnR6z", "generated_tone_seconds": 20, "remove_participant": "PASS", "pcap_server_bye_relative_s": 89.355865, "pcap_client_200_relative_s": 90.584423, "client_hangup": "PASS"},
+    {"job_id": "AJ_ruwNiv6Ddm6y", "room": "sip-booking-_+84912345600_GnRGCXaZ32D3", "generated_tone_seconds": 20, "remove_participant": "PASS", "client_hangup": "Not independently verified: capture duration ended before BYE"}
+  ],
+  "long_call": {
+    "worker_id": "AW_J9kaZVKeWsmm",
+    "job_id": "AJ_UiXThgpyFdaa",
+    "dispatch_id": "AD_7VEwCawQMEtj",
+    "room": "sip-booking-_+84912345600_TZsUW6ZcwUpk",
+    "generated_tone_seconds": 75,
+    "remove_participant": "PASS",
+    "pcap_server_bye_relative_s": 113.616469,
+    "pcap_client_200_relative_s": 114.912674,
+    "client_hangup": "PASS"
+  },
+  "claim": "UDP avoids the observed TCP reuse failure in these transport tests. Two consecutive short calls and a separate 75-second call received BYE/200 OK.",
+  "acceptance_scope": "Transport proof only. Real booking, Vietnamese ASR/TTS and three consecutive complete bookings still require testing on this UDP configuration.",
+  "raw_captures": "Local temp PCAP files only; credentials, auth headers and media payloads are excluded from this evidence."
+}

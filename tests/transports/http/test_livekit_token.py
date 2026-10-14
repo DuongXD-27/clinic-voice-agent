@@ -324,3 +324,35 @@ def test_token_attaches_selected_asr_provider_attribute(
     decoded = jwt.decode(chosen.json()["token"], secret, algorithms=["HS256"])
     assert decoded["attributes"] == {"direction": "inbound", "asr_provider": "gemini_live"}
     assert unknown.status_code == 422
+
+
+def test_token_marks_the_stt_test_page_and_accepts_elevenlabs_realtime(
+    clinic: FakeClinicAPI, redis_store_factory, redis_server, tmp_path
+) -> None:
+    """Trang thử STT: worker chỉ chạy STTPipeline khi participant mang `mode=stt`."""
+    require_livekit("livekit.api")
+    jwt = pytest.importorskip("jwt", reason="cần PyJWT để decode token trong test")
+    secret = "test-secret-at-least-32-bytes-long"
+    settings = LiveKitSettings(
+        _env_file=None,
+        livekit_url="wss://example.livekit.cloud",
+        livekit_api_key="test-key",
+        livekit_api_secret=secret,
+    )
+    app = _app(clinic, redis_store_factory, redis_server, tmp_path, settings)
+    with TestClient(app) as client:
+        stt = client.post(
+            "/livekit/token", json={"mode": "stt", "asr_provider": "elevenlabs_realtime"}
+        )
+        call = client.post("/livekit/token", json={})
+        unknown = client.post("/livekit/token", json={"mode": "tts"})
+
+    assert jwt.decode(stt.json()["token"], secret, algorithms=["HS256"])["attributes"] == {
+        "direction": "inbound",
+        "asr_provider": "elevenlabs_realtime",
+        "mode": "stt",
+    }
+    assert (
+        "mode" not in jwt.decode(call.json()["token"], secret, algorithms=["HS256"])["attributes"]
+    )
+    assert unknown.status_code == 422

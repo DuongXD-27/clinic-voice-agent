@@ -3,6 +3,7 @@
 import math
 import socket
 from collections.abc import Iterator
+from pathlib import Path
 from uuid import uuid4
 
 import fakeredis
@@ -277,3 +278,20 @@ def test_turn_requires_bearer_key(stt_client: TestClient, monkeypatch: pytest.Mo
     monkeypatch.setattr(http_settings, "bot_api_keys", "sk_test")
 
     assert _upload_turn(stt_client, _wav()).status_code == 401
+
+
+def test_default_vad_follows_silero_vad_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    """/v1/stt cắt câu bằng cùng model Silero với cuộc gọi LiveKit."""
+    v4 = Path("src/speech/asr/vad/assets/silero_vad.onnx")
+    if not v4.is_file():
+        pytest.skip("chưa tải silero_vad.onnx (config/speech.yaml)")
+    pytest.importorskip("onnxruntime")
+    from callbot.transports.http.main import _default_stt_vad_factory
+    from speech.asr.vad.silero_onnx import SileroOnnxClassifier
+
+    monkeypatch.setenv("SILERO_VAD_VERSION", "v6")
+    monkeypatch.setenv(
+        "SILERO_VAD_V6_MODEL_PATH", str(v4)
+    )  # file v4 đứng thay: chỉ kiểm đường chạy
+
+    assert isinstance(_default_stt_vad_factory()(16_000), SileroOnnxClassifier)

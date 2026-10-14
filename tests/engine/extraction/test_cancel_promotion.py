@@ -556,9 +556,13 @@ def test_the_factory_picks_the_prompt_and_the_gate_from_the_flag(
     monkeypatch, enabled: bool, model: str, version: str
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    # Cách tự chọn prompt khi để trống (engine.yaml ghim semantic_v10_luna cho DeepSeek)
     settings = EngineSettings(
         semantic_fallback_enabled=True,
-        semantic_openai_model=model,
+        semantic_provider="openai",
+        semantic_backup_provider="none",
+        semantic_llm_prompt_version=None,
+        semantic_llm_model=model,
         cancel_semantic_confirm_enabled=enabled,
     )
     extractor = _semantic_extractor(settings)

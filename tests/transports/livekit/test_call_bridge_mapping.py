@@ -11,10 +11,12 @@ require_livekit()
 from tests.transports.livekit.bridge_factory import make_call_bridge  # noqa: E402
 
 from callbot.engine.errors import OutboundStartFailed  # noqa: E402
+from callbot.engine.session.manager import TurnRun  # noqa: E402
 from callbot.engine.types import BotAction, CallerInput, CallStart  # noqa: E402
 from callbot.transports.livekit.call_bridge import (  # noqa: E402
     TRANSCRIPT_TOPIC,
     CallBridge,
+    TTSPlaybackError,
     call_start_from_room,
     caller_input_from_turn,
 )
@@ -96,19 +98,36 @@ def test_mapping_empty_completed_turn_is_not_silence():
 
 
 class _FakeOrchestrator:
-    def __init__(self, opening: BotAction, turn_actions: list[BotAction]) -> None:
+    def __init__(
+        self,
+        opening: BotAction,
+        turn_actions: list[BotAction],
+        extractions: list[dict | None] | None = None,
+    ) -> None:
         self._opening = opening
         self._turn_actions = turn_actions
+        self._extractions = extractions or []
         self.started_calls: list[CallStart] = []
         self.handled_turns: list[tuple[str, CallerInput]] = []
+        self.close_requests: list[str] = []
+        self.closed_calls: list[str] = []
 
     def start_call(self, call: CallStart) -> BotAction:
         self.started_calls.append(call)
         return self._opening
 
-    def handle_turn(self, call_id: str, caller: CallerInput) -> BotAction:
+    def handle_turn_with_details(self, call_id: str, caller: CallerInput) -> TurnRun:
         self.handled_turns.append((call_id, caller))
-        return self._turn_actions[len(self.handled_turns) - 1]
+        index = len(self.handled_turns) - 1
+        extraction = self._extractions[index] if index < len(self._extractions) else None
+        return TurnRun(self._turn_actions[index], replayed=False, extraction=extraction)
+
+    def request_call_close(self, call_id: str) -> None:
+        self.close_requests.append(call_id)
+
+    def close_call(self, call_id: str) -> bool:
+        self.closed_calls.append(call_id)
+        return True
 
 
 class _FakeSTTPipeline:
@@ -186,6 +205,102 @@ class _FakeRoom:
         self._handlers[event] = callback
 
 
+def test_caller_disconnect_stops_input_but_observer_disconnect_does_not():
+    from types import SimpleNamespace
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-room"),
+        _FakeOrchestrator(BotAction("Xin chào", "AWAITING_IDENTITY"), []),
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+    )
+    bridge._on_participant_disconnected(SimpleNamespace(identity="observer"))
+    assert not bridge._input_done
+    assert bridge._hangup is None
+    bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+    assert bridge._input_done
+    assert bridge._hangup == "PARTICIPANT_DISCONNECTED"
+
+
+async def test_sip_call_id_does_not_contain_phone_from_room_name(monkeypatch, caplog):
+    room = _FakeRoom("sip-booking-_+84912345600_random")
+    orchestrator = _FakeOrchestrator(BotAction("Chào", "ENDED", ended=True), [])
+    bridge = make_call_bridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+        is_sip=True,
+    )
+
+    async def publish_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish_track)
+    with caplog.at_level(logging.INFO):
+        await bridge.run()
+
+    call_id = orchestrator.started_calls[0].call_id
+    assert call_id.startswith("sip-")
+    assert "+84912345600" not in call_id
+    assert "+84912345600" not in caplog.text
+
+
+async def test_caller_hangup_before_queued_booking_confirmation_prevents_write(monkeypatch):
+    from types import SimpleNamespace
+
+    room = _FakeRoom("sip-booking-_+84912345600_random")
+    orchestrator = _FakeOrchestrator(
+        BotAction("Xin chào", "AWAITING_CONFIRMATION"),
+        [BotAction("Đã đặt lịch", "ENDED", ended=True, outcome="BOOKED")],
+    )
+    bridge = make_call_bridge(
+        room,
+        orchestrator,
+        _FakeSTTPipeline([UserTurnCompleted(text="Tôi xác nhận đặt lịch")]),
+        _FakeTTS(),
+        caller_identity="sip-caller",
+        is_sip=True,
+    )
+
+    async def publish_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    publish_transcript = bridge._publish_transcript
+
+    async def publish_then_hangup(role, text, **kwargs):
+        await publish_transcript(role, text, **kwargs)
+        if role == "caller":
+            bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish_track)
+    monkeypatch.setattr(bridge, "_publish_transcript", publish_then_hangup)
+    await asyncio.wait_for(bridge.run(), timeout=2)
+
+    assert orchestrator.handled_turns == []
+    assert bridge._hangup == "PARTICIPANT_DISCONNECTED"
+    assert bridge._tts.spoken == ["Xin chào"]
+
+
+async def test_speak_skips_tts_after_caller_hangs_up():
+    from types import SimpleNamespace
+
+    tts = _FakeTTS()
+    bridge = make_call_bridge(
+        _FakeRoom("sip-room"),
+        _FakeOrchestrator(BotAction("Xin chào", "AWAITING_INTENT"), []),
+        _FakeSTTPipeline([]),
+        tts,
+        caller_identity="sip-caller",
+    )
+    bridge._audio_source = _FakeAudioSource()
+    bridge._on_participant_disconnected(SimpleNamespace(identity="sip-caller"))
+    await bridge._speak("Không được phát câu này")
+    assert tts.spoken == []
+
+
 async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkeypatch) -> None:
     """Kịch bản tối giản: opening không ended, 1 turn khiến orchestrator báo ended=True
     -> CallBridge phải dừng vòng lặp và cleanup, không cần LiveKit thật để test wiring."""
@@ -217,6 +332,43 @@ async def test_call_bridge_run_ends_call_after_orchestrator_reports_ended(monkey
     assert len(fake_source.captured_frames) == 2
     assert fake_source.closed is True
     assert fake_source.wait_for_playout_calls == 2
+
+
+async def test_sip_hangup_follows_final_playout_before_media_cleanup(monkeypatch):
+    """Caller must receive BYE even when media cleanup needs the remote to hang up."""
+    source = _FakeAudioSource()
+    hangup = asyncio.Event()
+    bridge = None
+
+    async def close_caller():
+        assert source.wait_for_playout_calls == 2
+        assert not source.closed
+        hangup.set()
+
+    bridge = make_call_bridge(
+        _FakeRoom("sip-booking"),
+        _FakeOrchestrator(
+            BotAction("Xin chào", "AWAITING_INTENT"),
+            [BotAction("Đã đặt lịch", "ENDED", ended=True, outcome="BOOKED")],
+        ),
+        _FakeSTTPipeline([UserTurnCompleted(text="đồng ý")]),
+        _FakeTTS(),
+        on_close=close_caller,
+    )
+
+    async def publish():
+        bridge._audio_source = source
+
+    original_close = bridge.aclose
+
+    async def media_close():
+        await hangup.wait()
+        await original_close()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", publish)
+    monkeypatch.setattr(bridge, "aclose", media_close)
+    await asyncio.wait_for(bridge.run(), timeout=2)
+    assert source.closed
 
 
 async def test_outbound_start_failure_notifies_browser_without_crashing_job() -> None:
@@ -286,10 +438,26 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
     """Trang /ui/livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
-    kèm độ tin cậy ASR, câu bot kèm state/outcome — theo đúng thứ tự, trước khi phát audio."""
+    kèm độ tin cậy ASR, câu bot kèm state/outcome và (demo_debug) trích xuất của lượt trong
+    cùng một gói — theo đúng thứ tự, trước khi phát audio."""
     opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
     closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
-    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[closing])
+    extraction = {
+        "turn": 1,
+        "question_id": "ASK_NAME",
+        "transcript": "tôi là An",
+        "silent": False,
+        "full_name": {"value": "An", "provenance": "FALLBACK", "span": "An"},
+        "intent": {"value": "NONE", "provenance": "NONE", "span": None},
+        "name_identity": {"status": "MATCHED", "value": "An", "span": "An"},
+        "model_status": "OK",
+        "model_provider": "openai",
+        "model_name": "gpt-6-luna",
+        "model_backup_for": "typesafe",
+    }
+    orchestrator = _FakeOrchestrator(
+        opening=opening, turn_actions=[closing], extractions=[extraction]
+    )
     stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
     room = _FakeRoom("web-transcript-room")
     bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
@@ -328,8 +496,49 @@ async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> No
             "state": "ENDED",
             "ended": True,
             "outcome": "TRANSFERRED",
+            "extraction": {
+                "transcript": "tôi là An",
+                "silent": False,
+                "fields": [
+                    {"field": "full_name", "value": "An", "span": "An", "provenance": "FALLBACK"}
+                ],
+                "model": {
+                    "provider": "openai",
+                    "name": "gpt-6-luna",
+                    "status": "OK",
+                    "backup_for": "typesafe",
+                },
+            },
         },
     ]
+
+
+async def test_extraction_is_not_published_without_demo_debug(monkeypatch) -> None:
+    """Trích xuất có PII (tên, ngày sinh): cuộc gọi thật (demo_debug tắt) chỉ nhận lời thoại."""
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    extraction = {
+        "transcript": "tôi là An",
+        "silent": False,
+        "full_name": {"value": "An", "provenance": "FALLBACK", "span": "An"},
+    }
+    orchestrator = _FakeOrchestrator(
+        opening=opening, turn_actions=[closing], extractions=[extraction]
+    )
+    stt_pipeline = _FakeSTTPipeline([UserTurnCompleted(text="tôi là An", confidence=0.91)])
+    room = _FakeRoom("sip-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS(), demo_debug=False)
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    payloads = [payload for payload, _, _ in room.local_participant.data]
+    assert [payload["type"] for payload in payloads] == ["transcript"] * 3
+    assert all("extraction" not in payload for payload in payloads)
 
 
 async def test_transcript_publish_failure_does_not_break_call(monkeypatch, caplog) -> None:
@@ -497,6 +706,33 @@ async def test_early_barge_in_stops_sentence_and_next_sentence_still_plays() -> 
     assert len(source.captured_frames) == 10 + 150
 
 
+async def test_barge_in_silences_playout_before_waiting_for_the_tts_request_to_close() -> None:
+    """Đóng request TTS (HTTP/WebSocket tới provider) có thể chậm: hàng đợi phát phải được xoá
+    trước khi chờ đóng xong, nếu không người gọi vẫn nghe audio đã queue trong lúc chờ."""
+    order: list[str] = []
+    closed = asyncio.Event()
+
+    class _SlowCloseTTS(_FakeTTS):
+        async def cancel(self) -> None:
+            order.append("tts_cancel")
+            await closed.wait()
+
+    class _OrderedSource(_FakeAudioSource):
+        def clear_queue(self) -> None:
+            order.append("clear_queue")
+            super().clear_queue()
+
+    bridge, _ = _speaking_bridge(_SlowCloseTTS())
+    bridge._audio_source = _OrderedSource()
+
+    cancelling = asyncio.create_task(bridge.cancel())
+    await asyncio.sleep(0)
+
+    assert order == ["clear_queue", "tts_cancel"]
+    closed.set()
+    await cancelling
+
+
 class _RecordingSpan:
     def __init__(self) -> None:
         self.attributes: dict[str, object] = {}
@@ -556,8 +792,11 @@ async def test_sentence_cut_by_provider_error_is_traced_as_truncated_error(
         lambda *args: priced.append("tts") or 0.01,
     )
 
-    await bridge._speak("một câu bị rớt giữa chừng")
+    # R-39: câu bị cắt là lỗi TTS — run() chuyển sang phát câu chuyển máy ghi sẵn
+    with pytest.raises(TTSPlaybackError) as raised:
+        await bridge._speak("một câu bị rớt giữa chừng")
 
+    assert raised.value.code == code
     (span,) = tracer.spans
     assert span.attributes["result"] == "ERROR"
     assert span.attributes["truncated"] is True

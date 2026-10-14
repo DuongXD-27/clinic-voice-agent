@@ -242,7 +242,7 @@ def main() -> int:
     parser.add_argument(
         "--api-key", default=None, help="mặc định: BOT_API_KEYS trong env hoặc .env"
     )
-    parser.add_argument("--appointment", default="apt_00427")
+    parser.add_argument("--appointment", default="apt_00423")
     parser.add_argument(
         "--say", action="append", default=None, help="câu người gọi (lặp cho nhiều lượt)"
     )

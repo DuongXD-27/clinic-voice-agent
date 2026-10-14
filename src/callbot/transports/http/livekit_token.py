@@ -31,7 +31,9 @@ class LiveKitTokenRequest(BaseModel):
     appointment_id: Optional[str] = None
     # ASR của riêng cuộc gọi này (nút chọn trên trang gọi thử). None = theo cấu hình worker
     # (LIVEKIT_ASR_PROVIDER / ASR_PROVIDER).
-    asr_provider: Optional[Literal["zipformer", "gemini_live"]] = None
+    asr_provider: Optional[Literal["zipformer", "gemini_live", "elevenlabs_realtime"]] = None
+    # call: cuộc gọi với bot. stt: trang thử STT — worker chỉ chạy STTPipeline và gửi chữ từng lượt.
+    mode: Literal["call", "stt"] = "call"
 
     @field_validator("caller_number")
     @classmethod
@@ -133,6 +135,8 @@ def create_token(payload: LiveKitTokenRequest, request: Request) -> LiveKitToken
         attributes["appointment_id"] = payload.appointment_id
     if payload.asr_provider:
         attributes["asr_provider"] = payload.asr_provider
+    if payload.mode == "stt":
+        attributes["mode"] = "stt"
     builder = builder.with_attributes(attributes)
     if settings.agent_name:
         # Room tạo khi browser join bằng token này sẽ gọi đúng worker mang tên đó, thay cho

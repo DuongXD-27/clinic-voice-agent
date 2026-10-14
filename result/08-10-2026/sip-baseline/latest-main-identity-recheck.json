@@ -1,0 +1,19 @@
+{
+  "scope": "Core replay with FakeClinicAPI and isolated in-memory Redis; no real call or speech API",
+  "latest_main": "4dec75d8dfbf98ba871bb5969e0f9e96c1d8b31a",
+  "merged_checkout": "9004b0c9878aaf2316aee823234ae8b313ff57c1",
+  "input": "Tôi tên là Nguyễn Văn An",
+  "fixture_name": "Nguyễn Văn A",
+  "opening_state": "AWAITING_IDENTITY",
+  "actual": {
+    "utterance": "Em sẽ chuyển cuộc gọi tới nhân viên hỗ trợ anh chị ạ.",
+    "state": "ENDED",
+    "ended": true,
+    "outcome": "TRANSFERRED",
+    "transfer_reason": "PATIENT_NOT_FOUND",
+    "unreachable_reason": null
+  },
+  "clinic_writes": [],
+  "prd_requirement": "R-40/GC-ID-04: ask DOB before transferring when name is MISMATCH and DOB absent",
+  "prd_pass": false
+}

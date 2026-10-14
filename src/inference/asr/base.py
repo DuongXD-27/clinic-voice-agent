@@ -6,6 +6,11 @@ from typing import Literal, Protocol
 ProviderName = Literal["gemini", "gemini_live", "phowhisper", "zipformer", "elevenlabs_realtime"]
 
 
+class AsrAuthError(RuntimeError):
+    """Provider từ chối API key / token (sai, hết hạn, thiếu quyền): lỗi cấu hình, thử lại vô ích.
+    Message chỉ nói biến môi trường nào cần kiểm, không chứa key."""
+
+
 @dataclass(frozen=True)
 class ASRResult:
     text: str

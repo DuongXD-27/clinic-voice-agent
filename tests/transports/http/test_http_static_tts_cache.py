@@ -5,7 +5,7 @@ import wave
 from urllib.parse import urlsplit
 
 from fastapi.testclient import TestClient
-from tests.speech.tts.static_support import RELEASE, cached_synthesizer
+from tests.speech.tts.static_support import RELEASE, cached_synthesizer, release_manifest
 from tests.tracing.test_speech_tracing import MemorySink, _tracer
 from tests.transports.http.fakes import FakeASR
 from tests.transports.http.test_calls import _call_mode_factory, _start, _turn
@@ -95,10 +95,10 @@ def test_static_audio_is_ready_across_calls_and_turns_with_zero_provider_cost(
     for span in hits:
         assert span.attributes["cost_usd"] == 0
         assert span.attributes["billed_characters"] == 0
-        assert span.attributes["catalog_version"] == "2026-10-08-v2"
+        assert span.attributes["catalog_version"] == release_manifest()["catalog_version"]
         assert len(span.attributes["cache_key"]) == 64
     misses = [s for s in spans if s.attributes.get("cache_hit") is False]
     assert len(misses) == 2
     assert all("billed_characters" not in s.attributes for s in misses)
     assert speech.audio_store.purge_older_than(-1) == 2
-    assert len(list(RELEASE.glob("*.wav"))) == 74
+    assert len(list(RELEASE.glob("*.wav"))) == 82

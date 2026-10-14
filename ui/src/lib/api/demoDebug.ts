@@ -11,10 +11,27 @@ export interface ExtractedField {
   provenance: string | null;
 }
 
+/** Model đã đọc lượt (một lần gọi / lượt). `backupFor`: provider chính lỗi, đây là dự phòng. */
+export interface ExtractionModel {
+  provider: string | null;
+  name: string;
+  /** OK / TIMEOUT / ERROR / INVALID (ModelBudget). */
+  status: string | null;
+  backupFor: string | null;
+}
+
 export interface ExtractionFields {
   transcript: string;
   silent: boolean;
   fields: ExtractedField[];
+  /** null: lượt chỉ dùng luật, không gọi model. */
+  model: ExtractionModel | null;
+}
+
+/** Trích xuất của một lượt; `fields` null khi lượt không qua bước trích xuất. */
+export interface TurnExtraction {
+  turn: number;
+  fields: ExtractionFields | null;
 }
 
 export interface DemoDebug {
@@ -50,12 +67,18 @@ export function readDemoDebug(headers: Headers | null): DemoDebug {
 /** Giá trị là JSON percent-encoded (header chỉ chứa latin-1). Sai dạng thì bỏ qua. */
 export function parseFields(raw: string | null): ExtractionFields | null {
   if (!raw) return null;
-  let data: unknown;
   try {
-    data = JSON.parse(decodeURIComponent(raw));
+    return toExtractionFields(JSON.parse(decodeURIComponent(raw)));
   } catch {
     return null;
   }
+}
+
+/**
+ * `extraction_view` của backend (extraction_view.py) — HTTP gửi qua header, LiveKit qua data
+ * channel. Sai dạng thì bỏ qua.
+ */
+export function toExtractionFields(data: unknown): ExtractionFields | null {
   if (!isRecord(data) || !Array.isArray(data.fields)) return null;
   const fields = data.fields.filter(isRecord).flatMap((item): ExtractedField[] =>
     typeof item.field === "string"
@@ -73,6 +96,18 @@ export function parseFields(raw: string | null): ExtractionFields | null {
     transcript: typeof data.transcript === "string" ? data.transcript : "",
     silent: data.silent === true,
     fields,
+    model: toModel(data.model),
+  };
+}
+
+function toModel(data: unknown): ExtractionModel | null {
+  if (!isRecord(data) || typeof data.name !== "string") return null;
+  const text = (value: unknown) => (typeof value === "string" ? value : null);
+  return {
+    provider: text(data.provider),
+    name: data.name,
+    status: text(data.status),
+    backupFor: text(data.backup_for),
   };
 }
 
