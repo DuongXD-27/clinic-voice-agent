@@ -36,17 +36,14 @@
   white-space: nowrap;
 }
 
+/* Màn hẹp vẫn giữ 3 cột (giá trị ngắn, State tự cắt "…"): xếp dọc tốn chỗ của khung chat. */
 @media (max-width: 600px) {
-  .status {
-    grid-template-columns: 1fr;
-  }
-
   .status > div {
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+    padding: var(--space-2) var(--space-3);
   }
 
-  .status > div:last-child {
-    border-bottom: 0;
+  .status dt {
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
   }
 }

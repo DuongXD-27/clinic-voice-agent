@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
+import { getApiKey, login, logout } from "../auth";
 import { server } from "../../test/server";
 import { ApiError, NETWORK_ERROR, request, resolveUrl } from "./client";
 
@@ -64,6 +65,40 @@ describe("request", () => {
     await request("/health", { apiKey: "   " });
 
     expect(auth).toBeNull();
+  });
+
+  it("mặc định gửi key đã đăng nhập; key truyền vào (trang đăng nhập) được ưu tiên", async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/thing", ({ request: req }) => {
+        seen.push(req.headers.get("Authorization"));
+        return HttpResponse.json({});
+      }),
+    );
+    login("sk_saved");
+
+    await request("/thing");
+    await request("/thing", { apiKey: "sk_typed" });
+    logout();
+    await request("/thing");
+
+    expect(seen).toEqual(["Bearer sk_saved", "Bearer sk_typed", null]);
+  });
+
+  it("bot từ chối key đã đăng nhập (BAD_KEY): đăng xuất; key đang thử thì không", async () => {
+    server.use(
+      http.get("/thing", () =>
+        HttpResponse.json({ detail: { code: "BAD_KEY", message: "Invalid" } }, { status: 401 }),
+      ),
+    );
+    login("sk_saved");
+
+    await captureError(request("/thing", { apiKey: "sk_typed" }));
+    expect(getApiKey()).toBe("sk_saved");
+
+    const error = await captureError(request("/thing"));
+    expect(error.code).toBe("BAD_KEY");
+    expect(getApiKey()).toBeNull();
   });
 
   it("gửi body nguyên văn và không tự đặt Content-Type JSON", async () => {

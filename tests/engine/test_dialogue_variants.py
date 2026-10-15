@@ -303,7 +303,7 @@ def test_unknown_inbound_opening_never_claims_identity_or_appointment(variant):
         CallStart(call_id="c_variant_unknown", direction="inbound", caller_number="0999999999")
     )
     assert opening.utterance in t.static_choices(t.GREETING_HANDOFF_INBOUND)
-    assert "Vinmec" in opening.utterance and "?" not in opening.utterance
+    assert "bệnh viện" in opening.utterance.lower() and "?" not in opening.utterance
     action = _run(bot, "c_variant_unknown", ["alo"])
     assert action.outcome == "TRANSFERRED" and clinic.writes == []
     # Tra hồ sơ theo số không được: nói lý do khi chuyển máy, không hỏi danh tính (§1.1.9)

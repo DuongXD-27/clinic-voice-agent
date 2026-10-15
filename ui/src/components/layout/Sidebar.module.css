@@ -5,51 +5,74 @@
   flex-direction: column;
   width: var(--sidebar-width);
   height: 100vh;
+  flex: none;
   padding: var(--space-4) var(--space-3);
   border-right: 1px solid var(--border);
   background: var(--surface);
+  transition: width var(--transition-fast);
+}
+
+/* Tên sản phẩm canh cùng lề chữ với mục điều hướng (padding ngang như .link), tách bằng một đường kẻ. */
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-}
-
-.brand strong,
-.brand small {
-  display: block;
-  line-height: 1.25;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3) 0;
 }
 
 .brand strong {
-  font-size: var(--text-md);
-  letter-spacing: -0.01em;
+  color: var(--text);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .brand small {
-  color: var(--text-subtle);
+  color: var(--brand-600);
   font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.logo {
+.iconButton {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   flex: none;
+  margin-top: var(--space-1);
+  border: 0;
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, var(--brand-500), var(--brand-700));
-  color: var(--text-on-brand);
-  box-shadow: var(--shadow-sm);
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
 }
 
-.logo svg {
-  width: 20px;
-  height: 20px;
+.iconButton:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.iconButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Nút đóng chỉ có ở ngăn kéo màn hẹp. */
+.close {
+  display: none;
 }
 
 .nav {
@@ -124,49 +147,135 @@
 }
 
 .footer {
-  padding: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) 0 0 var(--space-3);
   border-top: 1px solid var(--border);
 }
 
-/* Màn hình hẹp: sidebar thành thanh ngang ở đầu trang */
+.logout {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.logout:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.logout svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/*
+ * Thu gọn (chỉ màn rộng): dải icon. Chữ ẩn với mắt nhưng vẫn là tên truy cập của link / nút,
+ * tên hiện khi rê chuột (title).
+ */
+@media (min-width: 901px) {
+  .collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .collapsed .head {
+    justify-content: center;
+  }
+
+  .collapsed .brand {
+    display: none;
+  }
+
+  .collapsed .nav {
+    gap: var(--space-3);
+  }
+
+  .collapsed .section + .section {
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  .collapsed .sectionTitle,
+  .collapsed .label,
+  .collapsed .badge {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .collapsed .link {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .collapsed .footer {
+    flex-direction: column;
+    padding-left: 0;
+  }
+
+  /* Chỉ còn chấm trạng thái; chữ vẫn đọc được bằng trình đọc màn hình và title. */
+  .collapsed .status > span {
+    gap: 0;
+  }
+
+  .collapsed .status > span > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .collapsed .logout {
+    justify-content: center;
+    width: 36px;
+    padding: 0;
+  }
+}
+
+/* Màn hẹp: ngăn kéo trượt từ trái, mở bằng nút menu ở thanh trên (AppLayout). */
 @media (max-width: 900px) {
   .sidebar {
-    position: static;
-    flex-flow: row wrap;
-    align-items: center;
-    gap: var(--space-2) var(--space-4);
-    width: auto;
-    height: auto;
-    padding: var(--space-2) var(--space-4);
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+    position: fixed;
+    z-index: 30;
+    inset: 0 auto 0 0;
+    width: min(288px, 85vw);
+    height: 100dvh;
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition:
+      transform 200ms ease,
+      visibility 200ms;
   }
 
-  .brand {
-    margin: 0;
-    padding: var(--space-1) 0;
+  .open {
+    transform: none;
+    visibility: visible;
   }
 
-  .footer {
-    margin-left: auto;
-    padding: 0;
-    border-top: 0;
-  }
-
-  .nav {
-    flex: 1 0 100%;
-    flex-direction: row;
-    gap: var(--space-4);
-    order: 3;
-    overflow-x: auto;
-    padding-bottom: var(--space-1);
-  }
-
-  .nav ul {
-    display: flex;
-  }
-
-  .sectionTitle {
+  .collapseToggle {
     display: none;
+  }
+
+  .close {
+    display: grid;
   }
 }

@@ -2,9 +2,10 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { routes } from "../../../app/routes";
+import { login } from "../../../lib/auth";
 import { server } from "../../../test/server";
 import { callDetail, overview, quality, turn } from "../test/fixtures";
 
@@ -80,6 +81,11 @@ function renderAt(path: string) {
   render(<RouterProvider router={router} />);
   return router;
 }
+
+// Mọi trang trong app cần đăng nhập; bot tắt auth thì key rỗng.
+beforeEach(() => {
+  login("");
+});
 
 describe("Observability", () => {
   it("tổng quan: 7 thẻ KPI; chọn STT mở biểu đồ, provider, mã lỗi đúng thành phần", async () => {

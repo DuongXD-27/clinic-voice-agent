@@ -31,7 +31,7 @@ from clinic_mock_sim import FakeClinicAPI, clinic_error
 from inference.llm.providers.base import StructuredReply
 
 SILENCE = None
-FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City"
+FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại bệnh viện"
 # Câu xác nhận lần hai đọc lại đúng lịch sắp hủy (§1.1.4)
 CANCEL_READBACK = f"Lịch khám Nội tổng quát của anh chị là {FACTS}. {t.CANCEL_RECONFIRM}"
 

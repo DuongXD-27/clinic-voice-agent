@@ -76,9 +76,11 @@ Mọi câu bot nói, qua HTTP hay LiveKit, đều qua cùng Output Guard trong `
 | `/v1/calls`, `/v1/calls/{call_id}/turn` | Có |
 | `/demo-api/*` | Có |
 | `/v1/stt/*` (API thử STT, xem [stt-eval-api.md](stt-eval-api.md)) | Có. Chỉ mount khi `STT_EVAL_ENABLED=true`, và khi đó bắt buộc phải có `BOT_API_KEYS` |
-| `/health`, `/ready`, `/audio/*`, `/audio-static/*`, `/ui/*` | Không. Harness tải `audio_url` không kèm header; `/audio-static/*` là audio câu tĩnh đã duyệt dùng chung giữa các cuộc gọi; `/ui/*` là file tĩnh của giao diện web |
+| `/health`, `/ready`, `/audio/*`, `/audio-static/*`, UI (`/`, `/login`, `/call`, `/assets/*`…) | Không. Harness tải `audio_url` không kèm header; `/audio-static/*` là audio câu tĩnh đã duyệt dùng chung giữa các cuộc gọi; UI là file tĩnh của giao diện web, phục vụ ở gốc domain |
 
-Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`. Trang `/ui/call` (link cũ `/demo/` chuyển hướng tới đây) có ô "API key" để điền key; key chỉ lưu trong tab hiện tại (`sessionStorage`).
+Gửi `Authorization: Bearer <key>`. Thiếu header hoặc sai scheme trả `401 {"detail": {"code": "BAD_KEY", "message": "Missing bearer token."}}`; key không có trong danh sách trả `Invalid bearer token.`.
+
+Giao diện web nhập key ở trang `/login`: mở link nào của UI khi chưa đăng nhập cũng về đây, đăng nhập xong quay lại đúng trang (`/login?next=/call`). Trang kiểm key giống smoke test bên dưới (`POST /v1/calls` body rỗng: `422` = key đúng hoặc auth tắt, `401 BAD_KEY` = sai), không mở cuộc gọi hay gọi Clinic. Key chỉ lưu trong tab hiện tại (`sessionStorage`) và gửi kèm mọi request của UI; bot trả `BAD_KEY` cho key đã lưu (thu hồi / đổi `BOT_API_KEYS`) thì UI đăng xuất về `/login`. Đây chỉ là cửa vào phía trình duyệt: file tĩnh của UI vẫn công khai, bảo vệ thật nằm ở các route API.
 
 Server production giữ nguyên `/opt/callbot/.env` qua các lần deploy (xem `cd.yml`), nên muốn thêm hay thu hồi key thì sửa `BOT_API_KEYS` trong file đó rồi `docker compose up -d` lại. Secret `BOT_API_KEYS` của GitHub được CD dùng khi tạo `.env` lần đầu và cho smoke test (key đầu tiên), nên phải chứa một key server đang chấp nhận. Smoke test gửi `POST /v1/calls` với body rỗng và mong đợi `422`: chứng minh key hợp lệ và route hoạt động mà không mở cuộc gọi hay gọi Clinic.
 

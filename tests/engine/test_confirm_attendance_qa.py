@@ -15,7 +15,7 @@ from clinic_mock_sim import FakeClinicAPI
 APPOINTMENT = "apt_00417"
 NAME = "Nguyễn Văn A"
 DOB = "14/03/1978"
-READBACK_PARTS = ("14 tháng 10", "9 giờ", "Vinmec Times City")
+READBACK_PARTS = ("14 tháng 10", "9 giờ", "tại bệnh viện")
 
 
 def start(case_id: str, clinic: FakeClinicAPI | None = None):

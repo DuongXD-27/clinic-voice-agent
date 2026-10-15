@@ -1,0 +1,63 @@
+/*
+ * Vừa một màn hình ngay khi mở trang (trừ phần tiêu đề trang phía trên, ~160px) và dính khi cuộn:
+ * khung chat cuộn bên trong, nút gọi và ô nhập / mic luôn thấy.
+ */
+.panel {
+  position: sticky;
+  top: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 184px);
+  min-height: 520px;
+  max-height: 860px;
+  overflow: hidden;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.status {
+  display: flex;
+  min-width: 0;
+}
+
+.notice {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+}
+
+/*
+ * Một cột: khung không dính nữa nhưng vẫn cao vừa một màn hình (trừ thanh trên của điện thoại) để
+ * thấy cùng lúc nút gọi, hội thoại và ô nhập / mic.
+ */
+@media (max-width: 1080px) {
+  .panel {
+    position: static;
+    height: calc(100dvh - 88px);
+    min-height: 480px;
+    max-height: 760px;
+  }
+}
+
+@media (max-width: 600px) {
+  .top {
+    flex-wrap: nowrap;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .notice {
+    padding: var(--space-2) var(--space-4);
+  }
+}

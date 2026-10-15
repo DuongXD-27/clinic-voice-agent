@@ -232,8 +232,9 @@ def _vocabulary() -> frozenset[str]:
     return frozenset(words | {strip_diacritics(w) for w in words})
 
 
+# ADVERSARIAL_NEGATIVES đã gồm NOT_PROMOTABLE: gộp thành tập để mỗi câu chỉ chạy một lần.
 @pytest.mark.parametrize(
-    "transcript", [t for t, _ in PROMOTABLE] + ADVERSARIAL_NEGATIVES + NOT_PROMOTABLE
+    "transcript", sorted({t for t, _ in PROMOTABLE} | set(ADVERSARIAL_NEGATIVES))
 )
 def test_every_accepted_span_leaves_only_grammar_words(transcript: str) -> None:
     """Tính chất của hàm (không phải bằng chứng cho mọi câu): nâng được thì mọi từ ngoài span đều

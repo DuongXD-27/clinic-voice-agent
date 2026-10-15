@@ -6,9 +6,7 @@ const TIME = new Intl.DateTimeFormat("vi-VN", { timeStyle: "medium" });
 
 export function EventLog({ entries }: { entries: readonly LogEntry[] }) {
   if (entries.length === 0) {
-    return (
-      <p className={styles.empty}>Chưa có sự kiện. Bắt đầu cuộc gọi để xem diễn biến kết nối.</p>
-    );
+    return <p className={styles.empty}>Chưa có sự kiện kết nối.</p>;
   }
   return (
     <ol className={styles.log} aria-label="Nhật ký cuộc gọi">

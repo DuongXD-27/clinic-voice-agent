@@ -57,45 +57,43 @@ async function tracked<T>(
   }
 }
 
-export function startCall(body: Schemas["StartCallRequest"], apiKey: string) {
+export function startCall(body: Schemas["StartCallRequest"]) {
   return tracked<Schemas["StartCallResponse"]>("POST", "/v1/calls", body, {
     json: body,
-    apiKey,
     headers: DEMO_DEBUG_HEADER,
   });
 }
 
-export function sendTurn(callId: string, body: Schemas["TurnRequest"], apiKey: string) {
+export function sendTurn(callId: string, body: Schemas["TurnRequest"]) {
   return tracked<Schemas["TurnResponse"]>(
     "POST",
     `/v1/calls/${encodeURIComponent(callId)}/turn`,
     body,
-    { json: body, apiKey, headers: DEMO_DEBUG_HEADER },
+    { json: body, headers: DEMO_DEBUG_HEADER },
   );
 }
 
 /** Trình duyệt chỉ có blob: URL; backend cần URL tải được nên upload WAV trước khi gửi lượt. */
-export function uploadAudio(callId: string, turn: number, wav: Blob, apiKey: string) {
+export function uploadAudio(callId: string, turn: number, wav: Blob) {
   return tracked<Schemas["DemoAudioUpload"]>(
     "PUT",
     `/demo-api/audio/${encodeURIComponent(callId)}/${turn}.wav`,
     { content_type: "audio/wav", size_bytes: wav.size },
-    { body: wav, apiKey, headers: { "Content-Type": "audio/wav" } },
+    { body: wav, headers: { "Content-Type": "audio/wav" } },
   );
 }
 
-export async function getClinicFixtures(apiKey: string, signal?: AbortSignal) {
-  const result = await request<Schemas["ClinicFixtures"]>("/demo-api/clinic-fixtures", {
-    apiKey,
-    ...(signal ? { signal } : {}),
-  });
+export async function getClinicFixtures(signal?: AbortSignal) {
+  const result = await request<Schemas["ClinicFixtures"]>(
+    "/demo-api/clinic-fixtures",
+    signal ? { signal } : {},
+  );
   return result.data;
 }
 
-export function resetClinic(appointmentId: string, apiKey: string) {
+export function resetClinic(appointmentId: string) {
   const body = { appointment_id: appointmentId };
   return tracked<Schemas["ClinicResetResponse"]>("POST", "/demo-api/clinic-reset", body, {
     json: body,
-    apiKey,
   });
 }

@@ -11,20 +11,30 @@ interface FieldProps {
   error?: string | null;
   /** Chiếm cả hàng trong lưới 2 cột. */
   wide?: boolean;
+  /** Nút nhỏ cùng hàng với nhãn, canh phải (vd. Tải lại danh sách). */
+  action?: ReactNode;
   children: ReactNode;
 }
 
-export function Field({ label, htmlFor, hint, error, wide = false, children }: FieldProps) {
+export function Field({ label, htmlFor, hint, error, wide = false, action, children }: FieldProps) {
+  const labelNode = htmlFor ? (
+    <label htmlFor={htmlFor} className={styles.label}>
+      {label}
+    </label>
+  ) : (
+    <span className={styles.label} aria-hidden>
+      {label}
+    </span>
+  );
   return (
     <div className={cx(styles.field, wide && styles.wide)}>
-      {htmlFor ? (
-        <label htmlFor={htmlFor} className={styles.label}>
-          {label}
-        </label>
+      {action ? (
+        <div className={styles.labelRow}>
+          {labelNode}
+          {action}
+        </div>
       ) : (
-        <span className={styles.label} aria-hidden>
-          {label}
-        </span>
+        labelNode
       )}
       {children}
       {error ? (

@@ -1,14 +1,11 @@
-import { DatabaseZap, PhoneCall, RotateCcw } from "lucide-react";
+import { DatabaseZap } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
-import { CallStatus } from "../../components/chat/CallStatus";
-import { Conversation } from "../../components/chat/Conversation";
+import { CallPanel } from "../../components/chat/CallPanel";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { Button } from "../../components/ui/Button";
 import { Card, CardBody, CardHeader } from "../../components/ui/Card";
-import { Notice } from "../../components/ui/Notice";
 import { useRecorder } from "../../lib/audio/useRecorder";
-import { API_KEY_STORAGE, readSession, writeSession } from "../../lib/storage";
 import { resetClinic } from "./api";
 import styles from "./CallPage.module.css";
 import { Composer } from "./components/Composer";
@@ -16,7 +13,7 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { DebugPanel } from "./components/DebugPanel";
 import { ExtractionPanel } from "./components/ExtractionPanel";
 import { ScenarioGuide } from "./components/ScenarioGuide";
-import { canSend, canStart, isBusy, isConfigLocked } from "./model/callMachine";
+import { callPhase, canSend, describeCall, isBusy, isConfigLocked } from "./model/callMachine";
 import {
   DEFAULT_APPOINTMENT,
   defaultConfig,
@@ -30,15 +27,12 @@ import { useClinicFixtures } from "./useClinicFixtures";
 
 export function CallPage() {
   const [config, setConfig] = useState(() => defaultConfig());
-  const [apiKey, setApiKey] = useState(() => readSession(API_KEY_STORAGE) ?? "");
-  // Key dùng để tải dữ liệu clinic: chỉ đổi khi rời ô nhập, không tải lại theo từng phím.
-  const [committedKey, setCommittedKey] = useState(apiKey);
   const [text, setText] = useState("");
   const [resetting, setResetting] = useState(false);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
-  const { session, start, send, reset, notify, clearError } = useCallSession();
-  const { fixtures, reload: reloadFixtures } = useClinicFixtures(committedKey);
+  const { session, start, send, reset, hangup, notify } = useCallSession();
+  const { fixtures, reload: reloadFixtures } = useClinicFixtures();
   const recorder = useRecorder();
 
   const locked = isConfigLocked(session);
@@ -50,10 +44,17 @@ export function CallPage() {
     setConfig((current) => ({ ...current, ...patch }));
   };
 
-  const commitApiKey = () => {
-    const key = apiKey.trim();
-    writeSession(API_KEY_STORAGE, key);
-    setCommittedKey(key);
+  const handleStart = () => {
+    // Call ID cũ không mở được cuộc mới: bot trả 409 CALL_ENDED (bot đã kết thúc) hoặc phát lại
+    // câu chào đã lưu (vừa bấm Kết thúc, phiên trên bot còn sống). Tự sinh ID mới.
+    const next =
+      session.callId !== null && config.callId.trim() === session.callId
+        ? { ...config, callId: newCallId() }
+        : config;
+    setConfig(next);
+    recorder.clear();
+    setText("");
+    void start(next);
   };
 
   const newSession = () => {
@@ -64,11 +65,7 @@ export function CallPage() {
   };
 
   const sendTurn = async (input: TurnInput) => {
-    const result = await send(input, {
-      callId: config.callId.trim(),
-      turn: session.nextTurn,
-      apiKey,
-    });
+    const result = await send(input, { callId: config.callId.trim(), turn: session.nextTurn });
     if (!result) return;
     if (input.kind === "text") setText("");
     if (input.kind === "audio") recorder.clear();
@@ -107,7 +104,7 @@ export function CallPage() {
 
   const handlePreset = (direction: Direction) => {
     if (locked) {
-      notify({ tone: "error", text: "Đang có cuộc gọi — bấm Phiên mới trước khi đổi cấu hình." });
+      notify({ tone: "error", text: "Đang có cuộc gọi — bấm Kết thúc trước khi đổi cấu hình." });
       return;
     }
     updateConfig({ direction, mode: "text", ...PRESETS[direction] });
@@ -133,7 +130,7 @@ export function CallPage() {
     if (!confirmed) return;
     setResetting(true);
     try {
-      const { data } = await resetClinic(config.appointmentId || DEFAULT_APPOINTMENT, apiKey);
+      const { data } = await resetClinic(config.appointmentId || DEFAULT_APPOINTMENT);
       // Call ID cũ sẽ phát lại câu chào đã lưu, nên reset clinic luôn đi kèm phiên mới.
       newSession();
       reloadFixtures();
@@ -162,51 +159,33 @@ export function CallPage() {
         eyebrow="Gọi thử · HTTP"
         title="Cuộc gọi từng lượt (Text/Audio)"
         description="Mô phỏng cuộc gọi qua hai endpoint contract: gõ lời người gọi, hoặc ghi âm từ microphone."
-        actions={
-          <>
-            <Button icon={<RotateCcw />} onClick={newSession}>
-              Phiên mới
-            </Button>
-            <Button
-              variant="danger"
-              icon={<DatabaseZap />}
-              loading={resetting}
-              onClick={() => void handleClinicReset()}
-            >
-              Reset clinic
-            </Button>
-          </>
-        }
       />
 
       <div className={styles.layout}>
         <div className={styles.side}>
           <Card>
-            <CardHeader title="Cấu hình cuộc gọi" />
-            <CardBody className={styles.config}>
+            <CardHeader
+              title="Cấu hình cuộc gọi"
+              action={
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<DatabaseZap />}
+                  loading={resetting}
+                  onClick={() => void handleClinicReset()}
+                >
+                  Reset clinic
+                </Button>
+              }
+            />
+            <CardBody>
               <ConfigPanel
                 config={config}
                 onChange={updateConfig}
                 locked={locked}
-                apiKey={apiKey}
-                onApiKeyChange={(value) => {
-                  setApiKey(value);
-                  clearError();
-                }}
-                onApiKeyCommit={commitApiKey}
-                apiKeyInvalid={session.errorCode === "BAD_KEY"}
                 fixtures={fixtures}
                 onReloadFixtures={reloadFixtures}
               />
-              <Button
-                variant="primary"
-                icon={<PhoneCall />}
-                loading={session.phase === "starting"}
-                disabled={!canStart(session)}
-                onClick={() => void start(config, apiKey)}
-              >
-                Bắt đầu cuộc gọi
-              </Button>
             </CardBody>
           </Card>
 
@@ -225,43 +204,45 @@ export function CallPage() {
           </Card>
         </div>
 
-        <Card className={styles.call}>
-          <CallStatus
-            state={session.botState}
-            turnLabel="Lượt tiếp theo"
-            turn={session.nextTurn}
-            outcome={session.outcome}
-          />
-          {session.notice && (
-            <div className={styles.notice}>
-              <Notice tone={session.notice.tone}>{session.notice.text}</Notice>
-            </div>
-          )}
-          <Conversation
-            messages={session.messages}
-            empty={
-              <>
-                Cấu hình rồi bấm <strong>Bắt đầu cuộc gọi</strong>. Bot sẽ chào ở lượt 0.
-              </>
-            }
-            pending={isBusy(session)}
-            autoPlayId={autoPlayId}
-            onAutoplayBlocked={handleAutoplayBlocked}
-          />
-          <Composer
-            mode={config.mode}
-            enabled={active}
-            busy={session.phase === "sending"}
-            text={text}
-            onTextChange={setText}
-            textRef={textRef}
-            recorder={recorder.state}
-            onRecordToggle={() => void handleRecordToggle()}
-            onSend={handleSend}
-            onSilence={handleSilence}
-            silenceSeconds={SILENCE_MS / 1000}
-          />
-        </Card>
+        <CallPanel
+          className={styles.call}
+          status={describeCall(session)}
+          phase={callPhase(session)}
+          onStart={handleStart}
+          onEnd={hangup}
+          metrics={{
+            state: session.botState,
+            turnLabel: "Lượt tiếp theo",
+            turn: session.nextTurn,
+            outcome: session.outcome,
+          }}
+          notice={session.notice}
+          messages={session.messages}
+          empty={
+            <>
+              Bấm <strong>Bắt đầu cuộc gọi</strong>: bot chào ở lượt 0, sau đó gõ hoặc ghi âm từng
+              lượt của người gọi.
+            </>
+          }
+          pending={isBusy(session)}
+          autoPlayId={autoPlayId}
+          onAutoplayBlocked={handleAutoplayBlocked}
+          footer={
+            <Composer
+              mode={config.mode}
+              enabled={active}
+              busy={session.phase === "sending"}
+              text={text}
+              onTextChange={setText}
+              textRef={textRef}
+              recorder={recorder.state}
+              onRecordToggle={() => void handleRecordToggle()}
+              onSend={handleSend}
+              onSilence={handleSilence}
+              silenceSeconds={SILENCE_MS / 1000}
+            />
+          }
+        />
       </div>
 
       <section className={styles.guide} aria-labelledby="guide-heading">

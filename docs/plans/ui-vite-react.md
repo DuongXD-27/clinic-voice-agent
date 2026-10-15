@@ -217,3 +217,4 @@ Script: `npm run check` = `lint` + `format:check` + `typecheck` + `test`, tươn
 | `/livekit/token` | — | Chưa cài package `livekit` trả 503 `LIVEKIT_UNAVAILABLE` thay vì 500 | Lỗi gặp khi test local |
 | Observability local | — | `docker-compose.yml` thêm volume `traces`, bật API ở local | Không có thư mục trace thì API không đăng ký, trang báo 404 |
 | Redirect | `/demo/`, `/demo/livekit-demo.html`, `/observability/` | Thêm `/` → `/ui/` | Mở gốc domain không còn 404 |
+| Đường dẫn UI, API key (15-10-2026) | Mount `/ui`; ô API key trong trang gọi | UI ở gốc domain (`/`, `/call`…), `/ui/...` chuyển 307; trang `/login` nhập key | Link ngắn hơn; key nhập một lần cho cả console. `/audio` (lifespan) được chèn trước mount `/` — xem evidence `ui-vite-react.md` §Sửa 15-10-2026 |

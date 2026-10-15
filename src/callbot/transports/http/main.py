@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from redis import Redis
+from starlette.routing import Mount
 
 from callbot.engine import (
     ClinicAPI,
@@ -188,8 +189,11 @@ def create_app(
             audio_dir = Path(speech.audio_store.directory)
             audio_dir.mkdir(parents=True, exist_ok=True)
             # Thư mục thật chỉ biết được sau khi speech_factory() chạy ở đây — mount
-            # StaticFiles ngay trong lifespan, trước yield (chưa có traffic thật nào).
-            app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
+            # StaticFiles ngay trong lifespan, trước yield (chưa có traffic thật nào). Chèn lên
+            # đầu thay vì nối cuối: UI mount ở "/" khớp mọi đường dẫn và sẽ che /audio.
+            app.router.routes.insert(
+                0, Mount("/audio", app=StaticFiles(directory=str(audio_dir)), name="audio")
+            )
             call_mode = call_mode_factory()
             app.state.call_mode = call_mode
             cleaner = asyncio.create_task(cleanup())
@@ -254,7 +258,6 @@ def create_app(
         app.include_router(stt_eval_router, dependencies=[Depends(require_api_key)])
     _configure_observability(app, observability_settings)
     add_legacy_redirects(app)
-    mount_ui(app, settings.ui_dist_dir if ui_dist_dir is None else ui_dist_dir)
 
     # Công khai như /audio: bên gọi tải audio_url không kèm key. Chỉ trả WAV đã duyệt theo cache key
     # (khoá theo nguyên văn + cấu hình nên nội dung bất biến), không lộ manifest hay file khác.
@@ -294,6 +297,8 @@ def create_app(
             )
         return JSONResponse({"status": "ready"})
 
+    # Cuối cùng: UI ở "/" khớp mọi đường dẫn, mọi route ở trên phải được khớp trước.
+    mount_ui(app, settings.ui_dist_dir if ui_dist_dir is None else ui_dist_dir)
     return app
 
 

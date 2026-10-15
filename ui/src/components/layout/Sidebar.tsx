@@ -1,4 +1,5 @@
-import { HeartPulse, type LucideIcon } from "lucide-react";
+import { LogOut, PanelLeftClose, PanelLeftOpen, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { NavLink } from "react-router";
 
 import { cx } from "../../lib/cx";
@@ -16,22 +17,66 @@ export interface NavSection {
 }
 
 interface Props {
+  id: string;
   sections: readonly NavSection[];
   status: { tone: StatusTone; label: string; pulse: boolean };
+  onLogout: () => void;
+  /** Màn rộng: thu gọn thành dải icon. */
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  /** Màn hẹp: thanh bên là ngăn kéo, mở bằng nút menu ở thanh trên. */
+  open: boolean;
+  onClose: () => void;
 }
 
-export function Sidebar({ sections, status }: Props) {
+export function Sidebar({
+  id,
+  sections,
+  status,
+  onLogout,
+  collapsed,
+  onToggleCollapsed,
+  open,
+  onClose,
+}: Props) {
+  // Mở ngăn kéo: đưa focus vào trong để bàn phím / trình đọc màn hình đi tiếp từ đây.
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (open) closeRef.current?.focus();
+  }, [open]);
+
   return (
-    <aside className={styles.sidebar}>
-      <NavLink to="/" className={styles.brand}>
-        <span className={styles.logo} aria-hidden>
-          <HeartPulse />
-        </span>
-        <span>
+    <aside
+      id={id}
+      className={cx(styles.sidebar, collapsed && styles.collapsed, open && styles.open)}
+      aria-label="Thanh bên"
+    >
+      <div className={styles.head}>
+        <NavLink to="/" className={styles.brand} onClick={onClose}>
           <strong>Clinicalbot</strong>
           <small>Console nội bộ</small>
-        </span>
-      </NavLink>
+        </NavLink>
+        <button
+          type="button"
+          className={cx(styles.iconButton, styles.collapseToggle)}
+          aria-label={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+          title={collapsed ? "Mở rộng thanh bên" : "Thu gọn thanh bên"}
+          aria-expanded={!collapsed}
+          aria-controls={id}
+          onClick={onToggleCollapsed}
+        >
+          {collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+        </button>
+        <button
+          ref={closeRef}
+          type="button"
+          className={cx(styles.iconButton, styles.close)}
+          aria-label="Đóng menu"
+          onClick={onClose}
+        >
+          <X aria-hidden />
+        </button>
+      </div>
 
       <nav className={styles.nav} aria-label="Điều hướng chính">
         {sections.map((section, index) => (
@@ -40,7 +85,7 @@ export function Sidebar({ sections, status }: Props) {
             <ul>
               {section.items.map((item) => (
                 <li key={item.label}>
-                  <NavEntry item={item} />
+                  <NavEntry item={item} collapsed={collapsed} onNavigate={onClose} />
                 </li>
               ))}
             </ul>
@@ -48,14 +93,33 @@ export function Sidebar({ sections, status }: Props) {
         ))}
       </nav>
 
-      <footer className={styles.footer} role="status">
-        <StatusIndicator {...status} />
+      <footer className={styles.footer}>
+        <div role="status" className={styles.status} title={status.label}>
+          <StatusIndicator {...status} />
+        </div>
+        <button
+          type="button"
+          className={styles.logout}
+          title={collapsed ? "Đăng xuất" : undefined}
+          onClick={onLogout}
+        >
+          <LogOut aria-hidden />
+          <span className={styles.label}>Đăng xuất</span>
+        </button>
       </footer>
     </aside>
   );
 }
 
-function NavEntry({ item }: { item: NavItem }) {
+function NavEntry({
+  item,
+  collapsed,
+  onNavigate,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+  onNavigate: () => void;
+}) {
   const Icon = item.icon;
   const content = (
     <>
@@ -64,6 +128,8 @@ function NavEntry({ item }: { item: NavItem }) {
       {item.kind === "link" && item.badge && <span className={styles.badge}>{item.badge}</span>}
     </>
   );
+  // Thu gọn chỉ còn icon: tên hiện khi rê chuột.
+  const title = collapsed ? item.label : undefined;
   if (item.kind === "route") {
     return (
       <NavLink
@@ -71,13 +137,15 @@ function NavEntry({ item }: { item: NavItem }) {
         // Trang chủ chỉ sáng khi đúng "/"; mục khác sáng cả ở trang con (vd. /observability/quality).
         end={item.to === "/"}
         className={({ isActive }) => cx(styles.link, isActive && styles.active)}
+        title={title}
+        onClick={onNavigate}
       >
         {content}
       </NavLink>
     );
   }
   return (
-    <a href={item.href} className={styles.link}>
+    <a href={item.href} className={styles.link} title={title}>
       {content}
     </a>
   );

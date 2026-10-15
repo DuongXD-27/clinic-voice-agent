@@ -12,11 +12,20 @@ require_livekit()
 from livekit import rtc  # noqa: E402
 
 from callbot.transports.livekit import participant as participant_module  # noqa: E402
+from callbot.transports.livekit import status as status_module  # noqa: E402
 from callbot.transports.livekit.participant import (  # noqa: E402
     ParticipantCall,
     hangup_sip_caller,
     participant_call,
 )
+
+
+@pytest.fixture(autouse=True)
+def no_real_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Room giả không bao giờ trống và config có grace 2 s trước BYE: không chờ thật (mỗi test
+    worker từng mất 2–5 s). Test kiểm grace tự truyền `playout_grace_ms` cho hangup_sip_caller."""
+    monkeypatch.setattr(status_module, "_WAIT_FOR_PAGE_S", 0.01)
+    monkeypatch.setenv("LIVEKIT_SIP_HANGUP_GRACE_MS", "1")
 
 
 def sip_participant(**attrs):

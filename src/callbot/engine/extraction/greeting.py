@@ -25,7 +25,7 @@ _WHO = (
     r"ben nao(?: (?:dang )?goi)?(?: (?:day|do|vay|the))?|"
     rf"{_ADDRESS} goi tu dau|ben {_ADDRESS} la ben nao|"
     r"(?:benh vien|tong dai|don vi) nao(?: (?:day|do|vay|the))?|"
-    r"dau day ben kia la ai|(?:co phai )?vinmec (?:a|ha|phai khong|dung khong))"
+    r"dau day ben kia la ai|(?:co phai )?(?:benh vien|vinmec) (?:a|ha|khong|phai khong|dung khong))"
 )
 _SOCIAL = rf"(?:{_HELLO}|{_WHO}|{_CONTACT})"
 _GREETING = re.compile(rf"(?:{_FILLER} )*{_SOCIAL}(?: (?:{_SOCIAL}|{_FILLER}))*")

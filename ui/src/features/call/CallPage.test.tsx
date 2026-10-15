@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getApiKey, login, useAuth } from "../../lib/auth";
 import { server } from "../../test/server";
 import { CallPage } from "./CallPage";
 
@@ -73,7 +74,7 @@ async function startCall() {
 }
 
 beforeEach(() => {
-  window.sessionStorage.clear();
+  login("sk_test");
 });
 
 describe("CallPage", () => {
@@ -124,31 +125,44 @@ describe("CallPage", () => {
     expect(recorded.turns[0]).toEqual({ turn: 1, text: null, audio_url: null, silence_ms: 2000 });
   });
 
-  it("thiếu API key: báo hướng dẫn và đánh dấu ô API key", async () => {
+  it("không có ô API key: key lấy từ phiên đăng nhập", async () => {
+    backend();
+    render(<CallPage />);
+    await screen.findByText(/Nguồn:/);
+
+    expect(screen.queryByLabelText("API key")).not.toBeInTheDocument();
+  });
+
+  it("bot từ chối key: đăng xuất để về trang đăng nhập", async () => {
     backend();
     server.use(
       http.post("/v1/calls", () =>
         HttpResponse.json(
-          { detail: { code: "BAD_KEY", message: "Missing bearer token." } },
+          { detail: { code: "BAD_KEY", message: "Invalid bearer token." } },
           { status: 401 },
         ),
       ),
     );
-    render(<CallPage />);
+    const auth: { current: ReturnType<typeof useAuth> | null } = { current: null };
+    function Probe() {
+      auth.current = useAuth();
+      return null;
+    }
+    render(
+      <>
+        <Probe />
+        <CallPage />
+      </>,
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" }));
 
-    expect(await screen.findByText(/Bot yêu cầu API key/)).toBeInTheDocument();
-    const apiKey = screen.getByLabelText("API key");
-    expect(apiKey).toHaveAttribute("aria-invalid", "true");
-    expect(apiKey).toHaveFocus();
-    expect(screen.getByLabelText("Call ID")).toBeEnabled();
-
-    await userEvent.type(apiKey, "sk_1");
-    expect(apiKey).toHaveAttribute("aria-invalid", "false");
+    expect(await screen.findByText("API key không còn hợp lệ. Đăng nhập lại.")).toBeVisible();
+    expect(getApiKey()).toBeNull();
+    expect(auth.current).toEqual({ apiKey: null, rejected: true });
   });
 
-  it("gửi API key đã nhập dưới dạng Bearer và nhớ trong tab", async () => {
+  it("gửi key đã đăng nhập dưới dạng Bearer", async () => {
     backend();
     let auth: string | null = null;
     server.use(
@@ -164,13 +178,32 @@ describe("CallPage", () => {
       }),
     );
     render(<CallPage />);
-
-    await userEvent.type(screen.getByLabelText("API key"), "sk_test");
-    await userEvent.tab();
     await startCall();
 
     expect(auth).toBe("Bearer sk_test");
-    expect(window.sessionStorage.getItem("callbotApiKey")).toBe("sk_test");
+  });
+
+  it("Kết thúc giữ hội thoại để xem; gọi lại dùng Call ID mới", async () => {
+    const recorded = backend();
+    render(<CallPage />);
+    await startCall();
+    const firstId = (recorded.start[0] as { call_id: string }).call_id;
+    const status = within(screen.getByRole("status", { name: "Trạng thái cuộc gọi" }));
+    expect(status.getByText(`Đang gọi · ${firstId}`)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Kết thúc" }));
+
+    expect(screen.getByText(/Đã kết thúc cuộc gọi/)).toBeInTheDocument();
+    expect(status.getByText(`Đã kết thúc · ${firstId}`)).toBeInTheDocument();
+    expect(screen.getByText("Xin chào, em là trợ lý ảo.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Lời người gọi")).toBeDisabled();
+    expect(screen.getByLabelText("Call ID")).toBeEnabled();
+
+    await startCall();
+
+    const secondId = (recorded.start[1] as { call_id: string }).call_id;
+    expect(secondId).not.toBe(firstId);
+    expect(screen.getByLabelText("Call ID")).toHaveValue(secondId);
   });
 
   it("lượt lỗi giữ cuộc gọi mở để gửi lại, panel debug hiện response lỗi", async () => {
