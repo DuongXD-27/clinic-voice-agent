@@ -26,7 +26,7 @@ import numpy as np
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
 from inference.asr.providers.transducer_nbest import NBest, NBestHyp, TransducerNBest
-from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords, word_distance
+from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords
 from speech.asr.nbest import NBestBox
 from speech.asr.stream_context import StreamingFrame
 from speech.asr.vad.base import FrameClassifier
@@ -60,7 +60,7 @@ class ZipFormerASR:
         # Top N của lượt tên đã tính sẵn lúc chọn câu (cùng một lần encoder), `nbest()` lấy lại
         # thay vì chạy encoder thêm lần nữa. Khóa = đúng object PCM của final đó.
         self._nbest_ready: Optional[tuple[bytes, NBest]] = None
-        # Lượt tên dùng chung encoder (`_decode_guarded_shared`) khi chạy model thật; recognizer
+        # Lượt tên dùng chung encoder (`_decode_name_shared`) khi chạy model thật; recognizer
         # tiêm từ ngoài (test, recognizer giả) đi nhánh sherpa.
         self._shared_encoder = recognizer is None
         # Thời gian của final gần nhất (trace độ trễ lượt, không có chữ): xem `stream()`.
@@ -123,7 +123,7 @@ class ZipFormerASR:
         if self._shared_encoder:
             try:
                 if self._config.hotwords_enabled:
-                    self._decode_guarded_shared(pcm, pcm, phrases)
+                    self._decode_name_shared(pcm, pcm, phrases)
                 else:
                     self._nbest_at_model_rate(pcm, self._config.nbest_top_k)
             except ImportError:
@@ -197,8 +197,8 @@ class ZipFormerASR:
         - Giữ `pre_speech_ms` (None = config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
         - `AsrSegmentEnd.DISCARD`: bỏ câu dở, không phát event.
         - `hotwords`: chỉ final dùng hotword của lượt (partial giữ nguyên để barge-in và cổng từ
-          đệm không đổi). `guard_one_word`: decode thêm bản không hotword, chỉ nhận bản có hotword
-          khi hai bản lệch tối đa 1 từ (lượt tên — không kéo tên khác hẳn về tên hồ sơ, SF-03).
+          đệm không đổi). `name_turn`: lượt tên luôn lấy bản có hotword; khác bản không hotword
+          thì nâng confidence lên `hotwords_accept_confidence` để qua cổng tên.
         - `nbest`: sau mỗi final có chữ, tính top `nbest_top_k` phương án trong nền và bỏ task vào
           hộp (chỉ để hiện trên trang demo, không đổi final).
         """
@@ -241,7 +241,7 @@ class ZipFormerASR:
             else:
                 mode = "greedy"
                 if hints and self._config.hotwords_enabled:
-                    mode = "name" if hints.guard_one_word else "hotword"
+                    mode = "name" if hints.name_turn else "hotword"
                 voice_end_at = trace["voice_end_at"] or started
                 self.last_timing = {
                     "voice_end_at": voice_end_at,
@@ -344,11 +344,11 @@ class ZipFormerASR:
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
         phrases = "/".join(hints.phrases)
-        if not hints.guard_one_word:
+        if not hints.name_turn:
             return self._decode_scored(pcm, hotwords=phrases)
         if self._shared_encoder:
             try:
-                return self._decode_guarded_shared(pcm, final_pcm, hints.phrases)
+                return self._decode_name_shared(pcm, final_pcm, hints.phrases)
             except ImportError:
                 # Thiếu onnxruntime/kaldi-native-fbank (vd Windows Python 3.14): dùng sherpa.
                 self._shared_encoder = False
@@ -357,21 +357,14 @@ class ZipFormerASR:
         # Bản không hotword (cùng beam) chạy song song bản có hotword thay vì nối tiếp.
         plain_future = self._pool.submit(self._decode_scored, pcm)
         biased = self._decode_scored(pcm, hotwords=phrases)
-        plain = plain_future.result()
-        if plain.text == biased.text:
-            # Hotword không đổi chữ: dùng hẳn bản thô (confidence thật; sherpa trộn điểm cộng
-            # hotword vào log-prob của bản có hotword).
-            return plain
-        if word_distance(plain.text, biased.text) > 1:
-            return plain
-        return self._accept_hinted(pcm, biased)
+        return self._prefer_hinted(plain_future.result(), biased)
 
-    def _decode_guarded_shared(
+    def _decode_name_shared(
         self, pcm: bytes, final_pcm: bytes, phrases: tuple[str, ...]
     ) -> _Decoded:
         """Lượt tên với encoder chạy MỘT lần (phần nặng nhất): từ cùng đầu ra encoder, beam search
-        có hotword (câu chọn, cũng là top N trên UI) và không hotword (bản đối chứng + top N thô).
-        Cùng luật với nhánh sherpa bên dưới; bộ giải mã khớp câu sherpa 45/46 câu golden."""
+        có hotword (câu chọn, cũng là top N trên UI) và không hotword (bản đối chứng).
+        Cùng luật với nhánh sherpa bên trên; bộ giải mã khớp câu sherpa 45/46 câu golden."""
         nbest = self._get_nbest()
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         frames = nbest.encode(samples)
@@ -382,7 +375,7 @@ class ZipFormerASR:
             frames,
             [
                 (max(1, self._config.nbest_top_k), phrases, score, beam),
-                (max(1, self._config.hotwords_accept_top_k), (), 0, beam),
+                (1, (), 0, beam),
             ],
             cache,
         )
@@ -390,35 +383,15 @@ class ZipFormerASR:
             self._nbest_ready = (final_pcm, NBest(biased_top, phrases))
         if not biased_top or not plain_top:
             return _Decoded("")
-        plain, biased = _from_hyp(plain_top[0]), _from_hyp(biased_top[0])
-        if plain.text == biased.text or word_distance(plain.text, biased.text) > 1:
-            return plain
-        accepted = self._config.hotwords_accept_top_k > 0 and biased.text in (
-            h.text for h in plain_top
-        )
-        # Không log chữ: lượt tên có PII.
-        logger.info("zipformer: bản có hotword %s top N thô", "nằm trong" if accepted else "ngoài")
-        if accepted:
-            confidence = max(biased.confidence or 0.0, self._config.hotwords_accept_confidence)
-        else:
-            # Như nhánh sherpa (confidence lẫn điểm hotword nên rất thấp): cổng tên coi là không
-            # chắc, hỏi lại.
-            confidence = min(biased.confidence or 0.0, self._config.hotwords_accept_confidence / 2)
-        return biased._replace(confidence=confidence)
+        return self._prefer_hinted(_from_hyp(plain_top[0]), _from_hyp(biased_top[0]))
 
-    def _accept_hinted(self, pcm: bytes, biased: _Decoded) -> _Decoded:
-        """Bản có hotword lệch bản thô 1 từ: nhận (đủ qua cổng tên) khi nằm trong top N thô."""
-        k = self._config.hotwords_accept_top_k
-        if k == 0:
-            return biased
-        top = [h.text for h in self._nbest_at_model_rate(pcm, k)]
-        accepted = " ".join(biased.text.split()) in top
-        # Không log chữ: lượt tên có PII.
-        logger.info(
-            "zipformer: bản có hotword %s top %d thô", "nằm trong" if accepted else "ngoài", k
-        )
-        if not accepted:
-            return biased
+    def _prefer_hinted(self, plain: _Decoded, biased: _Decoded) -> _Decoded:
+        """Lượt tên luôn lấy bản có hotword, không lọc theo độ lệch với bản thô. Khác bản thô thì
+        nâng confidence lên `hotwords_accept_confidence`: sherpa trộn điểm cộng hotword vào
+        log-prob nên bản có hotword ra confidence ~0 và bị cổng tên chặn dù đúng."""
+        if plain.text == biased.text:
+            # Hotword không đổi chữ: dùng hẳn bản thô (confidence thật).
+            return plain
         confidence = max(biased.confidence or 0.0, self._config.hotwords_accept_confidence)
         return biased._replace(confidence=confidence)
 

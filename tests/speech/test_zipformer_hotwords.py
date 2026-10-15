@@ -1,4 +1,4 @@
-"""Hotword theo lượt trên ZipFormer (callbot/engine/asr_hints.py): chỉ final, chặn SF-03 ở lượt tên."""
+"""Hotword theo lượt trên ZipFormer (callbot/engine/asr_hints.py): chỉ final, lượt tên luôn nhận bản có hotword."""
 
 import asyncio
 import sys
@@ -88,9 +88,9 @@ async def _run(asr: ZipFormerASR, box: Optional[HotwordBox]) -> list:
     ]
 
 
-def _box(*phrases: str, guard: bool = False) -> HotwordBox:
+def _box(*phrases: str, name_turn: bool = False) -> HotwordBox:
     box = HotwordBox()
-    box.set(Hotwords(phrases, guard))
+    box.set(Hotwords(phrases, name_turn))
     return box
 
 
@@ -107,77 +107,43 @@ async def test_hotwords_apply_to_final_only() -> None:
     assert "THỨ SÁU/CHÍN GIỜ SÁNG" in recognizer.calls
 
 
-async def test_name_guard_accepts_one_word_correction() -> None:
+async def test_name_turn_accepts_one_word_correction() -> None:
     """Lỗi đúng kiểu Huy gặp: "NGUYỄN VĂN A" bị nghe thành "NGUYỄN VĂN ANH"."""
     recognizer = _Recognizer("TÔI TÊN LÀ NGUYỄN VĂN ANH", "TÔI TÊN LÀ NGUYỄN VĂN A")
-    asr = ZipFormerASR(_config(hotwords_accept_top_k=0), recognizer=recognizer)
+    asr = ZipFormerASR(_config(), recognizer=recognizer)
 
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+    events = await _run(asr, _box("NGUYỄN VĂN A", name_turn=True))
 
     assert [e.text for e in events if e.is_final] == ["TÔI TÊN LÀ NGUYỄN VĂN A"]
 
 
-async def test_name_guard_rejects_pulling_a_different_name() -> None:
-    """SF-03: tên khác hẳn (lệch > 1 từ) không được kéo về tên hồ sơ."""
-    recognizer = _Recognizer("TÔI TÊN LÀ TRẦN THỊ HOA", "TÔI TÊN LÀ NGUYỄN VĂN A")
+async def test_name_turn_takes_hotword_however_far_from_plain() -> None:
+    """Không còn chặn theo độ lệch: bản có hotword luôn thắng, Verifier vẫn đòi khớp ngày sinh."""
+    recognizer = _Recognizer("TÔI TÊN LÀ GIANG A PAO", "TÔI TÊN LÀ GIÀNG A PÁO")
     asr = ZipFormerASR(_config(), recognizer=recognizer)
 
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+    events = await _run(asr, _box("GIÀNG A PÁO", name_turn=True))
 
-    assert [e.text for e in events if e.is_final] == ["TÔI TÊN LÀ TRẦN THỊ HOA"]
+    assert [e.text for e in events if e.is_final] == ["TÔI TÊN LÀ GIÀNG A PÁO"]
 
 
-def _accept_case(monkeypatch, top: list[str], **config) -> tuple[ZipFormerASR, list]:
-    """Lượt tên: sherpa cho bản có hotword confidence ~0 (điểm hotword trộn vào log-prob)."""
+async def test_name_hotword_confidence_is_raised_to_pass_name_gate() -> None:
+    """sherpa cho bản có hotword confidence ~0 (điểm hotword trộn vào log-prob): nâng lên 0.5."""
     recognizer = _Recognizer("TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A", biased_log_prob=-10.0)
-    asr = ZipFormerASR(_config(**config), recognizer=recognizer)
-    calls: list = []
+    asr = ZipFormerASR(_config(), recognizer=recognizer)
 
-    def fake_nbest(pcm: bytes, k: int, hotwords: tuple[str, ...] = ()) -> list[NBestHyp]:
-        calls.append((k, hotwords))
-        return [NBestHyp(text, -float(i), 0.1) for i, text in enumerate(top)]
-
-    monkeypatch.setattr(asr, "_nbest_at_model_rate", fake_nbest)
-    return asr, calls
-
-
-async def test_name_hotword_in_raw_top_k_passes_confidence_gate(monkeypatch) -> None:
-    asr, calls = _accept_case(
-        monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A", "TÔI LÀ NGUYỄN VĂN ANH"]
-    )
-
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+    events = await _run(asr, _box("NGUYỄN VĂN A", name_turn=True))
 
     final = [e for e in events if e.is_final][0]
     assert final.text == "TÔI LÀ NGUYỄN VĂN A"
     assert final.confidence == 0.5
-    assert calls == [(10, ())]
-
-
-async def test_name_hotword_outside_raw_top_k_keeps_low_confidence(monkeypatch) -> None:
-    asr, _ = _accept_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN ANH"])
-
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
-
-    final = [e for e in events if e.is_final][0]
-    assert final.text == "TÔI LÀ NGUYỄN VĂN A"
-    assert final.confidence is not None and final.confidence < 0.01
-
-
-async def test_name_hotword_accept_disabled_keeps_old_behaviour(monkeypatch) -> None:
-    asr, calls = _accept_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN A"], hotwords_accept_top_k=0)
-
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
-
-    assert [e for e in events if e.is_final][0].confidence < 0.01
-    assert calls == []
 
 
 async def test_name_hotword_same_as_plain_uses_plain_confidence() -> None:
     recognizer = _Recognizer("TÔI LÀ NGUYỄN VĂN A", "TÔI LÀ NGUYỄN VĂN A", biased_log_prob=-10.0)
     asr = ZipFormerASR(_config(), recognizer=recognizer)
 
-    events = await _run(asr, _box("NGUYỄN VĂN A", guard=True))
+    events = await _run(asr, _box("NGUYỄN VĂN A", name_turn=True))
 
     final = [e for e in events if e.is_final][0]
     assert final.confidence is not None and final.confidence > 0.9
@@ -298,7 +264,7 @@ def _shared_case(monkeypatch, plain: list[str], biased: list[str], **config):
     return asr, fake
 
 
-def test_shared_encoder_runs_encoder_once_and_accepts_in_top_k(monkeypatch) -> None:
+def test_shared_encoder_runs_encoder_once(monkeypatch) -> None:
     asr, fake = _shared_case(
         monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN", "TÔI LÀ NGUYỄN VĂN A"], ["TÔI LÀ NGUYỄN VĂN A"]
     )
@@ -308,30 +274,20 @@ def test_shared_encoder_runs_encoder_once_and_accepts_in_top_k(monkeypatch) -> N
 
     assert decoded.text == "TÔI LÀ NGUYỄN VĂN A" and decoded.confidence == 0.8
     assert fake.encodes == 1
-    assert fake.searches == [(4, ("NGUYỄN VĂN A",)), (10, ())]
+    assert fake.searches == [(4, ("NGUYỄN VĂN A",)), (1, ())]
     # Top 4 trên UI lấy lại kết quả vừa tính, không chạy encoder lần nữa.
     shown = asr.nbest(pcm, 16_000, ("NGUYỄN VĂN A",))
     assert [h.text for h in shown.hyps] == ["TÔI LÀ NGUYỄN VĂN A"] and fake.encodes == 1
 
 
-def test_shared_encoder_outside_top_k_is_uncertain(monkeypatch) -> None:
-    asr, _ = _shared_case(monkeypatch, ["TÔI LÀ NGUYỄN VĂN AN"], ["TÔI LÀ NGUYỄN VĂN A"])
+def test_shared_encoder_takes_hotword_however_far_from_plain(monkeypatch) -> None:
+    asr, _ = _shared_case(monkeypatch, ["TÔI LÀ GIANG A PAO"], ["TÔI LÀ GIÀNG A PÁO"])
 
     decoded = asr._decode_stream_hinted(
-        b"\x00\x10" * 1600, 16_000, Hotwords(("NGUYỄN VĂN A",), True)
+        b"\x00\x10" * 1600, 16_000, Hotwords(("GIÀNG A PÁO",), True)
     )
 
-    assert decoded.text == "TÔI LÀ NGUYỄN VĂN A" and decoded.confidence == 0.25
-
-
-def test_shared_encoder_keeps_plain_for_different_name(monkeypatch) -> None:
-    asr, _ = _shared_case(monkeypatch, ["TÔI LÀ TRẦN THỊ HOA"], ["TÔI LÀ NGUYỄN VĂN A"])
-
-    decoded = asr._decode_stream_hinted(
-        b"\x00\x10" * 1600, 16_000, Hotwords(("NGUYỄN VĂN A",), True)
-    )
-
-    assert decoded.text == "TÔI LÀ TRẦN THỊ HOA" and decoded.confidence == 0.8
+    assert decoded.text == "TÔI LÀ GIÀNG A PÁO" and decoded.confidence == 0.8
 
 
 def test_warm_up_loads_hotword_models_before_the_first_call(monkeypatch) -> None:

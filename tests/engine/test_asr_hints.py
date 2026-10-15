@@ -32,7 +32,7 @@ def test_ask_name_hints_every_profile_name_with_guard() -> None:
     hints = hints_for(ctx)
 
     assert hints.phrases == ("NGUYỄN VĂN A", "TRẦN THỊ MAI", "GIÀNG A PÁO")
-    assert hints.guard_one_word
+    assert hints.name_turn
 
 
 def test_ask_name_without_profile_has_no_hints() -> None:

@@ -154,8 +154,8 @@ def main() -> None:
 
     dataset = load_dataset(BENCH / "golden-cases.yaml")
     groups = {
-        "lượt tên (hotword tên + chặn 1 từ)": [
-            (c, Hotwords(names_of(c), guard_one_word=True))
+        "lượt tên (hotword tên)": [
+            (c, Hotwords(names_of(c), name_turn=True))
             for c in dataset.cases
             if c.category == "identity_name" and names_of(c)
         ],
@@ -167,7 +167,7 @@ def main() -> None:
     }
 
     # Nạp model (session ONNX, decoder n-best) trước khi đo.
-    case0, hints0 = groups["lượt tên (hotword tên + chặn 1 từ)"][0]
+    case0, hints0 = groups["lượt tên (hotword tên)"][0]
     pcm0, rate0 = read_pcm(case0.audio_path)
     for asr in modes.values():
         asr._decode_stream_hinted(pcm0, rate0, hints0)

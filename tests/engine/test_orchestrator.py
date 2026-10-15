@@ -479,7 +479,7 @@ def test_asr_hints_follow_the_question_just_asked() -> None:
     bot.start_call(_outbound("c_asr_hints"))
 
     name_hints = bot.asr_hints("c_asr_hints")
-    assert name_hints.guard_one_word
+    assert name_hints.name_turn
     reference = _context(bot, "c_asr_hints").identity_reference
     assert name_hints.phrases == tuple(ref["full_name"].upper() for ref in reference)
 

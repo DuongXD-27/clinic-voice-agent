@@ -3,8 +3,8 @@
 Với mỗi câu tên và mỗi cấu hình (điểm hotword, số beam), in:
 - cách sentencepiece cắt cụm hotword thành token, và token nào không có trong tokens.txt
   (thiếu token thì sherpa-onnx bỏ qua cả cụm, hotword không có tác dụng);
-- bản decode không hotword, bản có hotword TRƯỚC khi qua chặn 1 từ, khoảng cách từ, và bản
-  được nhận sau chặn (đúng logic `ZipFormerASR._decode_stream_hinted`);
+- bản decode không hotword, bản có hotword (lượt tên luôn nhận bản này, xem
+  `ZipFormerASR._decode_stream_hinted`) và khoảng cách từ giữa hai bản;
 - top 4 phương án (không hotword) của `TransducerNBest` — phương án 1 phải trùng bản sherpa-onnx
   beam không hotword, nếu không là bộ giải mã top N sai.
 
@@ -98,11 +98,9 @@ def main() -> None:
                 plain = asr._decode_scored(pcm).text
                 biased = asr._decode_scored(pcm, hotwords="/".join(phrases)).text
                 dist = word_distance(plain, biased)
-                kept = biased if plain == biased or dist <= 1 else plain
-                verdict = "nhận biased" if kept == biased else "CHẶN, giữ plain"
                 print(
                     f"  - điểm {score}, beam {paths}: plain={plain} | biased={biased}"
-                    f" | lệch {dist} từ → {verdict}"
+                    f" | lệch {dist} từ"
                 )
 
 

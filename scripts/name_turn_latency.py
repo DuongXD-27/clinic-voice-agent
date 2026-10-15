@@ -1,8 +1,7 @@
 """Đo độ trễ lượt tên (GipFormer thật, bộ golden): từng bước sau khi khách nói xong tốn bao lâu.
 
-Lượt tên có hotword tên hồ sơ (`guard_one_word`): decode có hotword, decode không hotword, rồi
-nếu hai bản lệch 1 từ thì tính thêm top N thô (`_accept_hinted`). Sau final còn top 4 hiện trên
-UI chạy nền. In trung vị/max từng bước và tổng của `_decode_stream_hinted` như lúc chạy thật.
+Lượt tên có hotword tên hồ sơ (`name_turn`): decode có hotword và decode không hotword (bản đối
+chứng), luôn lấy bản có hotword. Sau final còn top 4 hiện trên UI chạy nền. In trung vị/max từng bước và tổng của `_decode_stream_hinted` như lúc chạy thật.
 
 Chạy từ gốc repo, máy có model:  python scripts/name_turn_latency.py
 """
@@ -50,7 +49,7 @@ def main() -> None:
     greedy = ZipFormerASR(base.model_copy(update={"hotwords_enabled": False}))
     print(
         f"hotwords_score={config.hotwords_score} max_active_paths={config.max_active_paths} "
-        f"accept_top_k={config.hotwords_accept_top_k} nbest_top_k={config.nbest_top_k} "
+        f"nbest_top_k={config.nbest_top_k} "
         f"num_threads={config.num_threads} cpu={os.cpu_count()}"
     )
 
@@ -64,7 +63,7 @@ def main() -> None:
     # Cuộc gọi mới trên LiveKit = process mới, prewarm cũ chỉ nạp greedy: lượt tên đầu tiên và
     # lượt hỏi ý định đầu tiên tự nạp model. So với process đã gọi `warm_up()`.
     pcm0, rate0 = read_pcm(cases[0].audio_path)
-    hints0 = Hotwords(names_of(cases[0]), guard_one_word=True)
+    hints0 = Hotwords(names_of(cases[0]), name_turn=True)
     intent0 = Hotwords(("ĐẶT LỊCH", "ĐỔI LỊCH", "HỦY LỊCH"))
     for label, warm in (("prewarm cũ (chỉ greedy)", False), ("prewarm mới (warm_up)", True)):
         fresh = ZipFormerASR(config)
@@ -81,19 +80,19 @@ def main() -> None:
 
     # Nạp model trước (lần đầu tạo session ONNX), không tính vào số đo.
     pcm0, rate0 = read_pcm(cases[0].audio_path)
-    asr._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), guard_one_word=True))
-    old._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), guard_one_word=True))
+    asr._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), name_turn=True))
+    old._decode_stream_hinted(pcm0, rate0, Hotwords(names_of(cases[0]), name_turn=True))
     asr.nbest(pcm0, rate0, names_of(cases[0]))
     greedy._decode_stream_scored(pcm0, rate0)
 
     print(
-        "\n| câu | giây audio | greedy | có hotword | không hotword | top 10 thô | tổng lượt tên"
+        "\n| câu | giây audio | greedy | có hotword | không hotword | tổng lượt tên"
         " | top 4 UI | cũ: tổng | chữ mới = cũ |"
     )
-    print("|---|---|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|")
     for case in cases:
         pcm, rate = read_pcm(case.audio_path)
-        hints = Hotwords(names_of(case), guard_one_word=True)
+        hints = Hotwords(names_of(case), name_turn=True)
         model_pcm = (
             pcm if rate == asr.input_sample_rate else resample(pcm, rate, asr.input_sample_rate)
         )
@@ -101,7 +100,6 @@ def main() -> None:
         _, g = timed(greedy._decode_scored, model_pcm)
         _, b = timed(asr._decode_scored, model_pcm, hotwords="/".join(hints.phrases))
         _, p = timed(asr._decode_scored, model_pcm)
-        _, t = timed(asr._nbest_at_model_rate, model_pcm, config.hotwords_accept_top_k)
         # Từng phần của đường mới: encoder một lần, hai beam riêng, hai beam gộp batch.
         nb = asr._get_nbest()
         samples = np.frombuffer(model_pcm, dtype=np.int16).astype(np.float32) / 32768.0
@@ -109,7 +107,7 @@ def main() -> None:
         beam, score = config.max_active_paths, config.hotwords_score
         searches = [
             (max(1, config.nbest_top_k), hints.phrases, score, beam),
-            (max(1, config.hotwords_accept_top_k), (), 0, beam),
+            (1, (), 0, beam),
         ]
         cache: dict = {}
         _, s1 = timed(nb.search, frames, *searches[0], cache)
@@ -123,7 +121,6 @@ def main() -> None:
             ("greedy", g),
             ("có hotword", b),
             ("không hotword", p),
-            ("top 10 thô", t),
             ("encoder", enc),
             ("beam có hotword (riêng)", s1),
             ("beam không hotword (riêng, chung cache)", s2),
@@ -134,7 +131,7 @@ def main() -> None:
         ):
             add(name, ms)
         print(
-            f"| {case.id} | {seconds:.1f} | {g:.0f} | {b:.0f} | {p:.0f} | {t:.0f} | {total:.0f} | {ui:.0f} | {old_total:.0f} | {same} |"
+            f"| {case.id} | {seconds:.1f} | {g:.0f} | {b:.0f} | {p:.0f} | {total:.0f} | {ui:.0f} | {old_total:.0f} | {same} |"
         )
 
     print("\n| bước | trung vị ms | max ms |")

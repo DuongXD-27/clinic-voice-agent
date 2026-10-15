@@ -488,7 +488,7 @@ class CallBridge:
             )
             box.set(NO_HOTWORDS)
             return
-        box.set(Hotwords(hints.phrases, hints.guard_one_word))
+        box.set(Hotwords(hints.phrases, hints.name_turn))
         logger.info("call_bridge: hotword lượt sau: %d cụm", len(hints.phrases))
 
     async def _publish_timing(

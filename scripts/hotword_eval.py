@@ -166,7 +166,7 @@ def run(scores: list[float], out_dir: Path) -> Path:
             names = names_of(case)
             if case.category != "identity_name" or not names:
                 continue  # ngày sinh và câu xác nhận: không bao giờ có hotword
-            add(case, "hint", score, Hotwords(names, guard_one_word=True), asr, pcm, rate)
+            add(case, "hint", score, Hotwords(names, name_turn=True), asr, pcm, rate)
             if TRAP_PROFILE not in names:
                 add(case, "trap", score, Hotwords((TRAP_PROFILE,), True), asr, pcm, rate)
 

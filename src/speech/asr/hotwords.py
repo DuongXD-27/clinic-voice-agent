@@ -10,8 +10,8 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Hotwords:
     phrases: tuple[str, ...] = ()
-    # Chỉ nhận bản decode có hotword khi lệch bản không hotword tối đa 1 từ (lượt tên, SF-03).
-    guard_one_word: bool = False
+    # Lượt tên: luôn nhận bản decode có hotword, nâng confidence để qua cổng tên.
+    name_turn: bool = False
 
     def __bool__(self) -> bool:
         return bool(self.phrases)

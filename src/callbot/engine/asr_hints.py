@@ -19,8 +19,8 @@ from callbot.engine.session.context import CallContext
 @dataclass(frozen=True)
 class AsrHints:
     phrases: tuple[str, ...] = ()
-    # Lượt tên: chỉ nhận bản decode có hotword khi lệch bản không hotword tối đa 1 từ (SF-03).
-    guard_one_word: bool = False
+    # Lượt tên: ASR luôn nhận bản decode có hotword (speech/asr/hotwords.py).
+    name_turn: bool = False
 
     def __bool__(self) -> bool:
         return bool(self.phrases)
@@ -36,7 +36,7 @@ def hints_for(ctx: CallContext) -> AsrHints:
     if question.question_id is not QuestionId.ASK_NAME:
         return NO_HINTS
     names = [_upper(ref["full_name"]) for ref in ctx.identity_reference if ref.get("full_name")]
-    return AsrHints(_unique(names), guard_one_word=True)
+    return AsrHints(_unique(names), name_turn=True)
 
 
 def _upper(text: str) -> str:
