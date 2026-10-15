@@ -179,8 +179,8 @@ def test_start_call_returns_engine_opening(client: TestClient) -> None:
         "state": "AWAITING_IDENTITY",
         "turn": 0,
     }
-    # Endpoint dùng đúng câu chào của engine (nói bên gọi Vinmec), không hard-code lại
-    assert "Vinmec" in body["utterance"]
+    # Endpoint dùng đúng câu chào của engine (nói bên gọi bệnh viện), không hard-code lại
+    assert "bệnh viện" in body["utterance"]
 
 
 def test_name_turn_asks_dob_instead_of_transferring(client: TestClient) -> None:
@@ -789,7 +789,7 @@ def test_confirm_over_http_reports_confirmed_only_after_write(
     _start(client, "c_http_confirm")
     _turn(client, "c_http_confirm", 1, "Nguyễn Văn A.")
     readback = _turn(client, "c_http_confirm", 2, "Ngày 14 tháng 3 năm 1978.").json()
-    assert "tại Vinmec Times City" in readback["utterance"] and readback["outcome"] is None
+    assert "tại bệnh viện" in readback["utterance"] and readback["outcome"] is None
     assert clinic.writes == []
 
     body = _turn(client, "c_http_confirm", 3, "Vâng").json()
@@ -1018,7 +1018,7 @@ def test_the_http_response_shape_is_unchanged_by_the_semantic_layer(
 
 # --- T-08: silence và tín hiệu đường dây qua HTTP ----------------------------------------------
 
-_APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "Times City")
+_APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "tại bệnh viện")
 
 
 def test_outbound_three_silences_over_http_mark_unreachable(

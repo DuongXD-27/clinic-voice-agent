@@ -46,7 +46,7 @@ _TURN_AUDIO_LEAD_FRAMES = 10
 _TURN_AUDIO_MAX_S = 20
 # Lời chen giữ riêng bắt đầu trong chừng này giây cuối câu bot KẾT THÚC BẰNG CÂU HỎI: người gọi trả
 # lời câu hỏi bot đang đọc, không phải tiếng đệm giữa câu. Cuộc gọi 08/10: "Ừ" nói 3,2 s trước khi
-# bot đọc xong "…tại Vinmec Times City. Anh chị đồng ý chứ ạ?" (bot dừng = lúc phát xong cục bộ).
+# bot đọc xong "…tại bệnh viện. Anh chị đồng ý chứ ạ?" (bot dừng = lúc phát xong cục bộ).
 _HELD_ANSWER_WINDOW_S = 4.0
 
 logger = logging.getLogger(__name__)

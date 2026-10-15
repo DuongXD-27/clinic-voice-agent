@@ -20,7 +20,7 @@ NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 UNREACHABLE_SILENCE = ("apt_00417", "UNREACHABLE", {"unreachable_reason": "SILENCE"})
 UNREACHABLE_VOICEMAIL = ("apt_00417", "UNREACHABLE", {"unreachable_reason": "VOICEMAIL"})
 # Chi tiết lịch không được nghe trên hộp thư (§1.1.7)
-APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "Times City")
+APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "tại bệnh viện")
 
 # Lời người gọi để tới từng câu hỏi, và câu hỏi đang chờ sau các lượt đó
 OUTBOUND_STEPS = {

@@ -93,7 +93,11 @@ Một engine hội thoại dùng chung phục vụ ba kênh:
 - **ASR**: ZipFormer self-host (gipformer1.5, 68M tham số, chạy bằng sherpa-onnx) là mặc định; hỗ trợ thêm Gemini Live,
   ElevenLabs Scribe Realtime, Gemini và PhoWhisper.
 - **TTS**: Vbee (mặc định, PCM 8 kHz, streaming, giữ kết nối), ElevenLabs và OpenAI; có provider dự phòng. Các câu cố
-  định dùng **catalog audio tĩnh đã duyệt nghe** nên không phải gọi TTS.
+  định dùng **catalog audio tĩnh đã duyệt nghe** khi khớp nguyên văn; câu đã sửa dùng TTS động.
+  Bản câu thoại 15/10 dùng “bệnh viện” cho lời giới thiệu và tên cơ sở có chứa thương hiệu Vinmec,
+  kể cả khi API trả về tên chi nhánh. 12 câu chào/giới thiệu mới dùng provider cho đến khi có bản
+  ghi âm mới được duyệt; audio cũ không khớp câu mới. Danh sách thu cập nhật nằm trong
+  [`tts-static-shortlist-2026-10-15.csv`](docs/evidence/tts-static-cache/tts-static-shortlist-2026-10-15.csv).
 - **Realtime**: Silero VAD v6, `TurnController` (chốt lượt, gộp lượt, lọc từ đệm, chống tiếng vọng), Turn Validator
   (SNR + độ ổn định transcript), barge-in có xác nhận, tăng âm cho giọng nhỏ.
 - **Phục hồi vòng đời cuộc gọi**: khách cúp máy giữa chừng không sinh thêm lệnh ghi (R-36); TTS lỗi giữa cuộc gọi thì
@@ -207,10 +211,10 @@ sau **3** lượt im lặng liên tiếp.
 
 | Lượt | Người gọi | Bot | `state` |
 |---|---|---|---|
-| 0 | | Em chào anh chị. Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin họ và tên đầy đủ ạ? | `AWAITING_IDENTITY` |
+| 0 | | Em chào anh chị, em gọi từ bệnh viện để xác nhận lịch khám. Anh chị cho em xin họ tên ạ? | `AWAITING_IDENTITY` |
 | 1 | Nguyễn Văn A | Em xin thêm ngày, tháng, năm sinh để xác minh thông tin ạ. | `AWAITING_IDENTITY` |
-| 2 | 14/03/1978 | Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City ạ. Anh chị có đến khám được theo lịch này không ạ? | `AWAITING_INTENT` |
-| 3 | đúng rồi | Em đã xác nhận lịch khám 9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City cho anh chị. Hẹn gặp anh chị ạ. | `ENDED` · `CONFIRMED` |
+| 2 | 14/03/1978 | Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 9 giờ sáng, thứ Tư ngày 14 tháng 10, tại bệnh viện ạ. Anh chị có đến khám được theo lịch này không ạ? | `AWAITING_INTENT` |
+| 3 | đúng rồi | Em đã xác nhận lịch khám 9 giờ sáng, thứ Tư ngày 14 tháng 10, tại bệnh viện cho anh chị. Hẹn gặp anh chị ạ. | `ENDED` · `CONFIRMED` |
 
 ---
 
@@ -511,7 +515,7 @@ curl -s -X POST http://localhost:8000/v1/calls \
 ```json
 {
   "call_id": "c_demo_001",
-  "utterance": "Em chào anh chị. Em là trợ lý ảo AI của tổng đài Vinmec. Anh chị cho em xin họ và tên đầy đủ ạ?",
+  "utterance": "Em chào anh chị, em gọi từ bệnh viện để xác nhận lịch khám. Anh chị cho em xin họ tên ạ?",
   "audio_url": null,
   "state": "AWAITING_IDENTITY",
   "turn": 0

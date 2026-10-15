@@ -97,7 +97,7 @@ SILENCE_TOKEN = "<silence>"
 SILENCE_MS = 2000
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 # Chi tiết lịch apt_00417 không được nói khi chưa xác minh, kể cả với hộp thư (§1.1.7, SF-03)
-APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "Times City")
+APPOINTMENT_FACTS = ("14 tháng 10", "9 giờ", "Nội tổng quát", "tại bệnh viện")
 STATUSES = frozenset(
     {"CONFIRMED", "CANCELLED", "RESCHEDULED", "TRANSFERRED", "UNREACHABLE", "BOOKED", "SCHEDULED"}
 )

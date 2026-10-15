@@ -26,7 +26,7 @@ from speech.types import AudioSegment
 
 @pytest.fixture
 def small_release(tmp_path):
-    assets, catalog = build.load_shortlist("2026-10-13")
+    assets, catalog = build.load_shortlist("2026-10-15")
     assets = assets[:2]
     config = VbeeTTSConfig(api_token="offline-only", app_id="offline-only", _env_file=None)
     identity = build.audio_config(config)
@@ -51,19 +51,32 @@ def small_release(tmp_path):
     return output, manifest, assets, catalog, identity, candidate
 
 
-async def test_shipped_catalog_covers_all_82_current_utterances_in_sync_and_stream():
-    assets, _ = build.load_shortlist("2026-10-13")
+async def test_shipped_catalog_reuses_unchanged_audio_and_synthesizes_updated_utterances():
+    assets, _ = build.load_shortlist("2026-10-15")
     tts, provider, fallback = cached_synthesizer()
     assert len(tts._static_cache) == len(assets) == 82
+    misses = []
     for asset in assets:
-        audio = tts.synthesize(asset["utterance"])
-        chunks = [c async for c in tts.synthesize_stream(asset["utterance"])]
-        assert audio.cache_hit and audio.billed_characters == 0
+        text = asset["utterance"]
+        expected_hit = tts._static_cache.lookup(text) is not None
+        audio = tts.synthesize(text)
+        chunks = [c async for c in tts.synthesize_stream(text)]
+        assert audio.cache_hit is expected_hit
         assert b"".join(chunks) == audio.pcm
-        assert all(len(c) <= 320 and len(c) % 2 == 0 for c in chunks)
-        assert tts.last_stream_result.cache_key == audio.cache_key
-        assert tts.last_stream_result.billed_characters == 0
-    assert not provider.calls and not fallback.calls
+        assert all(len(c) % 2 == 0 for c in chunks)
+        assert tts.last_stream_result.cache_hit is expected_hit
+        if expected_hit:
+            assert all(len(c) <= 320 for c in chunks)
+            assert audio.billed_characters == 0
+            assert tts.last_stream_result.cache_key == audio.cache_key
+            assert tts.last_stream_result.billed_characters == 0
+        else:
+            assert "bệnh viện" in text.lower() and "vinmec" not in text.lower()
+            misses.append(text)
+    # Twelve renamed greetings must use fresh TTS, never the old branded recordings.
+    assert len(misses) == 12
+    assert provider.calls == [text for text in misses for _ in range(2)]
+    assert not fallback.calls
 
 
 def test_shipped_release_matches_configured_vbee_audio():

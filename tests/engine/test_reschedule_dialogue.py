@@ -116,7 +116,7 @@ def test_asking_for_other_slots_reads_the_next_page_then_asks_for_another_day() 
     assert action.state == "AWAITING_CONFIRMATION"
     assert _context(bot, "c_more").selected_slot_id == "slot_b504"
     assert action.utterance == (
-        "Vậy em đổi lịch của anh chị sang 2 giờ chiều, thứ Sáu ngày 16 tháng 10, tại Vinmec Times City nhé. Anh chị đồng ý không ạ?"
+        "Vậy em đổi lịch của anh chị sang 2 giờ chiều, thứ Sáu ngày 16 tháng 10, tại bệnh viện nhé. Anh chị đồng ý không ạ?"
     )
 
 
@@ -347,7 +347,7 @@ def test_read_back_has_weekday_date_time_and_clinic_but_no_department() -> None:
     _, bot = _at_read_back("c_rb")
     text = _context(bot, "c_rb").question.text
     assert text == (
-        "Vậy em đổi lịch của anh chị sang 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10, tại Vinmec Times City nhé. Anh chị đồng ý không ạ?"
+        "Vậy em đổi lịch của anh chị sang 3 giờ 30 chiều, thứ Năm ngày 15 tháng 10, tại bệnh viện nhé. Anh chị đồng ý không ạ?"
     )
 
 

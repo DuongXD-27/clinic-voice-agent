@@ -4,7 +4,7 @@ suite:
   name: "TTS Golden Suite"
   language: "vi-VN"
   description: >
-    Golden suite phục vụ QA TTS cho AI Callbot Vinmec MVP.
+    Golden suite phục vụ QA TTS cho AI Callbot MVP.
     Scope ưu tiên Verify Identity, Confirm Attendance và No Answer.
   total_cases: 40
 
@@ -284,10 +284,10 @@ cases:
 
   - id: TTS_CLINIC_08
     category: clinic
-    text: "Bệnh viện Đa khoa Quốc tế Vinmec."
+    text: "Bệnh viện."
     critical_items:
       - type: organization
-        value: "Vinmec"
+        value: "bệnh viện"
     zero_tolerance: true
 
 
