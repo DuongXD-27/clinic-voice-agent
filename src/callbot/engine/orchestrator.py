@@ -16,6 +16,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Optional, Protocol, TypeVar
 
+from callbot.engine.asr_hints import NO_HINTS, AsrHints, hints_for
 from callbot.engine.diagnostics import build_diagnostics
 from callbot.engine.dialogue import templates as t
 from callbot.engine.dialogue.manager import DialogueManager, Reply
@@ -215,6 +216,15 @@ class CallOrchestrator:
         assert verdict.code is not None
         logger.error("Output Guard chặn lời mở đầu %s (%s)", ctx.call_id, verdict.rule)
         raise CallStartBlocked(verdict.code)
+
+    def asr_hints(self, call_id: str) -> AsrHints:
+        """Hotword cho câu trả lời kế tiếp của khách, theo câu bot vừa hỏi (`engine/asr_hints.py`).
+
+        Chỉ đọc phiên, không I/O Clinic. Có tên khách (PII): không log."""
+        session = self._sessions.store.get_session(call_id)
+        if session is None or session.ended:
+            return NO_HINTS
+        return hints_for(CallContext.from_dict(session.context))
 
     def request_call_close(self, call_id: str) -> None:
         """Khách vừa rời cuộc gọi (R-36): chặn ngay mọi lệnh ghi chưa gửi, không chờ lượt đang chạy."""

@@ -10,7 +10,14 @@ import {
   type LiveKitAction,
   type LiveKitSession,
 } from "./model/session";
-import { parseStatus, parseTranscript, STATUS_TOPIC, TRANSCRIPT_TOPIC } from "./model/transcript";
+import {
+  parseNBest,
+  parseTiming,
+  parseStatus,
+  parseTranscript,
+  STATUS_TOPIC,
+  TRANSCRIPT_TOPIC,
+} from "./model/transcript";
 
 /** Attribute worker gắn cho bot (callbot.transports.livekit.worker.ASR_ATTRIBUTE). */
 const BOT_ASR_ATTRIBUTE = "asr_provider";
@@ -169,7 +176,17 @@ function subscribe(
       }
       if (topic !== TRANSCRIPT_TOPIC) return;
       const line = parseTranscript(payload);
-      if (line) dispatch({ type: "transcript", line, at: Date.now() });
+      if (line) {
+        dispatch({ type: "transcript", line, at: Date.now() });
+        return;
+      }
+      const update = parseNBest(payload);
+      if (update) {
+        dispatch({ type: "nbest", update });
+        return;
+      }
+      const timing = parseTiming(payload);
+      if (timing) dispatch({ type: "timing", timing });
     })
     .on(RoomEvent.Reconnecting, () => {
       dispatch({ type: "reconnecting", at: Date.now() });

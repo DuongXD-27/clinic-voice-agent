@@ -12,6 +12,8 @@ export interface ChatMessage {
   /** Dòng phụ dưới bong bóng: lượt, state, nguồn trích xuất, độ tin cậy ASR… */
   meta: string;
   audioUrl?: string | null;
+  /** Top N phương án ASR dưới câu người gọi, mỗi nhóm một đoạn final (chỉ trang LiveKit). */
+  candidates?: readonly (readonly { text: string; score: string }[])[];
 }
 
 interface Props {
@@ -87,6 +89,16 @@ function MessageBubble({
           )}
         </div>
         <p className={styles.meta}>{message.meta}</p>
+        {message.candidates?.map((group, index) => (
+          <ol key={index} className={styles.candidates} aria-label="Top phương án ASR">
+            {group.map((candidate, rank) => (
+              <li key={rank}>
+                <span className={styles.candidateText}>{candidate.text}</span>
+                <span className={styles.candidateScore}>{candidate.score}</span>
+              </li>
+            ))}
+          </ol>
+        ))}
       </div>
     </div>
   );

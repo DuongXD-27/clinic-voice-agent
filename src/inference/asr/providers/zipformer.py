@@ -16,13 +16,18 @@ lịch" → "THÙY LINH" vẫn 0,79/0,98/0,57); hiện chỉ ghi log để đo.
 import asyncio
 import logging
 import math
+import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, AsyncIterator, NamedTuple, Optional
 
 import numpy as np
 
 from inference.asr.base import ASRResult
 from inference.asr.config import ZipFormerConfig
+from inference.asr.providers.transducer_nbest import NBest, NBestHyp, TransducerNBest
+from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords
+from speech.asr.nbest import NBestBox
 from speech.asr.stream_context import StreamingFrame
 from speech.asr.vad.base import FrameClassifier
 from speech.audio.codec import resample
@@ -46,30 +51,127 @@ class ZipFormerASR:
     def __init__(self, config: ZipFormerConfig, *, recognizer: Any = None) -> None:
         self._config = config
         self._recognizer = recognizer
+        # Greedy cho partial và câu không hotword (nhanh hơn beam, cùng độ đúng: đo 12/10 golden
+        # 19/40 cả hai); recognizer tiêm từ ngoài (test) dùng cho cả hai.
+        self._greedy_recognizer = recognizer
+        self._nbest: Optional[TransducerNBest] = None
+        # Lượt tên decode bản có và không hotword song song (hai stream độc lập trên cùng model).
+        self._pool: Optional[ThreadPoolExecutor] = None
+        # Top N của lượt tên đã tính sẵn lúc chọn câu (cùng một lần encoder), `nbest()` lấy lại
+        # thay vì chạy encoder thêm lần nữa. Khóa = đúng object PCM của final đó.
+        self._nbest_ready: Optional[tuple[bytes, NBest]] = None
+        # Lượt tên dùng chung encoder (`_decode_name_shared`) khi chạy model thật; recognizer
+        # tiêm từ ngoài (test, recognizer giả) đi nhánh sherpa.
+        self._shared_encoder = recognizer is None
+        # Thời gian của final gần nhất (trace độ trễ lượt, không có chữ): xem `stream()`.
+        self.last_timing: Optional[dict[str, Any]] = None
 
     @property
     def model(self) -> str:
         return self._config.model
 
-    def _get_recognizer(self):
-        if self._recognizer is None:
-            import sherpa_onnx  # pip install -e ".[speech-zipformer]"
+    @property
+    def supports_nbest(self) -> bool:
+        """Top N phương án của final (`stream(nbest=...)`) để hiện trên trang demo."""
+        return self._config.nbest_top_k > 0
 
-            self._recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
-                tokens=self._config.tokens_path,
+    def nbest(self, pcm: bytes, source_rate: int, hotwords: tuple[str, ...] = ()) -> NBest:
+        """Top `nbest_top_k` phương án của một câu, điểm cuối có cộng `hotwords` của lượt như
+        lúc chọn câu (không hotword: điểm thô); chặn CPU, gọi trong thread."""
+        ready, self._nbest_ready = self._nbest_ready, None
+        if ready is not None and ready[0] is pcm:
+            return ready[1]
+        if source_rate != self.input_sample_rate:
+            pcm = resample(pcm, source_rate, self.input_sample_rate)
+        hyps = self._nbest_at_model_rate(pcm, self._config.nbest_top_k, hotwords)
+        return NBest(hyps, hotwords)
+
+    def _nbest_at_model_rate(
+        self, pcm: bytes, k: int, hotwords: tuple[str, ...] = ()
+    ) -> list[NBestHyp]:
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        return self._get_nbest().nbest(
+            samples, k, hotwords, self._config.hotwords_score, self._config.max_active_paths
+        )
+
+    def _get_nbest(self) -> TransducerNBest:
+        if self._nbest is None:
+            self._nbest = TransducerNBest(
                 encoder=self._config.encoder_path,
                 decoder=self._config.decoder_path,
                 joiner=self._config.joiner_path,
+                tokens=self._config.tokens_path,
                 num_threads=self._config.num_threads,
                 sample_rate=self.input_sample_rate,
-                feature_dim=80,
-                decoding_method="greedy_search",
-                provider="cpu",
+                bpe_vocab=self._config.bpe_vocab_path,
             )
+        return self._nbest
+
+    def warm_up(self) -> None:
+        """Nạp trước mọi model lượt có hotword dùng (recognizer beam, phiên onnxruntime của top N /
+        lượt tên) và chạy thử một lần. Không có bước này, lượt hotword đầu tiên của MỖI cuộc gọi
+        (thường là lượt tên — mỗi job LiveKit một process mới) phải tự nạp model."""
+        self._get_recognizer(beam=False)
+        if not self._config.hotwords_enabled and self._config.nbest_top_k <= 0:
+            return
+        # Nửa giây nhiễu nhỏ: đủ để encoder/beam chạy thật một vòng.
+        noise = np.random.default_rng(0).integers(-64, 64, self.input_sample_rate // 2)
+        pcm = noise.astype(np.int16).tobytes()
+        phrases = ("XIN CHÀO",)
+        if self._config.hotwords_enabled:
+            self._decode_scored(pcm, hotwords="/".join(phrases))
+        if self._shared_encoder:
+            try:
+                if self._config.hotwords_enabled:
+                    self._decode_name_shared(pcm, pcm, phrases)
+                else:
+                    self._nbest_at_model_rate(pcm, self._config.nbest_top_k)
+            except ImportError:
+                self._shared_encoder = False
+        self._nbest_ready = None
+
+    @property
+    def supports_hotwords(self) -> bool:
+        """Bật hotword theo lượt (`stream(hotwords=...)`) — cần beam search, xem config/asr.yaml."""
+        return self._config.hotwords_enabled
+
+    def _get_recognizer(self, *, beam: bool = True):
+        """`beam`: recognizer beam search (hotword) khi bật hotword; False: greedy."""
+        if not beam and self._config.hotwords_enabled:
+            if self._greedy_recognizer is None:
+                self._greedy_recognizer = self._build_recognizer(beam=False)
+            return self._greedy_recognizer
+        if self._recognizer is None:
+            self._recognizer = self._build_recognizer(beam=self._config.hotwords_enabled)
         return self._recognizer
 
+    def _build_recognizer(self, *, beam: bool):
+        import sherpa_onnx  # pip install -e ".[speech-zipformer]"
+
+        options: dict[str, Any] = {"decoding_method": "greedy_search"}
+        if beam:
+            # Hotword chỉ chạy với beam search; `bpe.vocab` để mã hóa cụm từ thành token.
+            options = {
+                "decoding_method": "modified_beam_search",
+                "max_active_paths": self._config.max_active_paths,
+                "modeling_unit": "bpe",
+                "bpe_vocab": self._config.bpe_vocab_path,
+                "hotwords_score": self._config.hotwords_score,
+            }
+        return sherpa_onnx.OfflineRecognizer.from_transducer(
+            tokens=self._config.tokens_path,
+            encoder=self._config.encoder_path,
+            decoder=self._config.decoder_path,
+            joiner=self._config.joiner_path,
+            num_threads=self._config.num_threads,
+            sample_rate=self.input_sample_rate,
+            feature_dim=80,
+            provider="cpu",
+            **options,
+        )
+
     def transcribe(self, pcm: bytes) -> ASRResult:
-        decoded = self._decode_scored(pcm)
+        decoded = self._decode_scored(pcm, beam=False)
         return ASRResult(text=decoded.text, confidence=decoded.confidence)
 
     async def stream(
@@ -83,6 +185,8 @@ class ZipFormerASR:
         min_decode_ms: int | None = None,
         max_turn_speech_ms: int | None = None,
         pre_speech_ms: int | None = None,
+        hotwords: HotwordBox | None = None,
+        nbest: NBestBox | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """Chunked-offline: gom từng câu theo `silence_classifier`, decode lại cả câu để phát
         partial, phát final khi đủ `end_silence_ms` im lặng hoặc nói liền quá
@@ -92,6 +196,11 @@ class ZipFormerASR:
           cụm từ từ "à"/"ờm" quá ngắn.
         - Giữ `pre_speech_ms` (None = config) trước lúc nhận ra tiếng nói để không mất âm tiết đầu.
         - `AsrSegmentEnd.DISCARD`: bỏ câu dở, không phát event.
+        - `hotwords`: chỉ final dùng hotword của lượt (partial giữ nguyên để barge-in và cổng từ
+          đệm không đổi). `name_turn`: lượt tên luôn lấy bản có hotword; khác bản không hotword
+          thì nâng confidence lên `hotwords_accept_confidence` để qua cổng tên.
+        - `nbest`: sau mỗi final có chữ, tính top `nbest_top_k` phương án trong nền và bỏ task vào
+          hộp (chỉ để hiện trên trang demo, không đổi final).
         """
         if min_decode_ms is None:
             min_decode_ms = self._config.min_decode_ms
@@ -114,10 +223,57 @@ class ZipFormerASR:
             track_voice_end=tail_ms is not None,
         )
 
+        # Trace: lúc frame cuối còn là giọng tới ASR, số/tổng ms decode partial của câu đang mở.
+        trace = {"voice_end_at": None, "partials": 0, "partial_ms": 0.0}
+
         async def decode(*, final: bool = False) -> _Decoded:
             pcm = utterance.final_pcm(tail_ms) if final else bytes(utterance.pcm)
+            hints = hotwords.current if final and hotwords is not None else NO_HOTWORDS
+            started = time.perf_counter()
             # decode_stream chặn CPU — chạy trong thread, nếu không cả event loop LiveKit đứng.
-            return await asyncio.to_thread(self._decode_stream_scored, pcm, audio_sample_rate)
+            decoded = await asyncio.to_thread(
+                self._decode_stream_hinted, pcm, audio_sample_rate, hints
+            )
+            decode_ms = (time.perf_counter() - started) * 1000
+            if not final:
+                trace["partials"] += 1
+                trace["partial_ms"] += decode_ms
+            else:
+                mode = "greedy"
+                if hints and self._config.hotwords_enabled:
+                    mode = "name" if hints.name_turn else "hotword"
+                voice_end_at = trace["voice_end_at"] or started
+                self.last_timing = {
+                    "voice_end_at": voice_end_at,
+                    "decode_start_at": started,
+                    "final_at": time.perf_counter(),
+                    "decode_ms": decode_ms,
+                    "mode": mode,
+                    "partials": trace["partials"],
+                    "partial_ms": trace["partial_ms"],
+                    "audio_ms": len(pcm) / 2 / audio_sample_rate * 1000,
+                }
+                # Không log chữ (PII).
+                logger.info(
+                    "zipformer: final mode=%s chờ sau giọng=%.0fms decode=%.0fms "
+                    "partial=%d (%.0fms) audio=%.0fms",
+                    mode,
+                    (started - voice_end_at) * 1000,
+                    decode_ms,
+                    trace["partials"],
+                    trace["partial_ms"],
+                    self.last_timing["audio_ms"],
+                )
+                trace.update(voice_end_at=None, partials=0, partial_ms=0.0)
+            if final and decoded.text and nbest is not None and self.supports_nbest:
+                # Trong nền: final phát ngay, top N tới sau (chỉ để xem).
+                phrases = hints.phrases if self._config.hotwords_enabled else ()
+                nbest.add(
+                    asyncio.create_task(
+                        asyncio.to_thread(self.nbest, pcm, audio_sample_rate, phrases)
+                    )
+                )
+            return decoded
 
         def final_event(decoded: _Decoded) -> TranscriptEvent:
             return _final_event(_prefer_confident_partial(decoded, utterance))
@@ -140,8 +296,18 @@ class ZipFormerASR:
             if not frame:
                 continue
             is_speech = silence_classifier.is_speech(frame)
+            was_in_speech = utterance.in_speech
             if not utterance.add(frame, is_speech, is_preroll=is_preroll):
                 continue
+            if not was_in_speech:
+                trace.update(voice_end_at=None, partials=0, partial_ms=0.0)
+            # Còn là giọng theo mức năng lượng so với câu (không theo cờ VAD: Silero giữ "đang
+            # nói" thêm hangover sau khi hết tiếng).
+            voice_floor = utterance._voice_threshold(
+                utterance._peak, below_db=_VOICE_END_BELOW_PEAK_DB
+            )
+            if _level_dbfs(frame) >= voice_floor:
+                trace["voice_end_at"] = time.perf_counter()
             has_min_speech = utterance.speech_ms >= min_decode_ms
             # Mỗi partial decode lại cả câu; partial_interval_ratio giãn nhịp cho câu dài.
             partial_interval_ms = max(
@@ -171,14 +337,73 @@ class ZipFormerASR:
             if decoded.text:
                 yield final_event(decoded)
 
+    def _decode_stream_hinted(self, pcm: bytes, source_rate: int, hints: Hotwords) -> _Decoded:
+        if not hints or not self._config.hotwords_enabled:
+            return self._decode_stream_scored(pcm, source_rate)
+        final_pcm = pcm
+        if source_rate != self.input_sample_rate:
+            pcm = resample(pcm, source_rate, self.input_sample_rate)
+        phrases = "/".join(hints.phrases)
+        if not hints.name_turn:
+            return self._decode_scored(pcm, hotwords=phrases)
+        if self._shared_encoder:
+            try:
+                return self._decode_name_shared(pcm, final_pcm, hints.phrases)
+            except ImportError:
+                # Thiếu onnxruntime/kaldi-native-fbank (vd Windows Python 3.14): dùng sherpa.
+                self._shared_encoder = False
+        if self._pool is None:
+            self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="zipformer-plain")
+        # Bản không hotword (cùng beam) chạy song song bản có hotword thay vì nối tiếp.
+        plain_future = self._pool.submit(self._decode_scored, pcm)
+        biased = self._decode_scored(pcm, hotwords=phrases)
+        return self._prefer_hinted(plain_future.result(), biased)
+
+    def _decode_name_shared(
+        self, pcm: bytes, final_pcm: bytes, phrases: tuple[str, ...]
+    ) -> _Decoded:
+        """Lượt tên với encoder chạy MỘT lần (phần nặng nhất): từ cùng đầu ra encoder, beam search
+        có hotword (câu chọn, cũng là top N trên UI) và không hotword (bản đối chứng).
+        Cùng luật với nhánh sherpa bên trên; bộ giải mã khớp câu sherpa 45/46 câu golden."""
+        nbest = self._get_nbest()
+        samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+        frames = nbest.encode(samples)
+        beam, score = self._config.max_active_paths, self._config.hotwords_score
+        cache: dict = {}
+        # Hai beam (có / không hotword) chạy chung một vòng frame: decoder/joiner gộp batch.
+        biased_top, plain_top = nbest.search_many(
+            frames,
+            [
+                (max(1, self._config.nbest_top_k), phrases, score, beam),
+                (1, (), 0, beam),
+            ],
+            cache,
+        )
+        if self._config.nbest_top_k > 0:
+            self._nbest_ready = (final_pcm, NBest(biased_top, phrases))
+        if not biased_top or not plain_top:
+            return _Decoded("")
+        return self._prefer_hinted(_from_hyp(plain_top[0]), _from_hyp(biased_top[0]))
+
+    def _prefer_hinted(self, plain: _Decoded, biased: _Decoded) -> _Decoded:
+        """Lượt tên luôn lấy bản có hotword, không lọc theo độ lệch với bản thô. Khác bản thô thì
+        nâng confidence lên `hotwords_accept_confidence`: sherpa trộn điểm cộng hotword vào
+        log-prob nên bản có hotword ra confidence ~0 và bị cổng tên chặn dù đúng."""
+        if plain.text == biased.text:
+            # Hotword không đổi chữ: dùng hẳn bản thô (confidence thật).
+            return plain
+        confidence = max(biased.confidence or 0.0, self._config.hotwords_accept_confidence)
+        return biased._replace(confidence=confidence)
+
     def _decode_stream_scored(self, pcm: bytes, source_rate: int) -> _Decoded:
         """Decode PCM streaming ở 8/16 kHz; chỉ resample khi nguồn khác rate model."""
         if source_rate != self.input_sample_rate:
             pcm = resample(pcm, source_rate, self.input_sample_rate)
-        return self._decode_scored(pcm)
+        return self._decode_scored(pcm, beam=False)
 
-    def _decode_scored(self, pcm: bytes) -> _Decoded:
-        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại.
+    def _decode_scored(self, pcm: bytes, hotwords: str = "", *, beam: bool = True) -> _Decoded:
+        """`pcm` đã ở `self.input_sample_rate` — decode thẳng, không resample lại. `beam=False`:
+        greedy (partial, câu không hotword); có `hotwords` thì luôn beam.
 
         Audio ngắn hơn 0,1 s coi như rỗng: encoder ném "Invalid input shape" ở lớp conv đầu (đo
         13/10: <= 80 ms lỗi, 100 ms chạy). Lời chen giữ lại (STTPipeline._decode_held) có lúc chỉ
@@ -188,8 +413,8 @@ class ZipFormerASR:
         if len(pcm) // 2 < self.input_sample_rate // 10:
             return _Decoded("")
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        recognizer = self._get_recognizer()
-        stream = recognizer.create_stream()
+        recognizer = self._get_recognizer(beam=beam or bool(hotwords))
+        stream = recognizer.create_stream(hotwords) if hotwords else recognizer.create_stream()
         stream.accept_waveform(self.input_sample_rate, samples)
         recognizer.decode_stream(stream)
         result = stream.result
@@ -202,6 +427,10 @@ class ZipFormerASR:
             confidence=math.exp(sum(log_probs) / len(log_probs)),
             min_token_prob=math.exp(min(log_probs)),
         )
+
+
+def _from_hyp(hyp: NBestHyp) -> _Decoded:
+    return _Decoded(hyp.text, confidence=hyp.confidence, min_token_prob=hyp.min_token_prob)
 
 
 class _Utterance:

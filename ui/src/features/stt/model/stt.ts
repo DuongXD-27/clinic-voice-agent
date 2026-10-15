@@ -17,7 +17,7 @@ export const STT_TOPIC = "callbot.stt";
 export type SttAsr = "zipformer" | "gemini_live" | "elevenlabs_realtime";
 
 export const STT_ASR_CHOICES = [
-  { value: "zipformer", label: "ZipFormer" },
+  { value: "zipformer", label: "GipFormer" },
   { value: "gemini_live", label: "Gemini Live" },
   { value: "elevenlabs_realtime", label: "ElevenLabs Realtime" },
 ] as const satisfies readonly { value: SttAsr; label: string }[];

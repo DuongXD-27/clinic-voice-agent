@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTranscript, toChatMessage, type TranscriptLine } from "./transcript";
+import {
+  formatTiming,
+  parseNBest,
+  parseTiming,
+  parseTranscript,
+  toChatMessage,
+  type TranscriptLine,
+} from "./transcript";
 
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
 
@@ -87,6 +94,119 @@ describe("toChatMessage", () => {
       text: "(không nghe rõ)",
       meta: "NGƯỜI GỌI · lượt 1",
     });
+  });
+});
+
+describe("parseNBest", () => {
+  it("đọc top N phương án theo từng đoạn (payload giống call_bridge.py)", () => {
+    const update = parseNBest(
+      encode({
+        type: "nbest",
+        turn: 2,
+        segments: [
+          [
+            { text: "TÔI LÀ NGUYỄN VĂN AN", log_prob: -0.41, share: 0.72 },
+            { text: "TÔI LÀ NGUYỄN VĂN A", log_prob: -1.35, share: 0.28 },
+          ],
+        ],
+      }),
+    );
+
+    expect(update).toEqual({
+      turn: 2,
+      segments: [
+        [
+          { text: "TÔI LÀ NGUYỄN VĂN AN", logProb: -0.41, share: 0.72 },
+          { text: "TÔI LÀ NGUYỄN VĂN A", logProb: -1.35, share: 0.28 },
+        ],
+      ],
+    });
+  });
+
+  it.each([
+    ["gói transcript", encode({ type: "transcript", role: "bot", turn: 0, text: "x" })],
+    ["thiếu turn", encode({ type: "nbest", segments: [[{ text: "x", log_prob: 0, share: 1 }]] })],
+    ["phương án sai dạng", encode({ type: "nbest", turn: 1, segments: [[{ text: 1 }]] })],
+  ])("bỏ qua %s", (_name, payload) => {
+    expect(parseNBest(payload)).toBeNull();
+  });
+});
+
+describe("toChatMessage với top N", () => {
+  it("hiện từng phương án kèm log-xác suất và tỉ lệ", () => {
+    const message = toChatMessage(
+      { ...caller, nbest: [[{ text: "TÔI LÀ AN", logProb: -0.4, share: 0.716 }]] },
+      1,
+    );
+
+    expect(message.candidates).toEqual([[{ text: "TÔI LÀ AN", score: "-0.40 · 72%" }]]);
+  });
+
+  it("điểm cuối kèm phần hotword và dòng (hotword) cuối nhóm", () => {
+    const update = parseNBest(
+      encode({
+        type: "nbest",
+        turn: 1,
+        segments: [
+          [
+            { text: "TÔI LÀ A", log_prob: 2.92, share: 0.98, bonus: 9 },
+            { text: "TÔI LÀ AN", log_prob: -1.02, share: 0.02, bonus: 0 },
+          ],
+        ],
+        hotwords: [["NGUYỄN VĂN A", "NGUYỄN VĂN B"]],
+      }),
+    );
+    const message = toChatMessage({ ...caller, nbest: update?.segments ?? null }, 1);
+
+    expect(message.candidates).toEqual([
+      [
+        { text: "TÔI LÀ A", score: "+2.92 · 98% (hotword +9.0)" },
+        { text: "TÔI LÀ AN", score: "-1.02 · 2%" },
+        { text: "(hotword): NGUYỄN VĂN A, NGUYỄN VĂN B", score: "" },
+      ],
+    ]);
+  });
+
+  it("chưa có top N thì không có candidates", () => {
+    expect(toChatMessage(caller, 1)).not.toHaveProperty("candidates");
+  });
+});
+
+describe("parseTiming", () => {
+  it("đọc độ trễ lượt và hiện dưới câu bot", () => {
+    const timing = parseTiming(
+      encode({
+        type: "timing",
+        turn: 3,
+        asr_mode: "name",
+        partials: 5,
+        wait_silence: 1200,
+        asr_decode: 200,
+        turn_wait: 700,
+        engine: 900,
+        hotwords: 10,
+        tts_first_audio: 490,
+        total: 3500,
+      }),
+    );
+    expect(timing).toEqual({
+      turn: 3,
+      asrMode: "name",
+      waitSilence: 1200,
+      asrDecode: 200,
+      turnWait: 700,
+      engine: 900,
+      ttsFirstAudio: 490,
+      total: 3500,
+    });
+    if (!timing) throw new Error("timing");
+    expect(formatTiming(timing)).toBe(
+      "⏱ 3,50s = chờ im lặng 1,20 · ASR tên 0,20 · chốt lượt 0,70 · engine 0,90 · TTS 0,49",
+    );
+  });
+
+  it("bỏ qua gói khác loại", () => {
+    expect(parseTiming(encode({ type: "nbest", turn: 1, segments: [] }))).toBeNull();
   });
 });
 

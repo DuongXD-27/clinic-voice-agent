@@ -10,7 +10,7 @@ export function HomePage() {
   return (
     <>
       <PageHeader
-        eyebrow="Vinmec Callbot"
+        eyebrow="Clinicalbot"
         title="Tổng quan"
         description="Công cụ nội bộ để gọi thử, kiểm tra và theo dõi callbot đặt, xác nhận, huỷ và đổi lịch khám."
       />

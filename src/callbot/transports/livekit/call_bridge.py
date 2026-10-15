@@ -29,6 +29,7 @@ from callbot.transports.livekit.audio_adapter import (
 )
 from callbot.transports.livekit.caller_audio import accept_caller_track, pump_caller_track
 from callbot.transports.livekit.status import STATUS_TOPIC, report_status
+from speech.asr.hotwords import NO_HOTWORDS, Hotwords
 from speech.asr.pipeline import STTPipeline
 from speech.bundle import SpeechSynthesizer
 from speech.tts.fixed_fallback import fixed_utterance_pcm
@@ -169,6 +170,8 @@ class CallBridge:
         self._on_close = on_close
         self._appointment_id = appointment_id
         self._turn_number = 0
+        # Lúc chunk TTS đầu tiên của câu bot đang nói tới (trace độ trễ lượt).
+        self._first_audio_at: Optional[float] = None
         self._frame_ms = frame_ms
         self._input_queue_frames = max(1, input_queue_ms // frame_ms)
         self._output_queue_ms = output_queue_ms
@@ -259,6 +262,7 @@ class CallBridge:
                     self._session_opened = True
                     if self._hangup is not None:
                         return
+                    await self._update_hotwords()
                     await self._publish_tts_track()
                     # Receive audio during the opening; the consumer has its own task context.
                     self._pipeline_task = asyncio.create_task(self._consume_turns())
@@ -310,6 +314,7 @@ class CallBridge:
                     turn = UserTurnCompleted(text="", silence_ms=item.silence_ms)
                 else:
                     turn = item
+                received_at = perf_counter()
                 self._stop_silence_timer()
                 self._turn_number += 1
                 logger.info(
@@ -325,6 +330,7 @@ class CallBridge:
                 if not turn.silence_ms:
                     # Lượt im lặng không có lời để hiện; câu hỏi lại của bot đã đủ ngữ cảnh.
                     await self._publish_transcript("caller", turn.text, confidence=turn.confidence)
+                    self._publish_nbest_later(self._turn_number)
                 with self._tracer.start_trace(
                     call_id=self._call_id,
                     turn=self._turn_number,
@@ -357,6 +363,7 @@ class CallBridge:
                             "call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED"
                         )
                         return
+                    engine_started = perf_counter()
                     try:
                         run = await asyncio.to_thread(
                             self._orchestrator.handle_turn_with_details, self._call_id, caller
@@ -370,6 +377,7 @@ class CallBridge:
                             "call.event_ignored", stage="CORE", decision_reason="TRANSPORT_CLOSED"
                         )
                         return
+                    engine_ms = (perf_counter() - engine_started) * 1000
                     action = run.action
                     if self._hangup is not None:
                         # Lượt xong sau khi khách rời: kết quả (nếu đã ghi) giữ nguyên, không phát.
@@ -380,6 +388,9 @@ class CallBridge:
                             state_after=action.state, ended=action.ended, outcome=action.outcome
                         )
                         return
+                    hotwords_started = perf_counter()
+                    await self._update_hotwords()
+                    hotwords_ms = (perf_counter() - hotwords_started) * 1000
                     logger.info(
                         "call_bridge: turn %d action state=%s ended=%s outcome=%s",
                         self._turn_number,
@@ -390,7 +401,24 @@ class CallBridge:
                     await self._publish_transcript(
                         "bot", action.utterance, action=action, extraction=run.extraction
                     )
-                    spoken = await self._speak_or_fail(root, action.utterance)
+                    self._first_audio_at = None
+                    played = asyncio.Event()
+                    if not turn.silence_ms:
+                        self._tasks.append(
+                            asyncio.create_task(
+                                self._publish_timing(
+                                    self._turn_number,
+                                    received_at=received_at,
+                                    engine_ms=engine_ms,
+                                    hotwords_ms=hotwords_ms,
+                                    spoken=played,
+                                )
+                            )
+                        )
+                    try:
+                        spoken = await self._speak_or_fail(root, action.utterance)
+                    finally:
+                        played.set()
                     root.enrich(
                         state_after=action.state, ended=action.ended, outcome=action.outcome
                     )
@@ -440,6 +468,113 @@ class CallBridge:
             await self._turn_queue.put(
                 _SilenceTimeout(generation=generation, silence_ms=round(elapsed * 1000))
             )
+
+    async def _update_hotwords(self) -> None:
+        """Hotword cho câu trả lời kế tiếp theo câu bot vừa hỏi (callbot/engine/asr_hints.py).
+
+        Chỉ khi provider ASR bật hotword. Có tên khách (PII): không log nội dung. Lỗi đọc phiên
+        chỉ làm lượt sau decode không hotword, không được làm hỏng cuộc gọi."""
+        box = getattr(self._stt_pipeline, "hotwords", None)
+        asr = getattr(self._stt_pipeline, "asr", None)
+        if box is None or not getattr(asr, "supports_hotwords", False):
+            return
+        try:
+            hints = await asyncio.to_thread(self._orchestrator.asr_hints, self._call_id)
+        except Exception as exc:
+            logger.warning(
+                "call_bridge: không lấy được hotword call_id=%s: %s",
+                self._call_id,
+                type(exc).__name__,
+            )
+            box.set(NO_HOTWORDS)
+            return
+        box.set(Hotwords(hints.phrases, hints.name_turn))
+        logger.info("call_bridge: hotword lượt sau: %d cụm", len(hints.phrases))
+
+    async def _publish_timing(
+        self,
+        turn_number: int,
+        *,
+        received_at: float,
+        engine_ms: float,
+        hotwords_ms: float,
+        spoken: asyncio.Event,
+    ) -> None:
+        """Trace độ trễ một lượt (không có chữ): từ lúc khách dứt giọng tới lúc bot có tiếng.
+        Ghi log và gửi `{type: "timing"}` để trang demo hiện dưới câu bot. Lỗi chỉ mất trace."""
+        try:
+            while self._first_audio_at is None and not spoken.is_set():
+                await asyncio.sleep(0.02)
+            asr = getattr(self._stt_pipeline, "asr", None)
+            timing = getattr(asr, "last_timing", None) or {}
+            ms = {"engine": engine_ms, "hotwords": hotwords_ms}
+            voice_end = timing.get("voice_end_at")
+            final_at = timing.get("final_at")
+            if voice_end is not None and final_at is not None and final_at <= received_at:
+                ms["wait_silence"] = (timing["decode_start_at"] - voice_end) * 1000
+                ms["asr_decode"] = timing["decode_ms"]
+                ms["turn_wait"] = (received_at - final_at) * 1000
+            if self._first_audio_at is not None:
+                ms["tts_first_audio"] = (
+                    (self._first_audio_at - received_at) * 1000 - engine_ms - hotwords_ms
+                )
+                if voice_end is not None:
+                    ms["total"] = (self._first_audio_at - voice_end) * 1000
+            payload = {
+                "type": "timing",
+                "turn": turn_number,
+                "asr_mode": timing.get("mode"),
+                "partials": timing.get("partials"),
+                **{key: round(value) for key, value in ms.items()},
+            }
+            logger.info(
+                "call_bridge: turn %d timing %s",
+                turn_number,
+                " ".join(f"{k}={v}" for k, v in payload.items() if k not in ("type", "turn")),
+            )
+            await self._room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
+            )
+        except Exception as exc:
+            logger.warning("call_bridge: không gửi được timing lượt: %s", type(exc).__name__)
+
+    def _publish_nbest_later(self, turn_number: int) -> None:
+        """Top N phương án ASR của các final trong lượt vừa xong (provider tính trong nền), gửi
+        riêng khi xong để trang demo hiện dưới câu người gọi. Không chặn lượt."""
+        box = getattr(self._stt_pipeline, "nbest", None)
+        pending = box.take() if box is not None else []
+        if pending:
+            self._tasks.append(asyncio.create_task(self._publish_nbest(turn_number, pending)))
+
+    async def _publish_nbest(self, turn_number: int, pending: list[asyncio.Future]) -> None:
+        results = await asyncio.gather(*pending, return_exceptions=True)
+        # Mỗi final: top N (điểm cuối, có hotword nếu lượt có) + các cụm hotword của lượt.
+        done = [r for r in results if getattr(r, "hyps", None)]
+        segments = [
+            [
+                {"text": h.text, "log_prob": h.log_prob, "share": h.share, "bonus": h.bonus}
+                for h in r.hyps
+            ]
+            for r in done
+        ]
+        hotwords = [list(r.hotwords) for r in done]
+        failed = [type(r).__name__ for r in results if isinstance(r, BaseException)]
+        if failed:
+            logger.warning("call_bridge: top N ASR lỗi: %s", ", ".join(failed))
+        if not segments:
+            return
+        payload = {
+            "type": "nbest",
+            "turn": turn_number,
+            "segments": segments,
+            "hotwords": hotwords,
+        }
+        try:
+            await self._room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False), reliable=True, topic=TRANSCRIPT_TOPIC
+            )
+        except Exception as exc:
+            logger.warning("call_bridge: không gửi được top N ASR: %s", type(exc).__name__)
 
     async def _publish_transcript(
         self,
@@ -642,6 +777,7 @@ class CallBridge:
                 async for chunk in chunks:
                     if chunk and first_audio_ms is None:
                         first_audio_ms = (perf_counter() - started) * 1000
+                        self._first_audio_at = perf_counter()
                     total_bytes += len(chunk)
                     if self._stopped():
                         break

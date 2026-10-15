@@ -1,6 +1,6 @@
 """Nối ASR gateway vào miền audio của `speech`: resample về tần số model, trả `Transcript`."""
 
-from typing import AsyncIterator, Protocol
+from typing import AsyncIterator, Optional, Protocol
 
 from inference.asr import ASRGateway
 from speech.asr.stream_context import StreamingFrame
@@ -36,12 +36,31 @@ class SpeechRecognizer:
         return getattr(self._gateway.provider, "supports_stream_context", False)
 
     @property
+    def supports_hotwords(self) -> bool:
+        return getattr(self._gateway.provider, "supports_hotwords", False)
+
+    @property
+    def supports_nbest(self) -> bool:
+        return getattr(self._gateway.provider, "supports_nbest", False)
+
+    @property
     def supports_preroll_frames(self) -> bool:
         return getattr(self._gateway.provider, "supports_preroll_frames", False)
 
     @property
     def supports_segment_finalize(self) -> bool:
         return getattr(self._gateway.provider, "supports_segment_finalize", False)
+
+    @property
+    def last_timing(self) -> Optional[dict]:
+        """Thời gian của final gần nhất nếu provider có ghi (ZipFormer), để trace độ trễ lượt."""
+        return getattr(self._gateway.provider, "last_timing", None)
+
+    def warm_up(self) -> None:
+        """Nạp trước phần model provider chỉ nạp khi cần (vd. ZipFormer: beam/hotword, top N)."""
+        warm = getattr(self._gateway.provider, "warm_up", None)
+        if callable(warm):
+            warm()
 
     def transcribe(self, segment: AudioSegment) -> Transcript:
         segment = to_sample_rate(segment, self.input_sample_rate)

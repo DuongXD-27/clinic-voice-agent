@@ -971,3 +971,113 @@ async def test_in_turn_violation_speaks_the_guarded_utterance(monkeypatch) -> No
     assert tts.spoken[0] == t.GREETING_OUTBOUND
     assert tts.spoken[-1] == t.DONE_SAFE["CONFIRMED"]
     assert clinic.writes == [("apt_00417", "CONFIRMED", {})]
+
+
+async def test_call_bridge_publishes_nbest_after_caller_line(monkeypatch) -> None:
+    """Top N phương án ASR của lượt (provider tính trong nền) tới trang demo sau lời người gọi,
+    gắn đúng lượt; task lỗi chỉ bị bỏ qua."""
+    from inference.asr.providers.transducer_nbest import NBest, NBestHyp
+    from speech.asr.nbest import NBestBox
+
+    opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)
+    reply = BotAction(utterance="Dạ", state="AWAITING_DOB", ended=False)
+    closing = BotAction(utterance="Tạm biệt", state="ENDED", ended=True, outcome="TRANSFERRED")
+    orchestrator = _FakeOrchestrator(opening=opening, turn_actions=[reply, closing])
+
+    class _SlowSTTPipeline(_FakeSTTPipeline):
+        async def stream(self, frames, turn_controller=None, interruption=None):
+            for turn in self._turns:
+                yield turn
+                await asyncio.sleep(0.01)  # lượt sau tới sau một nhịp, như cuộc gọi thật
+
+    stt_pipeline = _SlowSTTPipeline(
+        [UserTurnCompleted(text="tôi là An"), UserTurnCompleted(text="mười hai")]
+    )
+    loop = asyncio.get_running_loop()
+    done = loop.create_future()
+    done.set_result(
+        NBest(
+            [NBestHyp("TÔI LÀ AN", -0.4, 0.7), NBestHyp("TÔI LÀ ANH", 7.8, 0.3, bonus=9.0)],
+            ("NGUYỄN VĂN ANH",),
+        )
+    )
+    broken = loop.create_future()
+    broken.set_exception(RuntimeError("onnx"))
+    stt_pipeline.nbest = NBestBox()
+    stt_pipeline.nbest.add(done)
+    stt_pipeline.nbest.add(broken)
+    room = _FakeRoom("web-nbest-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
+
+    async def _fake_publish_tts_track():
+        bridge._audio_source = _FakeAudioSource()
+
+    monkeypatch.setattr(bridge, "_publish_tts_track", _fake_publish_tts_track)
+
+    await asyncio.wait_for(bridge.run(), timeout=2.0)
+
+    nbest = [p for p, _, _ in room.local_participant.data if p["type"] == "nbest"]
+    assert nbest == [
+        {
+            "type": "nbest",
+            "turn": 1,
+            "segments": [
+                [
+                    {"text": "TÔI LÀ AN", "log_prob": -0.4, "share": 0.7, "bonus": 0.0},
+                    {"text": "TÔI LÀ ANH", "log_prob": 7.8, "share": 0.3, "bonus": 9.0},
+                ]
+            ],
+            "hotwords": [["NGUYỄN VĂN ANH"]],
+        }
+    ]
+
+
+async def test_call_bridge_publishes_turn_timing_without_text(caplog) -> None:
+    """Trace độ trễ lượt: từ lúc khách dứt giọng tới lúc bot có tiếng, chia theo phần (chờ im
+    lặng, decode ASR, chờ chốt lượt, engine, TTS). Không có chữ (PII)."""
+    orchestrator = _FakeOrchestrator(
+        opening=BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False),
+        turn_actions=[],
+    )
+    stt_pipeline = _FakeSTTPipeline([])
+    stt_pipeline.asr = type(
+        "Asr",
+        (),
+        {
+            "last_timing": {
+                "voice_end_at": 10.0,
+                "decode_start_at": 11.2,
+                "final_at": 11.4,
+                "decode_ms": 200.0,
+                "mode": "name",
+                "partials": 5,
+            }
+        },
+    )()
+    room = _FakeRoom("timing-room")
+    bridge = make_call_bridge(room, orchestrator, stt_pipeline, _FakeTTS())
+    bridge._first_audio_at = 13.5
+    spoken = asyncio.Event()
+    spoken.set()
+
+    with caplog.at_level(logging.INFO):
+        await bridge._publish_timing(
+            3, received_at=12.1, engine_ms=900.0, hotwords_ms=10.0, spoken=spoken
+        )
+
+    ((payload, topic, _),) = room.local_participant.data
+    assert topic == TRANSCRIPT_TOPIC
+    assert payload == {
+        "type": "timing",
+        "turn": 3,
+        "asr_mode": "name",
+        "partials": 5,
+        "engine": 900,
+        "hotwords": 10,
+        "wait_silence": 1200,
+        "asr_decode": 200,
+        "turn_wait": 700,
+        "tts_first_audio": 490,
+        "total": 3500,
+    }
+    assert "turn 3 timing" in caplog.text

@@ -137,7 +137,7 @@ describe("liveKitReducer", () => {
       const other = liveKitReducer(chose, { type: "botAsr", provider: "zipformer", at: 2 });
 
       expect(other.log.at(-1)).toMatchObject({
-        text: "Bot dùng ASR: ZipFormer — KHÁC lựa chọn Gemini Live.",
+        text: "Bot dùng ASR: GipFormer — KHÁC lựa chọn Gemini Live.",
         tone: "error",
       });
     });
@@ -217,6 +217,21 @@ describe("transcript", () => {
       text: "Bot kết thúc cuộc gọi: CONFIRMED.",
       tone: "success",
     });
+  });
+
+  it("gắn top N phương án ASR vào câu người gọi cùng lượt, bỏ nếu chưa có câu đó", () => {
+    const withCaller = liveKitReducer(connected, {
+      type: "transcript",
+      line: { ...bot(1, "Tôi là An"), role: "caller", state: null },
+      at: 2,
+    });
+    const segments = [[{ text: "TÔI LÀ AN", logProb: -0.4, share: 0.7 }]];
+
+    const updated = liveKitReducer(withCaller, { type: "nbest", update: { turn: 1, segments } });
+    const ignored = liveKitReducer(withCaller, { type: "nbest", update: { turn: 5, segments } });
+
+    expect(updated.transcript[0]?.nbest).toEqual(segments);
+    expect(ignored).toBe(withCaller);
   });
 
   it("giữ transcript sau khi ngắt để xem lại, xoá khi bắt đầu cuộc gọi mới", () => {

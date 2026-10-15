@@ -5,7 +5,7 @@ Giá trị mặc định ở config/asr.yaml (mỗi provider một section); API
 
 from typing import Optional
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
 from appconfig import YamlSettings, yaml_config
@@ -106,3 +106,27 @@ class ZipFormerConfig(ASRConfig):
     onset_lookback_ms: Optional[int] = Field(
         default=None, ge=0, validation_alias="ZIPFORMER_ONSET_LOOKBACK_MS"
     )
+    # Hotword theo lượt (callbot/engine/asr_hints.py): bật thì decode bằng modified_beam_search
+    # và final của lượt hỏi họ tên được bias theo tên hồ sơ. Tắt = greedy như cũ.
+    hotwords_enabled: bool = Field(default=False, validation_alias="ZIPFORMER_HOTWORDS_ENABLED")
+    # Xuất từ bpe.model của model (sherpa-onnx scripts/export_bpe_vocab.py).
+    bpe_vocab_path: str = Field(default="", validation_alias="ZIPFORMER_BPE_VOCAB_PATH")
+    # Điểm cộng mỗi token khớp hotword; cao thì sửa nhiều hơn nhưng kéo nhầm nhiều hơn.
+    hotwords_score: float = Field(default=1.5, gt=0, validation_alias="ZIPFORMER_HOTWORDS_SCORE")
+    max_active_paths: int = Field(default=4, gt=0, validation_alias="ZIPFORMER_MAX_ACTIVE_PATHS")
+    # Top N phương án (điểm cuối, có cộng hotword của lượt) của mỗi final, tính trong nền rồi gửi
+    # lên trang LiveKit dưới câu người gọi (providers/transducer_nbest.py). 0 = tắt. Không đổi
+    # kết quả lượt.
+    nbest_top_k: int = Field(default=0, ge=0, le=10, validation_alias="ZIPFORMER_NBEST_TOP_K")
+    # Lượt tên (name_turn): luôn lấy bản có hotword; khác bản thô thì confidence ít nhất bằng
+    # `hotwords_accept_confidence`. Lý do: sherpa-onnx trộn điểm cộng hotword vào `ys_log_probs`,
+    # token đúng tên vẫn ra ~-10, nên bản có hotword luôn bị cổng tên (0.5) chặn dù đúng.
+    hotwords_accept_confidence: float = Field(
+        default=0.5, ge=0, le=1, validation_alias="ZIPFORMER_HOTWORDS_ACCEPT_CONFIDENCE"
+    )
+
+    @model_validator(mode="after")
+    def _hotwords_need_vocab(self) -> "ZipFormerConfig":
+        if self.hotwords_enabled and not self.bpe_vocab_path:
+            raise ValueError("ZIPFORMER_HOTWORDS_ENABLED=true cần ZIPFORMER_BPE_VOCAB_PATH")
+        return self

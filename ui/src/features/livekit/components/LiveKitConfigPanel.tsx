@@ -20,7 +20,7 @@ const DIRECTIONS = [
 
 const ASR_CHOICES = [
   { value: "server", label: "Theo server" },
-  { value: "zipformer", label: "ZipFormer" },
+  { value: "zipformer", label: "GipFormer" },
   { value: "gemini_live", label: "Gemini Live" },
 ] as const satisfies readonly { value: AsrChoice; label: string }[];
 

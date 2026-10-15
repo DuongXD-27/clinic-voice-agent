@@ -30,11 +30,13 @@ function chat(page: Page) {
   return page.getByLabel("Hội thoại");
 }
 
-/** Câu chào (cả hai chiều gọi) phải nói Vinmec và hỏi họ tên để xác minh. */
+/** Câu chào (cả hai chiều gọi) phải hỏi họ tên để xác minh. */
 async function expectIdentityGreeting(page: Page) {
-  const greeting = chat(page).getByText(/Vinmec/);
-  await expect(greeting).toBeVisible();
-  await expect(greeting).toContainText(/họ (?:và )?tên/);
+  await expect(
+    chat(page)
+      .getByText(/họ (?:và )?tên/)
+      .first(),
+  ).toBeVisible();
 }
 
 /** Giá trị một ô trong thanh trạng thái (dt = nhãn, dd ngay sau = giá trị). */

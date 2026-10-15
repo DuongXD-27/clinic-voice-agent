@@ -60,6 +60,7 @@ services:
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+      ZIPFORMER_BPE_VOCAB_PATH: /app/models/zipformer/bpe.vocab
     depends_on:
       redis:
         condition: service_healthy
@@ -88,6 +89,7 @@ services:
       ZIPFORMER_DECODER_PATH: /app/models/zipformer/decoder.onnx
       ZIPFORMER_JOINER_PATH: /app/models/zipformer/joiner.int8.onnx
       ZIPFORMER_TOKENS_PATH: /app/models/zipformer/tokens.txt
+      ZIPFORMER_BPE_VOCAB_PATH: /app/models/zipformer/bpe.vocab
     depends_on:
       redis:
         condition: service_healthy

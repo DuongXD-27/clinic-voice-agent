@@ -57,7 +57,7 @@ class _RecordingASR(ZipFormerASR):
         )
         self._growing = growing
 
-    def _decode_scored(self, pcm: bytes) -> _Decoded:  # type: ignore[override]
+    def _decode_scored(self, pcm: bytes, hotwords: str = "", *, beam: bool = True) -> _Decoded:  # type: ignore[override]
         text = self._growing._text_for(len(pcm))
         self._growing.decode_calls += 1
         return _Decoded(text)
@@ -237,10 +237,10 @@ async def test_stream_buffer_size_bounded_with_continuous_speech() -> None:
     max_pcm_len_seen = 0
 
     class _BoundedRecordingASR(_RecordingASR):
-        def _decode_scored(self, pcm: bytes) -> _Decoded:  # type: ignore[override]
+        def _decode_scored(self, pcm: bytes, hotwords: str = "", *, beam: bool = True) -> _Decoded:  # type: ignore[override]
             nonlocal max_pcm_len_seen
             max_pcm_len_seen = max(max_pcm_len_seen, len(pcm))
-            return super()._decode_scored(pcm)
+            return super()._decode_scored(pcm, hotwords, beam=beam)
 
     asr = _BoundedRecordingASR(growing)
     frames = [_LOUD] * 200  # audio nói liên tục dài, không có silence nào

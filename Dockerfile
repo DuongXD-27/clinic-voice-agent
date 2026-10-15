@@ -29,12 +29,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # g-group-ai-lab/gipformer1.5-68M-rnnt thay csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20
 # (xem docs/reference/livekit-architecture.md §5.2) — model cũ hallucinate nặng trên audio
 # thật qua LiveKit; gipformer1.5 decode đúng trên chính những audio đó (đã kiểm chứng thực nghiệm).
-RUN pip install --no-cache-dir huggingface_hub && \
+# bpe.model -> bpe.vocab (dạng "piece<TAB>score" như sherpa-onnx scripts/export_bpe_vocab.py): cần
+# cho hotword theo lượt (ZIPFORMER_HOTWORDS_ENABLED, callbot/engine/asr_hints.py).
+RUN pip install --no-cache-dir huggingface_hub sentencepiece && \
     python -c "\
 from huggingface_hub import hf_hub_download; \
+import sentencepiece as spm; \
 repo = 'g-group-ai-lab/gipformer1.5-68M-rnnt'; \
-files = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt']; \
-[hf_hub_download(repo_id=repo, filename=f, local_dir='/app/models/zipformer') for f in files] \
+files = ['encoder.int8.onnx', 'decoder.onnx', 'joiner.int8.onnx', 'tokens.txt', 'bpe.model']; \
+[hf_hub_download(repo_id=repo, filename=f, local_dir='/app/models/zipformer') for f in files]; \
+sp = spm.SentencePieceProcessor(model_file='/app/models/zipformer/bpe.model'); \
+open('/app/models/zipformer/bpe.vocab', 'w', encoding='utf-8').writelines( \
+    f'{sp.id_to_piece(i)}\\t{sp.get_score(i)}\\n' for i in range(sp.get_piece_size())) \
 " && \
     rm -rf /root/.cache/huggingface /app/models/zipformer/.cache
 
