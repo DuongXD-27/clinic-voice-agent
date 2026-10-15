@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { readDemoDebug } from "../../../lib/api/demoDebug";
 import {
+  callPhase,
   callReducer,
   canSend,
   canStart,
+  describeCall,
   initialSession,
   isBusy,
   isConfigLocked,
@@ -29,7 +31,7 @@ function run(...actions: CallAction[]): CallSession {
   return actions.reduce(callReducer, initialSession);
 }
 
-const started = run({ type: "start" }, { type: "started", reply: reply() });
+const started = run({ type: "start" }, { type: "started", callId: "c1", reply: reply() });
 
 function turnDone(
   turn: number,
@@ -54,6 +56,7 @@ describe("callReducer", () => {
       expect.objectContaining({ id: "0-bot", role: "bot", text: "Xin chào", turn: 0 }),
     ]);
     expect(started.botState).toBe("AWAITING_IDENTITY");
+    expect(started.callId).toBe("c1");
   });
 
   it("một lượt thêm câu người gọi rồi câu bot, lưu trích xuất và tăng lượt", () => {
@@ -77,24 +80,20 @@ describe("callReducer", () => {
     expect(state.notice).toEqual({ tone: "success", text: "Cuộc gọi đã kết thúc: CONFIRMED." });
   });
 
-  it("lỗi khi mở cuộc gọi quay về idle, giữ mã lỗi và exchange", () => {
-    const exchange = { method: "POST", path: "/v1/calls", request: {}, status: 401, response: {} };
-    const state = run(
-      { type: "start" },
-      { type: "failed", message: "Sai key", code: "BAD_KEY", exchange },
-    );
+  it("lỗi khi mở cuộc gọi quay về idle, giữ exchange", () => {
+    const exchange = { method: "POST", path: "/v1/calls", request: {}, status: 503, response: {} };
+    const state = run({ type: "start" }, { type: "failed", message: "Clinic lỗi", exchange });
 
     expect(state.phase).toBe("idle");
-    expect(state.errorCode).toBe("BAD_KEY");
+    expect(state.callId).toBeNull();
     expect(state.exchange).toBe(exchange);
-    expect(state.notice).toEqual({ tone: "error", text: "Sai key" });
+    expect(state.notice).toEqual({ tone: "error", text: "Clinic lỗi" });
   });
 
   it("lỗi khi gửi lượt quay về active, không tăng lượt", () => {
     const state = callReducer(callReducer(started, { type: "turnSent" }), {
       type: "failed",
       message: "Hết thời gian",
-      code: null,
       exchange: null,
     });
 
@@ -105,7 +104,9 @@ describe("callReducer", () => {
 
   it.each<[string, CallSession, CallAction]>([
     ["start khi đang gọi", started, { type: "start" }],
-    ["started khi chưa bắt đầu", initialSession, { type: "started", reply: reply() }],
+    ["started khi chưa bắt đầu", initialSession, { type: "started", callId: "c1", reply: reply() }],
+    ["hangup khi chưa gọi", initialSession, { type: "hangup" }],
+    ["hangup khi đang mở cuộc gọi", run({ type: "start" }), { type: "hangup" }],
     ["turnSent khi chưa mở cuộc gọi", initialSession, { type: "turnSent" }],
     ["turnDone khi không chờ lượt nào", started, turnDone(1)],
     ["turnDone sai số lượt", callReducer(started, { type: "turnSent" }), turnDone(5)],
@@ -122,16 +123,21 @@ describe("callReducer", () => {
     expect(callReducer(ended, { type: "turnSent" })).toBe(ended);
   });
 
-  it("clearError chỉ xoá mã lỗi", () => {
-    const failed = run(
-      { type: "start" },
-      { type: "failed", message: "x", code: "BAD_KEY", exchange: null },
-    );
-    const cleared = callReducer(failed, { type: "clearError" });
+  it("gác máy giữa chừng: ended, giữ hội thoại, bỏ lượt đang chờ", () => {
+    const sending = callReducer(started, { type: "turnSent" });
+    const ended = callReducer(sending, { type: "hangup" });
 
-    expect(cleared.errorCode).toBeNull();
-    expect(cleared.notice).toEqual(failed.notice);
-    expect(callReducer(cleared, { type: "clearError" })).toBe(cleared);
+    expect(ended.phase).toBe("ended");
+    expect(ended.messages).toBe(started.messages);
+    expect(ended.notice?.text).toMatch(/Đã kết thúc cuộc gọi/);
+    expect(callReducer(ended, turnDone(1))).toBe(ended);
+  });
+
+  it("gọi tiếp sau khi kết thúc: xoá hội thoại cũ", () => {
+    const ended = callReducer(started, { type: "hangup" });
+    const again = callReducer(ended, { type: "start" });
+
+    expect(again).toMatchObject({ phase: "starting", messages: [], callId: null });
   });
 
   it("reset về trạng thái ban đầu từ mọi pha", () => {
@@ -149,6 +155,11 @@ describe("selectors", () => {
       callReducer(started, { type: "turnSent" }),
       { locked: true, start: false, send: false, busy: true },
     ],
+    [
+      "ended",
+      callReducer(started, { type: "hangup" }),
+      { locked: false, start: true, send: false, busy: false },
+    ],
   ] as const)("%s", (_phase, state, expected) => {
     expect({
       locked: isConfigLocked(state),
@@ -156,5 +167,18 @@ describe("selectors", () => {
       send: canSend(state),
       busy: isBusy(state),
     }).toEqual(expected);
+  });
+});
+
+describe("thanh trạng thái và nút gọi", () => {
+  it.each([
+    ["idle", initialSession, "idle", "Chưa gọi"],
+    ["starting", run({ type: "start" }), "connecting", "Đang mở cuộc gọi…"],
+    ["active", started, "active", "Đang gọi · c1"],
+    ["sending", callReducer(started, { type: "turnSent" }), "active", "Bot đang trả lời lượt 1…"],
+    ["ended", callReducer(started, { type: "hangup" }), "idle", "Đã kết thúc · c1"],
+  ] as const)("%s", (_phase, state, phase, label) => {
+    expect(callPhase(state)).toBe(phase);
+    expect(describeCall(state).label).toBe(label);
   });
 });

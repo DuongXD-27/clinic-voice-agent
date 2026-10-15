@@ -72,13 +72,14 @@ describe("formatValue", () => {
 });
 
 describe("describeFailure", () => {
-  it("hướng dẫn điền key khi thiếu, kiểm tra lại khi sai", () => {
-    expect(describeFailure("BAD_KEY", "Missing bearer token.", false)).toContain("yêu cầu API key");
-    expect(describeFailure("BAD_KEY", "Invalid bearer token.", true)).toContain("không đúng");
+  it("key bị từ chối: hướng dẫn đăng nhập lại", () => {
+    expect(describeFailure("BAD_KEY", "Invalid bearer token.")).toBe(
+      "API key không còn hợp lệ. Đăng nhập lại.",
+    );
   });
 
   it("giữ nguyên thông báo của backend cho lỗi khác", () => {
-    expect(describeFailure("CALL_NOT_FOUND", "Không tìm thấy cuộc gọi", true)).toBe(
+    expect(describeFailure("CALL_NOT_FOUND", "Không tìm thấy cuộc gọi")).toBe(
       "Không tìm thấy cuộc gọi",
     );
   });

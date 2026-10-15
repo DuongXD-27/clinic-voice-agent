@@ -1,12 +1,14 @@
 /**
  * Trạng thái một cuộc gọi thử, dạng reducer thuần:
  *
- *   idle ─start─▶ starting ─started─▶ active ─turnSent─▶ sending ─turnDone─▶ active | ended
- *                    └─failed─▶ idle                        └─failed─▶ active
+ *   idle | ended ─start─▶ starting ─started─▶ active ─turnSent─▶ sending ─turnDone─▶ active | ended
+ *                            └─failed─▶ idle                        └─failed─▶ active
+ *   active | sending ─hangup─▶ ended
  *   (mọi pha) ─reset─▶ idle
  *
+ * Hội thoại của cuộc gọi đã xong giữ lại để xem, như trang LiveKit; chỉ xoá khi gọi tiếp.
  * Action không hợp lệ ở pha hiện tại bị bỏ qua (trả nguyên state), nên double-click hay
- * response đến muộn sau "Phiên mới" không làm hỏng cuộc gọi.
+ * response đến muộn sau khi gác máy không làm hỏng cuộc gọi.
  */
 import type { DemoDebug, TurnExtraction } from "../../../lib/api/demoDebug";
 import type { Schemas } from "../../../lib/api/types";
@@ -44,6 +46,8 @@ export interface Notice {
 
 export interface CallSession {
   phase: Phase;
+  /** Call ID của cuộc gọi đã mở (đang gọi hoặc vừa xong); null khi chưa mở được cuộc nào. */
+  callId: string | null;
   /** Lượt người gọi kế tiếp; lời chào của bot là lượt 0. */
   nextTurn: number;
   messages: Message[];
@@ -52,8 +56,6 @@ export interface CallSession {
   extraction: TurnExtraction | null;
   exchange: Exchange | null;
   notice: Notice | null;
-  /** Mã lỗi backend của thao tác lỗi gần nhất (vd. BAD_KEY) để form đánh dấu ô cần sửa. */
-  errorCode: string | null;
 }
 
 export interface Reply {
@@ -67,7 +69,7 @@ export interface Reply {
 
 export type CallAction =
   | { type: "start" }
-  | { type: "started"; reply: Reply }
+  | { type: "started"; callId: string; reply: Reply }
   | { type: "turnSent" }
   | {
       type: "turnDone";
@@ -77,13 +79,14 @@ export type CallAction =
       ended: boolean;
       outcome: Outcome | null;
     }
-  | { type: "failed"; message: string; code: string | null; exchange: Exchange | null }
+  | { type: "failed"; message: string; exchange: Exchange | null }
+  | { type: "hangup" }
   | { type: "notice"; notice: Notice | null }
-  | { type: "clearError" }
   | { type: "reset" };
 
 export const initialSession: CallSession = {
   phase: "idle",
+  callId: null,
   nextTurn: 1,
   messages: [],
   botState: null,
@@ -91,13 +94,12 @@ export const initialSession: CallSession = {
   extraction: null,
   exchange: null,
   notice: null,
-  errorCode: null,
 };
 
 export function callReducer(state: CallSession, action: CallAction): CallSession {
   switch (action.type) {
     case "start":
-      if (state.phase !== "idle") return state;
+      if (!canStart(state)) return state;
       return {
         ...initialSession,
         phase: "starting",
@@ -109,11 +111,11 @@ export function callReducer(state: CallSession, action: CallAction): CallSession
       return {
         ...state,
         phase: "active",
+        callId: action.callId,
         messages: [botMessage(0, action.reply)],
         botState: action.reply.state,
         exchange: action.reply.exchange,
         notice: { tone: "info", text: "Cuộc gọi đã mở. Gửi lần lượt từng lượt của người gọi." },
-        errorCode: null,
       };
 
     case "turnSent":
@@ -146,7 +148,6 @@ export function callReducer(state: CallSession, action: CallAction): CallSession
         notice: ended
           ? { tone: "success", text: `Cuộc gọi đã kết thúc: ${outcome ?? "—"}.` }
           : null,
-        errorCode: null,
       };
     }
 
@@ -158,15 +159,22 @@ export function callReducer(state: CallSession, action: CallAction): CallSession
         phase,
         exchange: action.exchange ?? state.exchange,
         notice: { tone: "error", text: action.message },
-        errorCode: action.code,
       };
     }
 
+    case "hangup":
+      if (state.phase !== "active" && state.phase !== "sending") return state;
+      return {
+        ...state,
+        phase: "ended",
+        notice: {
+          tone: "info",
+          text: "Đã kết thúc cuộc gọi. HTTP không có lệnh gác máy nên phiên trên bot tự hết hạn.",
+        },
+      };
+
     case "notice":
       return { ...state, notice: action.notice };
-
-    case "clearError":
-      return state.errorCode === null ? state : { ...state, errorCode: null };
 
     case "reset":
       return initialSession;
@@ -185,8 +193,36 @@ function botMessage(turn: number, reply: Reply): Message {
 }
 
 // Selector: nút nào bật được suy ra từ pha, không lưu riêng.
-export const isConfigLocked = (state: CallSession) => state.phase !== "idle";
-export const canStart = (state: CallSession) => state.phase === "idle";
+export const isConfigLocked = (state: CallSession) =>
+  state.phase === "starting" || state.phase === "active" || state.phase === "sending";
+export const canStart = (state: CallSession) => state.phase === "idle" || state.phase === "ended";
 export const canSend = (state: CallSession) => state.phase === "active";
 export const isBusy = (state: CallSession) =>
   state.phase === "starting" || state.phase === "sending";
+
+/** Pha của nút gọi dùng chung với trang LiveKit. */
+export function callPhase(state: CallSession): "idle" | "connecting" | "active" {
+  if (state.phase === "starting") return "connecting";
+  return state.phase === "active" || state.phase === "sending" ? "active" : "idle";
+}
+
+/** Dòng trạng thái cạnh nút gọi. */
+export function describeCall(state: CallSession): {
+  tone: "success" | "neutral";
+  label: string;
+  pulse: boolean;
+} {
+  const id = state.callId ?? "";
+  switch (state.phase) {
+    case "idle":
+      return { tone: "neutral", label: "Chưa gọi", pulse: false };
+    case "starting":
+      return { tone: "neutral", label: "Đang mở cuộc gọi…", pulse: true };
+    case "active":
+      return { tone: "success", label: `Đang gọi · ${id}`, pulse: false };
+    case "sending":
+      return { tone: "success", label: `Bot đang trả lời lượt ${state.nextTurn}…`, pulse: true };
+    case "ended":
+      return { tone: "neutral", label: `Đã kết thúc · ${id}`, pulse: false };
+  }
+}

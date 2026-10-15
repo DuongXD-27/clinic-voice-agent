@@ -6,10 +6,8 @@ import { createBrowserRouter, RouterProvider } from "react-router";
 
 import { routes } from "./app/routes";
 
-// BASE_URL = "/ui/" (vite.config.ts); router cần dạng không có "/" cuối.
-const router = createBrowserRouter(routes, {
-  basename: import.meta.env.BASE_URL.replace(/\/$/, ""),
-});
+// UI ở gốc domain (vite.config.ts `base: "/"`), không cần basename.
+const router = createBrowserRouter(routes);
 
 const container = document.getElementById("root");
 if (!container) throw new Error("Thiếu phần tử #root trong index.html");

@@ -1,5 +1,7 @@
 import type { RouteObject } from "react-router";
 
+import { LoginPage } from "../features/auth/LoginPage";
+import { RequireAuth } from "../features/auth/RequireAuth";
 import { CallPage } from "../features/call/CallPage";
 import { HomePage } from "../pages/home/HomePage";
 import { NotFoundPage } from "../pages/NotFoundPage";
@@ -7,9 +9,14 @@ import { AppLayout } from "./AppLayout";
 
 /** Tách khỏi router để test dựng được bằng createMemoryRouter. */
 export const routes: RouteObject[] = [
+  { path: "login", element: <LoginPage /> },
   {
     path: "/",
-    element: <AppLayout />,
+    element: (
+      <RequireAuth>
+        <AppLayout />
+      </RequireAuth>
+    ),
     children: [
       { index: true, element: <HomePage /> },
       { path: "call", element: <CallPage /> },

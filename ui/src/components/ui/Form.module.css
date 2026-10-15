@@ -21,6 +21,14 @@
   font-weight: 600;
 }
 
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 24px;
+}
+
 .hint,
 .error {
   margin: 0;

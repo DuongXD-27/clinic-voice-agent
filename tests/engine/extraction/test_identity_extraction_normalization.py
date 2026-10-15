@@ -104,15 +104,14 @@ def test_dob_extraction(transcript: str) -> None:
 
 @pytest.mark.parametrize(
     "transcript",
+    # TC_IEN_23 "14/03/1978" và TC_IEN_26 "14 tháng 3 năm 1978" trùng TC_IEN_21 / TC_IEN_17 ở trên.
     [
-        "14/03/1978",
         "14-03-1978",
         "14/3/1978",
-        "14 tháng 3 năm 1978",
         "ngày mười bốn tháng ba năm 1978",
         "ngày mười bốn tháng ba năm một nghìn chín trăm bảy mươi tám",
     ],
-    ids=[f"TC_IEN_{number:02d}" for number in range(23, 29)],
+    ids=["TC_IEN_24", "TC_IEN_25", "TC_IEN_27", "TC_IEN_28"],
 )
 def test_dob_normalization(transcript: str) -> None:
     assert _extract_dob(transcript) == CANONICAL_DOB

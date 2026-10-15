@@ -1,6 +1,7 @@
+/* Cùng bố cục với trang LiveKit: cấu hình bên trái, khung cuộc gọi (CallPanel) bên phải. */
 .layout {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
   align-items: start;
   gap: var(--space-5);
 }
@@ -8,23 +9,6 @@
 .side {
   display: grid;
   gap: var(--space-5);
-}
-
-.config {
-  display: grid;
-  gap: var(--space-5);
-}
-
-.call {
-  position: sticky;
-  top: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.notice {
-  padding: var(--space-3) var(--space-5) 0;
 }
 
 .guide {
@@ -44,7 +28,6 @@
   }
 
   .call {
-    position: static;
     order: -1;
   }
 }

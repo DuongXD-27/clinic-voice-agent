@@ -2,7 +2,6 @@
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5) var(--space-5);
-  border-top: 1px solid var(--border);
 }
 
 .actions {
@@ -67,5 +66,15 @@
   50% {
     transform: scale(1.35);
     opacity: 0.6;
+  }
+}
+
+@media (max-width: 600px) {
+  .composer {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+
+  .actions > * {
+    flex: 1;
   }
 }

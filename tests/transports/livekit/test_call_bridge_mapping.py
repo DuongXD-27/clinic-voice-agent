@@ -437,7 +437,7 @@ async def test_pipeline_error_propagates_without_a_core_turn_or_sensitive_log(mo
 
 
 async def test_call_bridge_publishes_transcript_for_each_line(monkeypatch) -> None:
-    """Trang /ui/livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
+    """Trang /livekit hiện lời thoại từ data channel: câu chào (lượt 0), lời người gọi
     kèm độ tin cậy ASR, câu bot kèm state/outcome và (demo_debug) trích xuất của lượt trong
     cùng một gói — theo đúng thứ tự, trước khi phát audio."""
     opening = BotAction(utterance="Xin chào", state="AWAITING_IDENTITY", ended=False)

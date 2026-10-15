@@ -45,7 +45,7 @@ export function fixturesHint(state: FixturesState): string {
       return `Không tải được dữ liệu clinic (${state.message}). Vẫn nhập tay được.`;
     case "ready": {
       const source = state.data.source === "sim" ? "clinic giả (local)" : "clinic mock";
-      return `Nguồn: ${source} · ${state.data.appointments.length} lịch hẹn · ${state.data.phones.length} số điện thoại`;
+      return `Nguồn: ${source} · ${state.data.appointments.length} lịch hẹn · ${state.data.phones.length} SĐT`;
     }
   }
 }

@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from functools import partial
 from uuid import uuid4
 
 import fakeredis
@@ -37,8 +38,18 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     monkeypatch.setenv("NAME_FALLBACK_MAX_TOKENS", "")
     # T-05 §8: tests that need the layer inject a fake extractor; nothing here calls OpenAI.
     monkeypatch.setenv("SEMANTIC_FALLBACK_ENABLED", "false")
-    for key in ("OPENAI", "TYPESAFE", "GEMINI", "GROQ", "OPENROUTER", "DEEPSEEK"):
+    for key in ("OPENAI", "TYPESAFE", "GEMINI", "GROQ", "OPENROUTER", "DEEPSEEK", "ELEVENLABS"):
         monkeypatch.setenv(f"{key}_API_KEY", "")
+    # Secret còn lại của .env dev (TTS, STT, LiveKit, tổng đài): không test nào cần key thật.
+    for name in (
+        "VBEE_API_TOKEN",
+        "DEEPGRAM_SECRET_KEY",
+        "LIVEKIT_URL",
+        "LIVEKIT_API_KEY",
+        "LIVEKIT_API_SECRET",
+        "TWILIO_AUTH_TOKEN",
+    ):
+        monkeypatch.setenv(name, "")
     # .env dev bật trace + Langfuse thì mỗi app test gửi trace thật và chờ flush khi tắt (~0.8s/test).
     # Test cần trace tự bật TRACE_ENABLED với JSONL dir riêng; Langfuse luôn tắt.
     monkeypatch.setenv("TRACE_ENABLED", "false")
@@ -46,6 +57,15 @@ def offline_name_fallback(monkeypatch: pytest.MonkeyPatch, redis_store_factory) 
     monkeypatch.setattr(engine_module, "_default_session_store", redis_store_factory)
     # BOT_API_KEYS trong .env bật auth cho mọi request test; test_auth.py tự bật lại khi cần.
     monkeypatch.setattr(http_settings, "bot_api_keys", "")
+
+
+@pytest.fixture(autouse=True)
+def no_wait_clinic_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gateway engine tự dựng ngủ thật theo WRITE_BACKOFF_S (0,2 + 0,5 s) mỗi lần thử ghi lại Clinic.
+    Test kiểm khoảng chờ truyền `sleep` riêng cho ClinicGateway (test_clinic_gateway.py)."""
+    monkeypatch.setattr(
+        engine_module, "ClinicGateway", partial(engine_module.ClinicGateway, sleep=lambda _s: None)
+    )
 
 
 @pytest.fixture(autouse=True)

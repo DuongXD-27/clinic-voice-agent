@@ -6,12 +6,13 @@ import { defineConfig } from "vitest/config";
 const backend = process.env.CALLBOT_API_URL ?? "http://localhost:8000";
 
 // Route backend mà UI gọi hoặc link tới (Swagger), để `npm run dev` chạy như production.
+// "/livekit/" có "/" cuối: "/livekit" là trang UI, chỉ "/livekit/token" thuộc backend.
 const backendPaths = [
   "/docs",
   "/openapi.json",
   "/v1",
   "/demo-api",
-  "/livekit",
+  "/livekit/",
   "/audio",
   "/health",
   "/ready",
@@ -19,8 +20,8 @@ const backendPaths = [
 ];
 
 export default defineConfig({
-  // Phải khớp chỗ FastAPI mount thư mục build (main.py: "/ui").
-  base: "/ui/",
+  // FastAPI phục vụ bản build ở gốc domain (transports/http/ui.py).
+  base: "/",
   plugins: [react()],
   build: {
     // Chunk lớn nhất là LiveKitPage (~530 kB, gần hết là livekit-client) và chỉ tải khi mở

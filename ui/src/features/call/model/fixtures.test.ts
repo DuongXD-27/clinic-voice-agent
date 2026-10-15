@@ -41,7 +41,7 @@ describe("phoneOptions", () => {
 
 describe("fixturesHint", () => {
   it("tóm tắt nguồn và số lượng", () => {
-    expect(fixturesHint(ready)).toBe("Nguồn: clinic mock · 2 lịch hẹn · 1 số điện thoại");
+    expect(fixturesHint(ready)).toBe("Nguồn: clinic mock · 2 lịch hẹn · 1 SĐT");
   });
 
   it("báo lỗi nhưng vẫn cho nhập tay", () => {

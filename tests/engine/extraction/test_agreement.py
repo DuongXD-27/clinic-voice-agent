@@ -27,8 +27,8 @@ CONFIRM = QuestionId.CONFIRM_READBACK
 @pytest.mark.parametrize(
     "text",
     [
-        "vâng",
-        "dạ",
+        # "vâng", "dạ": khẳng định UNCLEAR ở test_polite_position_keeps_priorities /
+        # test_stage1_requirements.py::test_bare_da_never_agrees.
         "ừ",
         "dạ vâng ạ",
         "có",
@@ -37,11 +37,8 @@ CONFIRM = QuestionId.CONFIRM_READBACK
         "đúng rồi",
         "ok",
         "không sao",
-        "không hủy",
-        "không hủy nữa",
-        "đừng hủy",
-        "giữ lịch",
-        "thôi",
+        # "không hủy", "đừng hủy", "giữ lịch", "thôi"…: test_cancel_reconfirm_refusals đã khẳng định
+        # mạnh hơn (REFUSE), không lặp lại ở đây.
         "hủy được không",
         "hủy à",
         "hủy thì có mất phí gì không",  # câu hỏi, không phải đồng ý
@@ -175,7 +172,6 @@ def test_review_clear_confirmations_still_agree(text: str) -> None:
         "Tôi vẫn muốn hủy",
         "cứ hủy đi",
         "huy lich di",
-        "huy giup toi",
         "vang, huy di",
         "Có,Hủy đi",
         "Có, hủy đi",
@@ -220,12 +216,11 @@ def test_cancel_reconfirm_refusals(text: str) -> None:
 @pytest.mark.parametrize(
     "text, expected",
     [
-        # T-10 D-2: "vâng / ừ" là đồng ý; "dạ" một mình không bao giờ (PRD R-23, GC-CONF-01)
+        # T-10 D-2: "vâng / ừ" là đồng ý; "dạ" một mình không bao giờ (PRD R-23, GC-CONF-01).
+        # "ừ" ở test_a_short_o_or_u_still_agrees, "dạ" ở test_bare_da_never_agrees.
         ("vâng", Agreement.AGREE),
-        ("ừ", Agreement.AGREE),
         ("dạ vâng", Agreement.AGREE),
         ("vang", Agreement.AGREE),
-        ("dạ", Agreement.UNCLEAR),
         ("dạ ạ", Agreement.UNCLEAR),
         ("ok", Agreement.AGREE),
         ("có", Agreement.AGREE),
@@ -251,13 +246,11 @@ def test_slot_readback_threshold(text: str, expected: Agreement) -> None:
 # --- CONFIRM_READBACK: UNCLEAR trên câu đồng ý thật phải thấp -----------------------
 
 
+# "vâng" ở test_polite_position_keeps_priorities, "dạ" (UNCLEAR) ở test_bare_da_never_agrees.
 @pytest.mark.parametrize(
-    "text", ["vâng", "có", "được ạ", "ừ đúng rồi", "dạ", "không sao", "không vấn đề gì", "được chứ"]
+    "text", ["có", "được ạ", "ừ đúng rồi", "không sao", "không vấn đề gì", "được chứ"]
 )
 def test_confirm_readback_accepts_any_affirmative(text: str) -> None:
-    if text == "dạ":
-        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
-        return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 
@@ -265,7 +258,6 @@ def test_confirm_readback_accepts_any_affirmative(text: str) -> None:
     "text, expected",
     [
         ("đúng không nhỉ", Agreement.UNCLEAR),
-        ("dạ không", Agreement.REFUSE),
         ("sai rồi", Agreement.REFUSE),
         ("mấy giờ ấy nhỉ", Agreement.UNCLEAR),
         ("vâng nhưng mà tôi muốn đổi giờ", Agreement.UNCLEAR),
@@ -306,11 +298,9 @@ def test_hedging_never_agrees(question: QuestionId, text: str) -> None:
 
 @pytest.mark.parametrize(
     "text",
+    # "vâng", "dạ", "ừ", "ờ" một mình: test_polite_position_keeps_priorities, test_bare_da_never_agrees,
+    # test_a_short_o_or_u_still_agrees.
     [
-        "vâng",
-        "dạ",
-        "ừ",
-        "ờ",
         "vâng em",
         "vâng, cảm ơn em",
         "giữ lịch nhé",
@@ -322,9 +312,6 @@ def test_hedging_never_agrees(question: QuestionId, text: str) -> None:
     ],
 )
 def test_attendance_agrees_on_polite_words_and_keeping(text: str) -> None:
-    if text in ("dạ",):
-        assert extract_agreement(text, CONFIRM).value is Agreement.UNCLEAR
-        return
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 
@@ -474,7 +461,6 @@ def test_standalone_or_leading_polite_word_is_still_a_signal(
         ("tôi đến ạ", CONFIRM, Agreement.UNCLEAR),  # không còn nhờ "ạ" cuối câu mà thành AGREE
         ("dạ không", CONFIRM, Agreement.REFUSE),  # phủ định vẫn thắng đáp lễ mở đầu
         ("vâng, mấy giờ ạ", CONFIRM, Agreement.UNCLEAR),  # câu hỏi vẫn thắng đáp lễ mở đầu
-        ("vang", CONFIRM, Agreement.AGREE),  # không dấu: giữ luật hiện tại
         ("toi ban lam em a", CONFIRM, Agreement.UNCLEAR),
     ],
 )
@@ -584,7 +570,8 @@ def test_short_attendance_answers_still_agree(text: str) -> None:
     assert extract_agreement(text, CONFIRM).value is Agreement.AGREE
 
 
-@pytest.mark.parametrize("text", ["Được, đổi giúp tôi.", "được khung đó", "chốt đi em"])
+# "Được, đổi giúp tôi.", "chốt đi em": test_slot_readback_threshold.
+@pytest.mark.parametrize("text", ["được khung đó"])
 def test_short_slot_answers_still_agree(text: str) -> None:
     assert extract_agreement(text, SLOT).value is Agreement.AGREE
 

@@ -1,8 +1,13 @@
 name: CI
 
 # Chỉ kiểm tra khi mã nguồn, test hoặc cấu hình build/runtime thay đổi.
+# Nhánh feature chạy qua pull_request; push chỉ chạy trên main/develop vì CD/CD Staging cần lượt CI
+# của chính commit vừa push. Trước đây push ở mọi nhánh + pull_request test cùng một commit hai lần
+# (79/87 lượt PR trong tuần 09–15/10/2026 lặp lại lượt push). Nhánh chưa mở PR: chạy tay
+# (Actions > CI > Run workflow).
 on:
   push:
+    branches: [main, develop]
     paths:
       - "src/**"
       - "tests/**"
@@ -32,6 +37,7 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
       - ".github/workflows/cd-staging.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -88,45 +94,15 @@ jobs:
           overwrite: true
           retention-days: 14
 
-  # UI (ui/): lint, format, type, test, build. Chạy song song với job Python; CD chỉ deploy khi
-  # cả workflow xanh. Type sinh từ ui/openapi.json phải khớp file đã commit — job Python kiểm
-  # openapi.json khớp backend (`make check`), job này kiểm schema.d.ts khớp openapi.json.
+  # UI (ui/): lint, format, type, test, build, rồi luồng thật qua UI (Playwright) trên chính bản
+  # build đó — một job để không cài npm / build UI hai lần (Playwright chỉ chạy vài giây, phần còn
+  # lại của một job riêng là cài đặt). Chạy song song với job Python; CD chỉ deploy khi cả workflow
+  # xanh. Type sinh từ ui/openapi.json phải khớp file đã commit — job Python kiểm openapi.json khớp
+  # backend (`make check`), job này kiểm schema.d.ts khớp openapi.json.
+  # E2E chạy mọi lần CI vì hai kịch bản đi xuyên engine hội thoại, không chỉ phần UI: uvicorn trên
+  # clinic giả (sim) + Redis, Playwright điều khiển Google Chrome có sẵn trên runner.
   ui:
-    name: UI lint, test and build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: ui
-    steps:
-      - name: Checkout tested commit
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci --no-audit --no-fund
-
-      - name: Generated API types match openapi.json
-        run: |
-          npm run api:types
-          git diff --exit-code -- src/lib/api/schema.d.ts
-
-      - name: Lint, format check, typecheck and test
-        run: npm run check
-
-      - name: Build
-        run: npm run build
-
-  # Luồng thật qua UI: build UI, chạy uvicorn trên clinic giả (sim) + Redis, Playwright điều khiển
-  # Chromium. Chạy mọi lần CI vì hai kịch bản đi xuyên engine hội thoại, không chỉ phần UI.
-  e2e:
-    name: UI end-to-end
+    name: UI lint, test, build and end-to-end
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -148,6 +124,31 @@ jobs:
       - name: Checkout tested commit
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: npm ci --no-audit --no-fund
+
+      - name: Generated API types match openapi.json
+        working-directory: ui
+        run: |
+          npm run api:types
+          git diff --exit-code -- src/lib/api/schema.d.ts
+
+      - name: Lint, format check, typecheck and test
+        working-directory: ui
+        run: npm run check
+
+      - name: Build
+        working-directory: ui
+        run: npm run build
+
       - name: Configure Redis like production
         # redis-cli chạy trong chính container service, không phụ thuộc runner có cài hay không.
         run: |
@@ -164,20 +165,6 @@ jobs:
 
       - name: Install backend
         run: python -m pip install -e ".[dev,speech]"
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-
-      - name: Install and build UI
-        working-directory: ui
-        run: |
-          npm ci --no-audit --no-fund
-          npm run build
-          npx playwright install --with-deps chromium
 
       - name: Start backend
         env:
@@ -196,7 +183,8 @@ jobs:
           VBEE_API_TOKEN: e2e-offline
           VBEE_APP_ID: e2e-offline
         run: |
-          nohup python -m uvicorn callbot.transports.http.main:app --host 127.0.0.1 --port 8000             > uvicorn.log 2>&1 &
+          nohup python -m uvicorn callbot.transports.http.main:app --host 127.0.0.1 --port 8000 \
+            > uvicorn.log 2>&1 &
           for _ in $(seq 1 60); do
             curl -fsS "$E2E_BASE_URL/ready" && exit 0
             sleep 1
@@ -217,4 +205,5 @@ jobs:
             ui/playwright-report/
             ui/test-results/
             uvicorn.log
+          if-no-files-found: ignore
           retention-days: 14

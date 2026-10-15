@@ -3,6 +3,8 @@
  * base URL, API key, đo thời gian và cách đọc lỗi FastAPI chỉ nằm một chỗ.
  */
 
+import { getApiKey, rejectApiKey } from "../auth";
+
 export type HttpMethod = "GET" | "POST" | "PUT";
 
 export interface RequestOptions {
@@ -12,7 +14,10 @@ export interface RequestOptions {
   /** Gửi nguyên văn, vd. file WAV. Không dùng cùng `json`. */
   body?: BodyInit;
   headers?: Record<string, string>;
-  /** Bearer key do người dùng nhập; rỗng thì không gửi header Authorization. */
+  /**
+   * Bearer key; bỏ trống thì dùng key đã đăng nhập (lib/auth). Rỗng thì không gửi Authorization.
+   * Chỉ trang đăng nhập truyền key riêng để kiểm tra trước khi lưu.
+   */
   apiKey?: string;
   /** Mặc định cùng origin với trang. */
   baseUrl?: string;
@@ -64,7 +69,8 @@ export async function request<T>(
   const { method = "GET", json, body, headers = {}, apiKey, baseUrl, signal } = options;
   const finalHeaders: Record<string, string> = { Accept: "application/json", ...headers };
   if (json !== undefined) finalHeaders["Content-Type"] = "application/json";
-  const key = apiKey?.trim();
+  const storedKey = apiKey === undefined;
+  const key = (storedKey ? getApiKey() : apiKey)?.trim();
   if (key) finalHeaders.Authorization = `Bearer ${key}`;
 
   const init: RequestInit = { method, headers: finalHeaders };
@@ -92,9 +98,12 @@ export async function request<T>(
   const data = await readBody(response);
 
   if (!response.ok) {
+    const code = errorCode(data);
+    // Key đã lưu bị bot từ chối (thu hồi / đổi BOT_API_KEYS): đăng xuất để về trang đăng nhập.
+    if (storedKey && response.status === 401 && code === "BAD_KEY") rejectApiKey();
     throw new ApiError(errorMessage(response.status, data), {
       status: response.status,
-      code: errorCode(data),
+      code,
       body: data,
       headers: response.headers,
       elapsedMs,

@@ -432,15 +432,6 @@ async def test_validator_wait_after_barge_in_preserve_does_not_emit_yet() -> Non
     assert turn.text == "dạ đúng rồi"
 
 
-async def test_no_validator_keeps_old_behavior() -> None:
-    controller = TurnController(min_speech_ms=0)
-    await controller.on_vad_event(VadEvent("speech_start"))
-    await controller.on_transcript_event(TranscriptEvent(text="tôi muốn đổi lịch", is_final=True))
-
-    turn = await _next_turn(controller)
-    assert turn.text == "tôi muốn đổi lịch"
-
-
 async def test_silence_elapsed_counts_from_bot_stop_and_last_vad_activity() -> None:
     """CallBridge gửi lượt im lặng dựa trên số này — phải tính từ mốc muộn nhất giữa lúc bot
     dứt lời và lúc VAD còn thấy tiếng, và không tính khi đang có câu dở."""

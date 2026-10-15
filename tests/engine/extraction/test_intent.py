@@ -239,8 +239,7 @@ def test_keyword_inside_a_statement_does_not_decide_the_turn(text: str, intent: 
 @pytest.mark.parametrize(
     "text, intent",
     [
-        ("anh ấy đi vắng rồi", Intent.NOT_PATIENT),
-        ("đi vắng rồi", Intent.NOT_PATIENT),
+        ("đi vắng rồi", Intent.NOT_PATIENT),  # "anh ấy đi vắng rồi": test_outbound_labels
         ("nhân viên", Intent.REQUEST_HUMAN),
         ("cho tôi nhân viên đi", Intent.REQUEST_HUMAN),
         ("chuyển tôi sang nhân viên nhé", Intent.REQUEST_HUMAN),
