@@ -280,7 +280,7 @@ def test_name_self_correction_takes_the_last_claim(transcript: str, expected: st
         "Tôi là Nguyễn Văn A hoặc Nguyễn Văn B",
         "chắc là Nguyễn Văn A",
         "hình như tôi là Nguyễn Văn A",
-        "mẹ tôi là Nguyễn Thị Hoa",
+        # Lời khai thay người thân ("mẹ tôi là …"): test_a_relative_only_claim_is_still_refused.
         "tôi gọi hộ Nguyễn Thị Hoa",
     ],
 )

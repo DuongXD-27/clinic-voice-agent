@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * E2E chạy trên backend thật đã khởi động sẵn (không để Playwright tự bật server):
- * - CI: uvicorn + Redis + CLINIC_BACKEND=sim (job `e2e` trong ci.yml).
+ * - CI: uvicorn + Redis + CLINIC_BACKEND=sim (job `ui` trong ci.yml), dùng Google Chrome có sẵn
+ *   trên runner thay vì tải Chromium của Playwright (`npx playwright install --with-deps`).
  * - Local: `docker compose up -d` rồi `npm run e2e`.
  * Clinic giả giữ dữ liệu trong bộ nhớ: chạy lại cần restart bot (sim) để lịch về SCHEDULED.
  */
@@ -19,5 +20,10 @@ export default defineConfig({
     locale: "vi-VN",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"], ...(process.env.CI ? { channel: "chrome" } : {}) },
+    },
+  ],
 });

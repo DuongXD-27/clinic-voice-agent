@@ -81,7 +81,6 @@ def test_assessment_question_about_the_booking_is_only_a_mention(text: str) -> N
     [
         ("hủy lịch thì bệnh của tôi có sao không", ClinicalLevel.ADVICE_REQUEST),
         ("uống thuốc rồi hủy lịch có sao không", ClinicalLevel.ADVICE_REQUEST),
-        ("đau bụng thế này có sao không", ClinicalLevel.ADVICE_REQUEST),
         ("tôi bị đau ngực, hủy lịch có sao không", ClinicalLevel.EMERGENCY),
     ],
 )

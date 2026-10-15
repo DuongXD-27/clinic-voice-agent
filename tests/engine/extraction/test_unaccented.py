@@ -188,9 +188,8 @@ def test_dob_unaccented(text: str, expected) -> None:
 
 @pytest.mark.parametrize(
     "text, expected",
+    # Lý do rõ không dấu ("toi di cong tac"…): test_cancel_reason.py, kiểm cả provenance.
     [
-        ("toi di cong tac", "PATIENT_UNAVAILABLE"),
-        ("khong can kham nua", "NO_LONGER_NEEDED"),
         ("ban toi bao the", "UNSPECIFIED"),  # "ban" = bạn
         ("dat lich roi ma", "UNSPECIFIED"),  # "dat" = đặt
     ],

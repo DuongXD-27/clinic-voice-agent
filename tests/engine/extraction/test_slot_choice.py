@@ -373,8 +373,8 @@ def test_bare_earlier_at_a_slot_question_asks_for_other_slots() -> None:
 
 @pytest.mark.parametrize(
     ("text", "expected"),
+    # Câu hỏi giờ rõ ràng ("Sáng mai khoảng 9 giờ có được không?"): test_requests_time_accepts_…
     [
-        ("Sáng mai khoảng 9 giờ có được không?", True),
         ("Cho tôi 9h ngày 20/10", True),
         ("Còn chỗ sáng ngày 21 không em", True),
         ("ngày mai tôi có phải nhịn ăn không", False),

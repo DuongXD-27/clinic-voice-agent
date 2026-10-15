@@ -13,7 +13,8 @@ const API_KEY = process.env.E2E_API_KEY ?? "";
 async function openCallPage(page: Page) {
   await page.goto("/call");
   await expect(page).toHaveURL(/\/login\?next=%2Fcall$/);
-  await page.getByLabel("API key").fill(API_KEY);
+  // exact: getByLabel của Playwright khớp chuỗi con, sẽ trúng cả nút "Hiện API key".
+  await page.getByLabel("API key", { exact: true }).fill(API_KEY);
   await page.getByRole("button", { name: "Đăng nhập" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Cuộc gọi từng lượt (Text/Audio)" }),
