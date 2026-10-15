@@ -5,6 +5,7 @@ từ chối cung cấp, tra cứu lượt 0 thất bại. Mọi lượt trước
 """
 
 import copy
+from datetime import datetime
 from typing import Optional
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ import pytest
 from callbot.engine import BotAction, CallerInput, CallStart, EngineSettings, create_orchestrator
 from callbot.engine.dialogue import templates as t
 from callbot.engine.errors import OutboundStartFailed
+from callbot.engine.extraction.schema import VN_TZ
 from callbot.engine.policy.policy_engine import LOOKUP_TRANSFER_REASON
 from callbot.engine.verification import LookupStatus, PrepareResult
 from callbot.engine.verification.names import normalize_text, strip_diacritics
@@ -23,6 +25,7 @@ SILENCE = None
 NAME, DOB = "Nguyễn Văn A", "14/03/1978"
 # Chi tiết lịch (Listing 3) và hồ sơ chuẩn: không được xuất hiện trước khi xác minh xong
 PROTECTED = ("14 tháng 10", "nội tổng quát", "9 giờ", "nguyễn văn a", "1978", "14 tháng 3")
+BEFORE_SEED_SLOTS = datetime(2026, 10, 13, 10, 0, tzinfo=VN_TZ)
 
 
 def _outbound(call_id: str) -> CallStart:
@@ -33,9 +36,16 @@ def _inbound(call_id: str, phone: Optional[str] = "0912345600") -> CallStart:
     return CallStart(call_id=call_id, direction="inbound", caller_number=phone)
 
 
-def _call(start: CallStart, lines: list[Optional[str]], clinic: Optional[FakeClinicAPI] = None):
+def _call(
+    start: CallStart,
+    lines: list[Optional[str]],
+    clinic: Optional[FakeClinicAPI] = None,
+    now: Optional[datetime] = None,
+):
     clinic = clinic or FakeClinicAPI()
     bot = create_orchestrator(clinic)
+    if now is not None:
+        bot.sessions._clock = lambda: now
     actions = [bot.start_call(start)]
     for turn, line in enumerate(lines, start=1):
         caller = (
@@ -145,7 +155,8 @@ def test_inbound_name_and_dob_in_one_answer() -> None:
 def test_inbound_identity_with_a_booking_date_verifies_and_offers_in_one_turn(
     line: str, offered: str
 ) -> None:
-    actions, clinic = _call(_inbound("c_in_overload"), [line])
+    # Khung trống của seed chỉ có ngày 14/10: cố định giờ trước ngày đó, không phụ thuộc hôm nay.
+    actions, clinic = _call(_inbound("c_in_overload"), [line], now=BEFORE_SEED_SLOTS)
     assert actions[-1].state == "AWAITING_CONFIRMATION"
     assert offered in actions[-1].utterance and "14 tháng 10" in actions[-1].utterance
     assert clinic.writes == [] and sum(call.operation == "get_slots" for call in clinic.calls) == 1
