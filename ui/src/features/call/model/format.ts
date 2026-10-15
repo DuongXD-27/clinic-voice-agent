@@ -88,12 +88,7 @@ export function highlightSpans(transcript: string, spans: readonly (string | nul
   return segments;
 }
 
-/** Thông báo cho lỗi auth thay vì câu thô của backend. */
-export function describeFailure(code: string | null, message: string, hasApiKey: boolean): string {
-  if (code === "BAD_KEY") {
-    return hasApiKey
-      ? "API key không đúng. Kiểm tra lại ô API key."
-      : "Bot yêu cầu API key. Điền key vào ô API key rồi thử lại.";
-  }
-  return message;
+/** Thông báo cho lỗi auth thay vì câu thô của backend (lib/api/client đã đăng xuất về /login). */
+export function describeFailure(code: string | null, message: string): string {
+  return code === "BAD_KEY" ? "API key không còn hợp lệ. Đăng nhập lại." : message;
 }

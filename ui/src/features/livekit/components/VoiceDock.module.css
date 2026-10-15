@@ -1,0 +1,127 @@
+.dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+
+.speakers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.speaker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 168px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  transition:
+    border-color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.dim {
+  opacity: 0.55;
+}
+
+.avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brand-50);
+  color: var(--brand-600);
+}
+
+.avatar > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.speaking {
+  border-color: var(--brand-500);
+}
+
+.speaking .avatar {
+  animation: ring 1.2s ease-out infinite;
+}
+
+.muted {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--danger);
+  color: var(--surface);
+}
+
+.muted svg {
+  width: 10px;
+  height: 10px;
+}
+
+.text {
+  display: grid;
+  line-height: 1.25;
+}
+
+.text strong {
+  font-size: var(--text-sm);
+}
+
+.text small {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.hint {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+}
+
+@keyframes ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand-500) 45%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+@media (max-width: 600px) {
+  .dock {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .speakers {
+    flex: 1 0 100%;
+  }
+
+  .speaker {
+    flex: 1;
+    min-width: 0;
+  }
+}

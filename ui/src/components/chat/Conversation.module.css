@@ -1,20 +1,42 @@
+/* Chiếm phần còn lại của khung cuộc gọi (CallPanel luôn có chiều cao cố định) và tự cuộn. */
 .conversation {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: var(--space-4);
-  min-height: 360px;
-  max-height: min(56vh, 560px);
+  min-height: 0;
   padding: var(--space-5);
   overflow-y: auto;
   background: var(--surface-muted);
 }
 
 .empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
   margin: auto;
-  max-width: 320px;
+  max-width: 340px;
   color: var(--text-muted);
   text-align: center;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--brand-50);
+  color: var(--brand-600);
+}
+
+.emptyIcon svg {
+  width: 22px;
+  height: 22px;
 }
 
 .row {
@@ -159,6 +181,10 @@
 }
 
 @media (max-width: 600px) {
+  .conversation {
+    padding: var(--space-4);
+  }
+
   .row {
     max-width: 96%;
   }

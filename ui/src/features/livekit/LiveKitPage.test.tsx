@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { login } from "../../lib/auth";
 import { server } from "../../test/server";
 import { LiveKitPage } from "./LiveKitPage";
 
@@ -114,7 +115,7 @@ function emit(event: string, ...args: unknown[]) {
 }
 
 function connection() {
-  return within(screen.getByRole("status", { name: "Trạng thái kết nối" }));
+  return within(screen.getByRole("status", { name: "Trạng thái cuộc gọi" }));
 }
 
 async function connect() {
@@ -138,11 +139,12 @@ describe("LiveKitPage", () => {
 
     await connect();
 
-    expect(bodies).toEqual([{ direction: "inbound", caller_number: "0912345600" }]);
+    // Cùng mặc định với trang gọi HTTP: outbound, lịch mẫu apt_00417.
+    expect(bodies).toEqual([{ direction: "outbound", appointment_id: "apt_00417" }]);
     expect(room().connect).toHaveBeenCalledWith(TOKEN.url, TOKEN.token);
     expect(room().localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true);
     expect(screen.getByLabelText("Bot: Đang chờ bot vào phòng…")).toBeInTheDocument();
-    expect(screen.getByLabelText("Số người gọi")).toBeDisabled();
+    expect(screen.getByLabelText("Appointment ID")).toBeDisabled();
 
     emit("participantConnected");
     expect(screen.getByLabelText("Bot: Đang nghe")).toBeInTheDocument();
@@ -326,7 +328,7 @@ describe("LiveKitPage", () => {
     expect(room().disconnect).toHaveBeenCalled();
     expect(connection().getByText("Chưa kết nối")).toBeInTheDocument();
     expect(screen.getByText("Cuộc gọi đã kết thúc.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Số người gọi")).toBeEnabled();
+    expect(screen.getByLabelText("Appointment ID")).toBeEnabled();
     expect(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" })).toBeEnabled();
   });
 
@@ -397,10 +399,9 @@ describe("LiveKitPage", () => {
         return HttpResponse.json(FIXTURES);
       }),
     );
+    login("sk_test");
     render(<LiveKitPage />);
 
-    await userEvent.type(screen.getByLabelText("API key"), "sk_test");
-    await userEvent.tab();
     await userEvent.click(screen.getByRole("radio", { name: "Outbound · bot gọi" }));
     const select = screen.getByLabelText("Appointment ID");
     await screen.findByRole("option", { name: "apt_00418 · SCHEDULED · T. T. B." });
@@ -425,6 +426,7 @@ describe("LiveKitPage", () => {
       ),
     );
     render(<LiveKitPage />);
+    await userEvent.click(screen.getByRole("radio", { name: "Inbound · khách gọi" }));
 
     const select = screen.getByLabelText("Số người gọi");
     await screen.findByRole("option", { name: "0987654321 · T. T. B." });

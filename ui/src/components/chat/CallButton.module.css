@@ -1,0 +1,21 @@
+.call {
+  min-width: 172px;
+  border-radius: var(--radius-full);
+}
+
+.end {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--surface);
+}
+
+.end:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 85%, var(--text));
+}
+
+/* Màn hẹp: nút vừa chữ để nằm cùng hàng với dòng trạng thái. */
+@media (max-width: 600px) {
+  .call {
+    min-width: 0;
+  }
+}

@@ -1,4 +1,5 @@
 import type { Schemas } from "../../../lib/api/types";
+import { DEFAULT_APPOINTMENT, DEFAULT_CALLER } from "../../call/model/config";
 
 type TokenRequest = Schemas["LiveKitTokenRequest"];
 export type Direction = NonNullable<TokenRequest["direction"]>;
@@ -15,10 +16,11 @@ export interface LiveKitConfig {
   asrProvider: AsrChoice;
 }
 
+/** Cùng mặc định với trang gọi HTTP (call/model/config.ts): outbound, lịch mẫu của clinic mock. */
 export const DEFAULT_LIVEKIT_CONFIG: LiveKitConfig = {
-  direction: "inbound",
-  callerNumber: "0912345600",
-  appointmentId: "apt_00417",
+  direction: "outbound",
+  callerNumber: DEFAULT_CALLER,
+  appointmentId: DEFAULT_APPOINTMENT,
   asrProvider: "server",
 };
 

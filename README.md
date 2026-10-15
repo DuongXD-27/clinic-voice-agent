@@ -133,7 +133,7 @@ flowchart LR
 
     subgraph API["FastAPI (uvicorn)"]
         HTTP["HTTP transport<br/>/v1/calls · /v1/stt · /demo-api · /livekit/token"]
-        UI["UI tĩnh /ui"]
+        UI["UI tĩnh /"]
     end
 
     subgraph RT["Realtime"]
@@ -269,7 +269,8 @@ Khởi động Redis và bot (bỏ `livekit-worker` nếu chưa có key LiveKit)
 docker compose up -d --build redis bot
 ```
 
-Mở <http://localhost:8000/ui/> để gọi thử, hoặc kiểm tra bằng `curl http://localhost:8000/ready`.
+Mở <http://localhost:8000/> (đăng nhập bằng một key trong `BOT_API_KEYS`, để trống nếu tắt auth) để gọi thử, hoặc
+kiểm tra bằng `curl http://localhost:8000/ready`.
 
 > Lần build đầu tải khoảng 200 MB model (ZipFormer, Silero, GTCRN) vào image. Các lần sau dùng lại cache nếu không đổi
 > `Dockerfile`.
@@ -581,24 +582,28 @@ Lỗi nghiệp vụ trong lượt (Clinic từ chối, guardrail chặn) vẫn t
 
 ## Giao diện web
 
-UI viết bằng Vite + React + TypeScript, build ra file tĩnh và được chính FastAPI phục vụ tại `/ui` (không thêm process).
-Mở <http://localhost:8000/ui/> (hoặc `/`, tự chuyển hướng):
+UI viết bằng Vite + React + TypeScript, build ra file tĩnh và được chính FastAPI phục vụ ở gốc domain (không thêm
+process). Mở <http://localhost:8000/>: chưa đăng nhập thì vào trang `/login` để nhập API key (Bearer key trong
+`BOT_API_KEYS`; bot tắt auth thì để trống). Key chỉ lưu trong tab hiện tại (`sessionStorage`); bot từ chối key
+(`401 BAD_KEY`) thì UI tự đăng xuất về `/login`.
 
 | Trang | Dùng để |
 |---|---|
-| `/ui/call` | Gọi thử qua HTTP: gõ lời người gọi hoặc ghi âm từ micro (tự upload WAV và gửi `audio_url`); xem bảng trích xuất, request/response, kịch bản mẫu |
-| `/ui/livekit` | Nói chuyện trực tiếp với bot qua WebRTC/LiveKit, xem lời thoại từng lượt |
-| `/ui/stt` | Chỉ thử STT: xem chữ tạm thời và chữ chốt của từng lượt qua đúng pipeline LiveKit, không có bot |
-| `/ui/observability` | Độ trễ, lỗi, chất lượng STT/TTS, chi tiết cuộc gọi và từng lượt (đọc từ trace ẩn danh) |
+| `/call` | Gọi thử qua HTTP: gõ lời người gọi hoặc ghi âm từ micro (tự upload WAV và gửi `audio_url`); xem bảng trích xuất, request/response, kịch bản mẫu |
+| `/livekit` | Nói chuyện trực tiếp với bot qua WebRTC/LiveKit, xem lời thoại từng lượt |
+| `/stt` | Chỉ thử STT: xem chữ tạm thời và chữ chốt của từng lượt qua đúng pipeline LiveKit, không có bot |
+| `/observability` | Độ trễ, lỗi, chất lượng STT/TTS, chi tiết cuộc gọi và từng lượt (đọc từ trace ẩn danh) |
 
-Link cũ `/demo/`, `/demo/livekit-demo.html` tự chuyển hướng. Micro chỉ hoạt động trên HTTPS hoặc `localhost`.
+Hai trang gọi dùng chung khung cuộc gọi: nút **Bắt đầu cuộc gọi / Kết thúc** cùng vị trí, cùng thứ tự cấu hình
+(hướng gọi → lịch hẹn / số người gọi). Link cũ `/ui/...`, `/demo/`, `/demo/livekit-demo.html` tự chuyển hướng. Micro chỉ
+hoạt động trên HTTPS hoặc `localhost`.
 
 **Phát triển UI** (backend chạy ở `localhost:8000`, Vite chuyển tiếp request API):
 
 ```bash
 cd ui
 npm install
-npm run dev        # http://localhost:5173/ui/
+npm run dev        # http://localhost:5173/
 npm run check      # lint + format check + typecheck + test
 npm run e2e        # Playwright, cần backend thật (xem ui/playwright.config.ts)
 ```
@@ -670,7 +675,7 @@ Tracing tắt mặc định. Bật bằng:
 TRACE_ENABLED=true
 TRACE_PSEUDONYMIZATION_KEY=<python -c "import secrets; print(secrets.token_hex(32))">
 TRACE_JSONL_DIR=temp/traces          # tạo thư mục trước khi chạy
-OBSERVABILITY_API_ENABLED=true       # dashboard /ui/observability đọc từ JSONL
+OBSERVABILITY_API_ENABLED=true       # dashboard /observability đọc từ JSONL
 ```
 
 Mỗi lượt (HTTP hay LiveKit) là một trace với các span con:
@@ -851,7 +856,7 @@ Clinic-CallBOT/
 │   │   ├── llm/                    # LLM gateway, prompt, provider (OpenAI, DeepSeek, Gemini, Groq, OpenRouter)
 │   │   └── tts/                    # Vbee, ElevenLabs, OpenAI + fallback
 │   └── clinic_mock_sim/            # clinic giả trong bộ nhớ cho test và demo local
-├── ui/                             # Vite + React + TypeScript, phục vụ tại /ui
+├── ui/                             # Vite + React + TypeScript, phục vụ ở gốc domain
 ├── tests/                          # cùng cấu trúc với src/
 ├── config/                         # cấu hình mặc định (YAML)
 ├── assets/tts/static/              # catalog audio tĩnh đã duyệt
@@ -936,8 +941,8 @@ Clinic-CallBOT/
 ## Bảo mật và quyền riêng tư
 
 - **Secret** chỉ nằm trong `.env` (đã `.gitignore`) hoặc GitHub secrets; không đặt trong YAML hay code.
-- **Xác thực API** bằng Bearer key (`BOT_API_KEYS`). `/health`, `/ready`, `/audio/*`, `/audio-static/*`, `/ui/*` luôn mở để harness
-  tải `audio_url` không cần header.
+- **Xác thực API** bằng Bearer key (`BOT_API_KEYS`). `/health`, `/ready`, `/audio/*`, `/audio-static/*` và file tĩnh
+  của UI luôn mở để harness tải `audio_url` không cần header; trang đăng nhập của UI chỉ chặn ở trình duyệt.
 - **Session** chỉ là dữ liệu tạm trong Redis không persist: tự xóa sau 30 phút không hoạt động hoặc tối đa 2 giờ.
 - **Trace** dùng `call_key` là HMAC của `call_id`; không lưu tên, ngày sinh, số điện thoại, mã bệnh nhân/lịch hẹn,
   transcript, audio, prompt hay nội dung Clinic. Log ứng dụng không ghi exception chứa transcript.

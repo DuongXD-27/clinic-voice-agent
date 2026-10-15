@@ -41,6 +41,8 @@
   --neutral-soft: #eef1f0;
 
   --focus-ring: 0 0 0 3px color-mix(in srgb, var(--brand-500) 28%, transparent);
+  /* Nền mờ phía sau ngăn kéo / hộp thoại */
+  --overlay: rgb(16 32 27 / 0.45);
 
   /* Biểu đồ: mỗi thành phần một màu cố định trên mọi trang */
   --chart-turn: #006b54;
@@ -89,6 +91,7 @@
 
   /* Bố cục */
   --sidebar-width: 248px;
+  --sidebar-collapsed-width: 68px;
   --topbar-height: 60px;
   --content-max: 1200px;
 
@@ -140,6 +143,8 @@
     --stage-teal: #135454;
     --stage-blue: #233a66;
     --stage-violet: #4b2f50;
+
+    --overlay: rgb(0 0 0 / 0.6);
 
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 1px 3px rgb(0 0 0 / 0.4), 0 6px 16px rgb(0 0 0 / 0.3);

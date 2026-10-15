@@ -88,7 +88,7 @@ def test_health(client: TestClient) -> None:
 def test_legacy_demo_page_redirects_to_new_ui(client: TestClient) -> None:
     response = client.get("/demo/", follow_redirects=False)
     assert response.status_code == 307
-    assert response.headers["location"] == "/ui/call"
+    assert response.headers["location"] == "/call"
 
 
 def test_extraction_debug_does_not_credit_ner_for_a_semantic_reading() -> None:

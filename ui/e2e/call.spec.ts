@@ -9,15 +9,16 @@ import { expect, test, type Page } from "@playwright/test";
 
 const API_KEY = process.env.E2E_API_KEY ?? "";
 
+/** Mở /call khi chưa đăng nhập: về trang đăng nhập, nhập key rồi quay lại đúng /call. */
 async function openCallPage(page: Page) {
-  await page.goto("/ui/call");
+  await page.goto("/call");
+  await expect(page).toHaveURL(/\/login\?next=%2Fcall$/);
+  await page.getByLabel("API key").fill(API_KEY);
+  await page.getByRole("button", { name: "Đăng nhập" }).click();
   await expect(
     page.getByRole("heading", { level: 1, name: "Cuộc gọi từng lượt (Text/Audio)" }),
   ).toBeVisible();
-  if (API_KEY) {
-    await page.getByLabel("API key").fill(API_KEY);
-    await page.getByLabel("API key").blur();
-  }
+  await expect(page).toHaveURL(/\/call$/);
 }
 
 async function startCall(page: Page) {

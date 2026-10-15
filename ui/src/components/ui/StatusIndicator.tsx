@@ -14,7 +14,7 @@ export function StatusIndicator({ tone, label, pulse = false }: Props) {
   return (
     <span className={styles.indicator}>
       <span className={cx(styles.dot, styles[tone], pulse && styles.pulse)} aria-hidden />
-      {label}
+      <span className={styles.label}>{label}</span>
     </span>
   );
 }

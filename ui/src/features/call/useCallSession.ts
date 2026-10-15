@@ -21,12 +21,11 @@ export type TurnInput =
 interface TurnTarget {
   callId: string;
   turn: number;
-  apiKey: string;
 }
 
 /**
- * Nối reducer cuộc gọi với API. Mỗi "Phiên mới" tăng `generation`: response của phiên cũ đến
- * muộn bị bỏ, không lẫn vào phiên mới.
+ * Nối reducer cuộc gọi với API. Mỗi lần gác máy / reset tăng `generation`: response của cuộc gọi
+ * cũ đến muộn bị bỏ, không lẫn vào cuộc gọi mới. API key lấy từ phiên đăng nhập (lib/auth).
  */
 export function useCallSession() {
   const [session, dispatch] = useReducer(callReducer, initialSession);
@@ -38,7 +37,7 @@ export function useCallSession() {
   }, []);
 
   const start = useCallback(
-    (config: CallConfig, apiKey: string) =>
+    (config: CallConfig) =>
       guarded(async (isCurrent) => {
         const invalid = validateConfig(config);
         if (invalid) {
@@ -47,12 +46,17 @@ export function useCallSession() {
         }
         dispatch({ type: "start" });
         try {
-          const result = await startCall(toStartRequest(config), apiKey);
+          const request = toStartRequest(config);
+          const result = await startCall(request);
           if (!isCurrent()) return;
           const { utterance, audio_url, state } = result.data;
-          dispatch({ type: "started", reply: toReply(result, utterance, audio_url, state) });
+          dispatch({
+            type: "started",
+            callId: request.call_id,
+            reply: toReply(result, utterance, audio_url, state),
+          });
         } catch (error) {
-          if (isCurrent()) dispatch(failure(error, apiKey));
+          if (isCurrent()) dispatch(failure(error));
         }
       }),
     [guarded],
@@ -60,13 +64,13 @@ export function useCallSession() {
 
   /** Trả response của lượt khi thành công (để trang xoá ô nhập, tải lại dữ liệu), null nếu lỗi. */
   const send = useCallback(
-    (input: TurnInput, { callId, turn, apiKey }: TurnTarget) =>
+    (input: TurnInput, { callId, turn }: TurnTarget) =>
       guarded(async (isCurrent): Promise<Schemas["TurnResponse"] | null> => {
         dispatch({ type: "turnSent" });
         try {
           let audioUrl: string | null = null;
           if (input.kind === "audio") {
-            audioUrl = (await uploadAudio(callId, turn, input.wav, apiKey)).data.audio_url;
+            audioUrl = (await uploadAudio(callId, turn, input.wav)).data.audio_url;
             if (!isCurrent()) return null;
           }
           const body: Schemas["TurnRequest"] = {
@@ -75,7 +79,7 @@ export function useCallSession() {
             audio_url: audioUrl,
             silence_ms: input.kind === "silence" ? SILENCE_MS : 0,
           };
-          const result = await sendTurn(callId, body, apiKey);
+          const result = await sendTurn(callId, body);
           if (!isCurrent()) return null;
           const { utterance, audio_url, state, ended, outcome } = result.data;
           dispatch({
@@ -88,7 +92,7 @@ export function useCallSession() {
           });
           return result.data;
         } catch (error) {
-          if (isCurrent()) dispatch(failure(error, apiKey));
+          if (isCurrent()) dispatch(failure(error));
           return null;
         }
       }),
@@ -100,15 +104,17 @@ export function useCallSession() {
     dispatch({ type: "reset" });
   }, []);
 
+  /** Gác máy phía trình duyệt: giữ hội thoại để xem lại, bỏ response của lượt đang chờ. */
+  const hangup = useCallback(() => {
+    generation.current += 1;
+    dispatch({ type: "hangup" });
+  }, []);
+
   const notify = useCallback((notice: Notice | null) => {
     dispatch({ type: "notice", notice });
   }, []);
 
-  const clearError = useCallback(() => {
-    dispatch({ type: "clearError" });
-  }, []);
-
-  return { session, start, send, reset, notify, clearError };
+  return { session, start, send, reset, hangup, notify };
 }
 
 function toReply(
@@ -138,15 +144,14 @@ function callerText(input: TurnInput): string {
   }
 }
 
-function failure(error: unknown, apiKey: string): CallAction {
+function failure(error: unknown): CallAction {
   if (error instanceof CallApiError) {
     return {
       type: "failed",
-      message: describeFailure(error.code, error.message, apiKey.trim() !== ""),
-      code: error.code,
+      message: describeFailure(error.code, error.message),
       exchange: error.exchange,
     };
   }
   const message = error instanceof Error ? error.message : "Lỗi không xác định.";
-  return { type: "failed", message, code: null, exchange: null };
+  return { type: "failed", message, exchange: null };
 }

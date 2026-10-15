@@ -1,4 +1,4 @@
-import { Bot, UserRound } from "lucide-react";
+import { Bot, MessagesSquare, UserRound } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { cx } from "../../lib/cx";
@@ -42,7 +42,14 @@ export function Conversation({
 
   return (
     <div ref={box} className={styles.conversation} aria-live="polite" aria-label="Hội thoại">
-      {messages.length === 0 && !pending && <p className={styles.empty}>{empty}</p>}
+      {messages.length === 0 && !pending && (
+        <div className={styles.empty}>
+          <span className={styles.emptyIcon} aria-hidden>
+            <MessagesSquare />
+          </span>
+          <p>{empty}</p>
+        </div>
+      )}
       {messages.map((message) => (
         <MessageBubble
           key={message.id}

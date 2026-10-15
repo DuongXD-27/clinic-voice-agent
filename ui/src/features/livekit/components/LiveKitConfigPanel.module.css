@@ -1,9 +1,0 @@
-.fixtures {
-  display: flex;
-  grid-column: 1 / -1;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  color: var(--text-subtle);
-  font-size: var(--text-xs);
-}
