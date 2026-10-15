@@ -137,7 +137,7 @@ describe("liveKitReducer", () => {
       const other = liveKitReducer(chose, { type: "botAsr", provider: "zipformer", at: 2 });
 
       expect(other.log.at(-1)).toMatchObject({
-        text: "Bot dùng ASR: ZipFormer — KHÁC lựa chọn Gemini Live.",
+        text: "Bot dùng ASR: GipFormer — KHÁC lựa chọn Gemini Live.",
         tone: "error",
       });
     });

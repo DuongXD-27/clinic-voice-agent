@@ -244,7 +244,7 @@ def create_app(
                 except Exception:
                     logger.warning("TRACE_CLOSE_FAILED")
 
-    app = FastAPI(title="Callbot", lifespan=lifespan)
+    app = FastAPI(title="Clinicalbot", lifespan=lifespan)
     app.state.livekit_settings = livekit_settings_factory()
     app.include_router(calls_router, dependencies=[Depends(require_api_key)])
     app.include_router(demo_router, dependencies=[Depends(require_api_key)])

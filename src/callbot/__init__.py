@@ -1,4 +1,4 @@
-"""Vinmec Callbot — một core, hai transport (hợp đồng §1.3.2).
+"""Clinicalbot — một core, hai transport (hợp đồng §1.3.2).
 
 - engine/     — Session, Information Extraction, Policy, Verifier, Dialogue, tools (clinic mock)
 - speech/     — STT/TTS, audio 8 kHz

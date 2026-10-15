@@ -1,10 +1,10 @@
 <div align="center">
 
-# Vinmec Callbot
+# Clinicalbot
 
 **Tổng đài viên AI tiếng Việt: xác minh danh tính, xác nhận, hủy, đổi lịch và đặt lịch khám qua điện thoại.**
 
-[![CI](https://github.com/phamtuanviet/callbot-vinmec/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/phamtuanviet/callbot-vinmec/actions/workflows/ci.yml)
+[![CI](https://github.com/nhuyhoan004/Clinic-CallBOT/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nhuyhoan004/Clinic-CallBOT/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
 ![LiveKit](https://img.shields.io/badge/LiveKit-Agents%201.8-1F1F1F)
@@ -44,7 +44,7 @@
 
 ## Giới thiệu
 
-**Vinmec Callbot** là callbot tiếng Việt hiện thực hợp đồng nghiệp vụ **AIHR-PC-001 (Rev 1.1)**. Bot nói chuyện với
+**Clinicalbot** là callbot tiếng Việt hiện thực hợp đồng nghiệp vụ **AIHR-PC-001 (Rev 1.1)**. Bot nói chuyện với
 bệnh nhân bằng giọng nói tự nhiên để xử lý lịch khám:
 
 - **Outbound**: bot gọi ra cho một lịch hẹn có sẵn (`appointment_id`) để xác nhận đến khám, hủy, đổi lịch, hoặc ghi
@@ -240,8 +240,8 @@ Clinic, không cần key Clinic.
 **Yêu cầu:** Docker và Docker Compose ≥ 2.24.
 
 ```bash
-git clone https://github.com/phamtuanviet/callbot-vinmec.git
-cd callbot-vinmec
+git clone https://github.com/nhuyhoan004/Clinic-CallBOT.git
+cd Clinic-CallBOT
 cp .env.example .env
 ```
 
@@ -817,7 +817,7 @@ Secret `BOT_API_KEYS` phải chứa một key mà server đang chấp nhận: sm
 ## Cấu trúc thư mục
 
 ```text
-callbot-vinmec/
+Clinic-CallBOT/
 ├── src/
 │   ├── appconfig/                  # nạp config/*.yaml + env cho mọi module
 │   ├── callbot/

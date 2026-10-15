@@ -28,7 +28,7 @@ export function Sidebar({ sections, status }: Props) {
           <HeartPulse />
         </span>
         <span>
-          <strong>Callbot</strong>
+          <strong>Clinicalbot</strong>
           <small>Console nội bộ</small>
         </span>
       </NavLink>

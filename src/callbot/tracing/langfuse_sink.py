@@ -164,7 +164,7 @@ def _otlp_request(spans: list[CompletedSpan], environment: str) -> dict[str, obj
             {
                 "resource": {
                     "attributes": _otlp_attributes(
-                        {"service.name": "vinmec-callbot", "langfuse.environment": environment}
+                        {"service.name": "clinicalbot", "langfuse.environment": environment}
                     )
                 },
                 "scopeSpans": [

@@ -1,7 +1,7 @@
 [project]
-name = "vinmec-callbot"
+name = "clinicalbot"
 version = "0.1.0"
-description = "Callbot Vinmec - AIHR-PC-001"
+description = "Clinicalbot - AIHR-PC-001"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

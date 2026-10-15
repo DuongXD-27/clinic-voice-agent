@@ -158,7 +158,7 @@ describe("SttPage", () => {
     });
 
     expect(
-      screen.getByText("Worker đang dùng ZipFormer — KHÁC lựa chọn Gemini Live."),
+      screen.getByText("Worker đang dùng GipFormer — KHÁC lựa chọn Gemini Live."),
     ).toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe("SttPage", () => {
     });
     await userEvent.click(screen.getByRole("button", { name: "Kết thúc" }));
 
-    await userEvent.click(screen.getByRole("radio", { name: "ZipFormer" }));
+    await userEvent.click(screen.getByRole("radio", { name: "GipFormer" }));
 
     expect(screen.queryByText(/KHÁC lựa chọn/)).not.toBeInTheDocument();
   });

@@ -32,7 +32,7 @@ export const TOOLS: readonly Tool[] = [
   },
   {
     label: "Thử STT",
-    description: "Nói vào microphone, xem chữ từng lượt của ZipFormer, Gemini Live, ElevenLabs.",
+    description: "Nói vào microphone, xem chữ từng lượt của GipFormer, Gemini Live, ElevenLabs.",
     icon: Captions,
     to: "/stt",
   },
