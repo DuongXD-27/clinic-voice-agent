@@ -52,7 +52,7 @@ zipformer:
   # speech_end (docs/reference/livekit-architecture.md §5.5).
   max_turn_speech_ms: 15000 # ZIPFORMER_MAX_TURN_SPEECH_MS
   # Hotword theo lượt (callbot/engine/asr_hints.py, kế hoạch asr-rui-ro/ke-hoach-hotword-theo-state.md):
-  # bật thì decode bằng modified_beam_search, final câu trả lời được bias theo câu bot vừa hỏi.
+  # bật thì decode bằng modified_beam_search; chỉ lượt hỏi họ tên được bias theo tên hồ sơ clinic mock.
   # Đo 12/10 (scripts/hotword_eval.py + hotword_trace.py, golden 40 câu): điểm 1.5 / beam 4 quá yếu,
   # chỉ sửa 1/4 câu tên sai; điểm 3.0 / beam 8 sửa 3/4 ("Văn A", "Văn Anh", "Văn An"), câu gài
   # không bị kéo. Điểm 8.0 bắt đầu bịa lặp tên. Docker xuất bpe.vocab từ bpe.model.

@@ -1,8 +1,8 @@
 """Độ trễ một lượt theo số cụm hotword (GipFormer thật, 40 câu golden).
 
 Lượt có hotword (trừ lượt tên) decode một lần bằng sherpa-onnx beam search + cụm của lượt. Đo
-greedy (lượt không hotword), beam không cụm nào, rồi beam với 6 cụm (lượt hỏi ý định hiện nay),
-13 (lý do hủy), và danh sách lớn hơn ghép từ cụm ý định, lý do hủy, giờ đọc thành chữ.
+greedy (lượt không hotword), beam không cụm nào, rồi beam với 6, 13 cụm và danh sách lớn hơn ghép
+từ cụm mẫu (ý định, lý do hủy) và giờ đọc thành chữ.
 
 Chạy từ gốc repo, máy có model:  python scripts/hotword_count_latency.py
 """
@@ -20,22 +20,39 @@ BENCH = ROOT / "eval" / "stt-bench"
 sys.path[:0] = [str(ROOT / "src"), str(BENCH), str(ROOT / "scripts")]
 
 from evaluate import load_dataset  # noqa: E402
-from hotword_eval import ensure_bpe_vocab, read_pcm  # noqa: E402
+from hotword_eval import ensure_bpe_vocab, read_pcm, spoken_number  # noqa: E402
 
-from callbot.engine.asr_hints import (  # noqa: E402
-    CANCEL_REASON_PHRASES,
-    INTENT_PHRASES,
-    spoken_number,
-)
 from inference.asr.config import ZipFormerConfig  # noqa: E402
 from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.audio.codec import resample  # noqa: E402
 
 SIZES = (6, 13, 30, 80, 160)
+# Cụm mẫu để đủ số lượng đo (production chỉ còn hotword họ tên, xem callbot/engine/asr_hints.py).
+SEED_PHRASES = (
+    "ĐẶT LỊCH",
+    "ĐỔI LỊCH",
+    "DỜI LỊCH",
+    "HỦY LỊCH",
+    "XÁC NHẬN LỊCH",
+    "GẶP NHÂN VIÊN",
+    "BẬN",
+    "CÓ VIỆC",
+    "ĐI CÔNG TÁC",
+    "VỀ QUÊ",
+    "KHÔNG ĐẾN ĐƯỢC",
+    "KHỎI RỒI",
+    "ĐỠ RỒI",
+    "KHÔNG CẦN KHÁM NỮA",
+    "KHÁM CHỖ KHÁC",
+    "BỆNH VIỆN KHÁC",
+    "PHÒNG KHÁM KHÁC",
+    "ĐẮT QUÁ",
+    "KHÔNG ĐỦ TIỀN",
+)
 
 
 def phrase_pool() -> list[str]:
-    pool = [*INTENT_PHRASES, *CANCEL_REASON_PHRASES]
+    pool = list(SEED_PHRASES)
     for hour in range(1, 13):
         for minute in (0, 15, 30, 45):
             for period in ("SÁNG", "CHIỀU", "TỐI"):

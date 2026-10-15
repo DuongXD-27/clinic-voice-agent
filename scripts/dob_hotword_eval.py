@@ -35,9 +35,8 @@ BENCH = ROOT / "eval" / "stt-bench"
 sys.path[:0] = [str(ROOT / "src"), str(BENCH), str(ROOT / "scripts")]
 
 from evaluate import load_dataset  # noqa: E402
-from hotword_eval import ensure_bpe_vocab, read_pcm  # noqa: E402
+from hotword_eval import ensure_bpe_vocab, read_pcm, spoken_number  # noqa: E402
 
-from callbot.engine.asr_hints import spoken_number  # noqa: E402
 from callbot.engine.extraction.dob import extract_dob  # noqa: E402
 from inference.asr.config import ZipFormerConfig  # noqa: E402
 from inference.asr.providers.transducer_nbest import bpe_encode, load_bpe_vocab  # noqa: E402

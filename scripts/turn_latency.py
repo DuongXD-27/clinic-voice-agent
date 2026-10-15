@@ -27,7 +27,6 @@ sys.path[:0] = [str(ROOT / "src"), str(BENCH), str(ROOT / "scripts")]
 from evaluate import load_dataset  # noqa: E402
 from hotword_eval import ensure_bpe_vocab, names_of, read_pcm  # noqa: E402
 
-from callbot.engine.asr_hints import INTENT_PHRASES  # noqa: E402
 from inference.asr.config import ZipFormerConfig  # noqa: E402
 from inference.asr.providers.zipformer import ZipFormerASR  # noqa: E402
 from speech.asr.hotwords import NO_HOTWORDS, HotwordBox, Hotwords  # noqa: E402
@@ -160,13 +159,10 @@ def main() -> None:
             for c in dataset.cases
             if c.category == "identity_name" and names_of(c)
         ],
-        "hỏi ý định (6 cụm)": [
-            (c, Hotwords(INTENT_PHRASES)) for c in dataset.cases if c.category == "business_entity"
-        ],
-        "không hotword (ngày sinh, xác nhận)": [
+        "không hotword (ngày sinh, ý định, xác nhận)": [
             (c, NO_HOTWORDS)
             for c in dataset.cases
-            if c.category in ("identity_dob", "confirmation")
+            if c.category in ("identity_dob", "business_entity", "confirmation")
         ],
     }
 

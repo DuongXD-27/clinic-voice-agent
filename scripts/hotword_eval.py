@@ -92,6 +92,28 @@ def names_of(case) -> tuple[str, ...]:
     return tuple(e.value.upper() for e in case.critical_entities if e.type == "person_name")
 
 
+_DIGITS = ("KHÔNG", "MỘT", "HAI", "BA", "BỐN", "NĂM", "SÁU", "BẢY", "TÁM", "CHÍN")
+
+
+def spoken_number(value: int) -> str:
+    """0–99 thành chữ như ASR trả ra: 21 -> "HAI MƯƠI MỐT", 15 -> "MƯỜI LĂM"."""
+    if not 0 <= value < 100:
+        raise ValueError(value)
+    if value < 10:
+        return _DIGITS[value]
+    tens, unit = divmod(value, 10)
+    head = "MƯỜI" if tens == 1 else f"{_DIGITS[tens]} MƯƠI"
+    if unit == 0:
+        return head
+    if unit == 1:
+        return f"{head} {'MỘT' if tens == 1 else 'MỐT'}"
+    if unit == 5:
+        return f"{head} LĂM"
+    if unit == 4 and tens > 1:
+        return f"{head} TƯ"
+    return f"{head} {_DIGITS[unit]}"
+
+
 def run(scores: list[float], out_dir: Path) -> Path:
     base = ZipFormerConfig()
     vocab = Path(base.bpe_vocab_path)

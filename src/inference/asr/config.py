@@ -107,7 +107,7 @@ class ZipFormerConfig(ASRConfig):
         default=None, ge=0, validation_alias="ZIPFORMER_ONSET_LOOKBACK_MS"
     )
     # Hotword theo lượt (callbot/engine/asr_hints.py): bật thì decode bằng modified_beam_search
-    # và final của câu trả lời kế tiếp được bias theo câu bot vừa hỏi. Tắt = greedy như cũ.
+    # và final của lượt hỏi họ tên được bias theo tên hồ sơ. Tắt = greedy như cũ.
     hotwords_enabled: bool = Field(default=False, validation_alias="ZIPFORMER_HOTWORDS_ENABLED")
     # Xuất từ bpe.model của model (sherpa-onnx scripts/export_bpe_vocab.py).
     bpe_vocab_path: str = Field(default="", validation_alias="ZIPFORMER_BPE_VOCAB_PATH")
