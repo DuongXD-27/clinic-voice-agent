@@ -37,7 +37,7 @@ function backend(): Recorded {
       recorded.start.push(await request.json());
       return HttpResponse.json({
         call_id: "c1",
-        utterance: "Xin chào, em là trợ lý ảo của Vinmec.",
+        utterance: "Xin chào, em là trợ lý ảo.",
         audio_url: null,
         state: "AWAITING_IDENTITY",
         turn: 0,
@@ -69,7 +69,7 @@ function backend(): Recorded {
 
 async function startCall() {
   await userEvent.click(screen.getByRole("button", { name: "Bắt đầu cuộc gọi" }));
-  await screen.findByText("Xin chào, em là trợ lý ảo của Vinmec.");
+  await screen.findByText("Xin chào, em là trợ lý ảo.");
 }
 
 beforeEach(() => {
@@ -156,7 +156,7 @@ describe("CallPage", () => {
         auth = request.headers.get("Authorization");
         return HttpResponse.json({
           call_id: "c1",
-          utterance: "Xin chào, em là trợ lý ảo của Vinmec.",
+          utterance: "Xin chào, em là trợ lý ảo.",
           audio_url: null,
           state: "AWAITING_IDENTITY",
           turn: 0,
@@ -265,7 +265,7 @@ describe("CallPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Call ID")).toBeEnabled();
     expect(screen.getByLabelText("Call ID")).not.toHaveValue(oldCallId);
-    expect(screen.queryByText("Xin chào, em là trợ lý ảo của Vinmec.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Xin chào, em là trợ lý ảo.")).not.toBeInTheDocument();
   });
 
   it("huỷ hộp xác nhận thì không reset clinic", async () => {

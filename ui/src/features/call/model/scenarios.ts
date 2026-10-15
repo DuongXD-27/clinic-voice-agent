@@ -30,8 +30,7 @@ export const SCENARIOS: readonly Scenario[] = [
     title: "Xác nhận lịch",
     direction: "outbound",
     expect: "CONFIRMED",
-    summary:
-      "Bot gọi bệnh nhân Nguyễn Văn A để nhắc lịch khám Nội tổng quát 15:30 ngày 14/10 tại Vinmec Times City.",
+    summary: "Bot gọi bệnh nhân Nguyễn Văn A để nhắc lịch khám Nội tổng quát 15:30 ngày 14/10.",
     steps: [
       {
         kind: "say",

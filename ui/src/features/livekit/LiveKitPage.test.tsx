@@ -141,14 +141,14 @@ describe("LiveKitPage", () => {
     expect(bodies).toEqual([{ direction: "inbound", caller_number: "0912345600" }]);
     expect(room().connect).toHaveBeenCalledWith(TOKEN.url, TOKEN.token);
     expect(room().localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true);
-    expect(screen.getByLabelText("Bot Vinmec: Đang chờ bot vào phòng…")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bot: Đang chờ bot vào phòng…")).toBeInTheDocument();
     expect(screen.getByLabelText("Số người gọi")).toBeDisabled();
 
     emit("participantConnected");
-    expect(screen.getByLabelText("Bot Vinmec: Đang nghe")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bot: Đang nghe")).toBeInTheDocument();
 
     emit("activeSpeakersChanged", [{ identity: "agent-1" }]);
-    expect(screen.getByLabelText("Bot Vinmec: Đang nói")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bot: Đang nói")).toBeInTheDocument();
     expect(screen.getByLabelText("Bạn: Mic đang bật")).toBeInTheDocument();
 
     emit("activeSpeakersChanged", [{ identity: "web-me" }]);
@@ -174,7 +174,7 @@ describe("LiveKitPage", () => {
       type: "transcript",
       role: "bot",
       turn: 0,
-      text: "Dạ Vinmec xin nghe",
+      text: "Dạ em xin nghe",
       state: "AWAITING_IDENTITY",
       ended: false,
       outcome: null,
@@ -199,7 +199,7 @@ describe("LiveKitPage", () => {
     transcript({ type: "transcript", role: "bot", turn: 9, text: "không hiện" }, "other.topic");
 
     const chat = within(screen.getByLabelText("Hội thoại"));
-    expect(chat.getByText("Dạ Vinmec xin nghe")).toBeInTheDocument();
+    expect(chat.getByText("Dạ em xin nghe")).toBeInTheDocument();
     expect(chat.getByText("Tôi là Nguyễn Văn A")).toBeInTheDocument();
     expect(chat.getByText("NGƯỜI GỌI · lượt 1 · ASR 87%")).toBeInTheDocument();
     expect(chat.getByText("BOT · lượt 1 · ENDED · TRANSFERRED")).toBeInTheDocument();

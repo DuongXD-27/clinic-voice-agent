@@ -14,7 +14,7 @@ export function Participants({ phase, botPresent, micEnabled, speaking }: Props)
     <div className={styles.participants}>
       <Tile
         icon={<Bot />}
-        name="Bot Vinmec"
+        name="Bot"
         status={botStatus(inCall, botPresent, speaking.bot)}
         speaking={inCall && speaking.bot}
         dim={!inCall || !botPresent}
