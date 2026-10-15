@@ -65,7 +65,7 @@ def test_opening_discloses_ai_assistant() -> None:
         ),
     ]
     for opening in openings:
-        assert "Vinmec" in opening.utterance
+        assert "bệnh viện" in opening.utterance.lower()
         assert opening.state == "AWAITING_IDENTITY"
         # [R-02] hỏi tên bằng câu hỏi mở, không đọc tên sẵn cho người nghe xác nhận
         assert opening.utterance.rstrip().endswith("?")
@@ -73,7 +73,7 @@ def test_opening_discloses_ai_assistant() -> None:
 
     # T-02: không có hồ sơ -> không hỏi tên; lượt 1 nói lý do rồi chuyển máy (LOOKUP_TRANSFER)
     handoff = bot.start_call(_inbound("c_greet_unknown", "0999999999"))
-    assert "Vinmec" in handoff.utterance and handoff.state == "AWAITING_IDENTITY"
+    assert "bệnh viện" in handoff.utterance.lower() and handoff.state == "AWAITING_IDENTITY"
     assert _context(bot, "c_greet_unknown").question is None
 
 

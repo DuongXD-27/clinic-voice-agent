@@ -47,6 +47,7 @@ def test_recording_scope_is_82_exact_texts_with_three_deferred_backups():
     statics = [row for row in rows if row["kind"] == "STATIC"]
     candidates = [row for row in statics if row["prebuild_candidate"]]
     assert len(candidates) == 82
+    assert all("vinmec" not in row["current_text"].casefold() for row in statics)
     assert {row["template_id"] for row in statics if not row["prebuild_candidate"]} == {
         "ASK_NAME_DECLINED",
         "ASK_DOB_INVALID",

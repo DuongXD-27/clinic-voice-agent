@@ -56,6 +56,9 @@ from callbot.engine.extraction.greeting import is_greeting
         "Bên em là bên nào?",
         "Bệnh viện nào vậy?",
         "Vinmec à?",
+        "Bệnh viện à?",
+        "Có phải bệnh viện không?",
+        "Có phải bệnh viện đúng không?",
         "Đầu dây bên kia là ai?",
     ],
 )

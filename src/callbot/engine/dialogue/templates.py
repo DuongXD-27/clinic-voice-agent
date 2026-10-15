@@ -41,11 +41,11 @@ def _static_group(group: str, *texts: str) -> str:
 
 GREETING_OUTBOUND = static(
     "GREETING_OUTBOUND",
-    "Em chào anh chị, em gọi từ Vinmec để xác nhận lịch khám. Anh chị cho em xin họ tên ạ?",
+    "Em chào anh chị, em gọi từ bệnh viện để xác nhận lịch khám. Anh chị cho em xin họ tên ạ?",
 )
-GREETING_INBOUND = static("GREETING_INBOUND", "Vinmec xin nghe. Anh chị cho em xin họ tên ạ?")
+GREETING_INBOUND = static("GREETING_INBOUND", "Bệnh viện xin nghe. Anh chị cho em xin họ tên ạ?")
 # Không có dữ liệu xác minh: chỉ chào, không hỏi tên; lượt 1 nói lý do rồi chuyển máy (LOOKUP_TRANSFER).
-GREETING_HANDOFF_INBOUND = static("GREETING_HANDOFF_INBOUND", "Vinmec xin nghe ạ.")
+GREETING_HANDOFF_INBOUND = static("GREETING_HANDOFF_INBOUND", "Bệnh viện xin nghe ạ.")
 # Inbound tra hồ sơ theo số gọi đến không được (chưa hỏi danh tính): nói lý do khi chuyển máy
 # (§1.1.9). Khác IDENTITY_FAILED_TRANSFER: đã hỏi tên + ngày sinh thì không nói yếu tố nào sai.
 LOOKUP_TRANSFER: dict[str, str] = {
@@ -69,15 +69,15 @@ LOOKUP_TRANSFER: dict[str, str] = {
 # tiết — SF-03); gọi vào khách đã biết mình gọi đâu.
 GREETING_BACK_OUTBOUND = _static_group(
     "GREETING_BACK_OUTBOUND",
-    "Em gọi từ Vinmec để xác nhận lịch khám. Cho em xin họ tên ạ?",
-    "Vinmec đây, em gọi về lịch khám của anh chị. Mình tên đầy đủ là gì ạ?",
-    "Bên em là Vinmec, gọi xác nhận lịch khám. Anh chị cho em xin họ tên nhé?",
+    "Em gọi từ bệnh viện để xác nhận lịch khám. Cho em xin họ tên ạ?",
+    "Bệnh viện đây, em gọi về lịch khám của anh chị. Mình tên đầy đủ là gì ạ?",
+    "Bên em là bệnh viện, gọi xác nhận lịch khám. Anh chị cho em xin họ tên nhé?",
 )
 GREETING_BACK_INBOUND = _static_group(
     "GREETING_BACK_INBOUND",
-    "Vinmec đây. Anh chị cho em xin họ tên ạ?",
-    "Bên em là Vinmec. Cho em xin họ tên của mình nhé?",
-    "Anh chị đang gọi tới Vinmec. Mình tên đầy đủ là gì ạ?",
+    "Bệnh viện đây. Anh chị cho em xin họ tên ạ?",
+    "Bên em là bệnh viện. Cho em xin họ tên của mình nhé?",
+    "Anh chị đang gọi tới bệnh viện. Mình tên đầy đủ là gì ạ?",
 )
 # Tên cũ, giữ cho script nghe thử (tts_fidelity_audit) đang tham chiếu.
 GREETING_BACK_SHARED = GREETING_BACK_OUTBOUND
@@ -135,9 +135,9 @@ ASK_DOB = _static_group(
 )
 INTRODUCE_AGAIN_ASK_DOB = _static_group(
     "INTRODUCE_AGAIN_ASK_DOB",
-    "Vinmec đây. Anh chị cho em xin ngày tháng năm sinh ạ?",
-    "Bên em là Vinmec. Anh chị sinh ngày tháng năm nào ạ?",
-    "Em bên Vinmec. Cho em xin ngày tháng năm sinh của mình nhé?",
+    "Bệnh viện đây. Anh chị cho em xin ngày tháng năm sinh ạ?",
+    "Bên em là bệnh viện. Anh chị sinh ngày tháng năm nào ạ?",
+    "Em bên bệnh viện. Cho em xin ngày tháng năm sinh của mình nhé?",
 )
 ASK_DOB_AGAIN = _static_group(
     "ASK_DOB_AGAIN",
@@ -373,9 +373,9 @@ _PERIOD_WORDS = ((12, "sáng"), (18, "chiều"), (24, "tối"))
 _WEEKDAYS = ("thứ Hai", "thứ Ba", "thứ Tư", "thứ Năm", "thứ Sáu", "thứ Bảy", "Chủ nhật")
 # §1.1.3 Rev 1.1: đọc ngày, giờ và chuyên khoa. Cơ sở là thông tin bổ sung.
 # Mock chỉ trả `clinic_id` (Listing 3, không có /clinics):
-# tên lấy theo seed Mock (clinic-mock `store.CLINICS`). Id lạ -> "Vinmec", không đoán tên cơ sở.
+# Tên thương hiệu và id lạ dùng "bệnh viện", không đọc tên chi nhánh.
 CLINIC_NAMES = {
-    "cl_vinmec": "Vinmec Times City",
+    "cl_vinmec": "bệnh viện",
     "c_001": "Phòng khám Đa khoa Trung tâm",
     "c_002": "Phòng khám Đa khoa Cầu Giấy",
 }
@@ -384,7 +384,7 @@ CLINIC_NAMES = {
 def greeting(direction: str) -> str:
     """Câu chào mở đầu dùng chung cho mọi transport.
 
-    Nói bên gọi (Vinmec) rồi [R-02] hỏi tên bằng câu hỏi mở; gọi ra nói "lịch khám" chung chung, không
+    Nói bên gọi (bệnh viện) rồi [R-02] hỏi tên bằng câu hỏi mở; gọi ra nói "lịch khám" chung chung, không
     chi tiết (SF-03).
     """
     return GREETING_OUTBOUND if direction == "outbound" else GREETING_INBOUND
@@ -757,11 +757,13 @@ def silence_reprompt(question_text: str) -> str:
 
 
 def clinic_name(appointment: dict[str, Any]) -> str:
-    return (
+    name = (
         appointment.get("clinic_name")
         or CLINIC_NAMES.get(appointment.get("clinic_id") or "")
-        or "Vinmec"
+        or "bệnh viện"
     )
+    # API có thể trả tên thương hiệu kèm chi nhánh; chỉ đổi phần đọc, giữ nguyên dữ liệu Clinic.
+    return "bệnh viện" if "vinmec" in name.casefold() else name
 
 
 def _department(appointment: dict[str, Any]) -> str:

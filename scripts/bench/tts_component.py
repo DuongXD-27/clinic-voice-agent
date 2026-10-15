@@ -33,11 +33,11 @@ SENTENCES = {
     "ngan": "Dạ, anh chị cho em xin ngày tháng năm sinh ạ?",
     "vua": (
         "Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là 3 giờ 30 chiều, "
-        "ngày 14 tháng 10, tại Vinmec Times City ạ."
+        "ngày 14 tháng 10, tại bệnh viện ạ."
     ),
     "dai": (
         "Dạ, em chưa nghe rõ ạ. Cảm ơn anh chị. Lịch khám Nội tổng quát của anh chị là "
-        "3 giờ 30 chiều, ngày 14 tháng 10, tại Vinmec Times City ạ. Anh chị có đến khám "
+        "3 giờ 30 chiều, ngày 14 tháng 10, tại bệnh viện ạ. Anh chị có đến khám "
         "được theo lịch này không ạ? Anh chị vui lòng trả lời có hoặc không giúp em ạ."
     ),
 }

@@ -23,7 +23,7 @@ from callbot.engine.tools.clinic_gateway import WRITE_MAX_SENDS
 from clinic_mock_sim import FakeClinicAPI, clinic_error
 
 SILENCE = None
-FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại Vinmec Times City"
+FACTS = "9 giờ sáng, thứ Tư ngày 14 tháng 10, tại bệnh viện"
 CONFIRMED_WRITE = ("apt_00417", "CONFIRMED", {})
 
 
@@ -67,11 +67,23 @@ def test_summary_reads_back_date_time_and_clinic_name() -> None:
     assert clinic.writes == []
 
 
-def test_unknown_clinic_id_is_not_given_a_guessed_name() -> None:
-    assert t.clinic_name({"clinic_id": "cl_unknown"}) == "Vinmec"
-    assert t.clinic_name({"clinic_id": "cl_vinmec", "clinic_name": "Vinmec Central Park"}) == (
-        "Vinmec Central Park"
-    )
+@pytest.mark.parametrize(
+    "appointment,expected",
+    [
+        ({}, "bệnh viện"),
+        ({"clinic_id": "cl_unknown"}, "bệnh viện"),
+        ({"clinic_id": "cl_vinmec"}, "bệnh viện"),
+        ({"clinic_name": "Vinmec Times City"}, "bệnh viện"),
+        ({"clinic_name": "Vinmec Central Park"}, "bệnh viện"),
+        ({"clinic_name": "Bệnh viện Đa khoa Quốc tế VINMEC Times City"}, "bệnh viện"),
+        ({"clinic_id": "c_001"}, "Phòng khám Đa khoa Trung tâm"),
+        ({"clinic_name": "Phòng khám Trung tâm"}, "Phòng khám Trung tâm"),
+    ],
+)
+def test_clinic_name_uses_generic_hospital_for_brand_and_unknown_clinics(appointment, expected):
+    original = dict(appointment)
+    assert t.clinic_name(appointment) == expected
+    assert appointment == original
 
 
 # --- Đồng ý -> ghi, rồi mới báo CONFIRMED ------------------------------------------------
